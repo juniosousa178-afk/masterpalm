@@ -11,7 +11,26 @@ const String _keyCatalogoPrecisaAtualizar = 'catalogo_precisa_atualizar';
 class CatalogPublishService {
   CatalogPublishService._();
 
-  static FirebaseFirestore get _db => FirebaseFirestore.instance;
+  @visibleForTesting
+  static FirebaseFirestore? debugFirestoreOverride;
+
+  @visibleForTesting
+  static Future<void> Function(String lojaId)? debugSyncPaymentsPublicOverride;
+
+  static FirebaseFirestore get _db =>
+      debugFirestoreOverride ?? FirebaseFirestore.instance;
+
+  static Future<String> _resolveLojaId({String? lojaIdOverride}) async {
+    final resolved = lojaIdOverride?.trim();
+    if (resolved != null && resolved.isNotEmpty) {
+      return resolved;
+    }
+    final lojaId = await StoreResolverFacade.resolveForAdminApp();
+    if (lojaId == null || lojaId.isEmpty) {
+      throw StateError('Nenhuma loja ativa');
+    }
+    return lojaId;
+  }
 
   /// Marca que houve alteração manual (foto, preço, descrição, etc.) e o catálogo deve ser atualizado.
   static Future<void> marcarCatalogoPrecisaAtualizar() async {
@@ -68,21 +87,61 @@ class CatalogPublishService {
     return publicar && ativoFlag && estoque > 0;
   }
 
+  static int _readQtd(Map<String, dynamic> data) {
+    final raw = data['quantidade'] ??
+        data['estoque_atual'] ??
+        data['estoque'] ??
+        data['qtdEstoque'] ??
+        0;
+    if (raw is num) return raw.toInt();
+    return int.tryParse(raw.toString().trim()) ?? 0;
+  }
+
+  static Map<String, dynamic> _asStringDynamicMap(dynamic raw) {
+    if (raw is! Map) return <String, dynamic>{};
+    return raw.map((k, v) => MapEntry(k.toString(), v));
+  }
+
+  static Map<String, dynamic> _draftComEstoqueCanonico({
+    required String lojaId,
+    required String productId,
+    required Map<String, dynamic> draftData,
+    required Map<String, dynamic>? estoqueData,
+  }) {
+    if (estoqueData == null) return draftData;
+
+    final merged = Map<String, dynamic>.from(draftData);
+    final draftQtd = _readQtd(draftData);
+    final estoqueQtd = _readQtd(estoqueData);
+
+    if (kDebugMode && draftQtd != estoqueQtd) {
+      debugPrint(
+        '[catalog_publish_stock_conflict] '
+        'lojaId=$lojaId productId=$productId draftQtd=$draftQtd estoqueQtd=$estoqueQtd',
+      );
+    }
+
+    merged['quantidade'] = estoqueQtd;
+    merged['estoque'] = estoqueQtd;
+    merged['estoque_atual'] = estoqueQtd;
+    merged['qtdEstoque'] = estoqueQtd;
+    merged['variacoes'] = _asStringDynamicMap(estoqueData['variacoes']);
+    merged['estoquePorTamanho'] =
+        _asStringDynamicMap(estoqueData['estoquePorTamanho']);
+    merged['estoquePorCor'] = _asStringDynamicMap(estoqueData['estoquePorCor']);
+    return merged;
+  }
+
   /// Promove UM item do draft para live (mantém o mesmo docId).
   /// Se não existir no draft, remove do live.
   ///
   /// [lojaIdOverride] evita re-resolver loja quando o chamador já tem o id da tela ativa.
   static Future<void> promoteOne(String docId, {String? lojaIdOverride}) async {
-    final resolved = lojaIdOverride?.trim();
-    final lojaId = (resolved != null && resolved.isNotEmpty)
-        ? resolved
-        : await StoreResolverFacade.resolveForAdminApp();
-    if (lojaId == null || lojaId.isEmpty) {
-      throw StateError('Nenhuma loja ativa');
-    }
+    final lojaId = await _resolveLojaId(lojaIdOverride: lojaIdOverride);
     final base = _db.collection('lojas').doc(lojaId);
     final draftRef = base.collection('draft_produtos').doc(docId);
     final liveRef  = base.collection('produtos').doc(docId);
+    final estoqueRef = base.collection('estoque_produtos').doc(docId);
 
     final snap = await draftRef.get();
     if (!snap.exists) {
@@ -92,11 +151,19 @@ class CatalogPublishService {
     }
 
     final draftData = Map<String, dynamic>.from(snap.data()!);
+    final estoqueSnap = await estoqueRef.get();
+    final mergedData = _draftComEstoqueCanonico(
+      lojaId: lojaId,
+      productId: docId,
+      draftData: draftData,
+      estoqueData:
+          estoqueSnap.exists ? Map<String, dynamic>.from(estoqueSnap.data()!) : null,
+    );
 
-    final ativoWeb = _isAtivoForWeb(draftData);
+    final ativoWeb = _isAtivoForWeb(mergedData);
 
     if (ativoWeb) {
-      final data = _payloadCatalogoLiveSemCusto(draftData);
+      final data = _payloadCatalogoLiveSemCusto(mergedData);
       data['ativo'] = ativoWeb;
       data['publicado'] = ativoWeb;
       data['updatedAt'] = FieldValue.serverTimestamp();
@@ -112,18 +179,20 @@ class CatalogPublishService {
 
   /// Promove TODOS do draft para live; também faz "purge" de órfãos.
   /// Commits em chunks para não estourar o limite de 500 ops do Firestore.
-  static Future<void> promoteAll() async {
-    final lojaId = await StoreResolverFacade.resolveForAdminApp();
-    if (lojaId == null || lojaId.isEmpty) {
-      throw StateError('Nenhuma loja ativa');
-    }
+  static Future<void> promoteAll({String? lojaIdOverride}) async {
+    final lojaId = await _resolveLojaId(lojaIdOverride: lojaIdOverride);
     final base = _db.collection('lojas').doc(lojaId);
     final draftCol = base.collection('draft_produtos');
     final liveCol = base.collection('produtos');
+    final estoqueCol = base.collection('estoque_produtos');
 
     final draft = await draftCol.get();
     final live = await liveCol.get();
+    final estoque = await estoqueCol.get();
     final draftIds = draft.docs.map((d) => d.id).toSet();
+    final estoqueById = <String, Map<String, dynamic>>{
+      for (final d in estoque.docs) d.id: Map<String, dynamic>.from(d.data()),
+    };
 
     WriteBatch batch = _db.batch();
     var opCount = 0;
@@ -141,10 +210,16 @@ class CatalogPublishService {
 
     for (final d in draft.docs) {
       final draftData = Map<String, dynamic>.from(d.data());
-      final ativoWeb = _isAtivoForWeb(draftData);
+      final mergedData = _draftComEstoqueCanonico(
+        lojaId: lojaId,
+        productId: d.id,
+        draftData: draftData,
+        estoqueData: estoqueById[d.id],
+      );
+      final ativoWeb = _isAtivoForWeb(mergedData);
 
       if (ativoWeb) {
-        final data = _payloadCatalogoLiveSemCusto(draftData);
+        final data = _payloadCatalogoLiveSemCusto(mergedData);
         data['ativo'] = ativoWeb;
         data['publicado'] = ativoWeb;
         data['updatedAt'] = FieldValue.serverTimestamp();
@@ -168,11 +243,8 @@ class CatalogPublishService {
   }
 
   /// ✨ Publica configurações gerais do draft para live
-  static Future<void> publishConfig() async {
-    final lojaId = await StoreResolverFacade.resolveForAdminApp();
-    if (lojaId == null) {
-      throw StateError('Nenhuma loja ativa');
-    }
+  static Future<void> publishConfig({String? lojaIdOverride}) async {
+    final lojaId = await _resolveLojaId(lojaIdOverride: lojaIdOverride);
 
     final draftRef = _db.collection('lojas').doc(lojaId).collection('draft_config').doc('config');
     final liveRef = _db.collection('lojas').doc(lojaId).collection('config').doc('config');
@@ -195,11 +267,8 @@ class CatalogPublishService {
   }
 
   /// ✨ Publica configurações de pagamento do draft para live
-  static Future<void> publishPayments() async {
-    final lojaId = await StoreResolverFacade.resolveForAdminApp();
-    if (lojaId == null) {
-      throw StateError('Nenhuma loja ativa');
-    }
+  static Future<void> publishPayments({String? lojaIdOverride}) async {
+    final lojaId = await _resolveLojaId(lojaIdOverride: lojaIdOverride);
 
     final draftRef = _db.collection('lojas').doc(lojaId).collection('draft_config').doc('payments');
     final liveRef = _db.collection('lojas').doc(lojaId).collection('config').doc('payments');
@@ -217,12 +286,18 @@ class CatalogPublishService {
     debugPrint('💾 [PUBLISH-PAYMENTS] Salvando em LIVE: lojas/$lojaId/config/payments (merge: true)');
     debugPrint('   Campos: ${data.keys.length} campos sendo publicados');
     await liveRef.set(data, SetOptions(merge: true));
-    await PagamentosService.syncPaymentsPublic(lojaId);
+    if (debugSyncPaymentsPublicOverride != null) {
+      await debugSyncPaymentsPublicOverride!(lojaId);
+    } else {
+      await PagamentosService.syncPaymentsPublic(lojaId);
+    }
     debugPrint('✅ [PUBLISH-PAYMENTS] Payments publicado com sucesso!');
   }
 
   /// ✨ Publica TUDO de uma vez (config + payments + produtos + campanhas)
-  static Future<Map<String, dynamic>> publishEverything() async {
+  static Future<Map<String, dynamic>> publishEverything({
+    String? lojaIdOverride,
+  }) async {
     final errors = <String>[];
     final results = <String, dynamic>{
       'success': true,
@@ -234,12 +309,7 @@ class CatalogPublishService {
     };
 
     try {
-      final lojaId = await StoreResolverFacade.resolveForAdminApp();
-      if (lojaId == null) {
-        results['success'] = false;
-        errors.add('LojaId não encontrado');
-        return results;
-      }
+      final lojaId = await _resolveLojaId(lojaIdOverride: lojaIdOverride);
 
       debugPrint('═══════════════════════════════════════════════════════════');
       debugPrint('🚀 [PUBLISH-ALL] INICIANDO PUBLICAÇÃO COMPLETA');
@@ -250,7 +320,7 @@ class CatalogPublishService {
       // 1. Publicar configurações gerais
       try {
         debugPrint('\n📋 [PUBLISH-ALL] Etapa 1/4: Publicando configurações gerais...');
-        await publishConfig();
+        await publishConfig(lojaIdOverride: lojaId);
         results['config'] = true;
         debugPrint('✅ [PUBLISH-ALL] Etapa 1/4: Configurações publicadas');
       } catch (e) {
@@ -261,7 +331,7 @@ class CatalogPublishService {
       // 2. Publicar configurações de pagamento
       try {
         debugPrint('\n💳 [PUBLISH-ALL] Etapa 2/4: Publicando configurações de pagamento...');
-        await publishPayments();
+        await publishPayments(lojaIdOverride: lojaId);
         results['payments'] = true;
         debugPrint('✅ [PUBLISH-ALL] Etapa 2/4: Pagamentos publicados');
       } catch (e) {
@@ -272,7 +342,7 @@ class CatalogPublishService {
       // 3. Publicar produtos (usando método existente)
       try {
         debugPrint('\n📦 [PUBLISH-ALL] Etapa 3/4: Publicando produtos...');
-        await promoteAll();
+        await promoteAll(lojaIdOverride: lojaId);
 
         // Contar quantos foram publicados
         final liveSnap = await _db
