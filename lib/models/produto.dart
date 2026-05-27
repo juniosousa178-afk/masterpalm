@@ -105,7 +105,8 @@ class Produto extends HiveObject {
   // MARKETPLACES SELECIONADOS
   // ==============================
   @HiveField(29, defaultValue: <String>[])
-  List<String> marketplaces; // Lista de marketplaces: 'mercadolivre', 'shopee', 'magazineluiza', 'amazon'
+  List<String>
+      marketplaces; // Lista de marketplaces: 'mercadolivre', 'shopee', 'magazineluiza', 'amazon'
 
   // ==============================
   // VARIAÇÕES (TAMANHO + COR)
@@ -121,10 +122,12 @@ class Produto extends HiveObject {
   // PARCELAMENTO
   // ==============================
   @HiveField(31, defaultValue: false)
-  bool divideSemJuros; // true = exibe "12x sem juros"; false = usa juros do gateway
+  bool
+      divideSemJuros; // true = exibe "12x sem juros"; false = usa juros do gateway
 
   @HiveField(32, defaultValue: 0.0)
-  double percentualDescontoPix; // ex: 5 = 5% desconto no PIX (R$100 cartão → R$95 PIX)
+  double
+      percentualDescontoPix; // ex: 5 = 5% desconto no PIX (R$100 cartão → R$95 PIX)
 
   @HiveField(33, defaultValue: 12)
   int maxParcelasSemJuros; // ex: 3 = até 3x sem juros (quando divideSemJuros = true)
@@ -267,7 +270,8 @@ class Produto extends HiveObject {
   }
 
   /// `true` quando [comboConfig] tem `grupos` não vazio (Fase 2+ usa na UI; legado permanece em [itensCombo]).
-  bool get temComboConfigEfetivo => ComboConfigCanonical.isEffective(comboConfig);
+  bool get temComboConfigEfetivo =>
+      ComboConfigCanonical.isEffective(comboConfig);
 
   /// Calcula o preço com promoção aplicada
   double get precoComPromocao {
@@ -355,12 +359,30 @@ class Produto extends HiveObject {
 
   /// Retorna o preço para uma variação (tamanho ou tamanho+cor). Usa precoPorTamanho se houver, senão precoFinal.
   double precoParaVariacao(String tamanho, [String? cor]) {
-    final tk =
-        tamanho.trim().isEmpty ? 'sem-tamanho' : tamanho.trim();
-    if (precoPorTamanho != null && precoPorTamanho!.containsKey(tk)) {
-      return precoPorTamanho![tk] ?? precoFinal;
+    final base = precoFinal > 0 ? precoFinal : precoUnitario;
+    final bruto = tamanho.trim().isEmpty ? 'sem-tamanho' : tamanho.trim();
+    final tk = produtoNormalizarChavePrecoPorTamanho(tamanho);
+    final mapa = precoPorTamanho;
+    if (mapa == null || mapa.isEmpty) return base;
+
+    final exato = mapa[bruto];
+    if (exato != null && exato > 0) {
+      return exato;
     }
-    return precoFinal;
+
+    final normalizadoDireto = mapa[tk];
+    if (normalizadoDireto != null && normalizadoDireto > 0) {
+      return normalizadoDireto;
+    }
+
+    for (final entry in mapa.entries) {
+      if (produtoNormalizarChavePrecoPorTamanho(entry.key) == tk &&
+          entry.value > 0) {
+        return entry.value;
+      }
+    }
+
+    return base;
   }
 
   /// Retorna (menor, maior) preço considerando precoPorTamanho. Se não houver, retorna (precoFinal, precoFinal).
@@ -370,7 +392,10 @@ class Produto extends HiveObject {
     }
     final precos = precoPorTamanho!.values.where((v) => v > 0).toList();
     if (precos.isEmpty) return (precoFinal, precoFinal);
-    return (precos.reduce((a, b) => a < b ? a : b), precos.reduce((a, b) => a > b ? a : b));
+    return (
+      precos.reduce((a, b) => a < b ? a : b),
+      precos.reduce((a, b) => a > b ? a : b)
+    );
   }
 
   /// Considera estoque baixo: se estoqueMinimo > 0 usa ele, senão usa padrão 5. Não altera dados existentes.
@@ -381,7 +406,7 @@ class Produto extends HiveObject {
 
   /// compatibilidade com quem usa Produto.empty()
   static Produto empty() => Produto.vazio();
-    // ==============================
+  // ==============================
   // ESTOQUE POR TAMANHO (GRADE)
   // ==============================
 
@@ -488,7 +513,8 @@ class Produto extends HiveObject {
   /// Para só tamanho: tamanho preenchido, cor vazia/sem-cor -> variacoes[tamanho]['sem-cor']
   /// Para ambos: variacoes[tamanho][cor]
   /// [variacaoExtra]: quando a célula é mapa de extras, filtra pela chave; vazio = legado ou chave ''.
-  int obterEstoqueVariacao(String tamanho, String cor, [String variacaoExtra = '']) {
+  int obterEstoqueVariacao(String tamanho, String cor,
+      [String variacaoExtra = '']) {
     if (!usaVariacoes) return 0;
 
     final tam = tamanho.trim();
@@ -518,7 +544,8 @@ class Produto extends HiveObject {
   }
 
   /// Custo unitário para a combinação informada (variação -> custoReal fallback).
-  double custoUnitarioVariacao(String tamanho, String cor, [String variacaoExtra = '']) {
+  double custoUnitarioVariacao(String tamanho, String cor,
+      [String variacaoExtra = '']) {
     if (!usaVariacoes) return custoReal;
 
     final tam = tamanho.trim();
@@ -554,7 +581,8 @@ class Produto extends HiveObject {
         for (final cell in mapaTamanho.values) {
           final qtd = ProdutoVariacaoExtra.somarCelula(cell);
           if (qtd <= 0) continue;
-          final custo = ProdutoVariacaoExtra.custoUnitarioNaCelula(cell) ?? custoReal;
+          final custo =
+              ProdutoVariacaoExtra.custoUnitarioNaCelula(cell) ?? custoReal;
           total += qtd * custo;
         }
       }
@@ -702,5 +730,16 @@ class Produto extends HiveObject {
     if (coresValidas.length == 1) return coresValidas.first;
     return 'sem-cor';
   }
+}
 
+String produtoNormalizarChavePrecoPorTamanho(String tamanho) {
+  final bruto = tamanho.trim();
+  if (bruto.isEmpty) {
+    return 'sem-tamanho';
+  }
+  final lower = bruto.toLowerCase();
+  if (lower == 'sem-tamanho') {
+    return 'sem-tamanho';
+  }
+  return lower.replaceAll(RegExp(r'\s+'), '');
 }

@@ -73,12 +73,12 @@ class CatalogPublishService {
 
   /// Normaliza se o produto deve aparecer no catálogo web
   static bool _isAtivoForWeb(Map<String, dynamic> data) {
-    final publicar  = data['publicar'] == true || data['catalogo'] == true;
+    final publicar = data['publicar'] == true || data['catalogo'] == true;
     final ativoFlag = data['ativo'] != false; // se vier false, respeita
-    final estoque   = (data['estoque_atual'] ??
-                      data['estoque'] ??
-                      data['qtdEstoque'] ??
-                      0) as num;
+    final estoque = (data['estoque_atual'] ??
+        data['estoque'] ??
+        data['qtdEstoque'] ??
+        0) as num;
 
     // Só aparece se:
     //  - estiver marcado para catálogo (publicar/catalogo == true)
@@ -129,6 +129,15 @@ class CatalogPublishService {
     merged['estoquePorTamanho'] =
         _asStringDynamicMap(estoqueData['estoquePorTamanho']);
     merged['estoquePorCor'] = _asStringDynamicMap(estoqueData['estoquePorCor']);
+    final draftPrecoPorTamanho = draftData['precoPorTamanho'];
+    final estoquePrecoPorTamanho = estoqueData['precoPorTamanho'];
+    final draftTemPrecoPorTamanho =
+        draftPrecoPorTamanho is Map && draftPrecoPorTamanho.isNotEmpty;
+    if (!draftTemPrecoPorTamanho &&
+        estoquePrecoPorTamanho is Map &&
+        estoquePrecoPorTamanho.isNotEmpty) {
+      merged['precoPorTamanho'] = _asStringDynamicMap(estoquePrecoPorTamanho);
+    }
     return merged;
   }
 
@@ -140,7 +149,7 @@ class CatalogPublishService {
     final lojaId = await _resolveLojaId(lojaIdOverride: lojaIdOverride);
     final base = _db.collection('lojas').doc(lojaId);
     final draftRef = base.collection('draft_produtos').doc(docId);
-    final liveRef  = base.collection('produtos').doc(docId);
+    final liveRef = base.collection('produtos').doc(docId);
     final estoqueRef = base.collection('estoque_produtos').doc(docId);
 
     final snap = await draftRef.get();
@@ -156,8 +165,9 @@ class CatalogPublishService {
       lojaId: lojaId,
       productId: docId,
       draftData: draftData,
-      estoqueData:
-          estoqueSnap.exists ? Map<String, dynamic>.from(estoqueSnap.data()!) : null,
+      estoqueData: estoqueSnap.exists
+          ? Map<String, dynamic>.from(estoqueSnap.data()!)
+          : null,
     );
 
     final ativoWeb = _isAtivoForWeb(mergedData);
@@ -246,10 +256,16 @@ class CatalogPublishService {
   static Future<void> publishConfig({String? lojaIdOverride}) async {
     final lojaId = await _resolveLojaId(lojaIdOverride: lojaIdOverride);
 
-    final draftRef = _db.collection('lojas').doc(lojaId).collection('draft_config').doc('config');
-    final liveRef = _db.collection('lojas').doc(lojaId).collection('config').doc('config');
+    final draftRef = _db
+        .collection('lojas')
+        .doc(lojaId)
+        .collection('draft_config')
+        .doc('config');
+    final liveRef =
+        _db.collection('lojas').doc(lojaId).collection('config').doc('config');
 
-    debugPrint('📖 [PUBLISH-CONFIG] Lendo draft: lojas/$lojaId/draft_config/config');
+    debugPrint(
+        '📖 [PUBLISH-CONFIG] Lendo draft: lojas/$lojaId/draft_config/config');
     final draftSnap = await draftRef.get();
     if (!draftSnap.exists) {
       debugPrint('⚠️ [PUBLISH-CONFIG] Nenhuma config draft encontrada');
@@ -260,7 +276,8 @@ class CatalogPublishService {
     data['publishedAt'] = FieldValue.serverTimestamp();
     data['publishedFrom'] = 'draft';
 
-    debugPrint('💾 [PUBLISH-CONFIG] Salvando em LIVE: lojas/$lojaId/config/config (merge: true)');
+    debugPrint(
+        '💾 [PUBLISH-CONFIG] Salvando em LIVE: lojas/$lojaId/config/config (merge: true)');
     debugPrint('   Campos: ${data.keys.length} campos sendo publicados');
     await liveRef.set(data, SetOptions(merge: true));
     debugPrint('✅ [PUBLISH-CONFIG] Config publicado com sucesso!');
@@ -270,10 +287,19 @@ class CatalogPublishService {
   static Future<void> publishPayments({String? lojaIdOverride}) async {
     final lojaId = await _resolveLojaId(lojaIdOverride: lojaIdOverride);
 
-    final draftRef = _db.collection('lojas').doc(lojaId).collection('draft_config').doc('payments');
-    final liveRef = _db.collection('lojas').doc(lojaId).collection('config').doc('payments');
+    final draftRef = _db
+        .collection('lojas')
+        .doc(lojaId)
+        .collection('draft_config')
+        .doc('payments');
+    final liveRef = _db
+        .collection('lojas')
+        .doc(lojaId)
+        .collection('config')
+        .doc('payments');
 
-    debugPrint('📖 [PUBLISH-PAYMENTS] Lendo draft: lojas/$lojaId/draft_config/payments');
+    debugPrint(
+        '📖 [PUBLISH-PAYMENTS] Lendo draft: lojas/$lojaId/draft_config/payments');
     final draftSnap = await draftRef.get();
     if (!draftSnap.exists) {
       debugPrint('⚠️ [PUBLISH-PAYMENTS] Nenhum payment draft encontrado');
@@ -283,7 +309,8 @@ class CatalogPublishService {
     final data = Map<String, dynamic>.from(draftSnap.data()!);
     data['publishedAt'] = FieldValue.serverTimestamp();
 
-    debugPrint('💾 [PUBLISH-PAYMENTS] Salvando em LIVE: lojas/$lojaId/config/payments (merge: true)');
+    debugPrint(
+        '💾 [PUBLISH-PAYMENTS] Salvando em LIVE: lojas/$lojaId/config/payments (merge: true)');
     debugPrint('   Campos: ${data.keys.length} campos sendo publicados');
     await liveRef.set(data, SetOptions(merge: true));
     if (debugSyncPaymentsPublicOverride != null) {
@@ -319,7 +346,8 @@ class CatalogPublishService {
 
       // 1. Publicar configurações gerais
       try {
-        debugPrint('\n📋 [PUBLISH-ALL] Etapa 1/4: Publicando configurações gerais...');
+        debugPrint(
+            '\n📋 [PUBLISH-ALL] Etapa 1/4: Publicando configurações gerais...');
         await publishConfig(lojaIdOverride: lojaId);
         results['config'] = true;
         debugPrint('✅ [PUBLISH-ALL] Etapa 1/4: Configurações publicadas');
@@ -330,7 +358,8 @@ class CatalogPublishService {
 
       // 2. Publicar configurações de pagamento
       try {
-        debugPrint('\n💳 [PUBLISH-ALL] Etapa 2/4: Publicando configurações de pagamento...');
+        debugPrint(
+            '\n💳 [PUBLISH-ALL] Etapa 2/4: Publicando configurações de pagamento...');
         await publishPayments(lojaIdOverride: lojaId);
         results['payments'] = true;
         debugPrint('✅ [PUBLISH-ALL] Etapa 2/4: Pagamentos publicados');
@@ -351,7 +380,8 @@ class CatalogPublishService {
             .collection('produtos')
             .get();
         results['products'] = liveSnap.docs.length;
-        debugPrint('✅ [PUBLISH-ALL] Etapa 3/4: ${results['products']} produtos publicados');
+        debugPrint(
+            '✅ [PUBLISH-ALL] Etapa 3/4: ${results['products']} produtos publicados');
       } catch (e) {
         errors.add('Erro ao publicar produtos: $e');
         debugPrint('❌ [PUBLISH-ALL] Erro produtos (type=${e.runtimeType})');
@@ -359,7 +389,8 @@ class CatalogPublishService {
 
       // 4. Verificar campanhas ativas (já estão na mesma collection)
       try {
-        debugPrint('\n🎯 [PUBLISH-ALL] Etapa 4/4: Verificando campanhas ativas...');
+        debugPrint(
+            '\n🎯 [PUBLISH-ALL] Etapa 4/4: Verificando campanhas ativas...');
         final campaignsSnap = await _db
             .collection('lojas')
             .doc(lojaId)
@@ -368,7 +399,8 @@ class CatalogPublishService {
             .get();
 
         results['campaigns'] = campaignsSnap.docs.length;
-        debugPrint('✅ [PUBLISH-ALL] Etapa 4/4: ${results['campaigns']} campanhas ativas encontradas');
+        debugPrint(
+            '✅ [PUBLISH-ALL] Etapa 4/4: ${results['campaigns']} campanhas ativas encontradas');
       } catch (e) {
         errors.add('Erro ao verificar campanhas: $e');
         debugPrint('❌ [PUBLISH-ALL] Erro campanhas (type=${e.runtimeType})');
@@ -378,7 +410,8 @@ class CatalogPublishService {
         results['success'] = false;
       }
 
-      debugPrint('\n═══════════════════════════════════════════════════════════');
+      debugPrint(
+          '\n═══════════════════════════════════════════════════════════');
       debugPrint('🎉 [PUBLISH-ALL] PUBLICAÇÃO COMPLETA FINALIZADA');
       debugPrint('   ✅ Config: ${results['config']}');
       debugPrint('   ✅ Payments: ${results['payments']}');
@@ -391,7 +424,8 @@ class CatalogPublishService {
           debugPrint('      ${i + 1}. ${errors[i]}');
         }
       }
-      debugPrint('═══════════════════════════════════════════════════════════\n');
+      debugPrint(
+          '═══════════════════════════════════════════════════════════\n');
 
       return results;
     } catch (e) {

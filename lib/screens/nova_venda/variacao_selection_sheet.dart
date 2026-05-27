@@ -59,6 +59,9 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
 
   String _fmt2(num v) => v.toStringAsFixed(2).replaceAll('.', ',');
 
+  double get _precoAtualUnitario =>
+      widget.produto.precoParaVariacao(_tamanhoSelecionado);
+
   bool get _temVariacoes =>
       widget.produto.usaVariacoes ||
       widget.produto.estoquePorTamanho.isNotEmpty;
@@ -69,7 +72,8 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
       widget.produto.temVariacaoTamanhoECor;
 
   bool get _mostrarCor =>
-      widget.produto.temVariacaoSoloCor || widget.produto.temVariacaoTamanhoECor;
+      widget.produto.temVariacaoSoloCor ||
+      widget.produto.temVariacaoTamanhoECor;
 
   Map<String, int> get _tamanhosDisponiveis {
     if (widget.produto.usaVariacoes && widget.produto.variacoes != null) {
@@ -100,7 +104,8 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
       if (mapaTamanho is Map) {
         return Map<String, int>.from(
           mapaTamanho.map(
-            (k, v) => MapEntry(k.toString(), ProdutoVariacaoExtra.somarCelula(v)),
+            (k, v) =>
+                MapEntry(k.toString(), ProdutoVariacaoExtra.somarCelula(v)),
           ),
         );
       }
@@ -121,18 +126,26 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
 
   bool get _podeConfirmar {
     final p = widget.produto;
-    if (_mostrarTamanho && _tamanhosDisponiveis.isNotEmpty && _tamanhoSelecionado.isEmpty) {
+    if (_mostrarTamanho &&
+        _tamanhosDisponiveis.isNotEmpty &&
+        _tamanhoSelecionado.isEmpty) {
       return false;
     }
     if (p.temVariacaoSoloCor) {
-      if (_coresDisponiveis.isNotEmpty && _corSelecionada.trim().isEmpty) return false;
+      if (_coresDisponiveis.isNotEmpty && _corSelecionada.trim().isEmpty) {
+        return false;
+      }
     } else if (p.usaVariacoes && _tamanhoSelecionado.isNotEmpty) {
       final mapaTamanho = p.variacoes![_tamanhoSelecionado];
-      if (mapaTamanho is Map && mapaTamanho.isNotEmpty && _corSelecionada.trim().isEmpty) {
+      if (mapaTamanho is Map &&
+          mapaTamanho.isNotEmpty &&
+          _corSelecionada.trim().isEmpty) {
         return false;
       }
     }
-    if (_opcoesExtra.isNotEmpty && _extraSelecionado.trim().isEmpty) return false;
+    if (_opcoesExtra.isNotEmpty && _extraSelecionado.trim().isEmpty) {
+      return false;
+    }
     return _quantidade >= 1;
   }
 
@@ -143,7 +156,8 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
     }
     if (widget.produto.usaVariacoes && _tamanhoSelecionado.isNotEmpty) {
       final corKey = _corSelecionada.isEmpty ? 'sem-cor' : _corSelecionada;
-      return widget.produto.obterEstoqueVariacao(_tamanhoSelecionado, corKey, ex);
+      return widget.produto
+          .obterEstoqueVariacao(_tamanhoSelecionado, corKey, ex);
     }
     if (_tamanhoSelecionado.isNotEmpty) {
       return widget.produto.estoquePorTamanho[_tamanhoSelecionado] ?? 0;
@@ -157,7 +171,8 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
 
     final ex = _extraSelecionado.trim();
     final corKey = _corSelecionada.isEmpty ? 'sem-cor' : _corSelecionada;
-    final tamKey = _tamanhoSelecionado.isEmpty ? 'sem-tamanho' : _tamanhoSelecionado;
+    final tamKey =
+        _tamanhoSelecionado.isEmpty ? 'sem-tamanho' : _tamanhoSelecionado;
 
     String resumo = '';
     if (ex.isNotEmpty) {
@@ -224,7 +239,7 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
                         ),
                       ),
                       Text(
-                        'R\$ ${_fmt2(widget.preco)}',
+                        'R\$ ${_fmt2(_precoAtualUnitario)}',
                         style: TextStyle(
                           color: theme.colorScheme.primary,
                           fontSize: 20,
@@ -234,7 +249,6 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
                     ],
                   ),
                   const SizedBox(height: 20),
-
                   if (_mostrarTamanho) ...[
                     Text(
                       'Tamanho',
@@ -259,14 +273,18 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
                                     _extraSelecionado = '';
                                     if (widget.produto.usaVariacoes &&
                                         widget.produto.variacoes != null) {
-                                      final mapa = widget.produto.variacoes![tam];
+                                      final mapa =
+                                          widget.produto.variacoes![tam];
                                       if (mapa is Map) {
                                         final keys = mapa.keys
                                             .map((k) => k.toString())
                                             .where((k) =>
-                                                ProdutoVariacaoExtra.somarCelula(mapa[k]) > 0)
+                                                ProdutoVariacaoExtra
+                                                    .somarCelula(mapa[k]) >
+                                                0)
                                             .toList();
-                                        if (keys.length == 1 && keys.first == 'sem-cor') {
+                                        if (keys.length == 1 &&
+                                            keys.first == 'sem-cor') {
                                           _corSelecionada = 'sem-cor';
                                         }
                                       }
@@ -306,7 +324,8 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
                                   hasStock ? '$qtd un.' : 'Esgotado',
                                   style: TextStyle(
                                     fontSize: 11,
-                                    color: sel ? Colors.white70 : Colors.grey[600],
+                                    color:
+                                        sel ? Colors.white70 : Colors.grey[600],
                                   ),
                                 ),
                               ],
@@ -316,10 +335,10 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
                       }).toList(),
                     ),
                   ],
-
                   if (_mostrarCor &&
                       _coresDisponiveis.isNotEmpty &&
-                      (widget.produto.temVariacaoSoloCor || _tamanhoSelecionado.isNotEmpty)) ...[
+                      (widget.produto.temVariacaoSoloCor ||
+                          _tamanhoSelecionado.isNotEmpty)) ...[
                     const SizedBox(height: 20),
                     Text(
                       'Cor',
@@ -333,7 +352,8 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
                       runSpacing: 10,
                       children: _coresDisponiveis.entries.map((e) {
                         final cor = e.key;
-                        if (!widget.produto.temVariacaoSoloCor && cor == 'sem-cor') {
+                        if (!widget.produto.temVariacaoSoloCor &&
+                            cor == 'sem-cor') {
                           return const SizedBox.shrink();
                         }
                         final qtd = e.value;
@@ -393,7 +413,8 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
                                   '($qtd)',
                                   style: TextStyle(
                                     fontSize: 11,
-                                    color: sel ? Colors.white70 : Colors.grey[600],
+                                    color:
+                                        sel ? Colors.white70 : Colors.grey[600],
                                   ),
                                 ),
                               ],
@@ -403,7 +424,6 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
                       }).toList(),
                     ),
                   ],
-
                   if (_opcoesExtra.isNotEmpty) ...[
                     const SizedBox(height: 20),
                     Text(
@@ -462,7 +482,6 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
                       },
                     ),
                   ],
-
                   const SizedBox(height: 20),
                   Row(
                     children: [
@@ -509,7 +528,6 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
                         ),
                     ],
                   ),
-
                   const SizedBox(height: 24),
                   SizedBox(
                     width: double.infinity,
@@ -520,7 +538,7 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
                       label: Text(
                         _temVariacoes && !_podeConfirmar
                             ? 'Selecione as opções'
-                            : 'Adicionar (R\$ ${_fmt2(widget.preco * _quantidade)})',
+                            : 'Adicionar (R\$ ${_fmt2(_precoAtualUnitario * _quantidade)})',
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,

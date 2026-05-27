@@ -107,8 +107,7 @@ void main() {
     setUp(() {
       firestore = FakeFirebaseFirestore();
       CatalogPublishService.debugFirestoreOverride = firestore;
-      CatalogPublishService.debugSyncPaymentsPublicOverride =
-          (_) async {};
+      CatalogPublishService.debugSyncPaymentsPublicOverride = (_) async {};
     });
 
     tearDown(() {
@@ -174,7 +173,8 @@ void main() {
         expect(
           liveZero,
           isNull,
-          reason: 'produto zerado no estoque canônico não deve reaparecer no live',
+          reason:
+              'produto zerado no estoque canônico não deve reaparecer no live',
         );
 
         expect(liveTwo, isNotNull);
@@ -213,6 +213,53 @@ void main() {
         expect(live['estoque_atual'], 5);
         expect(live['qtdEstoque'], 5);
         expect(estoque, isNull);
+      },
+    );
+
+    test(
+      'promoteAll reaproveita precoPorTamanho do estoque canônico quando o draft não o traz',
+      () async {
+        await writeDraft(
+          productTwo,
+          nome: 'Colar Coração Cravejado',
+          quantidade: 5,
+          extra: {
+            'variacoes': {
+              '45 cm': {'sem-cor': 2},
+              '45 + 5 cm': {'sem-cor': 2},
+              '60 cm': {'sem-cor': 1},
+            },
+            'estoquePorTamanho': {'45 cm': 2, '45 + 5 cm': 2, '60 cm': 1},
+          },
+        );
+        await writeEstoque(
+          productTwo,
+          nome: 'Colar Coração Cravejado',
+          quantidade: 5,
+          extra: {
+            'variacoes': {
+              '45 cm': {'sem-cor': 2},
+              '45 + 5 cm': {'sem-cor': 2},
+              '60 cm': {'sem-cor': 1},
+            },
+            'estoquePorTamanho': {'45 cm': 2, '45 + 5 cm': 2, '60 cm': 1},
+            'precoPorTamanho': {
+              '45 cm': 49.9,
+              '45 + 5 cm': 52.9,
+              '60 cm': 59.9,
+            },
+          },
+        );
+
+        await CatalogPublishService.promoteAll(lojaIdOverride: lojaId);
+
+        final live = await readLive(productTwo);
+        expect(live, isNotNull);
+        expect(live!['precoPorTamanho'], {
+          '45 cm': 49.9,
+          '45 + 5 cm': 52.9,
+          '60 cm': 59.9,
+        });
       },
     );
 

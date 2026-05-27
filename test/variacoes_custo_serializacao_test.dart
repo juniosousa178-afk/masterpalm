@@ -18,7 +18,9 @@ void _assertNenhumaChaveLegadaSemExtra(dynamic v) {
 }
 
 void main() {
-  test('parseVariacoesFromFirestore preserva qtd e custo por variacao sem extra', () {
+  test(
+      'parseVariacoesFromFirestore preserva qtd e custo por variacao sem extra',
+      () {
     final raw = <String, dynamic>{
       'Aro 17': <String, dynamic>{
         'Preto': <String, dynamic>{
@@ -35,7 +37,8 @@ void main() {
     expect(ProdutoVariacaoExtra.somarCelula(cell), 3);
     expect(ProdutoVariacaoExtra.custoUnitarioNaCelula(cell), 24.0);
     expect(
-      (cell as Map<String, dynamic>).containsKey(ProdutoVariacaoExtra.kSemExtraKey),
+      (cell as Map<String, dynamic>)
+          .containsKey(ProdutoVariacaoExtra.kSemExtraKey),
       isTrue,
     );
   });
@@ -78,7 +81,8 @@ void main() {
 
     final sanitized =
         ProdutosFirestoreService.sanitizeVariacoesForFirestore(variacoes);
-    final cell = (sanitized['1'] as Map<String, dynamic>)['sem-cor'] as Map<String, dynamic>;
+    final cell = (sanitized['1'] as Map<String, dynamic>)['sem-cor']
+        as Map<String, dynamic>;
 
     expect(cell.containsKey(''), isFalse);
     expect(cell.containsKey(ProdutoVariacaoExtra.kSemExtraKeyLegacy), isFalse);
@@ -86,7 +90,8 @@ void main() {
     expect(cell[ProdutoVariacaoExtra.kSemExtraKey], 2);
     expect(cell[ProdutoVariacaoExtra.kMetaCustoUnitarioKey], 22.99);
 
-    final parsed = ProdutosFirestoreService.parseVariacoesFromFirestore(sanitized);
+    final parsed =
+        ProdutosFirestoreService.parseVariacoesFromFirestore(sanitized);
     final parsedCell = (parsed!['1'] as Map<String, dynamic>)['sem-cor'];
     expect(ProdutoVariacaoExtra.somarCelula(parsedCell), 2);
     expect(ProdutoVariacaoExtra.custoUnitarioNaCelula(parsedCell), 22.99);
@@ -106,12 +111,15 @@ void main() {
     expect(ProdutoVariacaoExtra.somarCelula(cell), 4);
     expect(ProdutoVariacaoExtra.custoUnitarioNaCelula(cell), 10.0);
     expect(
-      (cell as Map<String, dynamic>).containsKey(ProdutoVariacaoExtra.kSemExtraKey),
+      (cell as Map<String, dynamic>)
+          .containsKey(ProdutoVariacaoExtra.kSemExtraKey),
       isTrue,
     );
   });
 
-  test('sanitizeVariacoesForFirestore converte legado para chave Firestore-safe', () {
+  test(
+      'sanitizeVariacoesForFirestore converte legado para chave Firestore-safe',
+      () {
     final variacoes = <String, dynamic>{
       '1': <String, dynamic>{
         'sem-cor': <String, dynamic>{
@@ -122,8 +130,8 @@ void main() {
     };
     final sanitized =
         ProdutosFirestoreService.sanitizeVariacoesForFirestore(variacoes);
-    final cell =
-        (sanitized['1'] as Map<String, dynamic>)['sem-cor'] as Map<String, dynamic>;
+    final cell = (sanitized['1'] as Map<String, dynamic>)['sem-cor']
+        as Map<String, dynamic>;
     expect(cell.containsKey(ProdutoVariacaoExtra.kSemExtraKeyLegacy), isFalse);
     expect(cell[ProdutoVariacaoExtra.kSemExtraKey], 3);
   });
@@ -133,7 +141,9 @@ void main() {
     expect(produtoFormTamanhoKeyPrecoPorTamanho('  P  '), 'P');
   });
 
-  test('precoParaVariacao usa precoPorTamanho[sem-tamanho] quando tamanho vazio', () {
+  test(
+      'precoParaVariacao usa precoPorTamanho[sem-tamanho] quando tamanho vazio',
+      () {
     final p = Produto.vazio();
     p.precoFinal = 99.0;
     p.precoPorTamanho = {'sem-tamanho': 42.5, 'G': 50.0};
@@ -143,7 +153,40 @@ void main() {
     expect(p.precoParaVariacao('X'), 99.0);
   });
 
-  test('build precoPorTamanho a partir de controllers canoniza tamanho e ignora vazios', () {
+  test('precoParaVariacao usa precoUnitario quando precoFinal estiver zerado',
+      () {
+    final p = Produto.vazio();
+    p.precoFinal = 0.0;
+    p.precoUnitario = 49.9;
+    expect(p.precoParaVariacao(''), 49.9);
+    expect(p.precoParaVariacao('G'), 49.9);
+  });
+
+  test('precoParaVariacao encontra precoPorTamanho por chave normalizada', () {
+    final p = Produto.vazio();
+    p.precoFinal = 73.9;
+    p.precoUnitario = 73.9;
+    p.precoPorTamanho = {
+      '45 cm': 49.9,
+      '40 cm': 52.9,
+      '60 cm': 59.9,
+    };
+    expect(p.precoParaVariacao('45cm'), 49.9);
+    expect(p.precoParaVariacao('40cm'), 52.9);
+    expect(p.precoParaVariacao('60cm'), 59.9);
+  });
+
+  test('precoParaVariacao encontra precoPorTamanho no sentido inverso', () {
+    final p = Produto.vazio();
+    p.precoFinal = 73.9;
+    p.precoUnitario = 73.9;
+    p.precoPorTamanho = {'45cm': 49.9};
+    expect(p.precoParaVariacao('45 cm'), 49.9);
+  });
+
+  test(
+      'build precoPorTamanho a partir de controllers canoniza tamanho e ignora vazios',
+      () {
     final controllers = <String, TextEditingController>{
       '40cm': TextEditingController(text: '99,90'),
       ' 45cm ': TextEditingController(text: '109,90'),
@@ -168,7 +211,8 @@ void main() {
       '45cm': 109.90,
       '60cm': 129.90,
     };
-    final parsed = ProdutosFirestoreService.parsePrecoPorTamanhoFromFirestore(payload);
+    final parsed =
+        ProdutosFirestoreService.parsePrecoPorTamanhoFromFirestore(payload);
     expect(parsed, {
       '40cm': 99.90,
       '45cm': 109.90,
@@ -182,7 +226,8 @@ void main() {
       '45cm': '109,90',
       '60cm': '129.90',
     };
-    final parsed = ProdutosFirestoreService.parsePrecoPorTamanhoFromFirestore(payload);
+    final parsed =
+        ProdutosFirestoreService.parsePrecoPorTamanhoFromFirestore(payload);
     expect(parsed, {
       '40cm': 99.9,
       '45cm': 109.9,
@@ -190,7 +235,9 @@ void main() {
     });
   });
 
-  test('sanitizeVariacoesForFirestore: custo + _sem_extra e nunca __sem_extra__', () {
+  test(
+      'sanitizeVariacoesForFirestore: custo + _sem_extra e nunca __sem_extra__',
+      () {
     final sanitized = ProdutosFirestoreService.sanitizeVariacoesForFirestore(
       <String, dynamic>{
         '1': <String, dynamic>{
@@ -202,14 +249,15 @@ void main() {
       },
     );
     _assertNenhumaChaveLegadaSemExtra(sanitized);
-    final cell =
-        (sanitized['1'] as Map<String, dynamic>)['sem-cor'] as Map<String, dynamic>;
+    final cell = (sanitized['1'] as Map<String, dynamic>)['sem-cor']
+        as Map<String, dynamic>;
     expect(cell[ProdutoVariacaoExtra.kSemExtraKey], 1);
     expect(cell[ProdutoVariacaoExtra.kMetaCustoUnitarioKey], 3.0);
   });
 
   test('Produto Hive roundtrip preserva precoPorTamanho', () async {
-    final hiveDir = Directory.systemTemp.createTempSync('produto_hive_roundtrip_');
+    final hiveDir =
+        Directory.systemTemp.createTempSync('produto_hive_roundtrip_');
     Hive.init(hiveDir.path);
     if (!Hive.isAdapterRegistered(2)) {
       Hive.registerAdapter(ProdutoAdapter());

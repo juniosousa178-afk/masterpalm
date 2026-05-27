@@ -40,8 +40,10 @@ class NovaVendaModal extends StatefulWidget {
   final String vendedor;
   final String lojaId; // 🔹 loja atual (vem da VendasScreen)
   final VoidCallback onVendaFinalizada;
+
   /// Chamado se o salvamento falhar depois do modal fechar (venda já confirmada pelo usuário).
   final void Function(String message)? onErroAoFinalizar;
+
   /// Quando informado, abre em modo edição: desfaz a venda antiga e registra nova com dados editados.
   final Venda? vendaParaEditar;
 
@@ -160,7 +162,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                 'cor': i.cor,
                 'extraValor': i.extraValor,
                 'variacaoExtraResumo': i.variacaoExtraResumo,
-                if (i.productId != null && i.productId!.trim().isNotEmpty) 'productId': i.productId,
+                if (i.productId != null && i.productId!.trim().isNotEmpty)
+                  'productId': i.productId,
               })
           .toList();
     } else {
@@ -179,13 +182,17 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
           if (idxX >= 0) {
             final rest = linha.substring(idxX + 3);
             final idxDelim = rest.indexOf(' - R\$');
-            nomeProd = idxDelim >= 0 ? rest.substring(0, idxDelim).trim() : rest.trim();
+            nomeProd = idxDelim >= 0
+                ? rest.substring(0, idxDelim).trim()
+                : rest.trim();
             final qtdStr = linha.substring(0, idxX).trim();
             qtdLegado = int.tryParse(qtdStr) ?? v.quantidade;
           }
         }
       } catch (_) {
-        nomeProd = v.produtosDescricao.trim().isNotEmpty ? v.produtosDescricao.split('\n').first.trim() : 'Produto';
+        nomeProd = v.produtosDescricao.trim().isNotEmpty
+            ? v.produtosDescricao.split('\n').first.trim()
+            : 'Produto';
       }
       produtosSelecionados = [
         {
@@ -201,9 +208,15 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     }
 
     pagamentos = [];
-    if (v.pagamentoDinheiro > 0) pagamentos.add({'forma': 'Dinheiro', 'valor': v.pagamentoDinheiro});
-    if (v.pagamentoPix > 0) pagamentos.add({'forma': 'Pix', 'valor': v.pagamentoPix});
-    if (v.pagamentoCartao > 0) pagamentos.add({'forma': 'Cartão', 'valor': v.pagamentoCartao});
+    if (v.pagamentoDinheiro > 0) {
+      pagamentos.add({'forma': 'Dinheiro', 'valor': v.pagamentoDinheiro});
+    }
+    if (v.pagamentoPix > 0) {
+      pagamentos.add({'forma': 'Pix', 'valor': v.pagamentoPix});
+    }
+    if (v.pagamentoCartao > 0) {
+      pagamentos.add({'forma': 'Cartão', 'valor': v.pagamentoCartao});
+    }
     if (pagamentos.isEmpty) pagamentos.add({'forma': 'Pix', 'valor': v.total});
 
     for (final c in _valorControllers) {
@@ -212,7 +225,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     _valorControllers.clear();
     for (final p in pagamentos) {
       final val = (p['valor'] as num?)?.toDouble() ?? 0.0;
-      _valorControllers.add(TextEditingController(text: MoedaInputFormatter.format(val)));
+      _valorControllers
+          .add(TextEditingController(text: MoedaInputFormatter.format(val)));
     }
     for (final c in _quantityControllers) {
       c.dispose();
@@ -220,7 +234,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     _quantityControllers.clear();
     for (final item in produtosSelecionados) {
       final q = item['quantidade'] ?? 1;
-      _quantityControllers.add(TextEditingController(text: (q is int ? q : int.tryParse(q.toString()) ?? 1).toString()));
+      _quantityControllers.add(TextEditingController(
+          text: (q is int ? q : int.tryParse(q.toString()) ?? 1).toString()));
     }
 
     setState(() {});
@@ -337,12 +352,14 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     setState(() {
       if (paraReais) {
         final pct = desconto;
-        desconto = subtotal > 0 ? (subtotal * (pct / 100)).clamp(0.0, subtotal) : 0.0;
+        desconto =
+            subtotal > 0 ? (subtotal * (pct / 100)).clamp(0.0, subtotal) : 0.0;
         descontoController.text =
             desconto > 0 ? MoedaInputFormatter.format(desconto) : '';
       } else {
         final reais = desconto.clamp(0.0, subtotal > 0 ? subtotal : 0.0);
-        desconto = subtotal > 0 ? ((reais / subtotal) * 100).clamp(0.0, 100.0) : 0.0;
+        desconto =
+            subtotal > 0 ? ((reais / subtotal) * 100).clamp(0.0, 100.0) : 0.0;
         descontoController.text = _formatPercentualCampo(desconto);
       }
       _descontoEmReais = paraReais;
@@ -381,8 +398,14 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     return total < 0 ? 0.0 : total;
   }
 
-  double _precoDoProduto(Produto p) =>
-      p.precoFinal > 0 ? p.precoFinal : (p.precoUnitario > 0 ? p.precoUnitario : 0.0);
+  double _precoDoProduto(Produto p) => p.precoFinal > 0
+      ? p.precoFinal
+      : (p.precoUnitario > 0 ? p.precoUnitario : 0.0);
+
+  double _precoDoProdutoComVariacao(Produto p, String tamanho) {
+    final preco = p.precoParaVariacao(tamanho);
+    return preco > 0 ? preco : _precoDoProduto(p);
+  }
 
   /// Combo já configurado na linha — preservar [preco] definido pelo sheet (não repor pelo cadastro).
   bool _linhaComboProtegida(Map<String, dynamic> item) {
@@ -408,18 +431,22 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       'peso': p.peso,
       'tipoEmbalagem': p.tipoEmbalagem,
       if (p.imagens.isNotEmpty) 'imagens': List<String>.from(p.imagens),
-      if (p.variacoes != null && p.variacoes!.isNotEmpty) 'variacoes': p.variacoes,
+      if (p.variacoes != null && p.variacoes!.isNotEmpty)
+        'variacoes': p.variacoes,
       if (p.variacoesExtraTipo != null && p.variacoesExtraTipo!.isNotEmpty)
         'variacoesExtraTipo': p.variacoesExtraTipo,
       if (p.precoPorTamanho != null && p.precoPorTamanho!.isNotEmpty)
         'precoPorTamanho': p.precoPorTamanho,
-      if (p.estoquePorTamanho.isNotEmpty) 'estoquePorTamanho': p.estoquePorTamanho,
+      if (p.estoquePorTamanho.isNotEmpty)
+        'estoquePorTamanho': p.estoquePorTamanho,
       if (p.cores.isNotEmpty)
         'estoquePorCor': {
           for (final c in p.cores) c: p.obterEstoqueVariacao('', c, ''),
         },
-      if (p.itensCombo != null && p.itensCombo!.isNotEmpty) 'itensCombo': p.itensCombo,
-      if (p.comboConfig != null && p.comboConfig!.isNotEmpty) 'comboConfig': p.comboConfig,
+      if (p.itensCombo != null && p.itensCombo!.isNotEmpty)
+        'itensCombo': p.itensCombo,
+      if (p.comboConfig != null && p.comboConfig!.isNotEmpty)
+        'comboConfig': p.comboConfig,
     };
   }
 
@@ -474,7 +501,10 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         produtosSelecionados[index]['cor'] = '';
         produtosSelecionados[index]['extraValor'] = '';
         produtosSelecionados[index]['variacaoExtraResumo'] = '';
-        if ((item['comboConfiguravelResumo'] ?? '').toString().trim().isNotEmpty) {
+        if ((item['comboConfiguravelResumo'] ?? '')
+            .toString()
+            .trim()
+            .isNotEmpty) {
           produtosSelecionados[index]['comboConfiguravelResumo'] =
               (item['comboConfiguravelResumo'] ?? '').toString().trim();
         } else {
@@ -543,7 +573,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       if (v.lojaId != null && v.lojaId != lojaId) continue;
       if (v.itens != null && v.itens!.isNotEmpty) {
         for (final item in v.itens!) {
-          contagem[item.produtoNome] = (contagem[item.produtoNome] ?? 0) + item.quantidade;
+          contagem[item.produtoNome] =
+              (contagem[item.produtoNome] ?? 0) + item.quantidade;
         }
       } else if (v.produtosDescricao.isNotEmpty) {
         final nome = v.produtosDescricao.split('\n').first.trim();
@@ -563,7 +594,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     pagamentos[0]['valor'] = total;
     if (_valorControllers.isNotEmpty) {
       _valorControllers[0].text = MoedaInputFormatter.format(total);
-      _valorControllers[0].selection = TextSelection.collapsed(offset: _valorControllers[0].text.length);
+      _valorControllers[0].selection =
+          TextSelection.collapsed(offset: _valorControllers[0].text.length);
     }
     setState(() {});
   }
@@ -581,14 +613,18 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     );
     final ehCombo = prod != null && prod.ehCombo;
     final temVariacao = prod != null &&
-        (prod.usaVariacoes || prod.estoquePorTamanho.isNotEmpty || prod.temVariacaoSoloCor);
+        (prod.usaVariacoes ||
+            prod.estoquePorTamanho.isNotEmpty ||
+            prod.temVariacaoSoloCor);
     final tam = (item['tamanho'] ?? '').toString();
     final cor = (item['cor'] ?? '').toString();
     final extraResumo = (item['variacaoExtraResumo'] ?? '').toString().trim();
     final sel = item['itensComboComSelecao'];
     final temComboSelecao = sel is List && sel.isNotEmpty;
-    final temSelecao =
-        tam.isNotEmpty || cor.isNotEmpty || extraResumo.isNotEmpty || temComboSelecao;
+    final temSelecao = tam.isNotEmpty ||
+        cor.isNotEmpty ||
+        extraResumo.isNotEmpty ||
+        temComboSelecao;
 
     if (!ehCombo && !temVariacao) {
       return const SizedBox.shrink();
@@ -636,11 +672,14 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
               preco: _precoDoProduto(prod),
               onConfirmar: (t, c, qtd, extraEv, extraResumo) {
                 setState(() {
+                  final precoLinha = _precoDoProdutoComVariacao(prod, t);
                   produtosSelecionados[index]['tamanho'] = t;
                   produtosSelecionados[index]['cor'] = c;
+                  produtosSelecionados[index]['preco'] = precoLinha;
                   produtosSelecionados[index]['quantidade'] = qtd;
                   produtosSelecionados[index]['extraValor'] = extraEv;
-                  produtosSelecionados[index]['variacaoExtraResumo'] = extraResumo;
+                  produtosSelecionados[index]['variacaoExtraResumo'] =
+                      extraResumo;
                   produtosSelecionados[index].remove('itensComboComSelecao');
                   produtosSelecionados[index].remove('comboConfiguravelResumo');
                 });
@@ -654,16 +693,24 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
           decoration: BoxDecoration(
             color: ehCombo ? Colors.orange.shade50 : Colors.blue.shade50,
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: ehCombo ? Colors.orange.shade200 : Colors.blue.shade200),
+            border: Border.all(
+                color: ehCombo ? Colors.orange.shade200 : Colors.blue.shade200),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 16, color: ehCombo ? Colors.orange.shade700 : Colors.blue.shade700),
+              Icon(icon,
+                  size: 16,
+                  color:
+                      ehCombo ? Colors.orange.shade700 : Colors.blue.shade700),
               const SizedBox(width: 6),
               Text(
                 label,
-                style: TextStyle(fontSize: 13, color: ehCombo ? Colors.orange.shade900 : Colors.blue.shade900, fontWeight: FontWeight.w500),
+                style: TextStyle(
+                    fontSize: 13,
+                    color:
+                        ehCombo ? Colors.orange.shade900 : Colors.blue.shade900,
+                    fontWeight: FontWeight.w500),
                 overflow: TextOverflow.ellipsis,
               ),
             ],
@@ -673,7 +720,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     );
   }
 
-  int _obterEstoqueProduto(Produto p, String tamanho, String cor, [String extra = '']) {
+  int _obterEstoqueProduto(Produto p, String tamanho, String cor,
+      [String extra = '']) {
     final ex = extra.trim();
     if (p.temVariacaoSoloCor && cor.isNotEmpty) {
       return p.obterEstoqueVariacao('', cor, ex);
@@ -702,16 +750,16 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                   'cor': i.cor,
                   'extraValor': i.extraValor,
                   'variacaoExtraResumo': i.variacaoExtraResumo,
-                  if (i.productId != null && i.productId!.trim().isNotEmpty) 'productId': i.productId,
+                  if (i.productId != null && i.productId!.trim().isNotEmpty)
+                    'productId': i.productId,
                 })
             .toList();
         frete = venda.frete;
         desconto = venda.desconto;
         _descontoEmReais = false;
         freteController.text = MoedaInputFormatter.format(venda.frete);
-        descontoController.text = venda.desconto > 0
-            ? _formatPercentualCampo(venda.desconto)
-            : '';
+        descontoController.text =
+            venda.desconto > 0 ? _formatPercentualCampo(venda.desconto) : '';
         if (pagamentos.isNotEmpty) {
           pagamentos[0]['valor'] = venda.total;
           if (_valorControllers.isNotEmpty) {
@@ -724,7 +772,9 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         _quantityControllers.clear();
         for (final item in produtosSelecionados) {
           final q = item['quantidade'] ?? 1;
-          _quantityControllers.add(TextEditingController(text: (q is int ? q : int.tryParse(q.toString()) ?? 1).toString()));
+          _quantityControllers.add(TextEditingController(
+              text:
+                  (q is int ? q : int.tryParse(q.toString()) ?? 1).toString()));
         }
       });
     } else {
@@ -744,9 +794,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         desconto = venda.desconto;
         _descontoEmReais = false;
         freteController.text = MoedaInputFormatter.format(venda.frete);
-        descontoController.text = venda.desconto > 0
-            ? _formatPercentualCampo(venda.desconto)
-            : '';
+        descontoController.text =
+            venda.desconto > 0 ? _formatPercentualCampo(venda.desconto) : '';
         if (pagamentos.isNotEmpty) {
           pagamentos[0]['valor'] = venda.total;
           if (_valorControllers.isNotEmpty) {
@@ -759,7 +808,9 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         _quantityControllers.clear();
         for (final item in produtosSelecionados) {
           final q = item['quantidade'] ?? 1;
-          _quantityControllers.add(TextEditingController(text: (q is int ? q : int.tryParse(q.toString()) ?? 1).toString()));
+          _quantityControllers.add(TextEditingController(
+              text:
+                  (q is int ? q : int.tryParse(q.toString()) ?? 1).toString()));
         }
       });
     }
@@ -857,7 +908,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
   }
 
   String? _extrairPathFirestore(String texto) {
-    final m = RegExp(r'lojas\/[^\s,)]+', caseSensitive: false).firstMatch(texto);
+    final m =
+        RegExp(r'lojas\/[^\s,)]+', caseSensitive: false).firstMatch(texto);
     return m?.group(0);
   }
 
@@ -955,7 +1007,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green.shade600,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               ),
             ),
           ),
@@ -965,7 +1018,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
   }
 
   /// Mostra dialog com número da sorte gerado pelo CampaignEngine.
-  Future<void> _mostrarDialogNumeroSorte(String numeroSorte, String nomeClienteFinal) async {
+  Future<void> _mostrarDialogNumeroSorte(
+      String numeroSorte, String nomeClienteFinal) async {
     if (!mounted) return;
     await showDialog<void>(
       context: context,
@@ -1138,11 +1192,15 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     final descontoValor = _descontoValorAplicadoSobreSubtotal(subtotal);
 
     // Sincroniza valores dos controllers com pagamentos e quantidades antes de abrir o dialog
-    for (var i = 0; i < pagamentos.length && i < _valorControllers.length; i++) {
+    for (var i = 0;
+        i < pagamentos.length && i < _valorControllers.length;
+        i++) {
       final v = MoedaInputFormatter.parse(_valorControllers[i].text);
       pagamentos[i]['valor'] = v;
     }
-    for (var i = 0; i < produtosSelecionados.length && i < _quantityControllers.length; i++) {
+    for (var i = 0;
+        i < produtosSelecionados.length && i < _quantityControllers.length;
+        i++) {
       final q = int.tryParse(_quantityControllers[i].text) ?? 1;
       produtosSelecionados[i]['quantidade'] = q < 1 ? 1 : q;
     }
@@ -1155,10 +1213,12 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       resumoProdutos: resumoProdutos,
       frete: frete,
       desconto: descontoValor,
-      initialPagamentos: pagamentos.map((p) => {
-        'forma': p['forma'],
-        'valor': (p['valor'] as num?)?.toDouble() ?? 0.0,
-      }).toList(),
+      initialPagamentos: pagamentos
+          .map((p) => {
+                'forma': p['forma'],
+                'valor': (p['valor'] as num?)?.toDouble() ?? 0.0,
+              })
+          .toList(),
     );
 
     if (result == null || !mounted) return;
@@ -1199,7 +1259,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     if (result.trocoTotal > 0 && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Troco a dar: R\$ ${result.trocoTotal.toStringAsFixed(2).replaceAll('.', ',')}'),
+          content: Text(
+              'Troco a dar: R\$ ${result.trocoTotal.toStringAsFixed(2).replaceAll('.', ',')}'),
           backgroundColor: Colors.green,
         ),
       );
@@ -1354,12 +1415,15 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
           await _mostrarErro('Informe tamanho e cor para o produto "$nome".');
           return;
         }
-        if ((prod.temVariacaoSoloTamanho || prod.estoquePorTamanho.isNotEmpty) && tamanho.isEmpty) {
+        if ((prod.temVariacaoSoloTamanho ||
+                prod.estoquePorTamanho.isNotEmpty) &&
+            tamanho.isEmpty) {
           await _mostrarErro('Informe o tamanho para o produto "$nome".');
           return;
         }
 
-        final opcoesExtra = ProdutoVariacaoExtra.opcoesExtraPara(prod.variacoes, tamanho, cor);
+        final opcoesExtra =
+            ProdutoVariacaoExtra.opcoesExtraPara(prod.variacoes, tamanho, cor);
         if (opcoesExtra.isNotEmpty && extraValor.isEmpty) {
           await _mostrarErro(
             'Selecione a personalização (letra, estampa, etc.) para o produto "$nome".',
@@ -1379,7 +1443,9 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         final tamKey = tamanho.isEmpty ? '' : tamanho;
         final corKey = cor.isEmpty ? 'sem-cor' : cor;
         disponivel = prod.obterEstoqueVariacao(tamKey, corKey, extraValor);
-        msgEstoque = tamanho.isNotEmpty ? 'tamanho $tamanho${cor.isEmpty ? '' : ' - cor $cor'}' : 'cor $cor';
+        msgEstoque = tamanho.isNotEmpty
+            ? 'tamanho $tamanho${cor.isEmpty ? '' : ' - cor $cor'}'
+            : 'cor $cor';
       } else if (prod.estoquePorTamanho.isNotEmpty && tamanho.isNotEmpty) {
         disponivel = prod.estoquePorTamanho[tamanho] ?? 0;
         msgEstoque = 'tamanho $tamanho';
@@ -1478,7 +1544,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
           tamanho: (m['tamanho'] ?? '').toString(),
           cor: (m['cor'] ?? '').toString(),
           lojaId: lojaId,
-          productId: productId != null && productId.isNotEmpty ? productId : null,
+          productId:
+              productId != null && productId.isNotEmpty ? productId : null,
           variacaoExtraResumo: (m['variacaoExtraResumo'] ?? '').toString(),
           extraValor: (m['extraValor'] ?? '').toString(),
         ));
@@ -1488,8 +1555,9 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         return;
       }
 
-      double valorPagamento(dynamic v) =>
-          (v is num) ? v.toDouble() : (double.tryParse(v?.toString() ?? '') ?? 0.0);
+      double valorPagamento(dynamic v) => (v is num)
+          ? v.toDouble()
+          : (double.tryParse(v?.toString() ?? '') ?? 0.0);
 
       double valorDinheiro = _pendenteFiado
           ? 0.0
@@ -1509,12 +1577,15 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
               .where((p) => (p['forma'] ?? '') == 'Cartão')
               .fold(0.0, (s, p) => s + valorPagamento(p['valor']));
 
-      logD('💰 [VENDA] Pagamentos - Dinheiro: R\$ ${valorDinheiro.toStringAsFixed(2)}, Pix: R\$ ${valorPix.toStringAsFixed(2)}, Cartão: R\$ ${valorCartao.toStringAsFixed(2)}');
+      logD(
+          '💰 [VENDA] Pagamentos - Dinheiro: R\$ ${valorDinheiro.toStringAsFixed(2)}, Pix: R\$ ${valorPix.toStringAsFixed(2)}, Cartão: R\$ ${valorCartao.toStringAsFixed(2)}');
 
       // 🔹 Nome que será usado tanto na venda quanto no número da sorte (cliente não é null aqui)
       final nomeClienteFinal = cliente.nome.isNotEmpty
           ? cliente.nome
-          : (nomeClienteDigitado.isEmpty ? 'Cliente' : capitalizeWords(nomeClienteDigitado.trim()));
+          : (nomeClienteDigitado.isEmpty
+              ? 'Cliente'
+              : capitalizeWords(nomeClienteDigitado.trim()));
 
       // Captura referências antes de qualquer await; não usar widget/context após pop.
       final onErro = widget.onErroAoFinalizar;
@@ -1534,7 +1605,9 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         nomeClienteFinal: nomeClienteFinal,
         cliente: cliente,
         itens: itens,
-        itensComboSelecaoPorIndice: itensComboSelecaoPorIndice.isEmpty ? null : itensComboSelecaoPorIndice,
+        itensComboSelecaoPorIndice: itensComboSelecaoPorIndice.isEmpty
+            ? null
+            : itensComboSelecaoPorIndice,
         valorDinheiro: valorDinheiro,
         valorPix: valorPix,
         valorCartao: valorCartao,
@@ -1613,7 +1686,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       final guard = LimitsGuard();
       final podeVenda = await guard.canAddVenda(lojaId);
       if (!podeVenda) {
-        const msg = 'Limite de vendas do mês atingido no plano Free. Faça upgrade para registrar mais vendas.';
+        const msg =
+            'Limite de vendas do mês atingido no plano Free. Faça upgrade para registrar mais vendas.';
         onErro?.call(msg);
         return (false, null, msg);
       }
@@ -1639,7 +1713,9 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         idFirebaseToReuse: idFirebaseToReuse,
         onSyncError: onErro,
         isFiado: isFiado,
-        dataVencimentoFiado: isFiado ? DateTime.now().add(Duration(days: diasVencimentoFiado)) : null,
+        dataVencimentoFiado: isFiado
+            ? DateTime.now().add(Duration(days: diasVencimentoFiado))
+            : null,
         quantidadeParcelasFiado: quantidadeParcelasFiado,
         intervaloParcelasDias: intervaloParcelasDias,
         itensComboSelecaoPorIndice: itensComboSelecaoPorIndice,
@@ -1704,56 +1780,60 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                     ),
                     Text(
                       _modoEdicao ? 'Editar venda' : 'Nova Venda',
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.5,
-                      ),
+                      style:
+                          Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: -0.5,
+                              ),
                     ),
                     const SizedBox(height: 20),
 
                     // Cliente (autocomplete)
                     Autocomplete<String>(
-                  initialValue: TextEditingValue(text: clienteController.text),
-                  optionsBuilder: (textEditingValue) {
-                    if (textEditingValue.text.isEmpty) {
-                      return const Iterable<String>.empty();
-                    }
-                    final lower = textEditingValue.text.toLowerCase().trim();
-                    return widget.clientesBox.values
-                        .where((c) =>
-                            c.lojaId == lojaId &&
-                            c.nome.toLowerCase().contains(lower))
-                        .map((c) => c.nome)
-                        .toSet()
-                        .toList()
-                      ..sort();
-                  },
-                  onSelected: (value) {
-                    clienteController.text = value;
-                    setState(() {});
-                  },
-                  fieldViewBuilder: (context, controller, focusNode, onSubmit) {
-                    return TextFormField(
-                      controller: controller,
-                      focusNode: focusNode,
-                      decoration: InputDecoration(
-                        labelText: 'Cliente',
-                        hintText: 'Buscar clientes cadastrados',
-                        filled: true,
-                        fillColor: Colors.grey.shade50,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                      onChanged: (v) {
-                        clienteController.text = v;
+                      initialValue:
+                          TextEditingValue(text: clienteController.text),
+                      optionsBuilder: (textEditingValue) {
+                        if (textEditingValue.text.isEmpty) {
+                          return const Iterable<String>.empty();
+                        }
+                        final lower =
+                            textEditingValue.text.toLowerCase().trim();
+                        return widget.clientesBox.values
+                            .where((c) =>
+                                c.lojaId == lojaId &&
+                                c.nome.toLowerCase().contains(lower))
+                            .map((c) => c.nome)
+                            .toSet()
+                            .toList()
+                          ..sort();
+                      },
+                      onSelected: (value) {
+                        clienteController.text = value;
                         setState(() {});
                       },
-                      onFieldSubmitted: (_) => onSubmit(),
-                    );
-                  },
-                ),
+                      fieldViewBuilder:
+                          (context, controller, focusNode, onSubmit) {
+                        return TextFormField(
+                          controller: controller,
+                          focusNode: focusNode,
+                          decoration: InputDecoration(
+                            labelText: 'Cliente',
+                            hintText: 'Buscar clientes cadastrados',
+                            filled: true,
+                            fillColor: Colors.grey.shade50,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide.none,
+                            ),
+                          ),
+                          onChanged: (v) {
+                            clienteController.text = v;
+                            setState(() {});
+                          },
+                          onFieldSubmitted: (_) => onSubmit(),
+                        );
+                      },
+                    ),
 
                     // Histórico rápido do cliente (oculto em modo edição)
                     Builder(
@@ -1761,8 +1841,11 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                         if (_modoEdicao) return const SizedBox.shrink();
                         final nomeCliente = clienteController.text.trim();
                         if (nomeCliente.isEmpty) return const SizedBox.shrink();
-                        final vendasCliente = _ultimasVendasCliente(nomeCliente);
-                        if (vendasCliente.isEmpty) return const SizedBox.shrink();
+                        final vendasCliente =
+                            _ultimasVendasCliente(nomeCliente);
+                        if (vendasCliente.isEmpty) {
+                          return const SizedBox.shrink();
+                        }
                         final ultima = vendasCliente.first;
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1776,12 +1859,15 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                               ),
                               child: Row(
                                 children: [
-                                  Icon(Icons.history, size: 20, color: Colors.blue.shade700),
+                                  Icon(Icons.history,
+                                      size: 20, color: Colors.blue.shade700),
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: Text(
                                       'Última: R\$ ${ultima.total.toStringAsFixed(2)} ? ${ultima.data.day.toString().padLeft(2, '0')}/${ultima.data.month}',
-                                      style: TextStyle(fontSize: 13, color: Colors.blue.shade900),
+                                      style: TextStyle(
+                                          fontSize: 13,
+                                          color: Colors.blue.shade900),
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
@@ -1796,7 +1882,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: Colors.blue.shade700,
                                 side: BorderSide(color: Colors.blue.shade300),
-                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 12),
                               ),
                             ),
                           ],
@@ -1815,7 +1902,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                           .toList();
                       final valorAtual = (item['produto'] ?? '').toString();
                       final precoVal = (item['preco'] ?? 0.0) as num;
-                      final precoStr = 'R\$ ${precoVal.toDouble().toStringAsFixed(2).replaceAll('.', ',')}';
+                      final precoStr =
+                          'R\$ ${precoVal.toDouble().toStringAsFixed(2).replaceAll('.', ',')}';
 
                       return Container(
                         key: ValueKey('produto_row_$index'),
@@ -1845,23 +1933,35 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                     valorAtual: valorAtual,
                                     produtos: produtosDaLoja,
                                     lojaId: lojaId,
-                                    produtosFavoritos: _produtosMaisVendidos(limit: 8),
+                                    produtosFavoritos:
+                                        _produtosMaisVendidos(limit: 8),
                                     precoDoProduto: _precoDoProduto,
                                     onChanged: (nome, preco, productId) {
                                       setState(() {
-                                        produtosSelecionados[index]['produto'] = nome;
-                                        produtosSelecionados[index]['preco'] = preco;
-                                        produtosSelecionados[index]['tamanho'] = '';
+                                        produtosSelecionados[index]['produto'] =
+                                            nome;
+                                        produtosSelecionados[index]['preco'] =
+                                            preco;
+                                        produtosSelecionados[index]['tamanho'] =
+                                            '';
                                         produtosSelecionados[index]['cor'] = '';
-                                        produtosSelecionados[index]['extraValor'] = '';
-                                        produtosSelecionados[index]['variacaoExtraResumo'] = '';
-                                        produtosSelecionados[index].remove('itensComboComSelecao');
-                                        produtosSelecionados[index].remove('comboConfiguravelResumo');
-                                        produtosSelecionados[index]['quantidade'] = 1;
-                                        if (productId != null && productId.isNotEmpty) {
-                                          produtosSelecionados[index]['productId'] = productId;
+                                        produtosSelecionados[index]
+                                            ['extraValor'] = '';
+                                        produtosSelecionados[index]
+                                            ['variacaoExtraResumo'] = '';
+                                        produtosSelecionados[index]
+                                            .remove('itensComboComSelecao');
+                                        produtosSelecionados[index]
+                                            .remove('comboConfiguravelResumo');
+                                        produtosSelecionados[index]
+                                            ['quantidade'] = 1;
+                                        if (productId != null &&
+                                            productId.isNotEmpty) {
+                                          produtosSelecionados[index]
+                                              ['productId'] = productId;
                                         } else {
-                                          produtosSelecionados[index].remove('productId');
+                                          produtosSelecionados[index]
+                                              .remove('productId');
                                         }
                                       });
                                     },
@@ -1878,46 +1978,81 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                         context,
                                         produto: produto,
                                         preco: _precoDoProduto(produto),
-                                        onConfirmar: (tam, cor, qtd, extraEv, extraResumo) {
+                                        onConfirmar: (tam, cor, qtd, extraEv,
+                                            extraResumo) {
                                           setState(() {
-                                            produtosSelecionados[index]['produto'] = produto.nome;
-                                            produtosSelecionados[index]['productId'] = produto.idFirebase.trim().isNotEmpty ? produto.idFirebase : null;
-                                            produtosSelecionados[index]['preco'] = _precoDoProduto(produto);
-                                            produtosSelecionados[index]['tamanho'] = tam;
-                                            produtosSelecionados[index]['cor'] = cor;
-                                            produtosSelecionados[index]['quantidade'] = qtd;
-                                            produtosSelecionados[index]['extraValor'] = extraEv;
-                                            produtosSelecionados[index]['variacaoExtraResumo'] = extraResumo;
-                                            produtosSelecionados[index].remove('itensComboComSelecao');
-                                            produtosSelecionados[index].remove('comboConfiguravelResumo');
+                                            final precoLinha =
+                                                _precoDoProdutoComVariacao(
+                                              produto,
+                                              tam,
+                                            );
+                                            produtosSelecionados[index]
+                                                ['produto'] = produto.nome;
+                                            produtosSelecionados[index]
+                                                ['productId'] = produto
+                                                    .idFirebase
+                                                    .trim()
+                                                    .isNotEmpty
+                                                ? produto.idFirebase
+                                                : null;
+                                            produtosSelecionados[index]
+                                                ['preco'] = precoLinha;
+                                            produtosSelecionados[index]
+                                                ['tamanho'] = tam;
+                                            produtosSelecionados[index]['cor'] =
+                                                cor;
+                                            produtosSelecionados[index]
+                                                ['quantidade'] = qtd;
+                                            produtosSelecionados[index]
+                                                ['extraValor'] = extraEv;
+                                            produtosSelecionados[index]
+                                                    ['variacaoExtraResumo'] =
+                                                extraResumo;
+                                            produtosSelecionados[index]
+                                                .remove('itensComboComSelecao');
+                                            produtosSelecionados[index].remove(
+                                                'comboConfiguravelResumo');
                                           });
                                         },
                                       );
                                     },
                                     onTextChanged: (v) {
                                       setState(() {
-                                        produtosSelecionados[index]['produto'] = v;
-                                        final linha = produtosSelecionados[index];
-                                        final pidAtual = (linha['productId'] as String?)?.trim();
-                                        if (pidAtual != null && pidAtual.isNotEmpty) {
-                                          final pPorId = produtosDaLoja.firstWhereOrNull(
-                                            (x) => x.idFirebase.trim() == pidAtual,
+                                        produtosSelecionados[index]['produto'] =
+                                            v;
+                                        final linha =
+                                            produtosSelecionados[index];
+                                        final pidAtual =
+                                            (linha['productId'] as String?)
+                                                ?.trim();
+                                        if (pidAtual != null &&
+                                            pidAtual.isNotEmpty) {
+                                          final pPorId =
+                                              produtosDaLoja.firstWhereOrNull(
+                                            (x) =>
+                                                x.idFirebase.trim() == pidAtual,
                                           );
                                           if (pPorId != null &&
                                               productIdIncoerenteComNomeExibido(
-                                                nomeProdutoResolvido: pPorId.nome,
+                                                nomeProdutoResolvido:
+                                                    pPorId.nome,
                                                 nomeExibido: v,
                                               )) {
                                             linha.remove('productId');
                                           }
                                         }
-                                        final p = produtosDaLoja.firstWhereOrNull(
-                                          (x) => x.nome.toLowerCase() == v.trim().toLowerCase(),
+                                        final p =
+                                            produtosDaLoja.firstWhereOrNull(
+                                          (x) =>
+                                              x.nome.toLowerCase() ==
+                                              v.trim().toLowerCase(),
                                         );
                                         if (_linhaComboProtegida(linha)) {
                                           if (p != null) {
                                             linha['productId'] =
-                                                p.idFirebase.trim().isNotEmpty ? p.idFirebase : null;
+                                                p.idFirebase.trim().isNotEmpty
+                                                    ? p.idFirebase
+                                                    : null;
                                           } else {
                                             linha.remove('productId');
                                           }
@@ -1926,7 +2061,9 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                         if (p != null) {
                                           linha['preco'] = _precoDoProduto(p);
                                           linha['productId'] =
-                                              p.idFirebase.trim().isNotEmpty ? p.idFirebase : null;
+                                              p.idFirebase.trim().isNotEmpty
+                                                  ? p.idFirebase
+                                                  : null;
                                         } else {
                                           linha.remove('productId');
                                         }
@@ -1939,21 +2076,34 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                   children: [
                                     IconButton(
                                       tooltip: 'Ler código de barras',
-                                      icon: Icon(Icons.qr_code_scanner, color: Colors.grey[700]),
+                                      icon: Icon(Icons.qr_code_scanner,
+                                          color: Colors.grey[700]),
                                       onPressed: () async {
-                                        final messenger = ScaffoldMessenger.of(context);
+                                        final messenger =
+                                            ScaffoldMessenger.of(context);
                                         final navigator = Navigator.of(context);
-                                        final code = await BarcodeScannerScreen.scan(context);
-                                        if (code == null || code.isEmpty || !mounted) return;
-                                        final prod = widget.produtosBox.values.firstWhereOrNull(
-                                          (p) => p.lojaId == lojaId &&
+                                        final code =
+                                            await BarcodeScannerScreen.scan(
+                                                context);
+                                        if (code == null ||
+                                            code.isEmpty ||
+                                            !mounted) {
+                                          return;
+                                        }
+                                        final prod = widget.produtosBox.values
+                                            .firstWhereOrNull(
+                                          (p) =>
+                                              p.lojaId == lojaId &&
                                               p.codigoBarras.isNotEmpty &&
-                                              normalizeText(p.codigoBarras) == normalizeText(code),
+                                              normalizeText(p.codigoBarras) ==
+                                                  normalizeText(code),
                                         );
                                         if (prod == null) {
                                           if (!mounted) return;
                                           messenger.showSnackBar(
-                                            const SnackBar(content: Text('Nenhum produto encontrado com esse código de barras')),
+                                            const SnackBar(
+                                                content: Text(
+                                                    'Nenhum produto encontrado com esse código de barras')),
                                           );
                                           return;
                                         }
@@ -1962,42 +2112,77 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                             index: index,
                                             combo: prod,
                                             quantidadeInicial: 1,
-                                            precoFallback: _precoDoProduto(prod),
+                                            precoFallback:
+                                                _precoDoProduto(prod),
                                           );
-                                        } else if (prod.usaVariacoes || prod.estoquePorTamanho.isNotEmpty) {
+                                        } else if (prod.usaVariacoes ||
+                                            prod.estoquePorTamanho.isNotEmpty) {
                                           await NovaVendaVariacaoSheet.show(
                                             navigator.context,
                                             produto: prod,
                                             preco: _precoDoProduto(prod),
-                                            onConfirmar: (tam, cor, qtd, extraEv, extraResumo) {
+                                            onConfirmar: (tam, cor, qtd,
+                                                extraEv, extraResumo) {
                                               if (!mounted) return;
                                               setState(() {
-                                                produtosSelecionados[index]['produto'] = prod.nome;
-                                                produtosSelecionados[index]['productId'] = prod.idFirebase.trim().isNotEmpty ? prod.idFirebase : null;
-                                                produtosSelecionados[index]['preco'] = _precoDoProduto(prod);
-                                                produtosSelecionados[index]['tamanho'] = tam;
-                                                produtosSelecionados[index]['cor'] = cor;
-                                                produtosSelecionados[index]['quantidade'] = qtd;
-                                                produtosSelecionados[index]['extraValor'] = extraEv;
-                                                produtosSelecionados[index]['variacaoExtraResumo'] = extraResumo;
+                                                final precoLinha =
+                                                    _precoDoProdutoComVariacao(
+                                                  prod,
+                                                  tam,
+                                                );
+                                                produtosSelecionados[index]
+                                                    ['produto'] = prod.nome;
+                                                produtosSelecionados[index]
+                                                    ['productId'] = prod
+                                                        .idFirebase
+                                                        .trim()
+                                                        .isNotEmpty
+                                                    ? prod.idFirebase
+                                                    : null;
+                                                produtosSelecionados[index]
+                                                    ['preco'] = precoLinha;
+                                                produtosSelecionados[index]
+                                                    ['tamanho'] = tam;
+                                                produtosSelecionados[index]
+                                                    ['cor'] = cor;
+                                                produtosSelecionados[index]
+                                                    ['quantidade'] = qtd;
+                                                produtosSelecionados[index]
+                                                    ['extraValor'] = extraEv;
+                                                produtosSelecionados[index][
+                                                        'variacaoExtraResumo'] =
+                                                    extraResumo;
                                               });
                                             },
                                           );
                                         } else {
                                           setState(() {
-                                            produtosSelecionados[index]['produto'] = prod.nome;
-                                            produtosSelecionados[index]['productId'] = prod.idFirebase.trim().isNotEmpty ? prod.idFirebase : null;
-                                            produtosSelecionados[index]['preco'] = _precoDoProduto(prod);
-                                            produtosSelecionados[index]['tamanho'] = '';
-                                            produtosSelecionados[index]['cor'] = '';
-                                            produtosSelecionados[index]['extraValor'] = '';
-                                            produtosSelecionados[index]['variacaoExtraResumo'] = '';
+                                            produtosSelecionados[index]
+                                                ['produto'] = prod.nome;
+                                            produtosSelecionados[index]
+                                                ['productId'] = prod.idFirebase
+                                                    .trim()
+                                                    .isNotEmpty
+                                                ? prod.idFirebase
+                                                : null;
+                                            produtosSelecionados[index]
+                                                    ['preco'] =
+                                                _precoDoProduto(prod);
+                                            produtosSelecionados[index]
+                                                ['tamanho'] = '';
+                                            produtosSelecionados[index]['cor'] =
+                                                '';
+                                            produtosSelecionados[index]
+                                                ['extraValor'] = '';
+                                            produtosSelecionados[index]
+                                                ['variacaoExtraResumo'] = '';
                                           });
                                         }
                                       },
                                     ),
                                     IconButton(
-                                      icon: Icon(Icons.add_circle, color: Colors.green.shade600),
+                                      icon: Icon(Icons.add_circle,
+                                          color: Colors.green.shade600),
                                       onPressed: () {
                                         setState(() {
                                           produtosSelecionados.add({
@@ -2009,20 +2194,26 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                             'extraValor': '',
                                             'variacaoExtraResumo': '',
                                           });
-                                          _quantityControllers.add(TextEditingController(text: '1'));
+                                          _quantityControllers.add(
+                                              TextEditingController(text: '1'));
                                         });
                                       },
                                     ),
                                     if (produtosSelecionados.length > 1)
                                       IconButton(
-                                        icon: Icon(Icons.remove_circle_outline, color: Colors.red.shade400),
+                                        icon: Icon(Icons.remove_circle_outline,
+                                            color: Colors.red.shade400),
                                         onPressed: () {
                                           setState(() {
-                                            if (index < _quantityControllers.length) {
-                                              _quantityControllers[index].dispose();
-                                              _quantityControllers.removeAt(index);
+                                            if (index <
+                                                _quantityControllers.length) {
+                                              _quantityControllers[index]
+                                                  .dispose();
+                                              _quantityControllers
+                                                  .removeAt(index);
                                             }
-                                            produtosSelecionados.removeAt(index);
+                                            produtosSelecionados
+                                                .removeAt(index);
                                           });
                                         },
                                       ),
@@ -2062,13 +2253,15 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                 SizedBox(
                                   width: 70,
                                   child: TextFormField(
-                                    controller: index < _quantityControllers.length
-                                        ? _quantityControllers[index]
-                                        : null,
+                                    controller:
+                                        index < _quantityControllers.length
+                                            ? _quantityControllers[index]
+                                            : null,
                                     key: index < _quantityControllers.length
                                         ? null
                                         : ValueKey('qtd_$index'),
-                                    initialValue: index < _quantityControllers.length
+                                    initialValue: index <
+                                            _quantityControllers.length
                                         ? null
                                         : (item['quantidade'] ?? 1).toString(),
                                     keyboardType: TextInputType.number,
@@ -2085,15 +2278,20 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                     onChanged: (value) {
                                       setState(() {
                                         final qtd = int.tryParse(value) ?? 1;
-                                        produtosSelecionados[index]['quantidade'] = qtd < 1 ? 1 : qtd;
+                                        produtosSelecionados[index]
+                                            ['quantidade'] = qtd < 1 ? 1 : qtd;
                                       });
                                     },
                                   ),
                                 ),
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 10),
                                   decoration: BoxDecoration(
-                                    color: Theme.of(context).colorScheme.primary.withOpacity(0.08),
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .primary
+                                        .withOpacity(0.08),
                                     borderRadius: BorderRadius.circular(10),
                                   ),
                                   child: Text(
@@ -2101,7 +2299,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                     style: TextStyle(
                                       fontSize: 15,
                                       fontWeight: FontWeight.w700,
-                                      color: Theme.of(context).colorScheme.primary,
+                                      color:
+                                          Theme.of(context).colorScheme.primary,
                                     ),
                                   ),
                                 ),
@@ -2112,29 +2311,53 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                 ),
                                 Builder(
                                   builder: (context) {
-                                    final nomeProd = (item['produto'] ?? '').toString().trim();
-                                    if (nomeProd.isEmpty) return const SizedBox.shrink();
-                                    final prod = produtosDaLoja.firstWhereOrNull(
-                                      (p) => p.lojaId == lojaId && p.nome.toLowerCase() == nomeProd.toLowerCase(),
+                                    final nomeProd = (item['produto'] ?? '')
+                                        .toString()
+                                        .trim();
+                                    if (nomeProd.isEmpty) {
+                                      return const SizedBox.shrink();
+                                    }
+                                    final prod =
+                                        produtosDaLoja.firstWhereOrNull(
+                                      (p) =>
+                                          p.lojaId == lojaId &&
+                                          p.nome.toLowerCase() ==
+                                              nomeProd.toLowerCase(),
                                     );
-                                    if (prod == null) return const SizedBox.shrink();
-                                    final tam = (item['tamanho'] ?? '').toString();
+                                    if (prod == null) {
+                                      return const SizedBox.shrink();
+                                    }
+                                    final tam =
+                                        (item['tamanho'] ?? '').toString();
                                     final cor = (item['cor'] ?? '').toString();
-                                    final ex = (item['extraValor'] ?? '').toString();
-                                    final disp = _obterEstoqueProduto(prod, tam, cor, ex);
+                                    final ex =
+                                        (item['extraValor'] ?? '').toString();
+                                    final disp = _obterEstoqueProduto(
+                                        prod, tam, cor, ex);
                                     final isBaixo = disp < 3 && disp > 0;
                                     return Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 4),
                                       decoration: BoxDecoration(
-                                        color: disp == 0 ? Colors.red.shade50 : (isBaixo ? Colors.orange.shade50 : Colors.grey.shade100),
+                                        color: disp == 0
+                                            ? Colors.red.shade50
+                                            : (isBaixo
+                                                ? Colors.orange.shade50
+                                                : Colors.grey.shade100),
                                         borderRadius: BorderRadius.circular(8),
                                       ),
                                       child: Text(
                                         'Est. $disp${isBaixo ? ' ⚠' : ''}',
                                         style: TextStyle(
                                           fontSize: 12,
-                                          color: disp == 0 ? Colors.red.shade700 : (isBaixo ? Colors.orange.shade800 : Colors.grey.shade700),
-                                          fontWeight: isBaixo ? FontWeight.w600 : FontWeight.normal,
+                                          color: disp == 0
+                                              ? Colors.red.shade700
+                                              : (isBaixo
+                                                  ? Colors.orange.shade800
+                                                  : Colors.grey.shade700),
+                                          fontWeight: isBaixo
+                                              ? FontWeight.w600
+                                              : FontWeight.normal,
                                         ),
                                       ),
                                     );
@@ -2170,27 +2393,37 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                     Expanded(
                                       child: Text(
                                         'Desconto',
-                                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                              color: Theme.of(context).hintColor,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodySmall
+                                            ?.copyWith(
+                                              color:
+                                                  Theme.of(context).hintColor,
                                             ),
                                       ),
                                     ),
                                     ChoiceChip(
                                       label: const Text('%'),
-                                      labelPadding: const EdgeInsets.symmetric(horizontal: 6),
+                                      labelPadding: const EdgeInsets.symmetric(
+                                          horizontal: 6),
                                       visualDensity: VisualDensity.compact,
-                                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      materialTapTargetSize:
+                                          MaterialTapTargetSize.shrinkWrap,
                                       selected: !_descontoEmReais,
-                                      onSelected: (_) => _onTrocarTipoDesconto(false),
+                                      onSelected: (_) =>
+                                          _onTrocarTipoDesconto(false),
                                     ),
                                     const SizedBox(width: 4),
                                     ChoiceChip(
                                       label: const Text('R\$'),
-                                      labelPadding: const EdgeInsets.symmetric(horizontal: 6),
+                                      labelPadding: const EdgeInsets.symmetric(
+                                          horizontal: 6),
                                       visualDensity: VisualDensity.compact,
-                                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      materialTapTargetSize:
+                                          MaterialTapTargetSize.shrinkWrap,
                                       selected: _descontoEmReais,
-                                      onSelected: (_) => _onTrocarTipoDesconto(true),
+                                      onSelected: (_) =>
+                                          _onTrocarTipoDesconto(true),
                                     ),
                                   ],
                                 ),
@@ -2201,14 +2434,17 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                           key: const ValueKey('desconto_reais'),
                                           controller: descontoController,
                                           keyboardType: TextInputType.number,
-                                          inputFormatters: [MoedaInputFormatter()],
+                                          inputFormatters: [
+                                            MoedaInputFormatter()
+                                          ],
                                           decoration: const InputDecoration(
                                             labelText: 'Valor do desconto',
                                             hintText: 'Ex: 10,00',
                                             border: OutlineInputBorder(),
                                           ),
                                           onChanged: (s) {
-                                            desconto = MoedaInputFormatter.parse(s);
+                                            desconto =
+                                                MoedaInputFormatter.parse(s);
                                             setState(() {});
                                           },
                                         )
@@ -2226,9 +2462,12 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                   TextFormField(
                                     key: const ValueKey('desconto_pct'),
                                     controller: descontoController,
-                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                    keyboardType:
+                                        const TextInputType.numberWithOptions(
+                                            decimal: true),
                                     inputFormatters: [
-                                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+                                      FilteringTextInputFormatter.allow(
+                                          RegExp(r'[0-9.,]')),
                                     ],
                                     decoration: const InputDecoration(
                                       labelText: 'Percentual',
@@ -2255,18 +2494,19 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                       children: [
                         Text(
                           'Formas de Pagamento',
-                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
+                          style:
+                              Theme.of(context).textTheme.titleSmall?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  ),
                         ),
                         const SizedBox(height: 8),
                         ...pagamentos.asMap().entries.map((entry) {
-                      final index = entry.key;
-                      final item = entry.value;
-                      while (_valorControllers.length < pagamentos.length) {
-                        _valorControllers.add(TextEditingController());
-                      }
-                      final valorCtrl = _valorControllers[index];
+                          final index = entry.key;
+                          final item = entry.value;
+                          while (_valorControllers.length < pagamentos.length) {
+                            _valorControllers.add(TextEditingController());
+                          }
+                          final valorCtrl = _valorControllers[index];
 
                           return Row(
                             children: [
@@ -2275,13 +2515,13 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                 child: DropdownButtonFormField<String>(
                                   value: item['forma'],
                                   items: const ['Pix', 'Dinheiro', 'Cartão']
-                                  .map(
-                                    (v) => DropdownMenuItem(
-                                      value: v,
-                                      child: Text(v),
-                                    ),
-                                  )
-                                  .toList(),
+                                      .map(
+                                        (v) => DropdownMenuItem(
+                                          value: v,
+                                          child: Text(v),
+                                        ),
+                                      )
+                                      .toList(),
                                   onChanged: (value) => setState(
                                     () => pagamentos[index]['forma'] = value,
                                   ),
@@ -2300,7 +2540,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                 ),
                               ),
                               IconButton(
-                                icon: Icon(Icons.remove_circle, color: Colors.red.shade400),
+                                icon: Icon(Icons.remove_circle,
+                                    color: Colors.red.shade400),
                                 onPressed: () {
                                   setState(() {
                                     if (index < _valorControllers.length) {
@@ -2319,11 +2560,13 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                           spacing: 8,
                           children: [
                             TextButton.icon(
-                              icon: Icon(Icons.add, color: Colors.green.shade600, size: 18),
+                              icon: Icon(Icons.add,
+                                  color: Colors.green.shade600, size: 18),
                               label: const Text('Adicionar forma'),
                               onPressed: () {
                                 _valorControllers.add(TextEditingController());
-                                setState(() => pagamentos.add({'forma': 'Pix', 'valor': 0.0}));
+                                setState(() => pagamentos
+                                    .add({'forma': 'Pix', 'valor': 0.0}));
                               },
                             ),
                             TextButton.icon(
@@ -2421,7 +2664,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                             padding: const EdgeInsets.only(top: 8),
                             child: Text(
                               'Roleta disponível para compras acima de R\$ ${valorMinimoRoleta.toStringAsFixed(2)}',
-                              style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                              style: TextStyle(
+                                  fontSize: 13, color: Colors.grey.shade600),
                             ),
                           );
                         }
@@ -2461,15 +2705,20 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                           ? Colors.grey
                                           : const Color(0xFF6366F1),
                                       foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                      padding: const EdgeInsets.symmetric(
+                                          vertical: 12),
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                     ),
-                                    onPressed: roletaPremioAplicado ? null : _abrirRoleta,
+                                    onPressed: roletaPremioAplicado
+                                        ? null
+                                        : _abrirRoleta,
                                     icon: const Icon(Icons.casino),
                                     label: Text(
-                                      roletaPremioAplicado ? 'Prêmio já aplicado' : 'Girar roleta',
+                                      roletaPremioAplicado
+                                          ? 'Prêmio já aplicado'
+                                          : 'Girar roleta',
                                     ),
                                   ),
                                   if (premioRoleta != null) ...[
@@ -2506,16 +2755,22 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                         children: [
                           Text(
                             'Total',
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
                           ),
                           Text(
                             'R\$ ${total.toStringAsFixed(2).replaceAll('.', ',')}',
-                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleLarge
+                                ?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
                           ),
                         ],
                       ),
@@ -2530,7 +2785,10 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                           child: OutlinedButton.icon(
                             onPressed: () async {
                               final temItens = produtosSelecionados.any(
-                                (p) => (p['produto'] ?? '').toString().trim().isNotEmpty,
+                                (p) => (p['produto'] ?? '')
+                                    .toString()
+                                    .trim()
+                                    .isNotEmpty,
                               );
                               if (temItens) {
                                 if (!mounted) return;
@@ -2544,11 +2802,13 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                     ),
                                     actions: [
                                       TextButton(
-                                        onPressed: () => Navigator.pop(ctx, false),
+                                        onPressed: () =>
+                                            Navigator.pop(ctx, false),
                                         child: const Text('Continuar editando'),
                                       ),
                                       TextButton(
-                                        onPressed: () => Navigator.pop(ctx, true),
+                                        onPressed: () =>
+                                            Navigator.pop(ctx, true),
                                         child: const Text('Sim, descartar'),
                                       ),
                                     ],
@@ -2577,7 +2837,9 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                           child: ElevatedButton.icon(
                             onPressed: _finalizarVenda,
                             icon: const Icon(Icons.check_circle, size: 20),
-                            label: Text(_modoEdicao ? 'Salvar alterações' : 'Finalizar venda'),
+                            label: Text(_modoEdicao
+                                ? 'Salvar alterações'
+                                : 'Finalizar venda'),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.green.shade600,
                               foregroundColor: Colors.white,
@@ -2806,14 +3068,18 @@ class _ProdutoDropdown extends StatelessWidget {
       initialValue: TextEditingValue(text: valorAtual),
       optionsBuilder: (textEditingValue) {
         if (textEditingValue.text.isEmpty) {
-          final favs = produtosFavoritos.where((n) => todosNomes.contains(n)).toList();
+          final favs =
+              produtosFavoritos.where((n) => todosNomes.contains(n)).toList();
           final resto = todosNomes.where((n) => !favs.contains(n)).toList();
           return [...favs, ...resto];
         }
         final lower = textEditingValue.text.toLowerCase();
-        final filtrados = todosNomes.where((n) => n.toLowerCase().contains(lower)).toList();
-        final favsFiltrados = produtosFavoritos.where((n) => filtrados.contains(n)).toList();
-        final restoFiltrados = filtrados.where((n) => !favsFiltrados.contains(n)).toList();
+        final filtrados =
+            todosNomes.where((n) => n.toLowerCase().contains(lower)).toList();
+        final favsFiltrados =
+            produtosFavoritos.where((n) => filtrados.contains(n)).toList();
+        final restoFiltrados =
+            filtrados.where((n) => !favsFiltrados.contains(n)).toList();
         return [...favsFiltrados, ...restoFiltrados];
       },
       onSelected: (value) async {
@@ -2825,7 +3091,8 @@ class _ProdutoDropdown extends StatelessWidget {
 
         if (p.ehCombo && onProductIsCombo != null) {
           await onProductIsCombo!(p);
-        } else if ((p.usaVariacoes || p.estoquePorTamanho.isNotEmpty) && onProductNeedsVariation != null) {
+        } else if ((p.usaVariacoes || p.estoquePorTamanho.isNotEmpty) &&
+            onProductNeedsVariation != null) {
           await onProductNeedsVariation!(p);
         } else {
           onChanged(
@@ -2856,4 +3123,3 @@ class _ProdutoDropdown extends StatelessWidget {
     );
   }
 }
-
