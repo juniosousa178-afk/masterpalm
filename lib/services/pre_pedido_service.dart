@@ -964,6 +964,41 @@ class PrePedidoService {
     }
   }
 
+  /// Campos de pagamento/gateway — nunca alterados por mudança operacional de status.
+  static const Set<String> camposPagamentoProtegidos = {
+    'statusPagamento',
+    'paymentId',
+    'paidAt',
+    'mpPaymentStatus',
+    'mp_payment_id',
+    'mpPaymentId',
+    'gatewayPaymentId',
+  };
+
+  /// Atualização só logística: [status] + [dataAtualizacao] (+ extras de envio).
+  /// Não reprocessa MP, não baixa estoque, não cria venda/cliente.
+  static Future<bool> atualizarStatusOperacionalPedidoCatalogo({
+    required String lojaId,
+    required String pedidoId,
+    required String novoStatus,
+    Map<String, dynamic>? extraUpdates,
+  }) async {
+    final extra = <String, dynamic>{};
+    if (extraUpdates != null) {
+      for (final e in extraUpdates.entries) {
+        if (!camposPagamentoProtegidos.contains(e.key)) {
+          extra[e.key] = e.value;
+        }
+      }
+    }
+    return atualizarStatus(
+      lojaId: lojaId,
+      prePedidoId: pedidoId,
+      novoStatus: novoStatus,
+      extraUpdates: extra.isEmpty ? null : extra,
+    );
+  }
+
   /// Atualiza o status de um pré-pedido.
   /// E-mails ao cliente: Cloud Function onPrePedidoClienteEmail.
   static Future<bool> atualizarStatus({

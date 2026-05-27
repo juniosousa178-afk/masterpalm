@@ -1113,7 +1113,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
 
   Widget _buildPrePedidoCard(Map<String, dynamic> prePedido) {
     final prePedidoId = prePedido['id'] ?? '';
-    final status = prePedido['status'] ?? 'pendente';
+    final status = normalizarStatusPrePedido(prePedido['status']);
     final statusPagamento =
         (prePedido['statusPagamento'] ?? 'pendente').toString();
     final cliente = prePedido['cliente'] as Map<String, dynamic>?;
@@ -1141,6 +1141,16 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
         statusColor = _successColor;
         statusIcon = Icons.payment;
         statusLabel = 'Pago';
+        break;
+      case 'aprovado':
+        statusColor = _successColor;
+        statusIcon = Icons.verified;
+        statusLabel = 'Aprovado';
+        break;
+      case 'finalizado':
+        statusColor = _successColor;
+        statusIcon = Icons.check_circle_outline;
+        statusLabel = 'Finalizado';
         break;
       case 'confirmado':
         statusColor = _successColor;
@@ -1526,159 +1536,122 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
             ),
           ),
 
-          // Ações
-          if (status == 'pendente')
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: const BoxDecoration(
-                color: _surfaceColor,
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(16),
-                  bottomRight: Radius.circular(16),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _verDetalhes(prePedido),
-                      icon: const Icon(Icons.visibility, size: 18),
-                      label: const Text('Ver'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: _primaryColor,
-                        side: const BorderSide(color: _primaryColor),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10)),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () => _confirmarPedido(prePedido),
-                      icon: const Icon(Icons.check, size: 18),
-                      label: const Text('Confirmar'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _successColor,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10)),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _cancelarPedido(prePedidoId),
-                      icon: const Icon(Icons.close, size: 18),
-                      label: const Text('Cancelar'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: _errorColor,
-                        side: const BorderSide(color: _errorColor),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10)),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            )
-          else if (status == 'confirmado' ||
-              status == 'embalando' ||
-              status == 'em_preparacao' ||
-              status == 'enviado')
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: const BoxDecoration(
-                color: _surfaceColor,
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(16),
-                  bottomRight: Radius.circular(16),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _verDetalhes(prePedido),
-                      icon: const Icon(Icons.visibility, size: 18),
-                      label: const Text('Ver'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: _primaryColor,
-                        side: const BorderSide(color: _primaryColor),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10)),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    flex: 2,
-                    child: ElevatedButton.icon(
-                      onPressed: () =>
-                          _mostrarDialogoAtualizarStatus(prePedido),
-                      icon: const Icon(Icons.update, size: 18),
-                      label: const Text('Atualizar status'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _primaryColor,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10)),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            )
-          else if (status == 'entregue' || status == 'cancelado')
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: const BoxDecoration(
-                color: _surfaceColor,
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(16),
-                  bottomRight: Radius.circular(16),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _verDetalhes(prePedido),
-                      icon: const Icon(Icons.visibility, size: 18),
-                      label: const Text('Ver'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: _primaryColor,
-                        side: const BorderSide(color: _primaryColor),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10)),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _excluirPedidoFinalizado(prePedido),
-                      icon: const Icon(Icons.delete_outline, size: 18),
-                      label: const Text('Excluir'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: _errorColor,
-                        side: const BorderSide(color: _errorColor),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10)),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+          _buildCardAcoes(prePedido, status, prePedidoId),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCardAcoes(
+    Map<String, dynamic> prePedido,
+    String status,
+    String prePedidoId,
+  ) {
+    final isPendente = status == 'pendente';
+    final isEncerrado = status == 'entregue' || status == 'cancelado';
+    final podeAtualizar = podeExibirAtualizacaoStatusOperacional(status);
+    final pagoGateway = isPrePedidoPagamentoGatewayConcluido(prePedido);
+
+    final verBtn = Expanded(
+      child: OutlinedButton.icon(
+        onPressed: () => _verDetalhes(prePedido),
+        icon: const Icon(Icons.visibility, size: 18),
+        label: const Text('Ver'),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: _primaryColor,
+          side: const BorderSide(color: _primaryColor),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      ),
+    );
+
+    final List<Widget> extras;
+    if (isPendente && !pagoGateway) {
+      extras = [
+        Expanded(
+          child: ElevatedButton.icon(
+            onPressed: () => _confirmarPedido(prePedido),
+            icon: const Icon(Icons.check, size: 18),
+            label: const Text('Confirmar'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _successColor,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
             ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: () => _cancelarPedido(prePedidoId),
+            icon: const Icon(Icons.close, size: 18),
+            label: const Text('Cancelar'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: _errorColor,
+              side: const BorderSide(color: _errorColor),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+        ),
+      ];
+    } else if (podeAtualizar || (isPendente && pagoGateway)) {
+      extras = [
+        Expanded(
+          flex: 2,
+          child: ElevatedButton.icon(
+            onPressed: () => _mostrarDialogoAtualizarStatus(prePedido),
+            icon: const Icon(Icons.update, size: 18),
+            label: const Text('Atualizar status'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _primaryColor,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+        ),
+      ];
+    } else if (isEncerrado) {
+      extras = [
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: () => _excluirPedidoFinalizado(prePedido),
+            icon: const Icon(Icons.delete_outline, size: 18),
+            label: const Text('Excluir'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: _errorColor,
+              side: const BorderSide(color: _errorColor),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+        ),
+      ];
+    } else {
+      extras = const [];
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: const BoxDecoration(
+        color: _surfaceColor,
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(16),
+          bottomRight: Radius.circular(16),
+        ),
+      ),
+      child: Row(
+        children: [
+          verBtn,
+          if (extras.isNotEmpty) const SizedBox(width: 8),
+          ...extras,
         ],
       ),
     );
@@ -1711,12 +1684,29 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
 
   Future<void> _verDetalhes(Map<String, dynamic> prePedido,
       {bool abrirParaConcluir = false}) async {
+    final prePedidoId = (prePedido['id'] ?? '').toString();
+    Map<String, dynamic> dados = Map<String, dynamic>.from(prePedido);
+    if (prePedidoId.isNotEmpty) {
+      final fresh = await PrePedidoService.buscarPrePedido(
+        lojaId: widget.lojaId,
+        prePedidoId: prePedidoId,
+      );
+      if (fresh != null) dados = fresh;
+    }
+
     final url = PrePedidoService.gerarUrlPedido(
-      prePedidoId: prePedido['id'] ?? '',
+      prePedidoId: prePedidoId,
       lojaId: widget.lojaId,
     );
-    final status = (prePedido['status'] ?? 'pendente').toString();
+    final status = normalizarStatusPrePedido(dados['status']);
     final isPendente = status == 'pendente';
+    final pagoGateway = isPrePedidoPagamentoGatewayConcluido(dados);
+    final podeAtualizar =
+        podeExibirAtualizacaoStatusOperacional(status) ||
+        (isPendente && pagoGateway);
+    final total = (dados['total'] as num?)?.toDouble() ?? 0.0;
+
+    if (!mounted) return;
 
     await showModalBottomSheet(
       context: context,
@@ -1773,24 +1763,33 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Cliente
+                      _buildSectionTitle(Icons.info_outline, 'Pedido'),
+                      const SizedBox(height: 8),
+                      _buildDetalhePedidoResumo(dados, total),
+
+                      const SizedBox(height: 24),
+
                       _buildSectionTitle(Icons.person, 'Cliente'),
                       const SizedBox(height: 8),
-                      _buildDetalheCliente(prePedido['cliente']),
+                      _buildDetalheCliente(dados['cliente']),
 
                       const SizedBox(height: 24),
 
-                      // Itens
                       _buildSectionTitle(Icons.shopping_bag, 'Itens'),
                       const SizedBox(height: 8),
-                      _buildDetalheItens(prePedido['itens']),
+                      _buildDetalheItens(dados['itens']),
 
                       const SizedBox(height: 24),
 
-                      // Entrega
                       _buildSectionTitle(Icons.local_shipping, 'Entrega'),
                       const SizedBox(height: 8),
-                      _buildDetalheEntrega(prePedido['frete']),
+                      _buildDetalheEntrega(dados['frete']),
+
+                      const SizedBox(height: 24),
+
+                      _buildSectionTitle(Icons.payment, 'Pagamento'),
+                      const SizedBox(height: 8),
+                      _buildDetalhePagamento(dados),
 
                       const SizedBox(height: 24),
 
@@ -1842,7 +1841,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                   ),
                 ),
               ),
-              if (abrirParaConcluir && isPendente)
+              if (abrirParaConcluir && isPendente && !pagoGateway)
                 SafeArea(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
@@ -1852,7 +1851,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                       child: ElevatedButton.icon(
                         onPressed: () async {
                           Navigator.of(context).pop();
-                          await _confirmarPedido(prePedido);
+                          await _confirmarPedido(dados);
                         },
                         icon: const Icon(Icons.check_circle, size: 22),
                         label: const Text(
@@ -1864,6 +1863,37 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                         ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: _successColor,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                )
+              else if (podeAtualizar)
+                SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: ElevatedButton.icon(
+                        onPressed: () async {
+                          Navigator.of(context).pop();
+                          await _mostrarDialogoAtualizarStatus(dados);
+                        },
+                        icon: const Icon(Icons.update, size: 22),
+                        label: const Text(
+                          'Atualizar status',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _primaryColor,
                           foregroundColor: Colors.white,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
@@ -1890,6 +1920,72 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
         ),
       ],
+    );
+  }
+
+  Widget _buildDetalhePedidoResumo(Map<String, dynamic> dados, double total) {
+    final st = normalizarStatusPrePedido(dados['status']);
+    final orderId = (dados['id'] ?? dados['orderId'] ?? '-').toString();
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: _surfaceColor,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildDetalheRow(Icons.tag, 'Pedido', orderId),
+          _buildDetalheRow(Icons.flag, 'Status', st),
+          _buildDetalheRow(
+            Icons.attach_money,
+            'Total',
+            'R\$ ${total.toStringAsFixed(2)}',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetalhePagamento(Map<String, dynamic> dados) {
+    final pagamento = (dados['pagamento'] ?? '-').toString();
+    final statusPagamento =
+        (dados['statusPagamento'] ?? 'pendente').toString();
+    final paymentId = (dados['paymentId'] ?? '').toString();
+    final mpStatus = (dados['mpPaymentStatus'] ?? '').toString();
+    String paidAtStr = '-';
+    final paidAt = dados['paidAt'];
+    if (paidAt != null) {
+      try {
+        final dt = (paidAt as dynamic).toDate() as DateTime;
+        paidAtStr =
+            '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year} '
+            '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+      } catch (_) {
+        paidAtStr = paidAt.toString();
+      }
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: _surfaceColor,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildDetalheRow(Icons.payment, 'Forma', pagamento),
+          _buildDetalheRow(
+              Icons.verified_user, 'Status pag.', statusPagamento),
+          if (paymentId.isNotEmpty)
+            _buildDetalheRow(Icons.receipt, 'Payment ID', paymentId),
+          if (mpStatus.isNotEmpty)
+            _buildDetalheRow(Icons.account_balance, 'MP status', mpStatus),
+          if (paidAt != null)
+            _buildDetalheRow(Icons.schedule, 'Pago em', paidAtStr),
+        ],
+      ),
     );
   }
 
@@ -2098,24 +2194,10 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
   Future<void> _mostrarDialogoAtualizarStatus(
       Map<String, dynamic> prePedido) async {
     final prePedidoId = prePedido['id']?.toString() ?? '';
-    final statusAtual = prePedido['status']?.toString() ?? 'confirmado';
-
-    final opcoes = <Map<String, String>>[];
-    if (statusAtual == 'confirmado') {
-      opcoes.addAll([
-        {'valor': 'em_preparacao', 'label': 'Em preparação'},
-        {'valor': 'enviado', 'label': 'Enviado / postado'},
-        {'valor': 'entregue', 'label': 'Entregue'},
-      ]);
-    } else if (statusAtual == 'embalando' || statusAtual == 'em_preparacao') {
-      opcoes.addAll([
-        {'valor': 'enviado', 'label': 'Enviado / postado'},
-        {'valor': 'entregue', 'label': 'Entregue'},
-      ]);
-    } else if (statusAtual == 'enviado') {
-      opcoes.addAll([
-        {'valor': 'entregue', 'label': 'Entregue'},
-      ]);
+    final statusAtual = normalizarStatusPrePedido(prePedido['status']);
+    var opcoes = opcoesProximoStatusOperacional(statusAtual);
+    if (opcoes.isEmpty && isPrePedidoPagamentoGatewayConcluido(prePedido)) {
+      opcoes = opcoesProximoStatusOperacional('paid');
     }
 
     if (opcoes.isEmpty) return;
@@ -2194,9 +2276,10 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
     }
 
     try {
-      final ok = await PrePedidoService.atualizarStatus(
+      final ok =
+          await PrePedidoService.atualizarStatusOperacionalPedidoCatalogo(
         lojaId: widget.lojaId,
-        prePedidoId: prePedidoId,
+        pedidoId: prePedidoId,
         novoStatus: selecionado,
         extraUpdates: extraUpdates,
       );

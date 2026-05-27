@@ -43,6 +43,74 @@ DateTime? referenciaAtividadePrePedido(Map<String, dynamic> p) {
   return c.isAfter(a) ? c : a;
 }
 
+/// Status normalizado (minúsculas, sem espaços).
+String normalizarStatusPrePedido(dynamic status) =>
+    (status ?? 'pendente').toString().toLowerCase().trim();
+
+/// Pedido com pagamento MP/gateway concluído (campos de pagamento não devem ser alterados na UI).
+bool isPrePedidoPagamentoGatewayConcluido(Map<String, dynamic> p) {
+  final st = normalizarStatusPrePedido(p['status']);
+  final sp = (p['statusPagamento'] ?? '').toString().toLowerCase().trim();
+  final mp = (p['mpPaymentStatus'] ?? '').toString().toLowerCase().trim();
+  return st == 'paid' ||
+      st == 'pago' ||
+      sp == 'aprovado' ||
+      sp == 'approved' ||
+      mp == 'approved' ||
+      p['paidAt'] != null ||
+      (p['paymentId']?.toString().trim().isNotEmpty ?? false);
+}
+
+/// Exibe ação de atualizar status logístico (sem confirmar pagamento nem baixar estoque).
+bool podeExibirAtualizacaoStatusOperacional(String status) {
+  const ok = <String>{
+    'confirmado',
+    'embalando',
+    'em_preparacao',
+    'enviado',
+    'paid',
+    'pago',
+    'aprovado',
+    'finalizado',
+  };
+  return ok.contains(normalizarStatusPrePedido(status));
+}
+
+/// Próximos status operacionais permitidos (só altera [status] no Firestore).
+List<Map<String, String>> opcoesProximoStatusOperacional(String statusAtual) {
+  final st = normalizarStatusPrePedido(statusAtual);
+  switch (st) {
+    case 'paid':
+    case 'pago':
+    case 'aprovado':
+    case 'finalizado':
+      return [
+        {'valor': 'confirmado', 'label': 'Confirmado'},
+        {'valor': 'em_preparacao', 'label': 'Em preparação'},
+        {'valor': 'enviado', 'label': 'Enviado / postado'},
+        {'valor': 'entregue', 'label': 'Entregue'},
+      ];
+    case 'confirmado':
+      return [
+        {'valor': 'em_preparacao', 'label': 'Em preparação'},
+        {'valor': 'enviado', 'label': 'Enviado / postado'},
+        {'valor': 'entregue', 'label': 'Entregue'},
+      ];
+    case 'embalando':
+    case 'em_preparacao':
+      return [
+        {'valor': 'enviado', 'label': 'Enviado / postado'},
+        {'valor': 'entregue', 'label': 'Entregue'},
+      ];
+    case 'enviado':
+      return [
+        {'valor': 'entregue', 'label': 'Entregue'},
+      ];
+    default:
+      return const [];
+  }
+}
+
 bool _isStatusHistoricoEncerrado(String st) {
   const encerrados = <String>{
     'confirmado',
