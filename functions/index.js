@@ -2600,7 +2600,7 @@ async function activatePlanForUser({
     // Canônico
     currentPlanId: canonicalPlanId || "pro_monthly",
     status: "active",
-    currentPeriodEnd: renew ? admin.firestore.Timestamp.fromDate(renew) : null,
+    currentPeriodEnd: renew ? Timestamp.fromDate(renew) : null,
     trialing: false,
     trialUsed: true,
     cancelAtPeriodEnd: false,
@@ -2617,7 +2617,7 @@ async function activatePlanForUser({
       planId: canonicalPlanId || "pro_monthly",
       status: "active",
       trialing: false,
-      currentPeriodEnd: renew ? admin.firestore.Timestamp.fromDate(renew) : null,
+      currentPeriodEnd: renew ? Timestamp.fromDate(renew) : null,
       kind: "paid",
       paymentId: String(paymentId || ""),
       planOrderId: planOrderId || null,
@@ -2636,7 +2636,7 @@ async function activatePlanForUser({
         {
           userId: uid,
           activatedPlanId: canonicalPlanId || "pro_monthly",
-          expiresAt: renew ? admin.firestore.Timestamp.fromDate(renew) : null,
+          expiresAt: renew ? Timestamp.fromDate(renew) : null,
           updatedAt: nowTs,
         },
         { merge: true }
