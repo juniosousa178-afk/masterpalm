@@ -1,7 +1,6 @@
 // lib/screens/produto_form_screen.dart
 
 import 'dart:async';
-import 'dart:math' as math;
 import 'dart:io' as io if (dart.library.html) 'package:master_palm/utils/io_stub.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:flutter/material.dart';
@@ -32,6 +31,7 @@ import '../services/ai_loja_service.dart';
 import '../services/ia_uso_limite_service.dart';
 import '../services/image_upload_service.dart';
 import '../services/catalog_thumbnail_service.dart';
+import '../debug/boot_perf_log.dart';
 import '../widgets/compra_pipeline_origem_cancelada_notice.dart';
 import 'barcode_scanner_screen.dart';
 
@@ -212,10 +212,18 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
   final Map<String, TextEditingController> _precoPorTamanhoCtrl = {};
 
   final _imagens = <String>[];
+  /// Preview local (web) enquanto upload pendente — chave `pending://…`.
+  final Map<String, Uint8List> _previewBytes = {};
+  final Set<String> _uploadCancelPending = {};
+  final Map<String, DateTime> _fotoPendenteInicio = {};
+  final Set<String> _fotoPendenteEnviando = {};
+  final Set<String> _fotoAviso3sLogged = {};
+  final Set<String> _fotoAviso8sLogged = {};
+  Timer? _fotoPendenteUiTimer;
+  int _fotosEmUpload = 0;
   bool _publicar = false;
   final UploadManager _uploader = UploadManager(maxConcurrent: 3);
   bool _salvando = false;
-  bool _removendoImagem = false;
   bool _sugerindoDescricao = false;
 
   CompraItemPipeline? _bootstrapPipeline;
@@ -433,23 +441,6 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       _initTombSessaoBaseline(p);
     }
     _initVariacaoControllers();
-    final produtoIdLog = (widget.produto?.idFirebase.isNotEmpty ?? false)
-        ? widget.produto!.idFirebase
-        : (widget.produto?.slug ?? 'novo-produto');
-    debugPrint(
-      '[PRECO-TAMANHO][LOAD] produtoId=$produtoIdLog '
-      'produto.precoPorTamanho=${widget.produto?.precoPorTamanho} '
-      'tamanhosDetectados=$_tamanhosUnicos '
-      'controllersCriados=${_precoPorTamanhoCtrl.keys.toList()} '
-      'valoresDosControllers=${_precoPorTamanhoCtrl.map((k, v) => MapEntry(k, v.text))}',
-    );
-    debugPrint(
-      '[PRECO-TAMANHO][LOAD-PATH] '
-      'lojaId=$lojaId produtoId=$produtoIdLog '
-      'collectionPath=Hive(produtosBox) '
-      'docExists=${widget.produto != null} '
-      'precoPorTamanhoRaw=${widget.produto?.precoPorTamanho}',
-    );
   }
 
   void _initTombSessaoBaseline(Produto p) {
@@ -547,13 +538,6 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         if (v <= 0) {
           _precoPorTamanhoCtrl[t]?.dispose();
           _precoPorTamanhoCtrl.remove(t);
-          debugPrint(
-            '[PRECO-TAMANHO][CTRL-REMOVE] key=$t valor<=0 e tamanho fora da grade',
-          );
-        } else {
-          debugPrint(
-            '[PRECO-TAMANHO][CTRL-KEEP] key=$t preservado (valor>0) mesmo fora da grade',
-          );
         }
       }
     }
@@ -862,25 +846,341 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     _maxParcelasSemJuros.dispose();
     _uploader.dispose();
     _debouncePersistImagens?.cancel();
+    _fotoPendenteUiTimer?.cancel();
     super.dispose();
   }
 
-  /// Persistência após gestos rápidos (ex.: arrastar fotos) — um save após debounce.
-  void _agendarPersistenciaAposReordenarImagens() {
+  bool _fotoPendenteCancelada(String localId) =>
+      _uploadCancelPending.contains(localId);
+
+  void _limparEstadoPendente(String localId) {
+    _previewBytes.remove(localId);
+    _fotoPendenteInicio.remove(localId);
+    _fotoPendenteEnviando.remove(localId);
+    _fotoAviso3sLogged.remove(localId);
+    _fotoAviso8sLogged.remove(localId);
+  }
+
+  void _garantirTickerUiFotosPendentes() {
+    if (_fotoPendenteUiTimer != null) return;
+    _fotoPendenteUiTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
+      if (!mounted) return;
+      final pendentes =
+          _imagens.where((u) => u.startsWith('pending://')).toList();
+      if (pendentes.isEmpty) {
+        _fotoPendenteUiTimer?.cancel();
+        _fotoPendenteUiTimer = null;
+        return;
+      }
+      final now = DateTime.now();
+      for (final id in pendentes) {
+        final t0 = _fotoPendenteInicio[id];
+        if (t0 == null) continue;
+        final elapsed = now.difference(t0);
+        if (elapsed >= const Duration(seconds: 3) &&
+            _fotoAviso3sLogged.add(id)) {
+          BootPerfLog.fotoMark(
+            'timeout_warning',
+            detail: '3s $id',
+          );
+        }
+        if (elapsed >= const Duration(seconds: 8) &&
+            _fotoAviso8sLogged.add(id)) {
+          BootPerfLog.fotoMark(
+            'timeout_warning',
+            detail: '8s $id',
+          );
+        }
+      }
+      setState(() {});
+    });
+  }
+
+  String _mensagemCardFotoPendente(String localId) {
+    if (_fotoPendenteEnviando.contains(localId)) {
+      return 'Enviando…';
+    }
+    final t0 = _fotoPendenteInicio[localId];
+    final elapsed = t0 == null
+        ? Duration.zero
+        : DateTime.now().difference(t0);
+    if (elapsed < const Duration(seconds: 3)) {
+      return 'Preparando imagem…';
+    }
+    if (elapsed < const Duration(seconds: 8)) {
+      return 'Processando imagem…';
+    }
+    return 'Imagem grande, ainda processando…';
+  }
+
+  /// Persistência após gestos rápidos (reordenar / excluir / upload) — um save após debounce.
+  void _agendarPersistenciaImagens() {
     if (widget.produto == null || lojaId == null) return;
     _debouncePersistImagens?.cancel();
     _debouncePersistImagens = Timer(const Duration(milliseconds: 500), () async {
       if (!mounted || widget.produto == null) return;
-      await _persistirProdutoAtual(widget.produto!, mostrarSnackSucesso: false);
+      BootPerfLog.fotoStart('persist_start');
+      try {
+        await _persistirProdutoAtual(widget.produto!, mostrarSnackSucesso: false);
+      } finally {
+        BootPerfLog.fotoEnd('persist_done');
+      }
     });
+  }
+
+  bool get _temUploadFotoPendente =>
+      _fotosEmUpload > 0 || _imagens.any((u) => u.startsWith('pending://'));
+
+  List<String> get _imagensParaPersistir => _imagens
+      .where((u) => !u.startsWith('pending://'))
+      .toList(growable: false);
+
+  void _removerFotoNoIndice(int i) {
+    if (i < 0 || i >= _imagens.length) return;
+    final src = _imagens[i];
+    if (src.startsWith('pending://')) {
+      _uploadCancelPending.add(src);
+    }
+    setState(() {
+      _imagens.removeAt(i);
+      _limparEstadoPendente(src);
+    });
+    if (widget.produto != null && !src.startsWith('pending://')) {
+      _agendarPersistenciaImagens();
+    }
+  }
+
+  Future<void> _processWebPhoto(XFile file) async {
+    final localId = 'pending://${DateTime.now().microsecondsSinceEpoch}';
+    if (!mounted || lojaId == null) return;
+
+    BootPerfLog.fotoStart('preview_added', detail: localId);
+    setState(() {
+      _imagens.add(localId);
+      _fotoPendenteInicio[localId] = DateTime.now();
+    });
+    _garantirTickerUiFotosPendentes();
+    BootPerfLog.fotoEnd('preview_added', detail: localId);
+
+    var uploadIniciado = false;
+    try {
+      await Future<void>.delayed(Duration.zero);
+      if (_fotoPendenteCancelada(localId)) return;
+
+      BootPerfLog.fotoStart('read_start', detail: localId);
+      final rawBytes = await file.readAsBytes().timeout(
+        const Duration(seconds: 120),
+        onTimeout: () => throw TimeoutException('read_timeout'),
+      );
+      BootPerfLog.fotoEnd(
+        'read_done',
+        detail: 'bytes=${rawBytes.length} $localId',
+      );
+
+      if (_fotoPendenteCancelada(localId) || !_imagens.contains(localId)) {
+        return;
+      }
+      if (mounted) {
+        setState(() => _previewBytes[localId] = rawBytes);
+      }
+
+      BootPerfLog.fotoStart('compress_start', detail: localId);
+      final encoded = await Future<Uint8List?>(() =>
+          CatalogThumbnailService.encodeBytesAsOptimizedJpegForProductUpload(
+        rawBytes,
+      ));
+      BootPerfLog.fotoEnd(
+        'compress_done',
+        detail: 'bytes=${(encoded ?? rawBytes).length} $localId',
+      );
+
+      if (_fotoPendenteCancelada(localId) || !_imagens.contains(localId)) {
+        return;
+      }
+
+      final Uint8List bytes;
+      final String ext;
+      final String contentType;
+      if (encoded != null) {
+        bytes = encoded;
+        ext = 'jpg';
+        contentType = 'image/jpeg';
+      } else {
+        bytes = rawBytes;
+        if (rawBytes.length >= 3 &&
+            rawBytes[0] == 0xFF &&
+            rawBytes[1] == 0xD8 &&
+            rawBytes[2] == 0xFF) {
+          ext = 'jpg';
+          contentType = 'image/jpeg';
+        } else if (rawBytes.length >= 8 &&
+            rawBytes[0] == 0x89 &&
+            rawBytes[1] == 0x50 &&
+            rawBytes[2] == 0x4E &&
+            rawBytes[3] == 0x47) {
+          ext = 'png';
+          contentType = 'image/png';
+        } else {
+          ext = 'jpg';
+          contentType = 'image/jpeg';
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _fotosEmUpload++;
+          _fotoPendenteEnviando.add(localId);
+        });
+      }
+      uploadIniciado = true;
+      BootPerfLog.fotoStart('upload_start', detail: localId);
+      final url = await ImageUploadService.uploadImageFromBytes(
+        bytes: bytes,
+        folder: 'produtos',
+        lojaId: lojaId!,
+        extension: ext,
+        contentType: contentType,
+      ).timeout(
+        const Duration(seconds: 90),
+        onTimeout: () => throw TimeoutException('upload_timeout'),
+      );
+      BootPerfLog.fotoEnd('upload_done', detail: url != null ? 'ok' : 'null');
+
+      if (_fotoPendenteCancelada(localId) || !_imagens.contains(localId)) {
+        if (url != null && lojaId != null) {
+          unawaited(
+            ImageUploadService.deleteImageIfManagedForLoja(url, lojaId!),
+          );
+        }
+        return;
+      }
+
+      if (!mounted) return;
+      setState(() {
+        final idx = _imagens.indexOf(localId);
+        if (idx >= 0 && url != null) {
+          _imagens[idx] = url;
+          _limparEstadoPendente(localId);
+        }
+      });
+
+      if (url == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Falha ao enviar uma imagem. Toque em ✕ para remover.',
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      } else if (widget.produto != null) {
+        _agendarPersistenciaImagens();
+      }
+    } on TimeoutException catch (e) {
+      debugPrint('[ProdutoForm] Timeout foto web ($localId): $e');
+      if (!_fotoPendenteCancelada(localId) && mounted) {
+        setState(() {
+          _imagens.remove(localId);
+          _limparEstadoPendente(localId);
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              e.message == 'read_timeout'
+                  ? 'Não foi possível ler a imagem. Tente outra foto ou reduza o tamanho.'
+                  : 'Envio da imagem demorou demais. Tente novamente.',
+            ),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('[ProdutoForm] Erro foto web ($localId, type=${e.runtimeType}): $e');
+      if (!_fotoPendenteCancelada(localId) && mounted) {
+        setState(() {
+          _imagens.remove(localId);
+          _limparEstadoPendente(localId);
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erro ao enviar imagem: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (uploadIniciado && mounted) {
+        setState(() => _fotosEmUpload = (_fotosEmUpload - 1).clamp(0, 999));
+      }
+    }
+  }
+
+  Widget _buildFotoPreview(String src) {
+    final mem = _previewBytes[src];
+    if (mem != null) {
+      return Image.memory(
+        mem,
+        width: 100,
+        height: 100,
+        fit: BoxFit.cover,
+        gaplessPlayback: true,
+      );
+    }
+    if (src.startsWith('pending://')) {
+      return Container(
+        width: 100,
+        height: 100,
+        color: Colors.grey.shade200,
+        padding: const EdgeInsets.symmetric(horizontal: 6),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              _mensagemCardFotoPendente(src),
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 9, color: Colors.grey.shade700),
+            ),
+          ],
+        ),
+      );
+    }
+    if (src.startsWith('http') || kIsWeb) {
+      return Image.network(
+        src,
+        width: 100,
+        height: 100,
+        fit: BoxFit.cover,
+        gaplessPlayback: true,
+      );
+    }
+    return Image.file(
+      io.File(src),
+      width: 100,
+      height: 100,
+      fit: BoxFit.cover,
+    );
   }
 
   // ------------------------------
   // PICK DE IMAGENS
   // ------------------------------
-  /// Web: blob URLs não funcionam no Android; fazer upload imediato para Firebase Storage.
+  /// Web: preview imediato + upload em background; nativo: path local até salvar.
   Future<void> _pickImgs() async {
-    final x = await ImagePicker().pickMultiImage(imageQuality: 95);
+    BootPerfLog.fotoStart('pick_start');
+    final x = await ImagePicker().pickMultiImage(
+      imageQuality: 78,
+      maxWidth: 1800,
+      maxHeight: 1800,
+    );
+    BootPerfLog.fotoEnd('pick_done', detail: '${x.length} arquivo(s)');
     if (x.isEmpty) return;
     if (lojaId == null) return;
     final guard = LimitsGuard();
@@ -901,128 +1201,21 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     }
 
     if (kIsWeb) {
-      // Web: XFile.path retorna blob: URL que não funciona no Android; fazer upload agora
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Enviando imagem...'), duration: Duration(seconds: 2)),
-        );
+      final toProcess = x.take(slots).toList();
+      for (final file in toProcess) {
+        unawaited(_processWebPhoto(file));
       }
-      setState(() => _salvando = true);
-      try {
-        final urls = <String>[];
-        var falhas = 0;
-        final maxTentativas = math.min(x.length, slots);
-        for (var i = 0; i < maxTentativas; i++) {
-          try {
-            final rawBytes = await x[i].readAsBytes().timeout(
-              const Duration(seconds: 15),
-              onTimeout: () => throw TimeoutException('Leitura da imagem demorou muito'),
-            );
-            // JPEG até 2000px no maior lado, qualidade 95 (nitidez no catálogo).
-            final encoded =
-                CatalogThumbnailService.encodeBytesAsOptimizedJpegForProductUpload(
-              rawBytes,
-            );
-            final Uint8List bytes;
-            final String ext;
-            final String contentType;
-            if (encoded != null) {
-              bytes = encoded;
-              ext = 'jpg';
-              contentType = 'image/jpeg';
-            } else {
-              bytes = rawBytes;
-              if (rawBytes.length >= 3 &&
-                  rawBytes[0] == 0xFF &&
-                  rawBytes[1] == 0xD8 &&
-                  rawBytes[2] == 0xFF) {
-                ext = 'jpg';
-                contentType = 'image/jpeg';
-              } else if (rawBytes.length >= 8 &&
-                  rawBytes[0] == 0x89 &&
-                  rawBytes[1] == 0x50 &&
-                  rawBytes[2] == 0x4E &&
-                  rawBytes[3] == 0x47) {
-                ext = 'png';
-                contentType = 'image/png';
-              } else {
-                ext = 'jpg';
-                contentType = 'image/jpeg';
-              }
-            }
-            final url = await ImageUploadService.uploadImageFromBytes(
-              bytes: bytes,
-              folder: 'produtos',
-              lojaId: lojaId!,
-              extension: ext,
-              contentType: contentType,
-            ).timeout(
-              const Duration(seconds: 60),
-              onTimeout: () => throw TimeoutException('Upload da imagem ${i + 1} demorou muito'),
-            );
-            if (url != null) {
-              urls.add(url);
-            } else {
-              falhas++;
-              debugPrint('[ProdutoForm] Upload retornou null (imagem ${i + 1})');
-            }
-          } on TimeoutException catch (e) {
-            falhas++;
-            debugPrint('[ProdutoForm] Timeout imagem ${i + 1}: $e');
-          } catch (e) {
-            falhas++;
-            debugPrint('[ProdutoForm] Erro imagem ${i + 1} (type=${e.runtimeType}): $e');
-          }
-        }
-        final ok = urls.length;
-        final total = ok + falhas;
-        if (urls.isNotEmpty && mounted) {
-          setState(() => _imagens.addAll(urls));
-          if (widget.produto != null) {
-            await _persistirProdutoAtual(widget.produto!).timeout(
-              const Duration(seconds: 90),
-              onTimeout: () => throw TimeoutException('Sincronização após adicionar imagens demorou muito'),
-            );
-          }
-        }
-        if (!mounted) return;
-        if (ok == 0 && falhas > 0) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Nenhuma imagem foi enviada ($falhas falha(s)). Verifique rede, formato ou tamanho.',
-              ),
-              backgroundColor: Colors.red.shade700,
+      if (mounted && toProcess.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              toProcess.length == 1
+                  ? 'Imagem adicionada — enviando em segundo plano…'
+                  : '${toProcess.length} imagens — enviando em segundo plano…',
             ),
-          );
-        } else if (ok > 0 && falhas > 0) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Enviadas $ok de $total imagem(ns). $falhas falha(s) — verifique as que faltaram.',
-              ),
-              backgroundColor: Colors.orange.shade800,
-            ),
-          );
-        } else if (ok > 0) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('$ok imagem(ns) adicionada(s)')),
-          );
-        }
-      } on TimeoutException catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(e.message ?? 'Operação demorou muito. Tente novamente.'), backgroundColor: Colors.orange),
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Erro ao enviar imagem: $e'), backgroundColor: Colors.red),
-          );
-        }
-      } finally {
-        if (mounted) setState(() => _salvando = false);
+            duration: const Duration(seconds: 2),
+          ),
+        );
       }
       return;
     }
@@ -1030,25 +1223,9 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     final paths = x.map((e) => e.path).toList();
     final aAdicionar = paths.take(slots).toList();
     setState(() => _imagens.addAll(aAdicionar));
+    BootPerfLog.fotoEnd('preview_added', detail: '${aAdicionar.length} path(s)');
     if (widget.produto != null) {
-      try {
-        await _persistirProdutoAtual(widget.produto!);
-      } on TimeoutException catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Imagens adicionadas localmente; nuvem: ${e.message ?? 'timeout'}'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Erro ao sincronizar imagens: $e'), backgroundColor: Colors.red.shade700),
-          );
-        }
-      }
+      _agendarPersistenciaImagens();
     }
   }
 
@@ -1192,7 +1369,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         ..categoriasExtras = categoriasExtras
         ..subcategoriasExtras = subcategoriasExtras
         ..descricao = _descricao.text.trim()
-        ..imagens = List.from(_imagens)
+        ..imagens = List.from(_imagensParaPersistir)
         ..publicadoNoCatalogo = _publicar
         ..divideSemJuros = _divideSemJuros
         ..percentualDescontoPix = percentualDescontoPix
@@ -1219,27 +1396,6 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         ..custoEditadoNoCadastro = true;
       final precoPorTamanhoMap =
           produtoFormBuildPrecoPorTamanhoFromControllers(_precoPorTamanhoCtrl);
-      final produtoIdSaveLog = (widget.produto?.idFirebase.isNotEmpty ?? false)
-          ? widget.produto!.idFirebase
-          : (widget.produto?.slug ?? 'novo-produto');
-      debugPrint(
-        '[PRECO-TAMANHO][REAL-SAVE-PATH] origem=ProdutoFormScreen._salvar '
-        'productId=$produtoIdSaveLog vaiSalvarHive=true vaiSalvarFirestore=true '
-        'pathFirestore=lojas/${lojaId ?? '(null)'}/estoque_produtos/$produtoIdSaveLog '
-        'produto.precoPorTamanho=${widget.produto?.precoPorTamanho}',
-      );
-      debugPrint(
-        '[PRECO-TAMANHO][CTRL] '
-        'keys=${_precoPorTamanhoCtrl.keys.toList()} '
-        'textos=${_precoPorTamanhoCtrl.map((k, v) => MapEntry(k, v.text))} '
-        'mapaFinalPrecoPorTamanho=$precoPorTamanhoMap',
-      );
-      debugPrint(
-        '[PRECO-TAMANHO][SAVE] produtoId=$produtoIdSaveLog '
-        'controllers=${_precoPorTamanhoCtrl.map((k, v) => MapEntry(k, v.text))} '
-        'mapaFinalPrecoPorTamanho=$precoPorTamanhoMap '
-        'produto.precoPorTamanho(antes)=${widget.produto?.precoPorTamanho}',
-      );
       p.precoPorTamanho = precoPorTamanhoMap.isNotEmpty ? precoPorTamanhoMap : null;
       if (variacoesMap.isNotEmpty) p.recalcularQuantidadeTotal();
       if (!await _tentarTombstoneVarRemovidaSessaoSeNecessario(
@@ -1581,6 +1737,17 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       );
       return;
     }
+    if (_temUploadFotoPendente) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Aguarde o envio das fotos terminar (ou remova as pendentes) antes de salvar.',
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
 
     setState(() => _salvando = true);
 
@@ -1663,15 +1830,6 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
 
       final precoPorTamanhoMap =
           produtoFormBuildPrecoPorTamanhoFromControllers(_precoPorTamanhoCtrl);
-      final produtoIdSaveLog = (widget.produto?.idFirebase.isNotEmpty ?? false)
-          ? widget.produto!.idFirebase
-          : (widget.produto?.slug ?? 'novo-produto');
-      debugPrint(
-        '[PRECO-TAMANHO][SAVE] produtoId=$produtoIdSaveLog '
-        'controllers=${_precoPorTamanhoCtrl.map((k, v) => MapEntry(k, v.text))} '
-        'mapaFinalPrecoPorTamanho=$precoPorTamanhoMap '
-        'produto.precoPorTamanho(antes)=${widget.produto?.precoPorTamanho}',
-      );
 
       // 🔹 Calcula valores de promoção
       double? percentualPromo;
@@ -1718,7 +1876,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             ..categoriasExtras = categoriasExtras
             ..subcategoriasExtras = subcategoriasExtras
             ..descricao = _descricao.text.trim()
-            ..imagens = List.from(_imagens)
+            ..imagens = List.from(_imagensParaPersistir)
             ..publicadoNoCatalogo = _publicar
             ..divideSemJuros = _divideSemJuros
             ..percentualDescontoPix = percentualDescontoPix
@@ -1742,11 +1900,6 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             ..fornecedor = _fornecedor.text.trim()
             ..precoPorTamanho = precoPorTamanhoMap.isNotEmpty ? precoPorTamanhoMap : null
             ..custoEditadoNoCadastro = true;
-          debugPrint(
-            '[PRECO-TAMANHO][PRODUTO-FINAL] '
-            'produtoId=${existente.idFirebase.isNotEmpty ? existente.idFirebase : existente.slug} '
-            'produto.precoPorTamanho=${existente.precoPorTamanho}',
-          );
 
           if (variacoesMap.isNotEmpty) {
             existente.recalcularQuantidadeTotal();
@@ -1756,15 +1909,6 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
 
           existente.updatedAt = DateTime.now();
           await existente.save();
-          debugPrint(
-            '[PRECO-TAMANHO][HIVE-WRITE] productId=${existente.idFirebase.isNotEmpty ? existente.idFirebase : existente.slug} '
-            'precoPorTamanho salvo no Hive=${existente.precoPorTamanho}',
-          );
-          final existenteHive = produtosBox.get(existente.key);
-          debugPrint(
-            '[PRECO-TAMANHO][HIVE-READ-AFTER-WRITE] productId=${existente.idFirebase.isNotEmpty ? existente.idFirebase : existente.slug} '
-            'precoPorTamanho lido do Hive=${existenteHive?.precoPorTamanho}',
-          );
           remoteStatus = await ProdutosFirestoreService.syncProdutoComStatus(
             existente,
             lojaId: lojaId,
@@ -1849,22 +1993,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             updatedAt: DateTime.now(),
             custoEditadoNoCadastro: true,
           );
-          debugPrint(
-            '[PRECO-TAMANHO][PRODUTO-FINAL] '
-            'produtoId=${novo.idFirebase.isNotEmpty ? novo.idFirebase : novo.slug} '
-            'produto.precoPorTamanho=${novo.precoPorTamanho}',
-          );
 
           await produtosBox.add(novo);
-          debugPrint(
-            '[PRECO-TAMANHO][HIVE-WRITE] productId=${novo.idFirebase.isNotEmpty ? novo.idFirebase : novo.slug} '
-            'precoPorTamanho salvo no Hive=${novo.precoPorTamanho}',
-          );
-          final novoHive = produtosBox.get(novo.key);
-          debugPrint(
-            '[PRECO-TAMANHO][HIVE-READ-AFTER-WRITE] productId=${novo.idFirebase.isNotEmpty ? novo.idFirebase : novo.slug} '
-            'precoPorTamanho lido do Hive=${novoHive?.precoPorTamanho}',
-          );
           remoteStatus = await ProdutosFirestoreService.syncProdutoComStatus(
             novo,
             lojaId: lojaId,
@@ -1896,7 +2026,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           ..categoriasExtras = categoriasExtras
           ..subcategoriasExtras = subcategoriasExtras
           ..descricao = _descricao.text.trim()
-          ..imagens = List.from(_imagens)
+          ..imagens = List.from(_imagensParaPersistir)
           ..publicadoNoCatalogo = _publicar
           ..divideSemJuros = _divideSemJuros
           ..percentualDescontoPix = percentualDescontoPix
@@ -1924,11 +2054,6 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           ..fornecedor = _fornecedor.text.trim()
           ..precoPorTamanho = precoPorTamanhoMap.isNotEmpty ? precoPorTamanhoMap : null
           ..custoEditadoNoCadastro = true;
-        debugPrint(
-          '[PRECO-TAMANHO][PRODUTO-FINAL] '
-          'produtoId=${p.idFirebase.isNotEmpty ? p.idFirebase : p.slug} '
-          'produto.precoPorTamanho=${p.precoPorTamanho}',
-        );
 
         // 🔹 Recalcular quantidade total com base nas variações
         if (variacoesMap.isNotEmpty) {
@@ -1957,15 +2082,6 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
 
         p.updatedAt = DateTime.now();
         await p.save();
-        debugPrint(
-          '[PRECO-TAMANHO][HIVE-WRITE] productId=${p.idFirebase.isNotEmpty ? p.idFirebase : p.slug} '
-          'precoPorTamanho salvo no Hive=${p.precoPorTamanho}',
-        );
-        final pHive = produtosBox.get(p.key);
-        debugPrint(
-          '[PRECO-TAMANHO][HIVE-READ-AFTER-WRITE] productId=${p.idFirebase.isNotEmpty ? p.idFirebase : p.slug} '
-          'precoPorTamanho lido do Hive=${pHive?.precoPorTamanho}',
-        );
         remoteStatus = await ProdutosFirestoreService.syncProdutoComStatus(
           p,
           lojaId: lojaId,
@@ -2786,111 +2902,101 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                               final src = _imagens.removeAt(oldIndex);
                               _imagens.insert(newIndex, src);
                             });
-                            _agendarPersistenciaAposReordenarImagens();
+                            _agendarPersistenciaImagens();
                           },
                           itemBuilder: (context, i) {
                             final src = _imagens[i];
-                            final isBlobOtherOrigin = kIsWeb && src.startsWith('blob:');
-                            final preview = isBlobOtherOrigin
-                                ? Container(
-                                    width: 100,
-                                    height: 100,
-                                    color: Colors.grey[300],
-                                    child: const Icon(Icons.broken_image),
-                                  )
-                                : (src.startsWith('http') || kIsWeb)
-                                    ? Image.network(
-                                        src,
-                                        width: 100,
-                                        height: 100,
-                                        fit: BoxFit.cover,
-                                      )
-                                    : Image.file(
-                                        io.File(src),
-                                        width: 100,
-                                        height: 100,
-                                        fit: BoxFit.cover,
-                                      );
-                            return ReorderableDragStartListener(
-                              key: ValueKey('img_$i'),
-                              index: i,
-                              child: Padding(
-                                padding: const EdgeInsets.only(bottom: 12),
-                                child: Stack(
-                                  clipBehavior: Clip.none,
-                                  children: [
-                                    Container(
-                                      decoration: BoxDecoration(
-                                        borderRadius: BorderRadius.circular(12),
-                                        border: Border.all(
-                                          color: i == 0 ? Colors.teal : Colors.grey.shade300,
-                                          width: i == 0 ? 3 : 2,
-                                        ),
-                                      ),
-                                      child: ClipRRect(
-                                        borderRadius: BorderRadius.circular(10),
-                                        child: preview,
-                                      ),
-                                    ),
-                                    if (i == 0)
-                                      Positioned(
-                                        left: 8,
-                                        top: 8,
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                          decoration: BoxDecoration(
-                                            color: Colors.teal,
-                                            borderRadius: BorderRadius.circular(8),
-                                          ),
-                                          child: const Text('Capa', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
-                                        ),
-                                      ),
-                                    Positioned(
-                                      left: 8,
-                                      bottom: 8,
+                            return Padding(
+                              key: ValueKey(src),
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  ReorderableDragStartListener(
+                                    index: i,
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(right: 8, top: 36),
                                       child: Container(
                                         padding: const EdgeInsets.all(6),
                                         decoration: BoxDecoration(
                                           color: Colors.black54,
                                           borderRadius: BorderRadius.circular(8),
                                         ),
-                                        child: const Icon(Icons.drag_handle, color: Colors.white, size: 20),
-                                      ),
-                                    ),
-                                    Positioned(
-                                      right: -8,
-                                      top: -8,
-                                      child: Container(
-                                        decoration: const BoxDecoration(
-                                          color: Colors.red,
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: IconButton(
-                                          icon: const Icon(Icons.close, color: Colors.white, size: 18),
-                                          padding: EdgeInsets.zero,
-                                          constraints: const BoxConstraints(),
-                                          onPressed: _removendoImagem
-                                              ? null
-                                              : () async {
-                                                  setState(() {
-                                                    _removendoImagem = true;
-                                                    _imagens.removeAt(i);
-                                                  });
-                                                  try {
-                                                    if (widget.produto != null) {
-                                                      await _persistirProdutoAtual(widget.produto!);
-                                                    }
-                                                  } finally {
-                                                    if (mounted) {
-                                                      setState(() => _removendoImagem = false);
-                                                    }
-                                                  }
-                                                },
+                                        child: const Icon(
+                                          Icons.drag_handle,
+                                          color: Colors.white,
+                                          size: 20,
                                         ),
                                       ),
                                     ),
-                                  ],
-                                ),
+                                  ),
+                                  Expanded(
+                                    child: Stack(
+                                      clipBehavior: Clip.none,
+                                      children: [
+                                        Container(
+                                          decoration: BoxDecoration(
+                                            borderRadius: BorderRadius.circular(12),
+                                            border: Border.all(
+                                              color: i == 0
+                                                  ? Colors.teal
+                                                  : Colors.grey.shade300,
+                                              width: i == 0 ? 3 : 2,
+                                            ),
+                                          ),
+                                          child: ClipRRect(
+                                            borderRadius: BorderRadius.circular(10),
+                                            child: _buildFotoPreview(src),
+                                          ),
+                                        ),
+                                        if (i == 0)
+                                          Positioned(
+                                            left: 8,
+                                            top: 8,
+                                            child: Container(
+                                              padding: const EdgeInsets.symmetric(
+                                                horizontal: 8,
+                                                vertical: 4,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: Colors.teal,
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              ),
+                                              child: const Text(
+                                                'Capa',
+                                                style: TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        Positioned(
+                                          right: 4,
+                                          top: 4,
+                                          child: Material(
+                                            color: Colors.red,
+                                            shape: const CircleBorder(),
+                                            child: InkWell(
+                                              customBorder: const CircleBorder(),
+                                              onTap: () => _removerFotoNoIndice(i),
+                                              child: const Padding(
+                                                padding: EdgeInsets.all(6),
+                                                child: Icon(
+                                                  Icons.close,
+                                                  color: Colors.white,
+                                                  size: 18,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               ),
                             );
                           },

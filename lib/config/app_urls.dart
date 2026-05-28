@@ -47,12 +47,31 @@ class AppUrls {
   /// Hosting Firebase do catálogo (CNAME público) — mesmo app Web, fluxo padrão `/loja/`.
   static const String catalogFirebaseHostingHost = 'masterpalm-58c46.web.app';
 
-  /// App admin canônico + typo legado + hosting web do catálogo (não é domínio próprio do lojista).
+  /// Preview channel do target admin (`masterpalm-58c46--{channel}-{hash}.web.app`).
+  static final RegExp firebaseAdminAppPreviewHostPattern = RegExp(
+    r'^masterpalm-58c46--[a-z0-9-]+\.web\.app$',
+  );
+
+  /// Preview do site `mastepalm` (catálogo/marketing) — não é admin.
+  static final RegExp firebaseMastepalmSitePreviewHostPattern = RegExp(
+    r'^mastepalm--[a-z0-9-]+\.web\.app$',
+  );
+
+  /// Channel preview do Hosting Firebase do **app admin** (não confundir com domínio de loja).
+  static bool isFirebaseAdminAppPreviewHost(String host) {
+    final h = normalizeHostForAppUrlCheck(host);
+    if (h.isEmpty) return false;
+    return firebaseAdminAppPreviewHostPattern.hasMatch(h);
+  }
+
+  /// App admin canônico + typo legado + hosting web do catálogo + preview admin Firebase.
+  /// Não inclui `mastepalm--*.web.app` (target catálogo/site).
   static bool isDefaultMasterPalmCatalogHost(String host) {
     final h = normalizeHostForAppUrlCheck(host);
     if (h.isEmpty) return false;
     if (appWebHostsAll.contains(h)) return true;
     if (h == catalogFirebaseHostingHost) return true;
+    if (isFirebaseAdminAppPreviewHost(host)) return true;
     return false;
   }
 

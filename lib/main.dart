@@ -83,6 +83,7 @@ import 'catalog/catalog_initial_web_route.dart';
 import 'debug/web_root_boot_trace_app.dart';
 import 'debug/invalid_public_loja_path_app.dart';
 import 'debug/app_start_trace_collector.dart';
+import 'debug/boot_perf_log.dart';
 import 'services/catalog_domain_resolver.dart';
 import 'services/catalog_domain_browser_cache.dart';
 import 'screens/loja_config_screen.dart';
@@ -1079,6 +1080,8 @@ bool _isLocalWebDevHost(String normalizedHost) {
 bool _shouldOfferCustomDomainCatalogFastPath(Uri uri) {
   if (!kIsWeb) return false;
   if (_uriIsPagamentoPublicPath(uri)) return false;
+  if (isAdminWebAppPath(uri)) return false;
+  if (AppUrls.isFirebaseAdminAppPreviewHost(uri.host)) return false;
   if (_uriHasLojaPathPriority(uri)) return false;
   if (_uriHasExplicitCatalogQueryOrFragment(uri)) return false;
   final hostNorm =
@@ -1418,6 +1421,8 @@ Future<bool> _webShouldMinimalBootstrapForPublicCatalogViewer() async {
   if (Firebase.apps.isEmpty) return false;
   final uri = _initialWebUri ?? Uri.base;
   if (_uriIsPagamentoPublicPath(uri)) return false;
+  if (isAdminWebAppPath(uri)) return false;
+  if (AppUrls.isFirebaseAdminAppPreviewHost(uri.host)) return false;
   if (_isPublicCatalogUrl()) return true;
   if (_uriHasLojaPathPriority(uri) ||
       _uriHasExplicitCatalogQueryOrFragment(uri)) {
@@ -3082,6 +3087,7 @@ Future<void> main() async {
   CatalogStartupTrace.mark('CAT_START.main.enter');
   await runWithGlobalErrorHook(() async {
     WidgetsFlutterBinding.ensureInitialized();
+    BootPerfLog.resetBoot();
     _installUltraEarlyCatalogErrorCapture();
     CatalogStartupTrace.mark('CAT_START.flutter_binding.ready');
 
@@ -3496,6 +3502,8 @@ Future<void> main() async {
           return;
         } else if (!_uriHasLojaPathPriority(uriWeb) &&
             !_uriHasExplicitCatalogQueryOrFragment(uriWeb) &&
+            !isAdminWebAppPath(uriWeb) &&
+            !AppUrls.isFirebaseAdminAppPreviewHost(uriWeb.host) &&
             _safeFirebaseAppsIsNotEmpty()) {
           final hostNorm = normalizeCatalogDomainHost(uriWeb.host);
           _setCatalogPhase('catalog.domain.resolve.start');
@@ -3684,6 +3692,7 @@ Future<Box<dynamic>> _hiveOpenTracked(String name) async {
 // ===========================================================================
 Future<void> _bootstrapSafe() async {
   _appStartMark('bootstrap.enter');
+  BootPerfLog.markBoot('bootstrap.enter');
   logD('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   logD('[BOOT-ROUTER] Iniciando _bootstrapSafe()');
   logD('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -3704,7 +3713,9 @@ Future<void> _bootstrapSafe() async {
   );
   logD('🟢 [BOOT] Intl defaultLocale=pt_BR (date symbols em background)');
 
+  BootPerfLog.markBoot('firebase_init_start');
   final firebaseOk = await _initFirebaseCore();
+  BootPerfLog.markBoot('firebase_init_end', detail: 'ok=$firebaseOk');
   _appStartMark('firebase.done', detail: 'ok=$firebaseOk');
   logD('[BOOT-AUTH] firebaseOk=$firebaseOk');
 
@@ -3752,6 +3763,7 @@ Future<void> _bootstrapSafe() async {
       }
     }
     hasUser = u != null && !u.isAnonymous;
+    BootPerfLog.markBoot('auth_end', detail: 'hasUser=$hasUser');
     _appStartMark('auth.resolved', detail: 'hasUser=$hasUser');
     logD('[BOOT-AUTH] currentUser → hasUser=$hasUser');
   }
@@ -3769,6 +3781,7 @@ Future<void> _bootstrapSafe() async {
     boot.mark('remoteconfig.defer');
     FirebaseGuard.markReady();
     boot.mark('hive.init.begin');
+    BootPerfLog.markBoot('hive_start');
     if (kIsWeb) {
       _appStartMark('hive.initFlutter.begin');
       await Hive.initFlutter().timeout(_kHiveInitFlutterBudget);
@@ -3778,6 +3791,7 @@ Future<void> _bootstrapSafe() async {
       await Hive.initFlutter(dirPath);
     }
     boot.mark('hive.init.ok');
+    BootPerfLog.markBoot('hive_end');
     logD(
       '[BOOT-FASTPATH] adapters ERP em background (sem bloquear 1º frame; visitante/login)',
     );
@@ -3814,6 +3828,7 @@ Future<void> _bootstrapSafe() async {
 
   // Fluxo completo (mobile ou web com usuário já logado)
   if (firebaseOk) {
+    BootPerfLog.markBoot('appcheck_start');
     logD(
         '[BOOT_FIREBASE_PHASE] RemoteConfig + AppCheck + Monitoring (paralelo)');
     await Future.wait<void>([
@@ -3837,6 +3852,7 @@ Future<void> _bootstrapSafe() async {
       }).catchError((Object _, StackTrace __) {}),
     ]);
     _appStartMark('bootstrap.remote_parallel.done');
+    BootPerfLog.markBoot('appcheck_end');
     boot.mark('remoteconfig.ok');
     boot.mark('appcheck.ok');
     boot.mark('monitoring.ok');
@@ -3869,6 +3885,7 @@ Future<void> _bootstrapSafe() async {
   FirebaseGuard.markReady();
 
   boot.mark('hive.init.begin');
+  BootPerfLog.markBoot('hive_start');
   if (!kIsWeb) {
     final dirPath = await getAppDocsDirPath();
     await Hive.initFlutter(dirPath);
@@ -3880,6 +3897,7 @@ Future<void> _bootstrapSafe() async {
     logD('🟦 [BOOT] Hive.initFlutter() (Web)');
   }
   boot.mark('hive.init.ok');
+  BootPerfLog.markBoot('hive_end');
 
   _registerAllHiveAdaptersBootstrap();
   boot.mark('hive.adapters.ok');
@@ -3971,6 +3989,7 @@ Future<void> _bootstrapSafe() async {
   _scheduleLoggedInHeavyOnce(firebaseOk: firebaseOk);
 
   _appStartMark('bootstrap.leave', finalDecision: 'my_app_ready');
+  BootPerfLog.markBoot('bootstrap.leave', detail: 'my_app_ready');
   logD('🟢 [BOOT] _bootstrapSafe() finalizado (crítico; pesado em background)');
 }
 

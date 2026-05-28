@@ -97,6 +97,8 @@ import '../utils/home_store_context_helper.dart';
 // WebLandingPlanCard é declarado no final deste arquivo para evitar problemas de resolução de import.
 import '../main.dart' show navigatorKey;
 import '../utils/role_utils.dart';
+import '../debug/boot_perf_log.dart';
+import '../core/loja_id_adapter.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -138,19 +140,28 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void initState() {
     super.initState();
+    BootPerfLog.markBoot('home_init');
 
     _carregarSessao();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      BootPerfLog.markBoot('home_first_paint');
+    });
 
     // Sincronização automática ao entrar (paridade Web/APK – vendas de qualquer plataforma aparecem em todas)
     // Web: atraso maior para não competir com scroll/gestos logo após o login.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Future<void>.delayed(Duration(milliseconds: kIsWeb ? 900 : 220), () {
+      Future<void>.delayed(Duration(milliseconds: kIsWeb ? 1400 : 220), () {
+        BootPerfLog.markBoot('initial_sync_start');
         if (!mounted) return;
         AutoSyncService.syncCompleto().then((r) {
+          BootPerfLog.markBoot('initial_sync_end', detail: 'ok=${r.sucesso}');
           if (mounted) {
             setState(() {}); // Atualiza dashboard quando sync terminar
           }
-        }).catchError((_) {});
+        }).catchError((_) {
+          BootPerfLog.markBoot('initial_sync_end', detail: 'erro');
+        });
       });
     });
 
@@ -195,9 +206,26 @@ class _HomeScreenState extends State<HomeScreen>
         (emailAuth.isNotEmpty ? emailAuth : 'Usuário');
     _tipo = (sessao.get('tipo_usuario') as String?) ?? 'vendedor';
 
-    // 🔹 contexto de loja: [resolveHomeStoreContext] já chama StoreResolverFacade (Firestore)
-    // e Hive com validação de usuário — evitar segunda chamada duplicada (dobrava latência/jank).
+    // Fast path: store_id em cache (Hive) → 1º paint sem esperar Firestore.
+    final cachedUser = (sessao.get('usuario_logado') ?? '')
+        .toString()
+        .trim()
+        .toLowerCase();
+    final cachedStore = normalizeFromBox(sessao)?.trim() ?? '';
+    if (cachedStore.isNotEmpty &&
+        emailAuth.isNotEmpty &&
+        (cachedUser.isEmpty || cachedUser == emailAuth) &&
+        isValidForPublicLink(cachedStore)) {
+      _lojaIdInterno = cachedStore;
+      _lojaSlugPublico = cachedStore;
+      if (mounted) setState(() => _carregando = false);
+      BootPerfLog.markBoot('home_cached_store', detail: cachedStore);
+    }
+
+    // 🔹 contexto de loja: StoreResolver (Firestore) + fallback Hive validado.
+    BootPerfLog.markBoot('store_context_start');
     final ctx = await resolveHomeStoreContext();
+    BootPerfLog.markBoot('store_context_end', detail: ctx.lojaIdInterno);
     _lojaIdInterno = ctx.lojaIdInterno;
     _lojaSlugPublico = ctx.slugPublico;
     if (_lojaIdInterno.isNotEmpty && isValidForPublicLink(_lojaIdInterno)) {
@@ -247,26 +275,33 @@ class _HomeScreenState extends State<HomeScreen>
       );
     }
 
+    if (mounted) setState(() => _carregando = false);
+    BootPerfLog.markBoot('dashboard_data_loaded', detail: 'shell');
+
     final lidForCatalogUrl = _lojaIdInterno.isNotEmpty
         ? _lojaIdInterno
         : (_lojaSlugPublico.isNotEmpty ? _lojaSlugPublico : '');
     if (lidForCatalogUrl.isNotEmpty) {
-      try {
-        _catalogOnlineUrl =
-            await CatalogPublicUrlService.montarUrlCatalogoPublicoAsync(
-          lidForCatalogUrl,
-          slug: _lojaSlugPublico.isNotEmpty ? _lojaSlugPublico : null,
-        );
-      } catch (_) {
-        _catalogOnlineUrl = buildPublicCatalogUrl(
-          _lojaSlugPublico.isNotEmpty ? _lojaSlugPublico : lidForCatalogUrl,
-        );
-      }
+      unawaited(() async {
+        try {
+          final url = await CatalogPublicUrlService.montarUrlCatalogoPublicoAsync(
+            lidForCatalogUrl,
+            slug: _lojaSlugPublico.isNotEmpty ? _lojaSlugPublico : null,
+          );
+          if (!mounted) return;
+          setState(() => _catalogOnlineUrl = url);
+        } catch (_) {
+          if (!mounted) return;
+          setState(
+            () => _catalogOnlineUrl = buildPublicCatalogUrl(
+              _lojaSlugPublico.isNotEmpty ? _lojaSlugPublico : lidForCatalogUrl,
+            ),
+          );
+        }
+      }());
     } else {
       _catalogOnlineUrl = null;
     }
-
-    if (mounted) setState(() => _carregando = false);
 
     // Contas a receber: abrir box + varrer valores no isolate principal atrasa scroll/UI —
     // rodar após 1º frame + pequeno delay (dialog continua igual quando necessário).

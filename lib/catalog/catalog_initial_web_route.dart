@@ -7,6 +7,79 @@ import 'package:master_palm/config/app_urls.dart';
 /// Slug reservado / inválido — nunca tratar como loja real.
 const String kInvalidPlaceholderLojaSlug = 'minha-loja';
 
+/// Primeiro segmento de path do SPA admin (não catálogo público por host).
+const Set<String> kAdminWebAppPathRoots = {
+  'home',
+  'login',
+  'register',
+  'verify_email',
+  'preconfig',
+  'router',
+  'splash',
+  'fornecedores',
+  'vendas',
+  'clientes',
+  'estoque',
+  'backup',
+  'relatorios',
+  'cadastro',
+  'permissao',
+  'permissoes',
+  'plano',
+  'planos',
+  'admin_usuarios',
+  'master_login',
+  'master_config',
+  'catalog_payment_support',
+  'site_config',
+  'vendedores',
+  'cadastro_usuarios',
+  'cadastro_usuario',
+  'gerenciar_vendedores',
+  'visualizar_permissoes',
+  'catalogo',
+  'cadastro_catalogo',
+  'relatorio_financeiro',
+  'relatorios_financeiros',
+  'relatorio_mais_vendidos',
+  'relatorio_ranking_clientes',
+  'relatorio_lucratividade_produto',
+  'financeiro',
+  'pedidos',
+  'pedidos_pendentes',
+  'configuracoes_catalogo',
+  'configuracoes',
+  'config',
+  'admin_sync',
+  'diagnostico',
+  'ajuda',
+  'config_pin',
+  'onboarding_loja',
+  'campanhas_sorteio',
+  'fretes_cupons',
+  'metas_comissoes',
+  'notas_fiscais',
+  'contas_receber',
+  'carrinhos_abandonados',
+  'marketplaces',
+  'motor_crescimento',
+  'precificacao',
+  'modelos_importacao',
+  'historico_cliente',
+  'mp-oauth-callback',
+  'health',
+  'test_checkout',
+  'produtos',
+};
+
+/// Path do app administrativo — nunca resolver loja por `catalog_domains`.
+bool isAdminWebAppPath(Uri uri) {
+  if (_uriIsPagamentoPublicPath(uri)) return false;
+  final segments = uri.pathSegments;
+  if (segments.isEmpty) return false;
+  return kAdminWebAppPathRoots.contains(segments.first.toLowerCase());
+}
+
 /// Resultado lógico do primeiro frame (antes de `catalog_domains` assíncrono, quando aplicável).
 enum CatalogInitialRouteKind {
   /// [_BootApp] / [MyApp] (admin, login, home).
@@ -73,6 +146,9 @@ class CatalogRouteDecision {
     if (_uriIsPagamentoPublicPath(uri)) {
       return _root;
     }
+    if (isAdminWebAppPath(uri)) {
+      return _root;
+    }
 
     final host = AppUrls.normalizeHostForAppUrlCheck(uri.host);
     if (isDefaultAppOrCatalogHostingHost(host)) {
@@ -116,6 +192,9 @@ class CatalogRouteDecision {
   }
 
   static CatalogRouteDecision _decideForDefaultAppOrHostingHost(Uri uri) {
+    if (isAdminWebAppPath(uri)) {
+      return _root;
+    }
     if (_uriHasLojaPathPriority(uri)) {
       final s = _extractLojaSlugFromPathQueryFragment(uri);
       if (s.isEmpty || s.toLowerCase() == kInvalidPlaceholderLojaSlug) {
@@ -199,4 +278,3 @@ String? _lojaSlugFromFragmentStatic(String fragment) {
   }
   return null;
 }
-

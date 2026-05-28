@@ -112,12 +112,75 @@ void main() {
       expect(d.kind, CatalogInitialRouteKind.customDomainNotConfigured);
     });
 
+    test('preview admin Firebase /home e /login → appRoot (não catálogo)', () {
+      const previewHost =
+          'masterpalm-58c46--admin-fotos-boot-performance-app-3f2hc6q6.web.app';
+      for (final path in ['/home', '/login', '/vendas', '/estoque']) {
+        final d = CatalogRouteDecision.fromUri(
+          Uri.parse('https://$previewHost$path?diag=1'),
+          isDefaultAppOrCatalogHostingHost: _isAppCatalogHost,
+          isPublicMarketingHost: AppUrls.isPublicMarketingHost,
+          customDomainMappingResolved: null,
+        );
+        expect(
+          d.kind,
+          CatalogInitialRouteKind.appRoot,
+          reason: 'path=$path',
+        );
+      }
+    });
+
+    test('preview admin Firebase /loja/slug → catálogo por path', () {
+      const previewHost =
+          'masterpalm-58c46--admin-fotos-boot-performance-app-3f2hc6q6.web.app';
+      final d = CatalogRouteDecision.fromUri(
+        Uri.parse('https://$previewHost/loja/nathy-pratas-e-folheados'),
+        isDefaultAppOrCatalogHostingHost: _isAppCatalogHost,
+        isPublicMarketingHost: AppUrls.isPublicMarketingHost,
+        customDomainMappingResolved: null,
+      );
+      expect(d.kind, CatalogInitialRouteKind.publicCatalogByLojaPath);
+      expect(d.extractedSlugOrId, 'nathy-pratas-e-folheados');
+    });
+
+    test('host desconhecido com /home → appRoot (fallback rota admin)', () {
+      final d = CatalogRouteDecision.fromUri(
+        Uri.parse('https://loja-desconhecida-xyz99.example/home'),
+        isDefaultAppOrCatalogHostingHost: _isAppCatalogHost,
+        isPublicMarketingHost: AppUrls.isPublicMarketingHost,
+        customDomainMappingResolved: false,
+      );
+      expect(d.kind, CatalogInitialRouteKind.appRoot);
+    });
+
+    test('AppUrls.isFirebaseAdminAppPreviewHost reconhece channel admin', () {
+      expect(
+        AppUrls.isFirebaseAdminAppPreviewHost(
+          'masterpalm-58c46--admin-fotos-boot-performance-app-3f2hc6q6.web.app',
+        ),
+        isTrue,
+      );
+      expect(
+        AppUrls.isFirebaseAdminAppPreviewHost('masterpalm-58c46.web.app'),
+        isFalse,
+      );
+      expect(
+        AppUrls.isFirebaseAdminAppPreviewHost(
+          'mastepalm--catalog-preview-abc.web.app',
+        ),
+        isFalse,
+      );
+    });
+
     test('regressão: raiz do app nunca vira customDomainNotConfigured', () {
       for (final u in [
         Uri.parse('https://app.mastepalm.com.br/'),
         Uri.parse('https://app.mastepalm.com.br'),
         Uri.parse('https://app.masterpalm.com.br/'),
         Uri.parse('https://masterpalm-58c46.web.app/'),
+        Uri.parse(
+          'https://masterpalm-58c46--admin-fotos-boot-performance-app-3f2hc6q6.web.app/',
+        ),
       ]) {
         final d = CatalogRouteDecision.fromUri(
           u,
