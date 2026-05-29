@@ -25,6 +25,9 @@ class HiveBoxNames {
   static String relatorioFinanceiro(String lojaId) => 'loja_config_$lojaId';
   static String contasReceber(String lojaId) => 'contas_receber_$lojaId';
 
+  /// Contas a pagar (compras parceladas) — por loja.
+  static String contasPagar(String lojaId) => 'contas_pagar_$lojaId';
+
   /// Lançamentos do módulo financeiro (complementar — por loja).
   static String lancamentosFinanceiros(String lojaId) =>
       'lancamentos_financeiros_$lojaId';

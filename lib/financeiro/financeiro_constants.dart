@@ -74,6 +74,8 @@ abstract class FinanceiroOrigemLancamento {
   static const String geradoGastoFixo = 'gasto_fixo_gerado';
   /// Recebimento registrado a partir da tela Contas a receber (fiado / título).
   static const String contaReceberFiado = 'conta_receber_fiado';
+  /// Pagamento registrado a partir de Contas a pagar (parcela de compra).
+  static const String contaPagarCompra = 'conta_pagar_compra';
 }
 
 /// Grupo para UI (não persiste no tipo).

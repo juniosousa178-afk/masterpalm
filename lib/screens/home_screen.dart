@@ -58,6 +58,7 @@ import '../utils/theme_notifier.dart';
 // ✅ notas fiscais
 import '../screens/notas_fiscais_screen.dart';
 import '../screens/contas_receber_screen.dart';
+import '../screens/contas_pagar_screen.dart';
 import '../screens/financeiro/financeiro_screen.dart';
 
 // ✅ consolidação de lojas
@@ -1972,6 +1973,18 @@ class _HomeScreenState extends State<HomeScreen>
           applyPlanGate: applyPlanGate,
           menuPlanTier: menuPlanTier,
           planFeature: PlanGateFeature.contasReceber,
+        ),
+      );
+      currentChildren.add(
+        _menuTileWithPlanGate(
+          'Contas a pagar',
+          Icons.payments_outlined,
+          '/contas_pagar',
+          pushWidget: const ContasPagarScreen(),
+          sidebarMode: sidebarMode,
+          applyPlanGate: applyPlanGate,
+          menuPlanTier: menuPlanTier,
+          planFeature: PlanGateFeature.financeiroLancamentos,
         ),
       );
     }

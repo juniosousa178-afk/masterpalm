@@ -67,7 +67,7 @@ class _ControleComprasFornecedorScreenState
             }
 
             return AlertDialog(
-              title: const Text('Nova compra (controle)'),
+              title: const Text('Nova conferência de compra'),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -255,7 +255,7 @@ class _ControleComprasFornecedorScreenState
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Controle por fornecedor'),
+        title: const Text('Conferência de compras'),
         backgroundColor: _primary,
         foregroundColor: Colors.white,
       ),
@@ -278,8 +278,16 @@ class _ControleComprasFornecedorScreenState
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          Text(
+                            'Apenas para conferência. Não altera estoque nem financeiro.',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey.shade700,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
                           const Text(
-                            'Totais por fornecedor (somente conferência)',
+                            'Totais por fornecedor',
                             style: TextStyle(
                               fontWeight: FontWeight.w600,
                               fontSize: 15,

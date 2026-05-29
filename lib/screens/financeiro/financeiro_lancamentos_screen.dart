@@ -9,6 +9,7 @@ import '../../financeiro/financeiro_constants.dart';
 import '../../models/lancamento_financeiro.dart';
 import '../../services/financeiro_firestore_service.dart';
 import '../../services/financeiro_hive_store.dart';
+import '../../core/conta_pagar_lancamento_vinculo.dart';
 import '../../services/financeiro_soft_delete_service.dart';
 import '../../utils/moeda_input_formatter.dart';
 
@@ -113,11 +114,18 @@ class _FinanceiroLancamentosScreenState
   }
 
   Future<void> _excluir(LancamentoFinanceiro l) async {
+    final vinculoCp = lancamentoVinculadoAContaPagar(l);
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Excluir lançamento?'),
-        content: Text(l.descricao),
+        content: Text(
+          vinculoCp
+              ? 'Este lançamento veio de uma Conta a Pagar. Ao excluir, a parcela '
+                  'vinculada também será removida das Contas a Pagar.\n\n'
+                  '${l.descricao}'
+              : l.descricao,
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -670,9 +678,10 @@ class _LancamentoFormSheetState extends State<_LancamentoFormSheet> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
-                            'Atenção: use este tipo apenas quando esta despesa não estiver '
-                            'sendo controlada no módulo de compras. Lançar aqui e também '
-                            'registrar o mesmo gasto na compra pode duplicar o valor nos relatórios.',
+                            'Use este lançamento apenas se a compra não foi registrada em '
+                            'Compras de Fornecedor ou Contas a Pagar. '
+                            'Lançar aqui e também registrar o mesmo gasto na compra pode '
+                            'duplicar o valor nos relatórios.',
                             style: TextStyle(
                               fontSize: 12,
                               color: Colors.amber.shade900,

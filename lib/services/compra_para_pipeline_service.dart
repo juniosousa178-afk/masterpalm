@@ -14,6 +14,7 @@ class CompraParaPipelineService {
   static Future<void> sincronizarItensCompraConfirmada(
     CompraFornecedor compra,
   ) async {
+    if (!compra.movimentaEstoque) return;
     if (compra.statusCompra != CompraFornecedorStatusCompra.confirmada) return;
     final lid = compra.lojaId.trim();
     if (lid.isEmpty) return;

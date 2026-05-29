@@ -78,6 +78,14 @@ class CompraFornecedor extends HiveObject {
   @HiveField(21, defaultValue: 'pendente')
   String syncStatus;
 
+  /// [CompraFornecedorTipo.produtosEstoque] ou [CompraFornecedorTipo.financeira].
+  @HiveField(22, defaultValue: CompraFornecedorTipo.produtosEstoque)
+  String tipoCompra;
+
+  /// Valor base informado (compras financeiras sem itens).
+  @HiveField(23, defaultValue: 0.0)
+  double valorInformado;
+
   CompraFornecedor({
     required this.id,
     required this.lojaId,
@@ -101,8 +109,15 @@ class CompraFornecedor extends HiveObject {
     this.outrasDespesas = 0,
     this.syncPendente = true,
     this.syncStatus = 'pendente',
+    this.tipoCompra = CompraFornecedorTipo.produtosEstoque,
+    this.valorInformado = 0,
   })  : criadoEm = criadoEm ?? DateTime.now(),
         atualizadoEm = atualizadoEm ?? DateTime.now();
+
+  bool get movimentaEstoque => CompraFornecedorTipo.movimentaEstoque(tipoCompra);
+
+  bool get ehCompraFinanceira =>
+      CompraFornecedorTipo.ouPadrao(tipoCompra) == CompraFornecedorTipo.financeira;
 
   List<CompraFornecedorItem> get itensOuVazio =>
       itens ?? const <CompraFornecedorItem>[];
@@ -119,8 +134,12 @@ class CompraFornecedor extends HiveObject {
   double get subtotalItensBase => subtotalItens;
 
   /// Total financeiro da compra (origem do evento; uma linha no futuro financeiro).
-  double get valorTotalFinanceiro =>
-      (subtotalItens + frete + outrasDespesas - desconto).clamp(0.0, 1e15);
+  double get valorTotalFinanceiro {
+    final base = CompraFornecedorTipo.usaItensNoTotal(tipoCompra)
+        ? subtotalItens
+        : valorInformado;
+    return (base + frete + outrasDespesas - desconto).clamp(0.0, 1e15);
+  }
 
   /// Alias legado — mesmo que [valorTotalFinanceiro].
   double get valorTotal => valorTotalFinanceiro;
@@ -151,6 +170,8 @@ class CompraFornecedor extends HiveObject {
     double? outrasDespesas,
     bool? syncPendente,
     String? syncStatus,
+    String? tipoCompra,
+    double? valorInformado,
   }) {
     return CompraFornecedor(
       id: id ?? this.id,
@@ -176,6 +197,8 @@ class CompraFornecedor extends HiveObject {
       outrasDespesas: outrasDespesas ?? this.outrasDespesas,
       syncPendente: syncPendente ?? this.syncPendente,
       syncStatus: syncStatus ?? this.syncStatus,
+      tipoCompra: tipoCompra ?? this.tipoCompra,
+      valorInformado: valorInformado ?? this.valorInformado,
     );
   }
 }

@@ -26,6 +26,36 @@ abstract class CompraFornecedorStatusCompra {
   }
 }
 
+/// Tipo operacional da compra (estoque vs apenas financeira).
+abstract class CompraFornecedorTipo {
+  static const String produtosEstoque = 'produtos_estoque';
+  static const String financeira = 'financeira';
+
+  static const List<String> todos = [produtosEstoque, financeira];
+
+  static String ouPadrao(String? s) {
+    final t = (s ?? '').trim();
+    return todos.contains(t) ? t : produtosEstoque;
+  }
+
+  static bool movimentaEstoque(String tipo) =>
+      ouPadrao(tipo) != financeira;
+
+  static bool usaItensNoTotal(String tipo) =>
+      ouPadrao(tipo) != financeira;
+
+  static String legivel(String s) {
+    switch (ouPadrao(s)) {
+      case produtosEstoque:
+        return 'Compra com produtos para estoque';
+      case financeira:
+        return 'Compra apenas financeira';
+      default:
+        return s;
+    }
+  }
+}
+
 /// Status de pagamento (independente da confirmação da compra).
 abstract class CompraFornecedorStatusPagamento {
   static const String pendente = 'pendente';

@@ -16,7 +16,10 @@ import '../../services/compra_financeiro_integracao_service.dart';
 import '../../services/compra_fornecedor_hive_store.dart';
 import '../../services/compra_fornecedor_sync_service.dart';
 import '../../services/compra_para_pipeline_service.dart';
+import '../../services/conta_pagar_service.dart';
+import '../../services/conta_pagar_hive_store.dart';
 import '../../utils/compra_fornecedor_rateio.dart';
+import '../contas_pagar_screen.dart';
 import '../produto_form_screen.dart';
 
 class CompraFornecedorFormScreen extends StatefulWidget {
@@ -50,6 +53,9 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
   final _outrasCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
   final _valorPagoCtrl = TextEditingController();
+  final _valorInformadoCtrl = TextEditingController();
+  final _parcelasCtrl = TextEditingController(text: '3');
+  final _intervaloMesesCtrl = TextEditingController(text: '1');
 
   DateTime _dataCompra = DateTime.now();
   DateTime? _dataVencimento;
@@ -63,6 +69,19 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
   DateTime? _confirmadoEm;
   bool _estoqueIntegrado = false;
   String _idLancamentoFinanceiro = '';
+
+  bool _pagamentoParcelado = false;
+  int _numeroParcelas = 3;
+  DateTime _primeiroVencimento = DateTime.now();
+  int _intervaloMensal = 1;
+
+  String _tipoCompra = CompraFornecedorTipo.produtosEstoque;
+
+  bool get _ehFinanceira =>
+      _tipoCompra == CompraFornecedorTipo.financeira;
+
+  bool get _tipoFixo =>
+      _statusCompra == CompraFornecedorStatusCompra.confirmada;
 
   @override
   void initState() {
@@ -104,6 +123,131 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
       _confirmadoEm = e.confirmadoEm;
       _estoqueIntegrado = e.estoqueIntegrado;
       _idLancamentoFinanceiro = e.idLancamentoFinanceiro;
+      _tipoCompra = CompraFornecedorTipo.ouPadrao(e.tipoCompra);
+      _valorInformadoCtrl.text = _fmtNum(e.valorInformado);
+    }
+  }
+
+  Future<void> _pickPrimeiroVencimento() async {
+    final d = await showDatePicker(
+      context: context,
+      initialDate: _primeiroVencimento,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+    );
+    if (d != null) setState(() => _primeiroVencimento = d);
+  }
+
+  void _syncNumeroParcelasFromController() {
+    final n = int.tryParse(_parcelasCtrl.text.trim());
+    if (n != null) {
+      _numeroParcelas = n.clamp(1, 48);
+    }
+  }
+
+  Future<GeracaoParcelasCompraResultado?> _gerarContasPagarSeParcelado(
+    CompraFornecedor compra,
+  ) async {
+    if (!_pagamentoParcelado) return null;
+
+    _syncNumeroParcelasFromController();
+
+    debugPrint('[CP_COMPRA][parcelado] $_pagamentoParcelado');
+    debugPrint('[CP_COMPRA][numeroParcelas] $_numeroParcelas');
+    debugPrint('[CP_COMPRA][primeiroVencimento] $_primeiroVencimento');
+    debugPrint('[CP_COMPRA][compraId] ${compra.id}');
+    debugPrint('[CP_COMPRA][valorInformado] ${compra.valorInformado}');
+    debugPrint('[CP_COMPRA][valorTotalFinanceiro] ${compra.valorTotalFinanceiro}');
+
+    if (compra.valorTotalFinanceiro <= 1e-9) {
+      return GeracaoParcelasCompraResultado(
+        criadas: 0,
+        jaExistiam: false,
+        erro: 'valor_invalido',
+      );
+    }
+    if (compra.id.trim().isEmpty) {
+      return GeracaoParcelasCompraResultado(
+        criadas: 0,
+        jaExistiam: false,
+        erro: 'compra_id_vazio',
+      );
+    }
+    if (_numeroParcelas < 1) {
+      return GeracaoParcelasCompraResultado(
+        criadas: 0,
+        jaExistiam: false,
+        erro: 'numero_parcelas_invalido',
+      );
+    }
+
+    try {
+      debugPrint('[CP_COMPRA][antes_gerar_parcelas]');
+      final r = await ContaPagarService.gerarParcelasCompra(
+        lojaId: widget.lojaId,
+        compra: compra,
+        numeroParcelas: _numeroParcelas,
+        primeiroVencimento: _primeiroVencimento,
+        intervaloMeses: _intervaloMensal,
+      );
+      debugPrint('[CP_COMPRA][parcelas_criadas] ${r.criadas}');
+      if (r.jaExistiam) {
+        debugPrint('[CP_COMPRA][parcelas_existentes] compraId=${compra.id}');
+      }
+      if (r.erro != null) {
+        debugPrint('[CP_COMPRA][erro_gerar_parcelas] ${r.erro}');
+      }
+      return r;
+    } catch (e, st) {
+      debugPrint('[CP_COMPRA][erro_gerar_parcelas] $e\n$st');
+      return GeracaoParcelasCompraResultado(
+        criadas: 0,
+        jaExistiam: false,
+        erro: 'excecao',
+      );
+    }
+  }
+
+  Future<void> _oferecerVerParcelasGeradas({
+    required CompraFornecedor compra,
+    required int quantidade,
+    bool jaExistiam = false,
+  }) async {
+    final ver = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          jaExistiam ? 'Contas a pagar existentes' : 'Contas a pagar geradas',
+        ),
+        content: Text(
+          jaExistiam
+              ? 'Esta compra já possui $quantidade parcela(s) em Contas a pagar.'
+              : '$quantidade parcela(s) criada(s) para esta compra. '
+                  'Você pode registrar os pagamentos em Contas a pagar.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Fechar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Ver parcelas'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (ver == true) {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => ContasPagarScreen(
+            compraId: compra.id,
+            fornecedorId: widget.fornecedorHiveKey,
+            tituloContextual: 'Parcelas desta compra',
+          ),
+        ),
+      );
     }
   }
 
@@ -115,6 +259,9 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
     _outrasCtrl.dispose();
     _descCtrl.dispose();
     _valorPagoCtrl.dispose();
+    _valorInformadoCtrl.dispose();
+    _parcelasCtrl.dispose();
+    _intervaloMesesCtrl.dispose();
     super.dispose();
   }
 
@@ -144,8 +291,12 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
     return t;
   }
 
-  double get _valorTotal =>
-      (_subtotalItens + _frete + _outrasDespesas - _desconto).clamp(0.0, 1e15);
+  double get _valorTotal {
+    final base = _ehFinanceira
+        ? _parseMoney(_valorInformadoCtrl.text)
+        : _subtotalItens;
+    return (base + _frete + _outrasDespesas - _desconto).clamp(0.0, 1e15);
+  }
 
   double get _valorEmAberto => (_valorTotal - _valorPago).clamp(0.0, 1e15);
 
@@ -436,6 +587,7 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
   }
 
   Future<void> _sincronizarPipelineSeConfirmada(CompraFornecedor c) async {
+    if (!c.movimentaEstoque) return;
     if (c.statusCompra == CompraFornecedorStatusCompra.confirmada) {
       await CompraParaPipelineService.sincronizarItensCompraConfirmada(c);
     }
@@ -473,12 +625,16 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
       outrasDespesas: _outrasDespesas,
       desconto: _desconto,
       valorPago: _valorPago,
-      itens: List<CompraFornecedorItem>.from(_itens),
+      itens: _ehFinanceira
+          ? const <CompraFornecedorItem>[]
+          : List<CompraFornecedorItem>.from(_itens),
       estoqueIntegrado: _estoqueIntegrado,
       idLancamentoFinanceiro: _idLancamentoFinanceiro,
       confirmadoEm: conf,
       criadoEm: widget.compraExistente?.criadoEm ?? agora,
       atualizadoEm: agora,
+      tipoCompra: CompraFornecedorTipo.ouPadrao(_tipoCompra),
+      valorInformado: _ehFinanceira ? _parseMoney(_valorInformadoCtrl.text) : 0,
     );
   }
 
@@ -518,10 +674,11 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
     );
   }
 
-  /// Confirmar só se não cancelada; primeira confirmação exige pelo menos um item.
+  /// Confirmar só se não cancelada; produtos exigem itens; financeira exige valor.
   bool get _podeConfirmarCompra {
     if (_statusCompra == CompraFornecedorStatusCompra.cancelada) return false;
     if (_statusCompra == CompraFornecedorStatusCompra.confirmada) return true;
+    if (_ehFinanceira) return _valorTotal > 1e-9;
     return _itens.isNotEmpty;
   }
 
@@ -597,6 +754,10 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
   Future<void> _confirmarCompra() async {
     if (_gravando) return;
 
+    debugPrint('[CP_COMPRA][confirm_start]');
+    debugPrint('[CP_COMPRA][tipoCompra] $_tipoCompra');
+    debugPrint('[CP_COMPRA][movimentaEstoque] ${!_ehFinanceira}');
+
     if (_statusCompra == CompraFornecedorStatusCompra.cancelada) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -607,13 +768,26 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
 
     final jaConfirmada =
         _statusCompra == CompraFornecedorStatusCompra.confirmada;
-    if (!jaConfirmada && _itens.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Adicione pelo menos um item para confirmar a compra.'),
-        ),
-      );
-      return;
+    if (!jaConfirmada) {
+      if (_ehFinanceira) {
+        if (_valorTotal <= 1e-9) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Informe o valor da compra para confirmar.',
+              ),
+            ),
+          );
+          return;
+        }
+      } else if (_itens.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Adicione pelo menos um item para confirmar a compra.'),
+          ),
+        );
+        return;
+      }
     }
 
     setState(() => _gravando = true);
@@ -647,6 +821,10 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
         return;
       }
       CompraFinanceiroIntegracaoService.aplicarAposPersistenciaLocal(finalModel);
+      GeracaoParcelasCompraResultado? parcelasGeradas;
+      if (_pagamentoParcelado) {
+        parcelasGeradas = await _gerarContasPagarSeParcelado(finalModel);
+      }
       if (!jaConfirmada) {
         setState(() {
           _confirmadoEm = confEm;
@@ -655,13 +833,71 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
       }
       await _sincronizarPipelineSeConfirmada(finalModel);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(jaConfirmada
-              ? 'Compra já estava confirmada (sem duplicar efeitos).'
-              : 'Compra confirmada.'),
-        ),
-      );
+
+      if (parcelasGeradas != null) {
+        if (parcelasGeradas.criadas > 0) {
+          await _oferecerVerParcelasGeradas(
+            compra: finalModel,
+            quantidade: parcelasGeradas.criadas,
+          );
+        } else if (parcelasGeradas.jaExistiam) {
+          final box = await ContaPagarHiveStore.openBox(widget.lojaId);
+          final qtd = box != null
+              ? ContaPagarService.contarParcelasParaCompra(box, finalModel.id)
+              : 0;
+          if (!mounted) return;
+          if (qtd > 0) {
+            await _oferecerVerParcelasGeradas(
+              compra: finalModel,
+              quantidade: qtd,
+              jaExistiam: true,
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Contas a pagar já existiam para esta compra (sem duplicar).',
+                ),
+              ),
+            );
+          }
+        } else if (parcelasGeradas.erro == 'valor_invalido') {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Informe um valor válido para gerar as parcelas.',
+              ),
+            ),
+          );
+        } else if (parcelasGeradas.erro == 'box_indisponivel') {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Não foi possível abrir Contas a Pagar localmente. '
+                'Tente recarregar o app.',
+              ),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(jaConfirmada
+                  ? 'Compra confirmada, mas não foi possível gerar parcelas.'
+                  : 'Compra confirmada, mas não foi possível gerar parcelas.'),
+            ),
+          );
+        }
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(jaConfirmada
+                ? 'Compra já estava confirmada (sem duplicar efeitos).'
+                : 'Compra confirmada.'),
+          ),
+        );
+      }
+      if (!mounted) return;
       Navigator.of(context).pop();
     } finally {
       if (mounted) setState(() => _gravando = false);
@@ -683,6 +919,52 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          _secao('Tipo de compra', [
+            RadioListTile<String>(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Compra com produtos para estoque'),
+              subtitle: const Text(
+                'Use quando a mercadoria será lançada no estoque e terá '
+                'custo dos produtos atualizado.',
+              ),
+              value: CompraFornecedorTipo.produtosEstoque,
+              groupValue: _tipoCompra,
+              onChanged: _tipoFixo || _gravando
+                  ? null
+                  : (v) {
+                      if (v == null) return;
+                      setState(() => _tipoCompra = v);
+                    },
+            ),
+            RadioListTile<String>(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Compra apenas financeira'),
+              subtitle: const Text(
+                'Use para registrar um valor a pagar sem movimentar estoque, '
+                'como serviço, frete, embalagem, manutenção ou compra sem '
+                'detalhar produtos.',
+              ),
+              value: CompraFornecedorTipo.financeira,
+              groupValue: _tipoCompra,
+              onChanged: _tipoFixo || _gravando
+                  ? null
+                  : (v) {
+                      if (v == null) return;
+                      setState(() => _tipoCompra = v);
+                    },
+            ),
+            if (_tipoFixo)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  'Tipo definido na confirmação e não pode ser alterado.',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                ),
+              ),
+          ]),
+          const SizedBox(height: 12),
+          _buildAvisoTipo(),
+          const SizedBox(height: 16),
           _secao('Fornecedor e dados gerais', [
             Text(widget.fornecedorNome,
                 style: const TextStyle(
@@ -732,52 +1014,68 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
               maxLines: 3,
             ),
           ]),
-          const SizedBox(height: 20),
-          _secao('Itens', [
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _gravando ? null : _adicionarItem,
-                    icon: const Icon(Icons.add),
-                    label: const Text('Adicionar item'),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            if (_itens.isEmpty)
-              Text(
-                'Nenhum item. Compras sem itens ainda podem ser salvas como rascunho.',
-                style: TextStyle(color: Colors.grey[600], fontSize: 13),
-              )
-            else
-              ...List.generate(_itens.length, (i) {
-                final it = _itens[i];
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  child: ListTile(
-                    title: Text(it.produtoNome),
-                    subtitle: Text(
-                      it.subtotalFinal > 0
-                          ? '${it.quantidade} × ${_fmtBrl(it.custoUnitario)} (base) · '
-                              'custo final ${_fmtBrl(it.custoUnitarioParaEstoquePrecificacao)} · '
-                              'subtotal ${_fmtBrl(it.subtotalFinal)}'
-                          : '${it.quantidade} × ${_fmtBrl(it.custoUnitario)} = ${_fmtBrl(it.subtotal)}',
-                    ),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.delete_outline),
-                      onPressed: () => _removerItem(i),
+          if (!_ehFinanceira) ...[
+            const SizedBox(height: 20),
+            _secao('Itens', [
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _gravando ? null : _adicionarItem,
+                      icon: const Icon(Icons.add),
+                      label: const Text('Adicionar item'),
                     ),
                   ),
-                );
-              }),
-            const SizedBox(height: 8),
-            Text('Subtotal itens: ${_fmtBrl(_subtotalItens)}',
-                style: const TextStyle(fontWeight: FontWeight.w600)),
-          ]),
+                ],
+              ),
+              const SizedBox(height: 8),
+              if (_itens.isEmpty)
+                Text(
+                  'Adicione pelo menos um item para confirmar esta compra.',
+                  style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                )
+              else
+                ...List.generate(_itens.length, (i) {
+                  final it = _itens[i];
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: ListTile(
+                      title: Text(it.produtoNome),
+                      subtitle: Text(
+                        it.subtotalFinal > 0
+                            ? '${it.quantidade} × ${_fmtBrl(it.custoUnitario)} (base) · '
+                                'custo final ${_fmtBrl(it.custoUnitarioParaEstoquePrecificacao)} · '
+                                'subtotal ${_fmtBrl(it.subtotalFinal)}'
+                            : '${it.quantidade} × ${_fmtBrl(it.custoUnitario)} = ${_fmtBrl(it.subtotal)}',
+                      ),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.delete_outline),
+                        onPressed: () => _removerItem(i),
+                      ),
+                    ),
+                  );
+                }),
+              const SizedBox(height: 8),
+              Text('Subtotal itens: ${_fmtBrl(_subtotalItens)}',
+                  style: const TextStyle(fontWeight: FontWeight.w600)),
+            ]),
+          ],
           const SizedBox(height: 20),
           _secao('Totais', [
+            if (_ehFinanceira) ...[
+              TextField(
+                controller: _valorInformadoCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Valor da compra *',
+                  hintText: 'Serviço, frete avulso, manutenção…',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                onChanged: (_) => setState(() {}),
+              ),
+              const SizedBox(height: 12),
+            ],
             TextField(
               controller: _freteCtrl,
               decoration: const InputDecoration(
@@ -830,6 +1128,107 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
                       ? Colors.orange.shade800
                       : Colors.green.shade700,
                 )),
+          ]),
+          const SizedBox(height: 20),
+          _secao('Pagamento parcelado', [
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Pagamento parcelado'),
+              subtitle: const Text(
+                'Gera contas a pagar ao confirmar. '
+                'Não lança saída no financeiro até marcar cada parcela como paga.',
+              ),
+              value: _pagamentoParcelado,
+              onChanged: _gravando
+                  ? null
+                  : (v) => setState(() {
+                        _pagamentoParcelado = v;
+                        if (v) {
+                          _valorPagoCtrl.text = '0';
+                          _statusPagamento =
+                              CompraFornecedorStatusPagamento.pendente;
+                        }
+                      }),
+            ),
+            if (_pagamentoParcelado) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.amber.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.amber.shade700),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.warning_amber_rounded,
+                        size: 18, color: Colors.amber.shade900),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _ehFinanceira
+                            ? 'Se esta compra gerar Contas a Pagar, não lance o mesmo valor '
+                                'manualmente no Financeiro para evitar duplicidade. '
+                                'O lançamento financeiro será criado automaticamente quando '
+                                'você pagar cada parcela.'
+                            : 'Não lance essa mesma compra manualmente no Financeiro, '
+                                'para evitar duplicidade. O lançamento financeiro será criado '
+                                'automaticamente quando você pagar cada parcela.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          height: 1.35,
+                          color: Colors.amber.shade900,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _parcelasCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Número de parcelas',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                onChanged: (v) {
+                  final n = int.tryParse(v) ?? 1;
+                  setState(() => _numeroParcelas = n.clamp(1, 48));
+                },
+              ),
+              const SizedBox(height: 8),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Primeiro vencimento'),
+                subtitle: Text(DateFormat('dd/MM/yyyy').format(_primeiroVencimento)),
+                trailing: const Icon(Icons.calendar_today),
+                onTap: _gravando ? null : _pickPrimeiroVencimento,
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _intervaloMesesCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Intervalo entre parcelas (meses)',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                onChanged: (v) {
+                  final n = int.tryParse(v) ?? 1;
+                  setState(() => _intervaloMensal = n.clamp(1, 24));
+                },
+              ),
+              if (_valorTotal > 0 && _numeroParcelas > 0) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Prévia: ${ContaPagarService.parcelarValores(_valorTotal, _numeroParcelas).map((p) => _fmtBrl(p)).join(' · ')}',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                ),
+              ],
+            ],
           ]),
           const SizedBox(height: 20),
           _secao('Status', [
@@ -939,6 +1338,47 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
             ),
           ),
           const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAvisoTipo() {
+    final financeira = _ehFinanceira;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: financeira ? Colors.teal.shade50 : Colors.blue.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: financeira ? Colors.teal.shade100 : Colors.blue.shade100,
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            financeira ? Icons.account_balance_wallet_outlined : Icons.info_outline,
+            size: 18,
+            color: financeira ? Colors.teal.shade800 : Colors.blue.shade700,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              financeira
+                  ? 'Esta compra não movimenta estoque e não altera custo dos produtos. '
+                      'Ela serve para controlar o valor a pagar e os pagamentos no financeiro. '
+                      'Se gerar Contas a Pagar, não lance o mesmo valor manualmente no Financeiro.'
+                  : 'Esta compra poderá atualizar estoque e custo dos produtos pelo fluxo de '
+                      'precificação/estoque. O financeiro será movimentado quando as parcelas '
+                      'forem pagas.',
+              style: TextStyle(
+                fontSize: 12,
+                height: 1.35,
+                color: financeira ? Colors.teal.shade900 : Colors.blue.shade900,
+              ),
+            ),
+          ),
         ],
       ),
     );

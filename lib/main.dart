@@ -110,6 +110,7 @@ import 'screens/site_config_screen.dart';
 import 'screens/metas_comissoes_screen.dart';
 import 'screens/notas_fiscais_screen.dart';
 import 'screens/contas_receber_screen.dart';
+import 'screens/contas_pagar_screen.dart';
 import 'screens/financeiro/financeiro_screen.dart';
 import 'screens/relatorio_mais_vendidos_screen.dart';
 import 'screens/relatorio_ranking_clientes_screen.dart';
@@ -191,6 +192,7 @@ import 'models/comissao_config.dart';
 import 'models/venda_tracking.dart';
 import 'models/nota_fiscal.dart';
 import 'models/conta_receber.dart';
+import 'models/conta_pagar.dart';
 import 'models/lancamento_financeiro.dart';
 import 'models/gasto_fixo_mensal.dart';
 import 'models/compra_fornecedor.dart';
@@ -3665,6 +3667,8 @@ void _registerAllHiveAdaptersBootstrap() {
     Hive.registerAdapter(CompraFornecedorItemAdapter());
   if (!Hive.isAdapterRegistered(34))
     Hive.registerAdapter(CompraItemPipelineAdapter());
+  if (!Hive.isAdapterRegistered(35))
+    Hive.registerAdapter(ContaPagarAdapter());
 }
 
 /// Catálogo web: não bloquear [main] com dezenas de [registerAdapter] síncronos
@@ -4474,6 +4478,10 @@ class MyApp extends StatelessWidget {
               '/contas_receber': (_) => _planGate(
                     PlanGateFeature.contasReceber,
                     const ContasReceberScreen(),
+                  ),
+              '/contas_pagar': (_) => _planGate(
+                    PlanGateFeature.financeiroLancamentos,
+                    const ContasPagarScreen(),
                   ),
               '/financeiro': (ctx) {
                 DateTime? mesInicial;

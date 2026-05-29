@@ -9,6 +9,8 @@ import '../../core/hive_box_names.dart';
 import '../../financeiro/financeiro_constants.dart';
 import '../../financeiro/lancamento_financeiro_competencia_ui.dart';
 import '../../models/conta_receber.dart';
+import '../../services/conta_pagar_hive_store.dart';
+import '../../services/conta_pagar_service.dart';
 import '../../models/lancamento_financeiro.dart';
 import '../../models/venda.dart';
 import '../../services/fechamento_service.dart';
@@ -22,6 +24,7 @@ import '../../services/loja_id_service.dart';
 import '../../utils/role_utils.dart';
 import '../relatorio_financeiro_screen.dart';
 import '../relatorios_financeiros_screen.dart';
+import '../contas_pagar_screen.dart';
 import 'financeiro_lancamentos_screen.dart';
 import 'controle_compras_fornecedor_screen.dart';
 import 'financeiro_resumo_consolidado_screen.dart';
@@ -73,6 +76,7 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
   })? _resumoVendasMes;
 
   double _totalContasReceberPendentes = 0;
+  ResumoContasPagar _resumoContasPagar = const ResumoContasPagar();
   String _nomeLojaExibicao = '';
 
   /// Última migração F2C (Hive→Firestore) — informativo; não bloqueia reexecução.
@@ -222,6 +226,21 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
         }
       } catch (_) {}
 
+      var resumoCp = const ResumoContasPagar();
+      try {
+        final cpBox = await ContaPagarHiveStore.openBox(id);
+        if (cpBox != null) {
+          final contas =
+              cpBox.values.where((c) => c.lojaId == id).toList();
+          resumoCp = ContaPagarService.resumo(
+            contas: contas,
+            ano: y,
+            mes: m,
+            visaoCompetencia: _visaoListaPorCompetencia,
+          );
+        }
+      } catch (_) {}
+
       FinanceiroMigracaoF2cRegistroLeitura? regMigr;
       try {
         regMigr = await FinanceiroFirestoreService.lerUltimaMigracaoF2c(id);
@@ -244,6 +263,7 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
             _nomeLojaExibicao = nomeLojaUi;
           }
           _totalContasReceberPendentes = totalCr;
+          _resumoContasPagar = resumoCp;
           _loading = false;
         });
       }
@@ -1352,6 +1372,20 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
                             },
                           ),
                           _chipAcao(
+                            icon: Icons.payments_outlined,
+                            label: 'Contas a pagar',
+                            onTap: () async {
+                              await Navigator.push<void>(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const ContasPagarScreen(),
+                                ),
+                              );
+                              if (!mounted) return;
+                              _load();
+                            },
+                          ),
+                          _chipAcao(
                             icon: Icons.calendar_month,
                             label: 'Fechamento',
                             onTap: () {
@@ -1379,7 +1413,7 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
                           ),
                           _chipAcao(
                             icon: Icons.storefront_outlined,
-                            label: 'Controle por fornecedor',
+                            label: 'Conferência de compras',
                             onTap: () {
                               Navigator.push<void>(
                                 context,
@@ -1646,11 +1680,60 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
                 ),
                 Expanded(
                   child: _miniMetric(
+                    _visaoListaPorCompetencia
+                        ? 'A pagar (competência)'
+                        : 'Contas a pagar (aberto)',
+                    _moeda.format(_resumoContasPagar.totalAberto),
+                    Colors.brown.shade700,
+                  ),
+                ),
+              ],
+            ),
+            if (!_visaoListaPorCompetencia) ...[
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: _miniMetric(
+                      'CP vencidas',
+                      _moeda.format(_resumoContasPagar.totalVencido),
+                      Colors.redAccent,
+                    ),
+                  ),
+                  Expanded(
+                    child: _miniMetric(
+                      'CP pagas no mês',
+                      _moeda.format(_resumoContasPagar.totalPagoNoMes),
+                      _success,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: _miniMetric(
+                      'Fluxo projetado (CP)',
+                      _moeda.format(_resumoContasPagar.fluxoProjetado),
+                      Colors.teal.shade700,
+                    ),
+                  ),
+                  const Expanded(child: SizedBox()),
+                ],
+              ),
+            ],
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _miniMetric(
                     'Taxas pagas',
                     _moeda.format(rv?.taxas ?? 0),
                     Colors.purple,
                   ),
                 ),
+                const Expanded(child: SizedBox()),
               ],
             ),
             const SizedBox(height: 12),

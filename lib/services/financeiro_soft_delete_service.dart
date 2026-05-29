@@ -11,9 +11,11 @@ import 'package:hive/hive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
+import '../core/conta_pagar_lancamento_vinculo.dart';
 import '../core/logger.dart';
 import '../models/gasto_fixo_mensal.dart';
 import '../models/lancamento_financeiro.dart';
+import 'conta_pagar_financeiro_exclusao_service.dart';
 import 'controle_compras_fornecedor_firestore_service.dart';
 import 'controle_compras_fornecedor_service.dart';
 import 'financeiro_firestore_service.dart';
@@ -198,8 +200,18 @@ class FinanceiroSoftDeleteService {
     final existing = box.get(id);
     if (existing == null) return null;
 
+    final cpId = contaPagarIdFromLancamento(existing);
+
     await FinanceiroFirestoreService.deleteLancamento(lojaId: lid, id: id);
     await box.delete(id);
+
+    if (cpId != null) {
+      await ContaPagarFinanceiroExclusaoService.cancelarContaPagarPorId(
+        lojaId: lid,
+        contaPagarId: cpId,
+        excluirLancamentoVinculado: false,
+      );
+    }
 
     final trash = await _trashLancBox();
     existing.lojaId = lid;

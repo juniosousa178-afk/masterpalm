@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
 import '../models/compra_fornecedor.dart';
+import '../models/compra_fornecedor_constants.dart';
 import '../models/compra_fornecedor_item.dart';
 import 'compra_financeiro_integracao_service.dart';
 
@@ -71,6 +72,8 @@ class CompraFornecedorFirestoreService {
       'syncPendente': c.syncPendente,
       'syncStatus': c.syncStatus,
       'itens': itens,
+      'tipoCompra': CompraFornecedorTipo.ouPadrao(c.tipoCompra),
+      'valorInformado': c.valorInformado,
       'schemaVersion': 1,
     };
   }

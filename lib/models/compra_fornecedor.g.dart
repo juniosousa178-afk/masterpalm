@@ -39,13 +39,17 @@ class CompraFornecedorAdapter extends TypeAdapter<CompraFornecedor> {
       outrasDespesas: fields[19] == null ? 0.0 : fields[19] as double,
       syncPendente: fields[20] == null ? true : fields[20] as bool,
       syncStatus: fields[21] == null ? 'pendente' : fields[21] as String,
+      tipoCompra: fields[22] == null
+          ? CompraFornecedorTipo.produtosEstoque
+          : fields[22] as String,
+      valorInformado: fields[23] == null ? 0.0 : fields[23] as double,
     );
   }
 
   @override
   void write(BinaryWriter writer, CompraFornecedor obj) {
     writer
-      ..writeByte(22)
+      ..writeByte(24)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -89,7 +93,11 @@ class CompraFornecedorAdapter extends TypeAdapter<CompraFornecedor> {
       ..writeByte(20)
       ..write(obj.syncPendente)
       ..writeByte(21)
-      ..write(obj.syncStatus);
+      ..write(obj.syncStatus)
+      ..writeByte(22)
+      ..write(obj.tipoCompra)
+      ..writeByte(23)
+      ..write(obj.valorInformado);
   }
 
   @override
