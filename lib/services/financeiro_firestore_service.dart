@@ -63,7 +63,11 @@ class FinanceiroPullF2dResultado {
 class FinanceiroFirestoreService {
   FinanceiroFirestoreService._();
 
-  static final FirebaseFirestore _db = FirebaseFirestore.instance;
+  @visibleForTesting
+  static FirebaseFirestore? debugFirestoreOverride;
+
+  static FirebaseFirestore get _db =>
+      debugFirestoreOverride ?? FirebaseFirestore.instance;
 
   /// Evita dois pulls simultâneos (mesmo isolado).
   static bool _pullF2dEmExecucao = false;

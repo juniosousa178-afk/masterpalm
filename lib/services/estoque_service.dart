@@ -70,7 +70,11 @@ enum ResultadoAjusteEstoque {
 
 /// Serviço centralizado para controle de estoque
 class EstoqueService {
-  static final FirebaseFirestore _db = FirebaseFirestore.instance;
+  @visibleForTesting
+  static FirebaseFirestore? debugFirestoreOverride;
+
+  static FirebaseFirestore get _db =>
+      debugFirestoreOverride ?? FirebaseFirestore.instance;
 
   /// Hive: atualiza [Produto.updatedAt] após mutação de quantidade no ramo **devolução** de [atualizarEstoque].
   /// Mesmo critério do +/- na lista: se o sync remoto falhar ou atrasar, o pull não deve regredir com snapshot velho.
