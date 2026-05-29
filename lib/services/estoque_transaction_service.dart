@@ -41,7 +41,11 @@ class EstoqueTransactionResult {
 
 /// Serviço de baixa de estoque atômica via Firestore Transaction
 class EstoqueTransactionService {
-  static final FirebaseFirestore _db = FirebaseFirestore.instance;
+  @visibleForTesting
+  static FirebaseFirestore? debugFirestoreOverride;
+
+  static FirebaseFirestore get _db =>
+      debugFirestoreOverride ?? FirebaseFirestore.instance;
 
   /// Idempotência de devolução **só no dispositivo** — evita coleção `estoque_devolucao` no Firestore
   /// (costuma dar permission-denied nas rules sem deploy dedicado).

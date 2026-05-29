@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../models/compra_fornecedor.dart';
 import '../../models/compra_fornecedor_constants.dart';
 import '../../models/fornecedor.dart';
+import '../../services/compra_fornecedor_cancelamento_service.dart';
 import '../../services/compra_fornecedor_hive_store.dart';
 import '../../services/compra_fornecedor_sync_service.dart';
 import 'compra_fornecedor_form_screen.dart';
@@ -84,6 +85,56 @@ class _FornecedorComprasScreenState extends State<FornecedorComprasScreen> {
       ultima = ultima == null || c.dataCompra.isAfter(ultima) ? c.dataCompra : ultima;
     }
     return (totalComprado: total, emAberto: aberto, ultima: ultima);
+  }
+
+  Future<void> _confirmarECancelarCompra(CompraFornecedor c) async {
+    if (c.statusCompra == CompraFornecedorStatusCompra.cancelada) return;
+
+    final comEstorno =
+        CompraFornecedorCancelamentoService.exigeAvisoEstornoNaConfirmacao(c);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancelar compra'),
+        content: Text(
+          comEstorno
+              ? 'Essa compra movimentou estoque. Ao cancelar, o sistema vai estornar '
+                  'as quantidades dos produtos e restaurar o custo anterior. '
+                  'Deseja continuar?'
+              : 'Deseja cancelar esta compra? Contas a pagar vinculadas também serão canceladas.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Voltar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+            child: const Text('Cancelar compra'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+
+    final r = await CompraFornecedorCancelamentoService.cancelar(
+      lojaId: widget.lojaId,
+      compraId: c.id,
+      motivo: 'Cancelada pelo usuário',
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          r.sucesso
+              ? (r.mensagem.isEmpty ? 'Compra cancelada.' : r.mensagem)
+              : r.mensagem,
+        ),
+        backgroundColor: r.sucesso ? null : Colors.red.shade700,
+      ),
+    );
+    if (r.sucesso) await _recarregar();
   }
 
   Future<void> _abrirNovaOuEditar(CompraFornecedor? existente) async {
@@ -324,6 +375,18 @@ class _FornecedorComprasScreenState extends State<FornecedorComprasScreen> {
                                                   c.statusCompra),
                                               cor: _corStatusCompra(c.statusCompra),
                                             ),
+                                            if (c.statusCompra !=
+                                                CompraFornecedorStatusCompra.cancelada)
+                                              IconButton(
+                                                tooltip: 'Cancelar compra',
+                                                icon: Icon(
+                                                  Icons.cancel_outlined,
+                                                  color: Colors.red.shade700,
+                                                  size: 22,
+                                                ),
+                                                onPressed: () =>
+                                                    _confirmarECancelarCompra(c),
+                                              ),
                                           ],
                                         ),
                                         const SizedBox(height: 6),

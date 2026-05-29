@@ -133,9 +133,15 @@ class EstoqueService {
     required String cor,
     String variacaoExtra = '',
     required int quantidade,
-    required String operacao, // 'baixa' ou 'devolucao'
+    required String operacao, // 'baixa' | 'devolucao' | 'entrada_compra' | ...
   }) async {
     const tag = '[ESTOQUE]';
+
+    if (!_isOperacaoBaixa(operacao) &&
+        !_isOperacaoEstornoCompra(operacao) &&
+        !_isOperacaoEntrada(operacao)) {
+      return EstoqueResult.erro('Operação de estoque inválida: $operacao');
+    }
 
     if (quantidade <= 0) {
       debugPrint('$tag ERRO: Quantidade deve ser maior que zero');
@@ -222,8 +228,8 @@ class EstoqueService {
     int estoqueDepois = 0;
 
     try {
-      if (operacao == 'baixa') {
-        // === BAIXA via transação Firestore (atômico) ===
+      if (_isOperacaoBaixa(operacao) || _isOperacaoEstornoCompra(operacao)) {
+        // === BAIXA / ESTORNO COMPRA via transação Firestore (atômico) ===
         final produtoId = produto.idFirebase.isNotEmpty ? produto.idFirebase : null;
         final result = await EstoqueTransactionService.baixarEstoqueTransaction(
           lojaId: lojaId,
@@ -262,8 +268,9 @@ class EstoqueService {
           produtosBox: produtosBox,
         );
 
-        final mensagemSucesso =
-            'Estoque baixado com sucesso: ${produto.nome} [$tam - $corTrim] - $estoqueAntes → $estoqueDepois';
+        final mensagemSucesso = _isOperacaoEstornoCompra(operacao)
+            ? 'Estorno de compra aplicado: ${produto.nome} [$tam - $corTrim] - $estoqueAntes → $estoqueDepois'
+            : 'Estoque baixado com sucesso: ${produto.nome} [$tam - $corTrim] - $estoqueAntes → $estoqueDepois';
         debugPrint('$tag $mensagemSucesso');
         debugPrint('$tag ========================================');
 
@@ -275,7 +282,7 @@ class EstoqueService {
         );
       }
 
-      // === DEVOLUÇÃO (mantém lógica original - não usa transação) ===
+      // === ENTRADA (devolução de venda, compra, ajuste+) — não usa transação ===
       if (produto.usaVariacoes && (tam.isNotEmpty || corTrim.isNotEmpty)) {
         final tamKey = tam.isEmpty ? '' : tam;
         final corKey = corTrim.isEmpty ? 'sem-cor' : corTrim;
@@ -336,8 +343,14 @@ class EstoqueService {
         );
       }
 
-      final mensagemSucesso =
-          'Estoque devolvido com sucesso: ${produto.nome} [$tam - $corTrim] - $estoqueAntes → $estoqueDepois';
+      final mensagemSucesso = _mensagemSucessoEntrada(
+        operacao: operacao,
+        nome: produto.nome,
+        tam: tam,
+        cor: corTrim,
+        antes: estoqueAntes,
+        depois: estoqueDepois,
+      );
       debugPrint('$tag $mensagemSucesso');
       debugPrint('$tag ========================================');
 
@@ -351,6 +364,45 @@ class EstoqueService {
       final msg = 'Erro ao atualizar estoque: $e';
       debugPrint('$tag ERRO: $msg');
       return EstoqueResult.erro(msg);
+    }
+  }
+
+  static bool _isOperacaoBaixa(String operacao) => operacao == 'baixa';
+
+  static bool _isOperacaoEstornoCompra(String operacao) =>
+      operacao == 'estorno_compra' || operacao == 'cancelamento_compra';
+
+  /// Entradas de estoque (soma quantidade). `devolucao` = legado (devolução de venda).
+  static bool _isOperacaoEntrada(String operacao) {
+    switch (operacao) {
+      case 'devolucao':
+      case 'entrada_compra':
+      case 'entrada_estoque':
+      case 'compra_revenda':
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  static String _mensagemSucessoEntrada({
+    required String operacao,
+    required String nome,
+    required String tam,
+    required String cor,
+    required int antes,
+    required int depois,
+  }) {
+    final grade = (tam.isNotEmpty || cor.isNotEmpty) ? ' [$tam - $cor]' : '';
+    final delta = '$antes → $depois';
+    switch (operacao) {
+      case 'entrada_compra':
+      case 'compra_revenda':
+        return 'Entrada de compra registrada: $nome$grade — $delta';
+      case 'entrada_estoque':
+        return 'Entrada de estoque registrada: $nome$grade — $delta';
+      default:
+        return 'Estoque devolvido com sucesso: $nome$grade — $delta';
     }
   }
 
