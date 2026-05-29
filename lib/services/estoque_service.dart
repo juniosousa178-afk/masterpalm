@@ -268,9 +268,11 @@ class EstoqueService {
           produtosBox: produtosBox,
         );
 
-        final mensagemSucesso = _isOperacaoEstornoCompra(operacao)
-            ? 'Estorno de compra aplicado: ${produto.nome} [$tam - $corTrim] - $estoqueAntes → $estoqueDepois'
-            : 'Estoque baixado com sucesso: ${produto.nome} [$tam - $corTrim] - $estoqueAntes → $estoqueDepois';
+        final mensagemSucesso = operacao == 'estorno_item_compra'
+            ? 'Estorno de item de compra aplicado: ${produto.nome} [$tam - $corTrim] - $estoqueAntes → $estoqueDepois'
+            : _isOperacaoEstornoCompra(operacao)
+                ? 'Estorno de compra aplicado: ${produto.nome} [$tam - $corTrim] - $estoqueAntes → $estoqueDepois'
+                : 'Estoque baixado com sucesso: ${produto.nome} [$tam - $corTrim] - $estoqueAntes → $estoqueDepois';
         debugPrint('$tag $mensagemSucesso');
         debugPrint('$tag ========================================');
 
@@ -370,7 +372,9 @@ class EstoqueService {
   static bool _isOperacaoBaixa(String operacao) => operacao == 'baixa';
 
   static bool _isOperacaoEstornoCompra(String operacao) =>
-      operacao == 'estorno_compra' || operacao == 'cancelamento_compra';
+      operacao == 'estorno_compra' ||
+      operacao == 'estorno_item_compra' ||
+      operacao == 'cancelamento_compra';
 
   /// Entradas de estoque (soma quantidade). `devolucao` = legado (devolução de venda).
   static bool _isOperacaoEntrada(String operacao) {

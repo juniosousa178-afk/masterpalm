@@ -7,8 +7,10 @@ import 'package:intl/intl.dart';
 import '../../core/hive_box_names.dart';
 import '../../models/compra_fornecedor.dart';
 import '../../models/compra_fornecedor_constants.dart';
+import '../../models/compra_fornecedor_item.dart';
 import '../../models/produto.dart';
 import '../../services/compra_fornecedor_hive_store.dart';
+import '../../services/compra_fornecedor_item_estorno_service.dart';
 import '../../services/compra_revenda_detalhamento_service.dart';
 import '../../utils/moeda_input_formatter.dart';
 import '../../widgets/moeda_text_field.dart';
@@ -238,6 +240,201 @@ class _CompraDetalharProdutosScreenState extends State<CompraDetalharProdutosScr
     }
   }
 
+  bool get _podeEditarItens {
+    final c = _compra;
+    if (c == null) return false;
+    return c.statusDetalhamentoProdutos !=
+        CompraFornecedorStatusDetalhamento.conferido;
+  }
+
+  Future<void> _excluirItemDetalhe(CompraFornecedorItem item) async {
+    if (_compra == null) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Excluir item'),
+        content: Text(
+          'Remover "${item.produtoNome}" desta compra? '
+          'Se o estoque já foi movimentado, a entrada será estornada.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Excluir'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    setState(() => _salvando = true);
+    final r = await CompraRevendaDetalhamentoService.excluirItemDetalhadoCompra(
+      lojaId: widget.lojaId,
+      compra: _compra!,
+      itemCompraId: item.itemCompraId,
+    );
+    setState(() => _salvando = false);
+    if (!mounted) return;
+    if (r.sucesso && r.compraAtualizada != null) {
+      setState(() => _compra = r.compraAtualizada);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Item removido da compra.')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            r.mensagem.isEmpty
+                ? CompraFornecedorItemEstornoService.msgEstoqueInsuficienteEdicao
+                : r.mensagem,
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _editarItemDetalhe(CompraFornecedorItem item) async {
+    if (_compra == null) return;
+    final name = HiveBoxNames.produtos(widget.lojaId);
+    final box = Hive.isBoxOpen(name)
+        ? Hive.box<Produto>(name)
+        : await Hive.openBox<Produto>(name);
+
+    Produto? produto;
+    final pid = item.productId?.trim() ?? '';
+    if (pid.isNotEmpty) {
+      for (final p in box.values) {
+        if (p.idFirebase.trim() == pid) {
+          produto = p;
+          break;
+        }
+      }
+    }
+    if (produto == null) {
+      for (final p in box.values) {
+        if (p.nome.trim() == item.produtoNome.trim()) {
+          produto = p;
+          break;
+        }
+      }
+    }
+
+    if (produto == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Produto não encontrado: ${item.produtoNome}')),
+      );
+      return;
+    }
+    final p = produto;
+
+    if (!mounted) return;
+    final tamCor = CompraFornecedorItemEstornoService.tamCorDoItem(item);
+    final qtdCtrl = TextEditingController(text: '${item.quantidade}');
+    final custoCtrl = TextEditingController(
+      text: MoedaInputFormatter.format(
+        item.custoUnitario > 0 ? item.custoUnitario : p.custoReal,
+      ),
+    );
+    final tamCtrl = TextEditingController(text: tamCor.tam);
+    final corCtrl = TextEditingController(text: tamCor.cor);
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Editar — ${item.produtoNome}'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: qtdCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Quantidade',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 8),
+              MoedaTextField(
+                controller: custoCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Custo unitário',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              if (p.usaVariacoes || p.estoquePorTamanho.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                TextField(
+                  controller: tamCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Tamanho (se aplicável)',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: corCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Cor (se aplicável)',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Salvar'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    final qtd = int.tryParse(qtdCtrl.text.trim()) ?? 0;
+    final custo = MoedaInputFormatter.parse(custoCtrl.text);
+    setState(() => _salvando = true);
+    final r = await CompraRevendaDetalhamentoService.editarItemDetalhadoCompra(
+      lojaId: widget.lojaId,
+      compra: _compra!,
+      itemCompraId: item.itemCompraId,
+      produto: p,
+      quantidade: qtd,
+      custoUnitario: custo,
+      tamanho: tamCtrl.text.trim(),
+      cor: corCtrl.text.trim(),
+    );
+    setState(() => _salvando = false);
+    if (!mounted) return;
+    if (r.sucesso && r.compraAtualizada != null) {
+      setState(() => _compra = r.compraAtualizada);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Item atualizado.')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            r.mensagem.isEmpty
+                ? CompraFornecedorItemEstornoService.msgEstoqueInsuficienteEdicao
+                : r.mensagem,
+          ),
+        ),
+      );
+    }
+  }
+
   Future<void> _marcarConferido() async {
     if (_compra == null) return;
     setState(() => _salvando = true);
@@ -343,6 +540,23 @@ class _CompraDetalharProdutosScreenState extends State<CompraDetalharProdutosScr
                         '${it.quantidade} × ${_moeda.format(it.custoUnitario)} = '
                         '${_moeda.format(it.subtotal)}',
                       ),
+                      trailing: _podeEditarItens && !_salvando
+                          ? Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  tooltip: 'Editar',
+                                  icon: const Icon(Icons.edit_outlined),
+                                  onPressed: () => _editarItemDetalhe(it),
+                                ),
+                                IconButton(
+                                  tooltip: 'Excluir',
+                                  icon: const Icon(Icons.delete_outline),
+                                  onPressed: () => _excluirItemDetalhe(it),
+                                ),
+                              ],
+                            )
+                          : null,
                     ),
                   ),
                 const SizedBox(height: 16),

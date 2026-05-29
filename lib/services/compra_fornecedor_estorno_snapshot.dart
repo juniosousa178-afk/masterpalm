@@ -7,6 +7,7 @@ import '../models/produto.dart';
 abstract final class EstoqueOperacaoCompra {
   EstoqueOperacaoCompra._();
   static const String estornoCompra = 'estorno_compra';
+  static const String estornoItemCompra = 'estorno_item_compra';
 }
 
 abstract final class CompraFornecedorEstornoSnapshot {

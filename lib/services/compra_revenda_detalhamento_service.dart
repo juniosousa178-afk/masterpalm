@@ -12,10 +12,14 @@ import '../models/produto.dart';
 import 'compra_fornecedor_firestore_service.dart';
 import 'compra_fornecedor_hive_store.dart';
 import 'compra_fornecedor_estorno_snapshot.dart';
+import 'compra_fornecedor_item_estorno_service.dart';
 import 'estoque_service.dart';
 
 /// Marcador em [CompraFornecedorItem.observacaoItem] para auditoria.
 const String kOrigemItemRevendaDetalharDepois = 'origem:compra_revenda_detalhar_depois';
+
+/// Item removido do detalhamento (auditoria em observação, se mantido em histórico).
+const String kOrigemItemExcluidoDetalhamento = 'origem:item_excluido_detalhamento';
 
 class ResultadoDetalhamentoProduto {
   const ResultadoDetalhamentoProduto({
@@ -98,6 +102,7 @@ abstract final class CompraRevendaDetalhamentoService {
     required int quantidade,
     required double custoUnitario,
     String? productId,
+    String? itemCompraId,
     String observacaoExtra = '',
     String tamanho = '',
     String cor = '',
@@ -113,7 +118,9 @@ abstract final class CompraRevendaDetalhamentoService {
       quantidade: quantidade,
       custoUnitario: custoUnitario,
       productId: productId,
-      itemCompraId: const Uuid().v4(),
+      itemCompraId: itemCompraId?.trim().isNotEmpty == true
+          ? itemCompraId!.trim()
+          : const Uuid().v4(),
       observacaoItem: obs,
       subtotalBase: quantidade * custoUnitario,
       custoUnitarioFinal: custoUnitario,
@@ -145,6 +152,37 @@ abstract final class CompraRevendaDetalhamentoService {
       );
     }
 
+    final item = await _entradaItemDetalhado(
+      lojaId: lojaId,
+      compra: compra,
+      produto: produto,
+      quantidade: quantidade,
+      custoUnitario: custoUnitario,
+      observacaoExtra: observacaoExtra,
+      tamanho: tamanho,
+      cor: cor,
+    );
+    if (item == null) {
+      return const ResultadoDetalhamentoProduto(
+        sucesso: false,
+        mensagem: 'Falha ao aplicar entrada de estoque.',
+      );
+    }
+    return _persistirItemNaCompra(lojaId, compra, item);
+  }
+
+  static Future<CompraFornecedorItem?> _entradaItemDetalhado({
+    required String lojaId,
+    required CompraFornecedor compra,
+    required Produto produto,
+    required int quantidade,
+    required double custoUnitario,
+    String? itemCompraId,
+    String observacaoExtra = '',
+    String tamanho = '',
+    String cor = '',
+    bool produtoNovoNaCompra = false,
+  }) async {
     final prodBox = await Hive.openBox<Produto>(HiveBoxNames.produtos(lojaId));
     final snap = CompraFornecedorEstornoSnapshot.capturarAntesEntrada(
       produto,
@@ -162,12 +200,7 @@ abstract final class CompraRevendaDetalhamentoService {
       quantidade: quantidade,
       operacao: 'entrada_compra',
     );
-    if (!est.sucesso) {
-      return ResultadoDetalhamentoProduto(
-        sucesso: false,
-        mensagem: est.mensagem,
-      );
-    }
+    if (!est.sucesso) return null;
 
     if (custoUnitario > 0 && est.produto != null) {
       est.produto!.custoReal = custoUnitario;
@@ -180,11 +213,13 @@ abstract final class CompraRevendaDetalhamentoService {
       quantidade: quantidade,
       custoUnitario: custoUnitario,
       productId: produto.idFirebase.isNotEmpty ? produto.idFirebase : null,
+      itemCompraId: itemCompraId,
       observacaoExtra: observacaoExtra,
       tamanho: tamanho,
       cor: cor,
     );
-    item = item.copyWith(
+    return item.copyWith(
+      itemCompraId: itemCompraId ?? item.itemCompraId,
       estoqueEntradaRegistrada: true,
       estoqueSnapshotOk: true,
       estoqueAnterior: snap.estoqueAnterior,
@@ -192,9 +227,8 @@ abstract final class CompraRevendaDetalhamentoService {
       custoEntradaRegistrado: custoUnitario,
       tamanhoEntrada: tamanho.trim(),
       corEntrada: cor.trim(),
+      produtoNovoNaCompra: produtoNovoNaCompra,
     );
-
-    return _persistirItemNaCompra(lojaId, compra, item);
   }
 
   /// Produto recém-criado no formulário (estoque já gravado no cadastro).
@@ -245,6 +279,136 @@ abstract final class CompraRevendaDetalhamentoService {
     return _persistirItemNaCompra(lojaId, compra, item);
   }
 
+  /// Remove item do detalhamento (estorna estoque se já havia entrada).
+  static Future<ResultadoDetalhamentoProduto> excluirItemDetalhadoCompra({
+    required String lojaId,
+    required CompraFornecedor compra,
+    required String itemCompraId,
+  }) async {
+    if (!compra.ehCompraRevendaDetalharDepois) {
+      return const ResultadoDetalhamentoProduto(
+        sucesso: false,
+        mensagem: 'Compra não é do tipo revenda detalhar depois.',
+      );
+    }
+    final id = itemCompraId.trim();
+    if (id.isEmpty) {
+      return const ResultadoDetalhamentoProduto(
+        sucesso: false,
+        mensagem: 'Item inválido.',
+      );
+    }
+
+    final itens = List<CompraFornecedorItem>.from(compra.itensOuVazio);
+    final idx = itens.indexWhere((x) => x.itemCompraId.trim() == id);
+    if (idx < 0) {
+      return const ResultadoDetalhamentoProduto(
+        sucesso: false,
+        mensagem: 'Item não encontrado na compra.',
+      );
+    }
+
+    final item = itens[idx];
+    if (CompraFornecedorItemEstornoService.itemExigeEstornoSeguro(item)) {
+      final est = await CompraFornecedorItemEstornoService.estornarEntradaItemCompra(
+        lojaId: lojaId,
+        item: item,
+      );
+      if (!est.sucesso) {
+        return ResultadoDetalhamentoProduto(
+          sucesso: false,
+          mensagem: est.mensagem,
+        );
+      }
+    } else if (item.produtoNovoNaCompra) {
+      final prodBox =
+          await Hive.openBox<Produto>(HiveBoxNames.produtos(lojaId));
+      final produto = CompraFornecedorItemEstornoService.resolverProduto(
+        prodBox,
+        item,
+      );
+      if (produto != null) {
+        produto.ativoNoRascunho = false;
+        await produto.save();
+      }
+    }
+
+    itens.removeAt(idx);
+    return _persistirCompraComItens(lojaId, compra, itens);
+  }
+
+  /// Edita item já detalhado: estorna entrada antiga e aplica nova (mesmo [itemCompraId]).
+  static Future<ResultadoDetalhamentoProduto> editarItemDetalhadoCompra({
+    required String lojaId,
+    required CompraFornecedor compra,
+    required String itemCompraId,
+    required Produto produto,
+    required int quantidade,
+    required double custoUnitario,
+    String tamanho = '',
+    String cor = '',
+    String observacaoExtra = '',
+  }) async {
+    if (!compra.ehCompraRevendaDetalharDepois) {
+      return const ResultadoDetalhamentoProduto(
+        sucesso: false,
+        mensagem: 'Compra não é do tipo revenda detalhar depois.',
+      );
+    }
+    if (quantidade <= 0 || custoUnitario <= 0) {
+      return const ResultadoDetalhamentoProduto(
+        sucesso: false,
+        mensagem: 'Informe quantidade e custo unitário válidos.',
+      );
+    }
+
+    final id = itemCompraId.trim();
+    final itens = List<CompraFornecedorItem>.from(compra.itensOuVazio);
+    final idx = itens.indexWhere((x) => x.itemCompraId.trim() == id);
+    if (idx < 0) {
+      return const ResultadoDetalhamentoProduto(
+        sucesso: false,
+        mensagem: 'Item não encontrado na compra.',
+      );
+    }
+
+    final antigo = itens[idx];
+    if (CompraFornecedorItemEstornoService.itemExigeEstornoSeguro(antigo)) {
+      final est = await CompraFornecedorItemEstornoService.estornarEntradaItemCompra(
+        lojaId: lojaId,
+        item: antigo,
+      );
+      if (!est.sucesso) {
+        return ResultadoDetalhamentoProduto(
+          sucesso: false,
+          mensagem: est.mensagem,
+        );
+      }
+    }
+
+    final novo = await _entradaItemDetalhado(
+      lojaId: lojaId,
+      compra: compra,
+      produto: produto,
+      quantidade: quantidade,
+      custoUnitario: custoUnitario,
+      itemCompraId: id,
+      observacaoExtra: observacaoExtra,
+      tamanho: tamanho,
+      cor: cor,
+      produtoNovoNaCompra: antigo.produtoNovoNaCompra,
+    );
+    if (novo == null) {
+      return const ResultadoDetalhamentoProduto(
+        sucesso: false,
+        mensagem: 'Falha ao aplicar nova entrada de estoque.',
+      );
+    }
+
+    itens[idx] = novo;
+    return _persistirCompraComItens(lojaId, compra, itens);
+  }
+
   static Future<ResultadoDetalhamentoProduto> marcarConferido({
     required String lojaId,
     required CompraFornecedor compra,
@@ -280,6 +444,22 @@ abstract final class CompraRevendaDetalhamentoService {
     CompraFornecedor compra,
     CompraFornecedorItem item,
   ) async {
+    final itens = List<CompraFornecedorItem>.from(compra.itensOuVazio)..add(item);
+    final r = await _persistirCompraComItens(lojaId, compra, itens);
+    if (r.sucesso) {
+      debugPrint(
+        '[REVENDA-DET] Item vinculado compra=${r.compraAtualizada?.id} '
+        'produto=${item.produtoNome} qtd=${item.quantidade}',
+      );
+    }
+    return r;
+  }
+
+  static Future<ResultadoDetalhamentoProduto> _persistirCompraComItens(
+    String lojaId,
+    CompraFornecedor compra,
+    List<CompraFornecedorItem> itens,
+  ) async {
     final box = await CompraFornecedorHiveStore.openBox(lojaId);
     if (box == null) {
       return const ResultadoDetalhamentoProduto(
@@ -288,17 +468,11 @@ abstract final class CompraRevendaDetalhamentoService {
       );
     }
 
-    final itens = List<CompraFornecedorItem>.from(compra.itensOuVazio)..add(item);
     var atualizada = compra.copyWith(itens: itens);
     atualizada = recalcularCamposDetalhamento(atualizada);
 
     await box.put(atualizada.id, atualizada);
     await _syncFirestore(atualizada);
-
-    debugPrint(
-      '[REVENDA-DET] Item vinculado compra=${atualizada.id} '
-      'produto=${item.produtoNome} qtd=${item.quantidade}',
-    );
 
     return ResultadoDetalhamentoProduto(
       sucesso: true,

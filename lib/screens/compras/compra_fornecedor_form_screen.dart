@@ -464,18 +464,33 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
     }
 
     if (escolhido == null || !mounted) return;
-    final base = escolhido;
+    await _preencherEGravarItem(escolhido);
+  }
+
+  Future<void> _editarItem(int indice) async {
+    if (_statusCompra != CompraFornecedorStatusCompra.rascunho) return;
+    if (indice < 0 || indice >= _itens.length) return;
+    await _preencherEGravarItem(_itens[indice], indiceEdicao: indice);
+  }
+
+  Future<void> _preencherEGravarItem(
+    CompraFornecedorItem escolhido, {
+    int? indiceEdicao,
+  }) async {
+    var base = escolhido;
     final qtdCtrl = TextEditingController(text: '${base.quantidade}');
     final custoCtrl = TextEditingController(text: _fmtNum(base.custoUnitario));
     final ciCtrl = TextEditingController(text: base.codigoInterno);
     final eanCtrl = TextEditingController(text: base.codigoBarras);
     final obsCtrl = TextEditingController(text: base.observacaoItem);
     final unidadeCtrl = TextEditingController(text: base.unidade);
+    final tamCtrl = TextEditingController(text: base.tamanhoEntrada);
+    final corCtrl = TextEditingController(text: base.corEntrada);
 
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Quantidade e custo'),
+        title: Text(indiceEdicao != null ? 'Editar item' : 'Quantidade e custo'),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -529,6 +544,41 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
                 ),
                 maxLines: 2,
               ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: tamCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Tamanho (se aplicável)',
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: corCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Cor (se aplicável)',
+                ),
+              ),
+              if (indiceEdicao != null) ...[
+                const SizedBox(height: 8),
+                TextButton.icon(
+                  onPressed: () async {
+                    Navigator.pop(ctx, false);
+                    final trocado = await _selecionarProdutoParaItem();
+                    if (trocado != null && mounted) {
+                      await _preencherEGravarItem(
+                        trocado.copyWith(
+                          itemCompraId: base.itemCompraId,
+                          quantidade: base.quantidade,
+                          custoUnitario: base.custoUnitario,
+                        ),
+                        indiceEdicao: indiceEdicao,
+                      );
+                    }
+                  },
+                  icon: const Icon(Icons.swap_horiz),
+                  label: const Text('Alterar produto'),
+                ),
+              ],
             ],
           ),
         ),
@@ -556,29 +606,85 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
     final un = unidadeCtrl.text.trim();
     ciCtrl.dispose();
     eanCtrl.dispose();
+    final tam = tamCtrl.text.trim();
+    final cor = corCtrl.text.trim();
     obsCtrl.dispose();
     unidadeCtrl.dispose();
+    tamCtrl.dispose();
+    corCtrl.dispose();
     if (qtd <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Quantidade inválida')),
       );
       return;
     }
+    final atualizado = CompraFornecedorItem(
+      produtoNome: base.produtoNome,
+      quantidade: qtd,
+      custoUnitario: custo,
+      productId: base.productId,
+      itemCompraId: base.itemCompraId.trim().isEmpty
+          ? _uuid.v4()
+          : base.itemCompraId,
+      codigoInterno: codInt,
+      codigoBarras: ean,
+      observacaoItem: obs,
+      unidade: un,
+      tamanhoEntrada: tam,
+      corEntrada: cor,
+    );
     setState(() {
-      _itens.add(CompraFornecedorItem(
-        produtoNome: base.produtoNome,
-        quantidade: qtd,
-        custoUnitario: custo,
-        productId: base.productId,
-        itemCompraId: base.itemCompraId.trim().isEmpty
-            ? _uuid.v4()
-            : base.itemCompraId,
-        codigoInterno: codInt,
-        codigoBarras: ean,
-        observacaoItem: obs,
-        unidade: un,
-      ));
+      if (indiceEdicao != null && indiceEdicao >= 0 && indiceEdicao < _itens.length) {
+        _itens[indiceEdicao] = atualizado;
+      } else {
+        _itens.add(atualizado);
+      }
     });
+  }
+
+  /// Retorna item base escolhido no seletor (sem dialog de quantidade).
+  Future<CompraFornecedorItem?> _selecionarProdutoParaItem() async {
+    final name = HiveBoxNames.produtos(widget.lojaId);
+    final Box<Produto> box = Hive.isBoxOpen(name)
+        ? Hive.box<Produto>(name)
+        : await Hive.openBox<Produto>(name);
+    if (!mounted) return null;
+    final produtos = box.values
+        .where((p) => p.lojaId.isEmpty || p.lojaId == widget.lojaId)
+        .toList()
+      ..sort((a, b) => a.nome.toLowerCase().compareTo(b.nome.toLowerCase()));
+
+    final sheetResult = await showModalBottomSheet<CompraFornecedorItem?>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.5,
+          builder: (_, scroll) => ListView.builder(
+            controller: scroll,
+            itemCount: produtos.length.clamp(0, 200),
+            itemBuilder: (_, i) {
+              final p = produtos[i];
+              return ListTile(
+                title: Text(p.nome),
+                onTap: () => Navigator.pop(
+                  ctx,
+                  CompraFornecedorItem(
+                    produtoNome: p.nome,
+                    quantidade: 1,
+                    custoUnitario: p.custoReal,
+                    productId:
+                        p.idFirebase.trim().isEmpty ? null : p.idFirebase.trim(),
+                  ),
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+    return sheetResult;
   }
 
   void _removerItem(int i) {
@@ -1117,10 +1223,28 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
                                 'subtotal ${_fmtBrl(it.subtotalFinal)}'
                             : '${it.quantidade} × ${_fmtBrl(it.custoUnitario)} = ${_fmtBrl(it.subtotal)}',
                       ),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.delete_outline),
-                        onPressed: () => _removerItem(i),
-                      ),
+                      trailing: _statusCompra ==
+                              CompraFornecedorStatusCompra.rascunho
+                          ? Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  tooltip: 'Editar',
+                                  icon: const Icon(Icons.edit_outlined),
+                                  onPressed: _gravando
+                                      ? null
+                                      : () => _editarItem(i),
+                                ),
+                                IconButton(
+                                  tooltip: 'Excluir',
+                                  icon: const Icon(Icons.delete_outline),
+                                  onPressed: _gravando
+                                      ? null
+                                      : () => _removerItem(i),
+                                ),
+                              ],
+                            )
+                          : null,
                     ),
                   );
                 }),
