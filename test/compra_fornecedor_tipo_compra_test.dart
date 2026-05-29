@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:master_palm/models/compra_fornecedor.dart';
 import 'package:master_palm/models/compra_fornecedor_constants.dart';
 import 'package:master_palm/models/compra_fornecedor_item.dart';
+import 'package:master_palm/services/compra_revenda_detalhamento_service.dart';
 import 'package:master_palm/services/conta_pagar_service.dart';
 
 void main() {
@@ -50,6 +51,30 @@ void main() {
       expect(c.ehCompraFinanceira, isTrue);
     });
 
+    test('compra revenda detalhar depois não movimenta estoque na confirmação', () {
+      final c = _compraBase(
+        tipo: CompraFornecedorTipo.revendaDetalharDepois,
+        valorInformado: 900,
+      );
+      expect(c.movimentaEstoque, isFalse);
+      expect(c.ehCompraRevendaDetalharDepois, isTrue);
+      expect(c.itensOuVazio, isEmpty);
+      expect(c.statusDetalhamentoProdutos,
+          CompraFornecedorStatusDetalhamento.naoAplicavel);
+    });
+
+    test('compra revenda usa valorInformado + frete - desconto + outras', () {
+      final c = _compraBase(
+        tipo: CompraFornecedorTipo.revendaDetalharDepois,
+        valorInformado: 800,
+        frete: 50,
+        desconto: 20,
+        outras: 70,
+      );
+      expect(c.valorTotalFinanceiro, 900);
+      expect(c.valorCompraParaConferenciaDetalhamento, 900);
+    });
+
     test('compra com produtos usa subtotal dos itens no total', () {
       final c = _compraBase(
         itens: [
@@ -90,6 +115,76 @@ void main() {
       );
       expect(c.itensOuVazio, isEmpty);
       expect(c.valorTotalFinanceiro, 500);
+    });
+  });
+
+  group('Detalhamento revenda — conferência de valor', () {
+    CompraFornecedor _revenda({
+      double valorInformado = 900,
+      List<CompraFornecedorItem>? itens,
+    }) {
+      return CompraFornecedor(
+        id: 'rev-1',
+        lojaId: 'loja',
+        fornecedorHiveKey: 1,
+        fornecedorNome: 'Forn',
+        dataCompra: DateTime(2026, 1, 5),
+        tipoCompra: CompraFornecedorTipo.revendaDetalharDepois,
+        valorInformado: valorInformado,
+        statusDetalhamentoProdutos:
+            CompraFornecedorStatusDetalhamento.aguardandoDetalhamento,
+        itens: itens,
+      );
+    }
+
+    test('sem itens fica aguardando detalhamento', () {
+      final r = CompraRevendaDetalhamentoService.recalcularCamposDetalhamento(
+        _revenda(),
+      );
+      expect(r.statusDetalhamentoProdutos,
+          CompraFornecedorStatusDetalhamento.aguardandoDetalhamento);
+      expect(r.valorProdutosDetalhados, 0);
+      expect(r.diferencaDetalhamento, 900);
+    });
+
+    test('itens somam valor detalhado e diferença', () {
+      final r = CompraRevendaDetalhamentoService.recalcularCamposDetalhamento(
+        _revenda(
+          itens: [
+            CompraFornecedorItem(
+              produtoNome: 'A',
+              quantidade: 10,
+              custoUnitario: 50,
+            ),
+            CompraFornecedorItem(
+              produtoNome: 'B',
+              quantidade: 8,
+              custoUnitario: 50,
+            ),
+          ],
+        ),
+      );
+      expect(r.valorProdutosDetalhados, 900);
+      expect(r.diferencaDetalhamento, closeTo(0, 0.06));
+      expect(r.statusDetalhamentoProdutos,
+          CompraFornecedorStatusDetalhamento.detalhado);
+    });
+
+    test('diferença grande vira parcialmente detalhado', () {
+      final r = CompraRevendaDetalhamentoService.recalcularCamposDetalhamento(
+        _revenda(
+          itens: [
+            CompraFornecedorItem(
+              produtoNome: 'A',
+              quantidade: 1,
+              custoUnitario: 100,
+            ),
+          ],
+        ),
+      );
+      expect(r.statusDetalhamentoProdutos,
+          CompraFornecedorStatusDetalhamento.parcialmenteDetalhado);
+      expect(r.diferencaDetalhamento, 800);
     });
   });
 

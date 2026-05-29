@@ -74,7 +74,23 @@ class CompraFornecedorFirestoreService {
       'itens': itens,
       'tipoCompra': CompraFornecedorTipo.ouPadrao(c.tipoCompra),
       'valorInformado': c.valorInformado,
-      'schemaVersion': 1,
+      'statusDetalhamentoProdutos': c.statusDetalhamentoProdutos,
+      'detalhamentoProdutosAt': c.detalhamentoProdutosAt != null
+          ? Timestamp.fromDate(c.detalhamentoProdutosAt!.toUtc())
+          : null,
+      'detalhamentoProdutosConferidoAt':
+          c.detalhamentoProdutosConferidoAt != null
+              ? Timestamp.fromDate(c.detalhamentoProdutosConferidoAt!.toUtc())
+              : null,
+      'valorProdutosDetalhados': c.valorProdutosDetalhados,
+      'diferencaDetalhamento': c.diferencaDetalhamento,
+      'quantidadeItensDetalhados': c.quantidadeItensDetalhados,
+      'observacaoDetalhamento': c.observacaoDetalhamento,
+      if (c.canceladaEm != null)
+        'canceladaEm': Timestamp.fromDate(c.canceladaEm!.toUtc()),
+      'canceladaMotivo': c.canceladaMotivo,
+      'cancelamentoEstoqueAplicado': c.cancelamentoEstoqueAplicado,
+      'schemaVersion': 3,
     };
   }
 
@@ -99,6 +115,14 @@ class CompraFornecedorFirestoreService {
         'productId': it.productId!.trim(),
       if (it.observacaoItem.trim().isNotEmpty) 'observacao': it.observacaoItem,
       if (it.unidade.trim().isNotEmpty) 'unidade': it.unidade,
+      'estoqueEntradaRegistrada': it.estoqueEntradaRegistrada,
+      'estoqueSnapshotOk': it.estoqueSnapshotOk,
+      'estoqueAnterior': it.estoqueAnterior,
+      'custoAnterior': it.custoAnterior,
+      if (it.tamanhoEntrada.trim().isNotEmpty) 'tamanhoEntrada': it.tamanhoEntrada,
+      if (it.corEntrada.trim().isNotEmpty) 'corEntrada': it.corEntrada,
+      'produtoNovoNaCompra': it.produtoNovoNaCompra,
+      'custoEntradaRegistrado': it.custoEntradaRegistrado,
     };
   }
 }

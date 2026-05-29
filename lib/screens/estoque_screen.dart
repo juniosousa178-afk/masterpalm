@@ -36,6 +36,9 @@ import '../services/produtos_firestore_service.dart';
 import '../services/sync_queue_service.dart';
 import 'produto_form_screen.dart';
 import 'compras/compra_pipeline_pendentes_estoque_screen.dart';
+import 'compras/compras_revenda_pendentes_screen.dart';
+import '../services/compra_fornecedor_hive_store.dart';
+import '../services/compra_revenda_detalhamento_service.dart';
 import 'produto_combo_form_screen.dart';
 import 'dicas_ia_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -106,6 +109,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
   bool _modoSelecao = false;
   bool _sugerindoPromocaoIa = false;
   bool _catalogoPrecisaAtualizar = false;
+  int _comprasRevendaPendentesCount = 0;
 
   /// Ordenação: nome_asc | nome_desc | preco_asc | preco_desc | qtd_asc | qtd_desc
   String _ordenacao = 'nome_asc';
@@ -185,6 +189,17 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
 
       await _verificarPermissao();
 
+      var revendaPendentes = 0;
+      try {
+        final compraBox = await CompraFornecedorHiveStore.openBox(lojaId);
+        if (compraBox != null) {
+          revendaPendentes = CompraRevendaDetalhamentoService.contarPendentesDetalhamento(
+            compraBox,
+            lojaId,
+          );
+        }
+      } catch (_) {}
+
       // Mostrar tela imediatamente com dados locais (Hive)
       if (mounted) {
         final catalogoPendente = await CatalogPublishService.catalogoPrecisaAtualizar;
@@ -192,6 +207,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
           _ready = true;
           _lojaId = lojaId;
           _catalogoPrecisaAtualizar = catalogoPendente;
+          _comprasRevendaPendentesCount = revendaPendentes;
         });
       }
 
@@ -2418,6 +2434,59 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     }
   }
 
+  Future<void> _abrirComprasRevendaPendentes() async {
+    final lid = _lojaId?.trim();
+    if (lid == null || lid.isEmpty) return;
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ComprasRevendaPendentesScreen(lojaId: lid),
+      ),
+    );
+    if (!mounted) return;
+    try {
+      final compraBox = await CompraFornecedorHiveStore.openBox(lid);
+      if (compraBox != null && mounted) {
+        setState(() {
+          _comprasRevendaPendentesCount =
+              CompraRevendaDetalhamentoService.contarPendentesDetalhamento(
+            compraBox,
+            lid,
+          );
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<bool> _confirmarEntradaSemVinculoCompraRevenda() async {
+    if (_comprasRevendaPendentesCount <= 0) return true;
+    final escolha = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Compras de revenda pendentes'),
+        content: Text(
+          'Existem $_comprasRevendaPendentesCount compra(s) de revenda aguardando '
+          'detalhamento. Esta entrada pertence a alguma compra já lançada?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'continuar'),
+            child: const Text('Continuar sem vincular'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, 'vincular'),
+            child: const Text('Vincular a compra'),
+          ),
+        ],
+      ),
+    );
+    if (escolha == 'vincular') {
+      await _abrirComprasRevendaPendentes();
+      return false;
+    }
+    return true;
+  }
+
   Future<void> _ajustarQuantidade(Produto p, int delta) async {
     final extraTipo =
         p.variacoesExtraTipo != null && p.variacoesExtraTipo!.isNotEmpty;
@@ -2426,6 +2495,10 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     if (temEstoqueEstruturado) {
       _showSnackBar('Use Editar para ajustar produtos com grade', isError: true);
       return;
+    }
+    if (delta > 0) {
+      final continuar = await _confirmarEntradaSemVinculoCompraRevenda();
+      if (!continuar) return;
     }
     final nova = (p.quantidade + delta).clamp(0, 99999);
     if (nova == p.quantidade) return;
@@ -4495,6 +4568,21 @@ String _formatGradeTexto(Produto p) {
                       ),
                     ],
                   ),
+                ),
+              if (_comprasRevendaPendentesCount > 0)
+                MaterialBanner(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  leading: const Icon(Icons.inventory_2_outlined, color: _warningColor),
+                  content: Text(
+                    '$_comprasRevendaPendentesCount compra(s) de revenda aguardando '
+                    'detalhamento de produtos.',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: _abrirComprasRevendaPendentes,
+                      child: const Text('Ver compras'),
+                    ),
+                  ],
                 ),
               // Statistics Header
               _buildStatisticsHeader(currencyFormat),

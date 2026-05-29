@@ -39,17 +39,28 @@ class CompraFornecedorAdapter extends TypeAdapter<CompraFornecedor> {
       outrasDespesas: fields[19] == null ? 0.0 : fields[19] as double,
       syncPendente: fields[20] == null ? true : fields[20] as bool,
       syncStatus: fields[21] == null ? 'pendente' : fields[21] as String,
-      tipoCompra: fields[22] == null
-          ? CompraFornecedorTipo.produtosEstoque
-          : fields[22] as String,
+      tipoCompra:
+          fields[22] == null ? 'produtos_estoque' : fields[22] as String,
       valorInformado: fields[23] == null ? 0.0 : fields[23] as double,
+      statusDetalhamentoProdutos:
+          fields[24] == null ? 'nao_aplicavel' : fields[24] as String,
+      detalhamentoProdutosAt: fields[25] as DateTime?,
+      detalhamentoProdutosConferidoAt: fields[26] as DateTime?,
+      valorProdutosDetalhados: fields[27] == null ? 0.0 : fields[27] as double,
+      diferencaDetalhamento: fields[28] == null ? 0.0 : fields[28] as double,
+      quantidadeItensDetalhados: fields[29] == null ? 0 : fields[29] as int,
+      observacaoDetalhamento: fields[30] == null ? '' : fields[30] as String,
+      canceladaEm: fields[31] as DateTime?,
+      canceladaMotivo: fields[32] == null ? '' : fields[32] as String,
+      cancelamentoEstoqueAplicado:
+          fields[33] == null ? false : fields[33] as bool,
     );
   }
 
   @override
   void write(BinaryWriter writer, CompraFornecedor obj) {
     writer
-      ..writeByte(24)
+      ..writeByte(34)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -97,7 +108,27 @@ class CompraFornecedorAdapter extends TypeAdapter<CompraFornecedor> {
       ..writeByte(22)
       ..write(obj.tipoCompra)
       ..writeByte(23)
-      ..write(obj.valorInformado);
+      ..write(obj.valorInformado)
+      ..writeByte(24)
+      ..write(obj.statusDetalhamentoProdutos)
+      ..writeByte(25)
+      ..write(obj.detalhamentoProdutosAt)
+      ..writeByte(26)
+      ..write(obj.detalhamentoProdutosConferidoAt)
+      ..writeByte(27)
+      ..write(obj.valorProdutosDetalhados)
+      ..writeByte(28)
+      ..write(obj.diferencaDetalhamento)
+      ..writeByte(29)
+      ..write(obj.quantidadeItensDetalhados)
+      ..writeByte(30)
+      ..write(obj.observacaoDetalhamento)
+      ..writeByte(31)
+      ..write(obj.canceladaEm)
+      ..writeByte(32)
+      ..write(obj.canceladaMotivo)
+      ..writeByte(33)
+      ..write(obj.cancelamentoEstoqueAplicado);
   }
 
   @override

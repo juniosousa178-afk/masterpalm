@@ -54,6 +54,34 @@ class CompraFornecedorItem {
   @HiveField(15, defaultValue: 0.0)
   double subtotalFinal;
 
+  /// Entrada de estoque já aplicada (detalhamento revenda / futuro pipeline).
+  @HiveField(16, defaultValue: false)
+  bool estoqueEntradaRegistrada;
+
+  /// Snapshot válido para estorno automático.
+  @HiveField(17, defaultValue: false)
+  bool estoqueSnapshotOk;
+
+  @HiveField(18, defaultValue: 0)
+  int estoqueAnterior;
+
+  @HiveField(19, defaultValue: 0.0)
+  double custoAnterior;
+
+  @HiveField(20, defaultValue: '')
+  String tamanhoEntrada;
+
+  @HiveField(21, defaultValue: '')
+  String corEntrada;
+
+  /// Produto criado no detalhamento revenda (tratamento especial no cancelamento).
+  @HiveField(22, defaultValue: false)
+  bool produtoNovoNaCompra;
+
+  /// Custo aplicado na entrada desta compra (para restauração segura).
+  @HiveField(23, defaultValue: 0.0)
+  double custoEntradaRegistrado;
+
   CompraFornecedorItem({
     required this.produtoNome,
     required this.quantidade,
@@ -71,7 +99,22 @@ class CompraFornecedorItem {
     this.outrasDespesasRateadas = 0,
     this.custoUnitarioFinal = 0,
     this.subtotalFinal = 0,
+    this.estoqueEntradaRegistrada = false,
+    this.estoqueSnapshotOk = false,
+    this.estoqueAnterior = 0,
+    this.custoAnterior = 0,
+    this.tamanhoEntrada = '',
+    this.corEntrada = '',
+    this.produtoNovoNaCompra = false,
+    this.custoEntradaRegistrado = 0,
   });
+
+  /// Custo efetivo gravado na entrada (prioriza [custoEntradaRegistrado]).
+  double get custoEntradaEfetivo {
+    if (custoEntradaRegistrado > 0) return custoEntradaRegistrado;
+    if (custoUnitarioFinal > 0) return custoUnitarioFinal;
+    return custoUnitario;
+  }
 
   double get subtotal =>
       quantidade.clamp(0, 1 << 30) * custoUnitario;
@@ -103,6 +146,14 @@ class CompraFornecedorItem {
     double? outrasDespesasRateadas,
     double? custoUnitarioFinal,
     double? subtotalFinal,
+    bool? estoqueEntradaRegistrada,
+    bool? estoqueSnapshotOk,
+    int? estoqueAnterior,
+    double? custoAnterior,
+    String? tamanhoEntrada,
+    String? corEntrada,
+    bool? produtoNovoNaCompra,
+    double? custoEntradaRegistrado,
   }) {
     return CompraFornecedorItem(
       produtoNome: produtoNome ?? this.produtoNome,
@@ -123,6 +174,16 @@ class CompraFornecedorItem {
           outrasDespesasRateadas ?? this.outrasDespesasRateadas,
       custoUnitarioFinal: custoUnitarioFinal ?? this.custoUnitarioFinal,
       subtotalFinal: subtotalFinal ?? this.subtotalFinal,
+      estoqueEntradaRegistrada:
+          estoqueEntradaRegistrada ?? this.estoqueEntradaRegistrada,
+      estoqueSnapshotOk: estoqueSnapshotOk ?? this.estoqueSnapshotOk,
+      estoqueAnterior: estoqueAnterior ?? this.estoqueAnterior,
+      custoAnterior: custoAnterior ?? this.custoAnterior,
+      tamanhoEntrada: tamanhoEntrada ?? this.tamanhoEntrada,
+      corEntrada: corEntrada ?? this.corEntrada,
+      produtoNovoNaCompra: produtoNovoNaCompra ?? this.produtoNovoNaCompra,
+      custoEntradaRegistrado:
+          custoEntradaRegistrado ?? this.custoEntradaRegistrado,
     );
   }
 }

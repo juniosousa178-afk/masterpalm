@@ -82,9 +82,40 @@ class CompraFornecedor extends HiveObject {
   @HiveField(22, defaultValue: CompraFornecedorTipo.produtosEstoque)
   String tipoCompra;
 
-  /// Valor base informado (compras financeiras sem itens).
+  /// Valor base informado (compras financeiras / revenda sem itens na confirmação).
   @HiveField(23, defaultValue: 0.0)
   double valorInformado;
+
+  /// [CompraFornecedorStatusDetalhamento]
+  @HiveField(24, defaultValue: CompraFornecedorStatusDetalhamento.naoAplicavel)
+  String statusDetalhamentoProdutos;
+
+  @HiveField(25)
+  DateTime? detalhamentoProdutosAt;
+
+  @HiveField(26)
+  DateTime? detalhamentoProdutosConferidoAt;
+
+  @HiveField(27, defaultValue: 0.0)
+  double valorProdutosDetalhados;
+
+  @HiveField(28, defaultValue: 0.0)
+  double diferencaDetalhamento;
+
+  @HiveField(29, defaultValue: 0)
+  int quantidadeItensDetalhados;
+
+  @HiveField(30, defaultValue: '')
+  String observacaoDetalhamento;
+
+  @HiveField(31)
+  DateTime? canceladaEm;
+
+  @HiveField(32, defaultValue: '')
+  String canceladaMotivo;
+
+  @HiveField(33, defaultValue: false)
+  bool cancelamentoEstoqueAplicado;
 
   CompraFornecedor({
     required this.id,
@@ -111,13 +142,34 @@ class CompraFornecedor extends HiveObject {
     this.syncStatus = 'pendente',
     this.tipoCompra = CompraFornecedorTipo.produtosEstoque,
     this.valorInformado = 0,
+    this.statusDetalhamentoProdutos =
+        CompraFornecedorStatusDetalhamento.naoAplicavel,
+    this.detalhamentoProdutosAt,
+    this.detalhamentoProdutosConferidoAt,
+    this.valorProdutosDetalhados = 0,
+    this.diferencaDetalhamento = 0,
+    this.quantidadeItensDetalhados = 0,
+    this.observacaoDetalhamento = '',
+    this.canceladaEm,
+    this.canceladaMotivo = '',
+    this.cancelamentoEstoqueAplicado = false,
   })  : criadoEm = criadoEm ?? DateTime.now(),
         atualizadoEm = atualizadoEm ?? DateTime.now();
+
+  bool get estaCancelada =>
+      statusCompra == CompraFornecedorStatusCompra.cancelada;
 
   bool get movimentaEstoque => CompraFornecedorTipo.movimentaEstoque(tipoCompra);
 
   bool get ehCompraFinanceira =>
       CompraFornecedorTipo.ouPadrao(tipoCompra) == CompraFornecedorTipo.financeira;
+
+  bool get ehCompraRevendaDetalharDepois =>
+      CompraFornecedorTipo.ehRevendaDetalharDepois(tipoCompra);
+
+  bool get aguardaDetalhamentoProdutos =>
+      ehCompraRevendaDetalharDepois &&
+      CompraFornecedorStatusDetalhamento.pendente(statusDetalhamentoProdutos);
 
   List<CompraFornecedorItem> get itensOuVazio =>
       itens ?? const <CompraFornecedorItem>[];
@@ -140,6 +192,8 @@ class CompraFornecedor extends HiveObject {
         : valorInformado;
     return (base + frete + outrasDespesas - desconto).clamp(0.0, 1e15);
   }
+
+  double get valorCompraParaConferenciaDetalhamento => valorTotalFinanceiro;
 
   /// Alias legado — mesmo que [valorTotalFinanceiro].
   double get valorTotal => valorTotalFinanceiro;
@@ -172,6 +226,16 @@ class CompraFornecedor extends HiveObject {
     String? syncStatus,
     String? tipoCompra,
     double? valorInformado,
+    String? statusDetalhamentoProdutos,
+    DateTime? detalhamentoProdutosAt,
+    DateTime? detalhamentoProdutosConferidoAt,
+    double? valorProdutosDetalhados,
+    double? diferencaDetalhamento,
+    int? quantidadeItensDetalhados,
+    String? observacaoDetalhamento,
+    DateTime? canceladaEm,
+    String? canceladaMotivo,
+    bool? cancelamentoEstoqueAplicado,
   }) {
     return CompraFornecedor(
       id: id ?? this.id,
@@ -199,6 +263,24 @@ class CompraFornecedor extends HiveObject {
       syncStatus: syncStatus ?? this.syncStatus,
       tipoCompra: tipoCompra ?? this.tipoCompra,
       valorInformado: valorInformado ?? this.valorInformado,
+      statusDetalhamentoProdutos:
+          statusDetalhamentoProdutos ?? this.statusDetalhamentoProdutos,
+      detalhamentoProdutosAt:
+          detalhamentoProdutosAt ?? this.detalhamentoProdutosAt,
+      detalhamentoProdutosConferidoAt: detalhamentoProdutosConferidoAt ??
+          this.detalhamentoProdutosConferidoAt,
+      valorProdutosDetalhados:
+          valorProdutosDetalhados ?? this.valorProdutosDetalhados,
+      diferencaDetalhamento:
+          diferencaDetalhamento ?? this.diferencaDetalhamento,
+      quantidadeItensDetalhados:
+          quantidadeItensDetalhados ?? this.quantidadeItensDetalhados,
+      observacaoDetalhamento:
+          observacaoDetalhamento ?? this.observacaoDetalhamento,
+      canceladaEm: canceladaEm ?? this.canceladaEm,
+      canceladaMotivo: canceladaMotivo ?? this.canceladaMotivo,
+      cancelamentoEstoqueAplicado:
+          cancelamentoEstoqueAplicado ?? this.cancelamentoEstoqueAplicado,
     );
   }
 }

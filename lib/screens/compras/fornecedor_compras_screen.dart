@@ -10,6 +10,7 @@ import '../../models/fornecedor.dart';
 import '../../services/compra_fornecedor_hive_store.dart';
 import '../../services/compra_fornecedor_sync_service.dart';
 import 'compra_fornecedor_form_screen.dart';
+import 'compras_revenda_pendentes_screen.dart';
 
 class FornecedorComprasScreen extends StatefulWidget {
   const FornecedorComprasScreen({
@@ -148,6 +149,17 @@ class _FornecedorComprasScreenState extends State<FornecedorComprasScreen> {
         backgroundColor: _primary,
         foregroundColor: Colors.white,
         actions: [
+          IconButton(
+            tooltip: 'Compras aguardando produtos',
+            onPressed: () {
+              Navigator.of(context).push<void>(
+                MaterialPageRoute(
+                  builder: (_) => ComprasRevendaPendentesScreen(lojaId: widget.lojaId),
+                ),
+              );
+            },
+            icon: const Icon(Icons.playlist_add_check_outlined),
+          ),
           if (!_carregando)
             Badge(
               isLabelVisible: _pendenciasSyncCount > 0,

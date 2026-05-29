@@ -33,13 +33,21 @@ class CompraFornecedorItemAdapter extends TypeAdapter<CompraFornecedorItem> {
       outrasDespesasRateadas: fields[13] == null ? 0.0 : fields[13] as double,
       custoUnitarioFinal: fields[14] == null ? 0.0 : fields[14] as double,
       subtotalFinal: fields[15] == null ? 0.0 : fields[15] as double,
+      estoqueEntradaRegistrada: fields[16] == null ? false : fields[16] as bool,
+      estoqueSnapshotOk: fields[17] == null ? false : fields[17] as bool,
+      estoqueAnterior: fields[18] == null ? 0 : fields[18] as int,
+      custoAnterior: fields[19] == null ? 0.0 : fields[19] as double,
+      tamanhoEntrada: fields[20] == null ? '' : fields[20] as String,
+      corEntrada: fields[21] == null ? '' : fields[21] as String,
+      produtoNovoNaCompra: fields[22] == null ? false : fields[22] as bool,
+      custoEntradaRegistrado: fields[23] == null ? 0.0 : fields[23] as double,
     );
   }
 
   @override
   void write(BinaryWriter writer, CompraFornecedorItem obj) {
     writer
-      ..writeByte(16)
+      ..writeByte(24)
       ..writeByte(0)
       ..write(obj.produtoNome)
       ..writeByte(1)
@@ -71,7 +79,23 @@ class CompraFornecedorItemAdapter extends TypeAdapter<CompraFornecedorItem> {
       ..writeByte(14)
       ..write(obj.custoUnitarioFinal)
       ..writeByte(15)
-      ..write(obj.subtotalFinal);
+      ..write(obj.subtotalFinal)
+      ..writeByte(16)
+      ..write(obj.estoqueEntradaRegistrada)
+      ..writeByte(17)
+      ..write(obj.estoqueSnapshotOk)
+      ..writeByte(18)
+      ..write(obj.estoqueAnterior)
+      ..writeByte(19)
+      ..write(obj.custoAnterior)
+      ..writeByte(20)
+      ..write(obj.tamanhoEntrada)
+      ..writeByte(21)
+      ..write(obj.corEntrada)
+      ..writeByte(22)
+      ..write(obj.produtoNovoNaCompra)
+      ..writeByte(23)
+      ..write(obj.custoEntradaRegistrado);
   }
 
   @override

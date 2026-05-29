@@ -17,6 +17,7 @@ import '../../services/compra_fornecedor_hive_store.dart';
 import '../../services/compra_fornecedor_sync_service.dart';
 import '../../services/compra_para_pipeline_service.dart';
 import '../../services/conta_pagar_service.dart';
+import 'compra_detalhar_produtos_screen.dart';
 import '../../services/conta_pagar_hive_store.dart';
 import '../../utils/compra_fornecedor_rateio.dart';
 import '../contas_pagar_screen.dart';
@@ -79,6 +80,11 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
 
   bool get _ehFinanceira =>
       _tipoCompra == CompraFornecedorTipo.financeira;
+
+  bool get _ehRevendaDetalharDepois =>
+      _tipoCompra == CompraFornecedorTipo.revendaDetalharDepois;
+
+  bool get _usaValorInformado => _ehFinanceira || _ehRevendaDetalharDepois;
 
   bool get _tipoFixo =>
       _statusCompra == CompraFornecedorStatusCompra.confirmada;
@@ -292,7 +298,7 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
   }
 
   double get _valorTotal {
-    final base = _ehFinanceira
+    final base = _usaValorInformado
         ? _parseMoney(_valorInformadoCtrl.text)
         : _subtotalItens;
     return (base + _frete + _outrasDespesas - _desconto).clamp(0.0, 1e15);
@@ -625,7 +631,7 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
       outrasDespesas: _outrasDespesas,
       desconto: _desconto,
       valorPago: _valorPago,
-      itens: _ehFinanceira
+      itens: _usaValorInformado
           ? const <CompraFornecedorItem>[]
           : List<CompraFornecedorItem>.from(_itens),
       estoqueIntegrado: _estoqueIntegrado,
@@ -634,7 +640,14 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
       criadoEm: widget.compraExistente?.criadoEm ?? agora,
       atualizadoEm: agora,
       tipoCompra: CompraFornecedorTipo.ouPadrao(_tipoCompra),
-      valorInformado: _ehFinanceira ? _parseMoney(_valorInformadoCtrl.text) : 0,
+      valorInformado:
+          _usaValorInformado ? _parseMoney(_valorInformadoCtrl.text) : 0,
+      statusDetalhamentoProdutos: _ehRevendaDetalharDepois
+          ? CompraFornecedorStatusDetalhamento.aguardandoDetalhamento
+          : (_ehFinanceira
+              ? CompraFornecedorStatusDetalhamento.naoAplicavel
+              : (widget.compraExistente?.statusDetalhamentoProdutos ??
+                  CompraFornecedorStatusDetalhamento.naoAplicavel)),
     );
   }
 
@@ -678,7 +691,7 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
   bool get _podeConfirmarCompra {
     if (_statusCompra == CompraFornecedorStatusCompra.cancelada) return false;
     if (_statusCompra == CompraFornecedorStatusCompra.confirmada) return true;
-    if (_ehFinanceira) return _valorTotal > 1e-9;
+    if (_usaValorInformado) return _valorTotal > 1e-9;
     return _itens.isNotEmpty;
   }
 
@@ -756,7 +769,7 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
 
     debugPrint('[CP_COMPRA][confirm_start]');
     debugPrint('[CP_COMPRA][tipoCompra] $_tipoCompra');
-    debugPrint('[CP_COMPRA][movimentaEstoque] ${!_ehFinanceira}');
+    debugPrint('[CP_COMPRA][movimentaEstoque] ${CompraFornecedorTipo.movimentaEstoque(_tipoCompra)}');
 
     if (_statusCompra == CompraFornecedorStatusCompra.cancelada) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -769,7 +782,7 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
     final jaConfirmada =
         _statusCompra == CompraFornecedorStatusCompra.confirmada;
     if (!jaConfirmada) {
-      if (_ehFinanceira) {
+      if (_usaValorInformado) {
         if (_valorTotal <= 1e-9) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -898,6 +911,33 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
         );
       }
       if (!mounted) return;
+      if (finalModel.ehCompraRevendaDetalharDepois &&
+          finalModel.aguardaDetalhamentoProdutos) {
+        final detalhar = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Detalhar produtos agora?'),
+            content: const Text(
+              'A compra foi confirmada. Você pode vincular produtos existentes ou '
+              'novos agora, sem gerar novo financeiro.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Depois'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Detalhar produtos'),
+              ),
+            ],
+          ),
+        );
+        if (detalhar == true && mounted) {
+          await _abrirDetalharProdutos(finalModel);
+        }
+      }
+      if (!mounted) return;
       Navigator.of(context).pop();
     } finally {
       if (mounted) setState(() => _gravando = false);
@@ -915,6 +955,7 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
             : 'Lançamento de compra'),
         backgroundColor: _primary,
         foregroundColor: Colors.white,
+        actions: const [],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -922,12 +963,28 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
           _secao('Tipo de compra', [
             RadioListTile<String>(
               contentPadding: EdgeInsets.zero,
-              title: const Text('Compra com produtos para estoque'),
+              title: const Text('Compra com produtos agora'),
               subtitle: const Text(
-                'Use quando a mercadoria será lançada no estoque e terá '
-                'custo dos produtos atualizado.',
+                'Use quando já quer informar produtos, quantidades e custos '
+                'para entrada no estoque.',
               ),
               value: CompraFornecedorTipo.produtosEstoque,
+              groupValue: _tipoCompra,
+              onChanged: _tipoFixo || _gravando
+                  ? null
+                  : (v) {
+                      if (v == null) return;
+                      setState(() => _tipoCompra = v);
+                    },
+            ),
+            RadioListTile<String>(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Compra para revenda — detalhar produtos depois'),
+              subtitle: const Text(
+                'Use quando quer lançar primeiro o valor total da compra e depois '
+                'vincular produtos existentes ou novos sem duplicar financeiro.',
+              ),
+              value: CompraFornecedorTipo.revendaDetalharDepois,
               groupValue: _tipoCompra,
               onChanged: _tipoFixo || _gravando
                   ? null
@@ -1014,7 +1071,7 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
               maxLines: 3,
             ),
           ]),
-          if (!_ehFinanceira) ...[
+          if (!_usaValorInformado) ...[
             const SizedBox(height: 20),
             _secao('Itens', [
               Row(
@@ -1062,7 +1119,7 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
           ],
           const SizedBox(height: 20),
           _secao('Totais', [
-            if (_ehFinanceira) ...[
+            if (_usaValorInformado) ...[
               TextField(
                 controller: _valorInformadoCtrl,
                 decoration: const InputDecoration(
@@ -1317,7 +1374,26 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          if (widget.compraExistente != null &&
+              widget.compraExistente!.ehCompraRevendaDetalharDepois &&
+              widget.compraExistente!.statusCompra ==
+                  CompraFornecedorStatusCompra.confirmada &&
+              widget.compraExistente!.aguardaDetalhamentoProdutos) ...[
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed:
+                    _gravando ? null : () => _abrirDetalharProdutos(widget.compraExistente!),
+                icon: const Icon(Icons.playlist_add_check),
+                label: const Text('Detalhar produtos'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: Colors.amber.shade800,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
           SizedBox(
             width: double.infinity,
             child: FilledButton(
@@ -1345,43 +1421,79 @@ class _CompraFornecedorFormScreenState extends State<CompraFornecedorFormScreen>
 
   Widget _buildAvisoTipo() {
     final financeira = _ehFinanceira;
+    final revenda = _ehRevendaDetalharDepois;
+    final corFundo = financeira
+        ? Colors.teal.shade50
+        : revenda
+            ? Colors.amber.shade50
+            : Colors.blue.shade50;
+    final corBorda = financeira
+        ? Colors.teal.shade100
+        : revenda
+            ? Colors.amber.shade200
+            : Colors.blue.shade100;
+    final texto = financeira
+        ? 'Esta compra não movimenta estoque. Controle o valor a pagar e os pagamentos; '
+            'se gerar Contas a Pagar, não lance o mesmo valor manualmente no Financeiro.'
+        : revenda
+            ? 'Lance o valor total agora. Depois use “Detalhar produtos” para vincular '
+                'produtos ao estoque — isso não cria nova Conta a Pagar nem lançamento financeiro.'
+            : 'Informe os produtos agora para o fluxo de precificação/estoque. '
+                'O financeiro entra quando as parcelas forem pagas.';
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: financeira ? Colors.teal.shade50 : Colors.blue.shade50,
+        color: corFundo,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: financeira ? Colors.teal.shade100 : Colors.blue.shade100,
-        ),
+        border: Border.all(color: corBorda),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(
-            financeira ? Icons.account_balance_wallet_outlined : Icons.info_outline,
+            financeira
+                ? Icons.account_balance_wallet_outlined
+                : revenda
+                    ? Icons.inventory_2_outlined
+                    : Icons.info_outline,
             size: 18,
-            color: financeira ? Colors.teal.shade800 : Colors.blue.shade700,
+            color: financeira
+                ? Colors.teal.shade800
+                : revenda
+                    ? Colors.amber.shade900
+                    : Colors.blue.shade700,
           ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              financeira
-                  ? 'Esta compra não movimenta estoque e não altera custo dos produtos. '
-                      'Ela serve para controlar o valor a pagar e os pagamentos no financeiro. '
-                      'Se gerar Contas a Pagar, não lance o mesmo valor manualmente no Financeiro.'
-                  : 'Esta compra poderá atualizar estoque e custo dos produtos pelo fluxo de '
-                      'precificação/estoque. O financeiro será movimentado quando as parcelas '
-                      'forem pagas.',
+              texto,
               style: TextStyle(
                 fontSize: 12,
                 height: 1.35,
-                color: financeira ? Colors.teal.shade900 : Colors.blue.shade900,
+                color: financeira
+                    ? Colors.teal.shade900
+                    : revenda
+                        ? Colors.amber.shade900
+                        : Colors.blue.shade900,
               ),
             ),
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _abrirDetalharProdutos(CompraFornecedor compra) async {
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CompraDetalharProdutosScreen(
+          lojaId: widget.lojaId,
+          compraId: compra.id,
+        ),
+      ),
+    );
+    if (mounted) setState(() {});
   }
 
   Widget _secao(String titulo, List<Widget> children) {
