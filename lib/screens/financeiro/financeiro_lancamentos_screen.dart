@@ -10,6 +10,8 @@ import '../../models/lancamento_financeiro.dart';
 import '../../services/financeiro_firestore_service.dart';
 import '../../services/financeiro_hive_store.dart';
 import '../../core/conta_pagar_lancamento_vinculo.dart';
+import '../../financeiro/lancamento_financeiro_origem_ui.dart';
+import '../../services/financeiro_anti_duplicidade_service.dart';
 import '../../services/financeiro_soft_delete_service.dart';
 import '../../utils/moeda_input_formatter.dart';
 
@@ -218,6 +220,7 @@ class _FinanceiroLancamentosScreenState
                           itemBuilder: (_, i) {
                             final l = _listaOrdenada[i];
                             final df = DateFormat('dd/MM/yyyy');
+                            final chipOrigem = chipOrigemAutomaticaLancamento(l);
                             return Card(
                               margin: const EdgeInsets.only(bottom: 8),
                               child: ListTile(
@@ -228,11 +231,36 @@ class _FinanceiroLancamentosScreenState
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
                                 ),
-                                subtitle: Text(
-                                  '${FinanceiroTipoLancamento.legivel(l.tipo)} · ${l.status}\n'
-                                  '${df.format(l.dataEfetivaPagamentoOuLancamento)}'
-                                  '${l.referenciaExterna.trim().isNotEmpty ? '\nRef: ${l.referenciaExterna.trim()}' : ''}',
-                                  style: const TextStyle(fontSize: 12),
+                                subtitle: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    if (chipOrigem != null) ...[
+                                      Padding(
+                                        padding: const EdgeInsets.only(bottom: 4),
+                                        child: Chip(
+                                          label: Text(
+                                            chipOrigem,
+                                            style: const TextStyle(fontSize: 10),
+                                          ),
+                                          visualDensity: VisualDensity.compact,
+                                          padding: EdgeInsets.zero,
+                                          materialTapTargetSize:
+                                              MaterialTapTargetSize.shrinkWrap,
+                                          backgroundColor:
+                                              Colors.indigo.shade50,
+                                          side: BorderSide(
+                                            color: Colors.indigo.shade100,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                    Text(
+                                      '${FinanceiroTipoLancamento.legivel(l.tipo)} · ${l.status}\n'
+                                      '${df.format(l.dataEfetivaPagamentoOuLancamento)}'
+                                      '${l.referenciaExterna.trim().isNotEmpty ? '\nRef: ${l.referenciaExterna.trim()}' : ''}',
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                  ],
                                 ),
                                 isThreeLine: true,
                                 trailing: Text(
@@ -519,35 +547,39 @@ class _LancamentoFormSheetState extends State<_LancamentoFormSheet> {
   Future<bool> _confirmarDuplicidadeCompraMercadoriaSeNecessario(
     LancamentoFinanceiro l,
   ) async {
-    final suspeitos = _encontrarSuspeitosCompraMercadoria(
-      box: widget.box,
+    if (l.tipo != FinanceiroTipoLancamento.compraMercadoria) return true;
+
+    final suspeitas = await FinanceiroAntiDuplicidadeService
+        .suspeitasCompraMercadoria(
       lojaId: widget.lojaId,
       candidato: l,
-      excluirId: widget.existente?.id,
+      excluirLancamentoId: widget.existente?.id,
+      lancamentosBox: widget.box,
     );
-    if (suspeitos.isEmpty) return true;
-    final df = DateFormat('dd/MM/yy');
+    if (suspeitas.isEmpty) return true;
+    if (!mounted) return false;
+
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Possível duplicidade'),
+        title: const Text('Possível lançamento duplicado'),
         content: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
               const Text(
-                'Já existe lançamento parecido (compra de mercadoria, mesmo valor, '
-                'mesma data e mesma descrição). Deseja salvar mesmo assim?',
+                'Encontramos uma Conta a Pagar ou Compra de Fornecedor parecida '
+                'com este lançamento. Se você continuar, o valor pode aparecer '
+                'duas vezes no fluxo de caixa.',
               ),
               const SizedBox(height: 12),
-              ...suspeitos.map(
+              ...suspeitas.map(
                 (s) => Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
+                  padding: const EdgeInsets.only(bottom: 8),
                   child: Text(
-                    '· ${s.descricao.isEmpty ? '(sem descrição)' : s.descricao} · '
-                    'R\$ ${s.valor.toStringAsFixed(2)} · '
-                    '${df.format(s.dataEfetivaPagamentoOuLancamento)}',
+                    '· ${s.resumo}'
+                    '${s.detalhe.isNotEmpty ? '\n  ${s.detalhe}' : ''}',
                     style: const TextStyle(fontSize: 12),
                   ),
                 ),
@@ -562,7 +594,7 @@ class _LancamentoFormSheetState extends State<_LancamentoFormSheet> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Salvar assim mesmo'),
+            child: const Text('Lançar mesmo assim'),
           ),
         ],
       ),
@@ -884,40 +916,4 @@ class _LancamentoFormSheetState extends State<_LancamentoFormSheet> {
       ),
     );
   }
-}
-
-String _normalizarDescricaoDuplicidade(String s) =>
-    s.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
-
-bool _mesmoDiaCivilLancamento(DateTime a, DateTime b) =>
-    a.year == b.year && a.month == b.month && a.day == b.day;
-
-/// Comparação estrita (compra_mercadoria, valor, dia e descrição).
-List<LancamentoFinanceiro> _encontrarSuspeitosCompraMercadoria({
-  required Box<LancamentoFinanceiro> box,
-  required String lojaId,
-  required LancamentoFinanceiro candidato,
-  String? excluirId,
-}) {
-  if (candidato.tipo != FinanceiroTipoLancamento.compraMercadoria) {
-    return const [];
-  }
-  final alvo = _normalizarDescricaoDuplicidade(candidato.descricao);
-  if (alvo.isEmpty) return const [];
-  final d = candidato.dataEfetivaPagamentoOuLancamento;
-  final lid = lojaId.trim();
-  final out = <LancamentoFinanceiro>[];
-  for (final x in box.values) {
-    if (x.lojaId.trim() != lid) continue;
-    if (excluirId != null && x.id == excluirId) continue;
-    if (x.tipo != FinanceiroTipoLancamento.compraMercadoria) continue;
-    if ((x.valor - candidato.valor).abs() >= 0.009) continue;
-    if (!_mesmoDiaCivilLancamento(x.dataEfetivaPagamentoOuLancamento, d)) {
-      continue;
-    }
-    if (_normalizarDescricaoDuplicidade(x.descricao) != alvo) continue;
-    out.add(x);
-    if (out.length >= 5) break;
-  }
-  return out;
 }

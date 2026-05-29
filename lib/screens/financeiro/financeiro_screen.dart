@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../../core/hive_box_names.dart';
 import '../../financeiro/financeiro_constants.dart';
 import '../../financeiro/lancamento_financeiro_competencia_ui.dart';
+import '../../financeiro/lancamento_financeiro_origem_ui.dart';
 import '../../models/conta_receber.dart';
 import '../../services/conta_pagar_hive_store.dart';
 import '../../services/conta_pagar_service.dart';
@@ -1857,6 +1858,8 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
                     'Resultado gerencial = esse lucro − (gastos fixos + variáveis + despesa legada + equipe) + ajustes; '
                     'não inclui compra de mercadoria (CMV nas vendas), investimento, retirada nem entrada extra. '
                     'Fluxo de caixa = recebimentos (dinheiro+pix+cartão) + entradas extras − saídas + ajustes. '
+                    'Compra paga é saída de caixa; CMV é o custo dos produtos vendidos. O sistema não desconta '
+                    'a compra inteira do lucro das vendas para evitar duplicidade. '
                     'Gastos fixos: use “Gerar lançamentos do mês” na tela de cadastro ou lance manualmente. '
                     'Sugestões ficam pendentes até marcar como pagas.',
                     style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
@@ -1935,6 +1938,7 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
   }
 
   Widget _tileLancamento(LancamentoFinanceiro l) {
+    final chipOrigem = chipOrigemAutomaticaLancamento(l);
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
@@ -1960,12 +1964,29 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
-        subtitle: Text(
-          '${FinanceiroTipoLancamento.legivel(l.tipo)}\n'
-          '${LancamentoFinanceiroCompetenciaUi.subtituloCompetenciaPagamento(l, _fmtMesAnoPt)}',
-          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (chipOrigem != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Chip(
+                  label: Text(chipOrigem, style: const TextStyle(fontSize: 10)),
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  backgroundColor: Colors.indigo.shade50,
+                  side: BorderSide(color: Colors.indigo.shade100),
+                ),
+              ),
+            Text(
+              '${FinanceiroTipoLancamento.legivel(l.tipo)}\n'
+              '${LancamentoFinanceiroCompetenciaUi.subtituloCompetenciaPagamento(l, _fmtMesAnoPt)}',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            ),
+          ],
         ),
-        isThreeLine: true,
+        isThreeLine: chipOrigem != null,
         trailing: Text(
           _moeda.format(l.valor),
           style: const TextStyle(fontWeight: FontWeight.bold),

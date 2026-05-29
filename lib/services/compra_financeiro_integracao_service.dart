@@ -1,5 +1,9 @@
 // Política central compra ↔ financeiro: evitar dupla contagem com custos já lançados.
 //
+// Melhoria futura (não implementada): compra à vista sem parcelamento poderia gerar
+// uma Conta a Pagar já quitada ou um único LancamentoFinanceiro vinculado (id canônico),
+// para o pagamento aparecer no fluxo de caixa sem lançamento manual.
+//
 // Auditoria (código atual): [LancamentoFinanceiro] só é criado manualmente em
 // `FinanceiroLancamentosScreen`. Não há fluxo automático custo de produto/estoque → financeiro.
 // Mesmo assim, o total da compra NÃO é lançado automaticamente: muitos fluxos operacionais

@@ -1308,7 +1308,9 @@ class _RelatoriosFinanceirosScreenState
           const SizedBox(height: 8),
           Text(
             'Lançamentos reais no período. Não substitui o lucro operacional dos cards acima. '
-            'Complemento gerencial — evite dupla contagem com taxas ou despesas da mesma natureza.',
+            'Complemento gerencial — evite dupla contagem com taxas ou despesas da mesma natureza. '
+            'Compra paga é saída de caixa; CMV é o custo dos produtos vendidos — o sistema não desconta '
+            'a compra inteira do lucro das vendas para evitar duplicidade.',
             style: TextStyle(color: Colors.white.withOpacity(0.65), fontSize: 12),
           ),
           const SizedBox(height: 12),

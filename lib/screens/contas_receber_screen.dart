@@ -321,13 +321,15 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
         return;
       }
 
+      final hiveKey = c.key is int ? c.key as int : -1;
       await ContaReceberRecebimentoCaixaService.registrarRecebimento(
         lojaId: _lojaId!,
         valor: pago,
         formaPagamento: forma,
         clienteNome: c.clienteNome,
         observacaoConta: c.observacao,
-        contaHiveKey: c.key is int ? c.key as int : null,
+        contaHiveKey: hiveKey,
+        parcelaNumero: c.parcelaNumero,
         dataRecebimento: dataRecebimento,
       );
 
