@@ -4,7 +4,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb, visibleForTesting;
 import 'package:firebase_storage/firebase_storage.dart';
 
 import '../core/combo_config_canonical.dart';
@@ -53,21 +53,80 @@ class ProdutosFirestoreService {
   static FirebaseFirestore get _db =>
       debugFirestoreOverride ?? FirebaseFirestore.instance;
 
-  /// Com `merge:true`, mapas aninhados podem preservar chaves antigas no remoto.
-  /// Antes do upsert, limpa campos de variação para garantir sobrescrita total.
-  static Future<void> _clearVariationFieldsBeforeMerge({
-    required DocumentReference<Map<String, dynamic>> ref,
-    required bool clearPrecoPorTamanho,
-  }) async {
-    final clearPayload = <String, dynamic>{
-      'variacoes': FieldValue.delete(),
-      'variacoesExtraTipo': FieldValue.delete(),
-      'estoquePorTamanho': FieldValue.delete(),
-    };
-    if (clearPrecoPorTamanho) {
-      clearPayload['precoPorTamanho'] = FieldValue.delete();
+  /// Aplica campos de variação/grade no payload: mapa completo ou [FieldValue.delete].
+  @visibleForTesting
+  static void applyVariationFieldsToFirestorePayload(
+    Map<String, dynamic> payload, {
+    required Map<String, dynamic> variacoes,
+    required Map<String, dynamic> variacoesExtraTipo,
+    required Map<String, int> estoquePorTamanho,
+    Map<String, double>? precoPorTamanho,
+  }) {
+    payload['variacoes'] =
+        variacoes.isNotEmpty ? variacoes : FieldValue.delete();
+    payload['variacoesExtraTipo'] = variacoesExtraTipo.isNotEmpty
+        ? variacoesExtraTipo
+        : FieldValue.delete();
+    payload['estoquePorTamanho'] = estoquePorTamanho.isNotEmpty
+        ? estoquePorTamanho
+        : FieldValue.delete();
+    if (precoPorTamanho != null && precoPorTamanho.isNotEmpty) {
+      payload['precoPorTamanho'] = precoPorTamanho;
     }
-    await ref.set(clearPayload, SetOptions(merge: true));
+  }
+
+  static bool _isFirestoreDeleteValue(dynamic value) {
+    return identical(value, FieldValue.delete());
+  }
+
+  /// Monta o documento final em memória (campos do patch substituem o existente
+  /// no topo; mapas aninhados não sofrem merge profundo). Uma única [set] grava
+  /// o resultado — equivalente a merge sem janela entre delete e write.
+  @visibleForTesting
+  static Map<String, dynamic> buildFinalDocumentPayloadForSet({
+    required Map<String, dynamic>? existingData,
+    required Map<String, dynamic> patch,
+  }) {
+    final out = existingData != null
+        ? Map<String, dynamic>.from(existingData)
+        : <String, dynamic>{};
+    for (final entry in patch.entries) {
+      final value = entry.value;
+      if (value == null || _isFirestoreDeleteValue(value)) {
+        out.remove(entry.key);
+      } else {
+        out[entry.key] = value;
+      }
+    }
+    return out;
+  }
+
+  /// Uma única escrita no documento ([set] do payload final já mesclado).
+  static Future<void> _upsertProdutoDocument(
+    DocumentReference<Map<String, dynamic>> ref,
+    Map<String, dynamic> payload, {
+    Map<String, dynamic>? existingData,
+  }) async {
+    final finalPayload = buildFinalDocumentPayloadForSet(
+      existingData: existingData,
+      patch: payload,
+    );
+    await ref.set(finalPayload);
+  }
+
+  /// Pull: não apagar variações locais cadastradas quando o remoto vier vazio/null
+  /// (ex.: estado transitório corrompido no doc remoto).
+  @visibleForTesting
+  static bool shouldIgnoreEmptyRemoteVariacoesOnPull({
+    required Produto local,
+    required dynamic remoteVariacoes,
+  }) {
+    if (local.custoEditadoNoCadastro != true) return false;
+    final localVars = local.variacoes;
+    if (localVars == null || localVars.isEmpty) return false;
+    if (remoteVariacoes == null) return true;
+    if (remoteVariacoes is Map && remoteVariacoes.isEmpty) return true;
+    return false;
   }
 
   /// Estado explícito da persistência remota de produto.
@@ -527,8 +586,6 @@ class ProdutosFirestoreService {
       );
       final precoPorTamanhoPush =
           _sanitizePrecoPorTamanhoForFirestore(produto.precoPorTamanho);
-      final shouldClearPrecoPorTamanho =
-          shouldClearPrecoPorTamanhoBeforeMerge(precoPorTamanhoPush);
       logD(
         '[VARIACAO_CLEAR] push estoque_produtos/$produtoId '
         'variacoesKeys=${variacoesPush.length} extraKeys=${variacoesExtraPush.length} '
@@ -549,7 +606,6 @@ class ProdutosFirestoreService {
         'imagens': imagensFinais, // ✅ Usa URLs do Firebase
         'slug': produto.slug,
         'tamanhos': produto.tamanhos,
-        'estoquePorTamanho': estoquePorTamPush,
         'publicadoNoCatalogo': produto.publicadoNoCatalogo,
         'custoReal': produto.custoReal,
         'precoUnitario': produto.precoUnitario,
@@ -572,11 +628,8 @@ class ProdutosFirestoreService {
             ? Timestamp.fromDate(produto.dataFimPromo!)
             : null,
 
-        // Variações (tamanho + cor) — chaves sempre presentes para não preservar lixo com merge
+        // Variações (tamanho + cor) — aplicadas via [applyVariationFieldsToFirestorePayload]
         'cores': produto.cores,
-        'variacoes': variacoesPush,
-        'variacoesExtraTipo': variacoesExtraPush,
-        if (precoPorTamanhoPush != null) 'precoPorTamanho': precoPorTamanhoPush,
         'tipoProduto': produto.tipoProduto,
         // itensCombo omitido quando vazio: merge não apaga chave no Firestore.
         // Limpeza remota explícita: enviar []. Pull: applyComboMetadataPullForExisting.
@@ -617,11 +670,19 @@ class ProdutosFirestoreService {
         _dlog('[ProdutoSync] create estoque_produtos/$produtoId');
       }
 
-      await _clearVariationFieldsBeforeMerge(
-        ref: docRef,
-        clearPrecoPorTamanho: shouldClearPrecoPorTamanho,
+      applyVariationFieldsToFirestorePayload(
+        produtoData,
+        variacoes: variacoesPush,
+        variacoesExtraTipo: variacoesExtraPush,
+        estoquePorTamanho: estoquePorTamPush,
+        precoPorTamanho: precoPorTamanhoPush,
       );
-      await docRef.set(produtoData, SetOptions(merge: true));
+
+      await _upsertProdutoDocument(
+        docRef,
+        produtoData,
+        existingData: docSnap.exists ? docSnap.data() : null,
+      );
 
       // 🔹 TAMBÉM atualizar no catálogo público (produtos) se o produto está publicado
       if (produto.publicadoNoCatalogo) {
@@ -631,11 +692,7 @@ class ProdutosFirestoreService {
               .doc(storeId)
               .collection('produtos')
               .doc(produtoId);
-          await _clearVariationFieldsBeforeMerge(
-            ref: publicoRef,
-            clearPrecoPorTamanho: shouldClearPrecoPorTamanho,
-          );
-          await publicoRef.set({
+          final publicoData = <String, dynamic>{
             // Campos mínimos para o stream/filtros do catálogo web.
             // Sem esses campos, o doc pode ser ignorado por filtros de publicação.
             'ativo': true,
@@ -652,9 +709,6 @@ class ProdutosFirestoreService {
             'qtdEstoque': produto.quantidade,
             'imagens': imagensFinais,
             'slug': produto.slug,
-            'variacoes': variacoesPush,
-            'variacoesExtraTipo': variacoesExtraPush,
-            'estoquePorTamanho': estoquePorTamPush,
             'cores': produto.cores,
             'categoria': produto.categoria,
             'categoriaId': produto.categoria,
@@ -664,8 +718,6 @@ class ProdutosFirestoreService {
             'subcategoriasExtras': produto.subcategoriasExtras,
             'categoriasAssociadas': produto.categoriasAssociadas,
             'subcategoriasAssociadas': produto.subcategoriasAssociadas,
-            if (precoPorTamanhoPush != null)
-              'precoPorTamanho': precoPorTamanhoPush,
             'emPromocao': produto.emPromocao,
             'percentualPromo': produto.percentualPromo,
             'valorPromo': produto.valorPromo,
@@ -692,7 +744,20 @@ class ProdutosFirestoreService {
             'percentualDescontoPix': produto.percentualDescontoPix,
             if (produto.videoUrl.isNotEmpty) 'videoUrl': produto.videoUrl,
             'updatedAt': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
+          };
+          final publicoSnap = await publicoRef.get();
+          applyVariationFieldsToFirestorePayload(
+            publicoData,
+            variacoes: variacoesPush,
+            variacoesExtraTipo: variacoesExtraPush,
+            estoquePorTamanho: estoquePorTamPush,
+            precoPorTamanho: precoPorTamanhoPush,
+          );
+          await _upsertProdutoDocument(
+            publicoRef,
+            publicoData,
+            existingData: publicoSnap.exists ? publicoSnap.data() : null,
+          );
           _dlog('[ProdutoPublico] upsert produtos/$produtoId concluído');
           logD('✅ [PRODUTOS-SYNC] Catálogo público (produtos) atualizado');
         } catch (e) {
@@ -1091,7 +1156,16 @@ class ProdutosFirestoreService {
 
               if (data.containsKey('variacoes')) {
                 final varData = data['variacoes'];
-                if (varData == null) {
+                if (shouldIgnoreEmptyRemoteVariacoesOnPull(
+                  local: p,
+                  remoteVariacoes: varData,
+                )) {
+                  logW(
+                    '[VARIACAO_PULL] variacoes remotas vazias ignoradas — '
+                    'mantendo grade local (cadastro manual)',
+                    tag: 'VARIACAO_GUARD',
+                  );
+                } else if (varData == null) {
                   p.variacoes = null;
                   logD('[VARIACAO_PULL] variacoes remotas null → limpo local');
                 } else if (varData is Map) {

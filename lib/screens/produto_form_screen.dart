@@ -471,6 +471,20 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     );
   }
 
+  void _syncTombSessaoBaselineAposSalvarVariacoes(
+    Map<String, dynamic> variacoesMap,
+    Map<String, int> estoqueMapa,
+  ) {
+    if (variacoesMap.isNotEmpty) {
+      _tombSessaoAplicaVarTomb = true;
+      _atualizarTombSessaoAposTombstoneOk(variacoesMap, estoqueMapa);
+      return;
+    }
+    _tombSessaoAplicaVarTomb = false;
+    _tombSessaoV = {};
+    _tombSessaoT = {};
+  }
+
   String? _estoqueDocIdParaTombstone(Produto p) {
     final a = p.idFirebase.trim();
     if (a.isNotEmpty) return a;
@@ -1417,6 +1431,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       }
       p.updatedAt = DateTime.now();
       await p.save();
+      _syncTombSessaoBaselineAposSalvarVariacoes(variacoesMap, estoqueMapa);
       await ProdutosFirestoreService.syncProduto(p, lojaId: lojaId)
           .timeout(const Duration(seconds: 45), onTimeout: () => throw TimeoutException('Sincronização demorou muito'));
       await CatalogoSyncService.upsertFromProduto(p, target: SyncTarget.draft)
@@ -1909,6 +1924,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
 
           existente.updatedAt = DateTime.now();
           await existente.save();
+          _syncTombSessaoBaselineAposSalvarVariacoes(variacoesMap, estoqueMapa);
           remoteStatus = await ProdutosFirestoreService.syncProdutoComStatus(
             existente,
             lojaId: lojaId,
@@ -2082,6 +2098,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
 
         p.updatedAt = DateTime.now();
         await p.save();
+        _syncTombSessaoBaselineAposSalvarVariacoes(variacoesMap, estoqueMapa);
         remoteStatus = await ProdutosFirestoreService.syncProdutoComStatus(
           p,
           lojaId: lojaId,
