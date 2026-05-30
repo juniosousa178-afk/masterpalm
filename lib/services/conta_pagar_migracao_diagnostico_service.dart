@@ -1,6 +1,5 @@
 // Diagnóstico read-only: compras com saldo em aberto sem contas a pagar geradas.
 
-import '../models/compra_fornecedor.dart';
 import '../models/compra_fornecedor_constants.dart';
 import 'compra_fornecedor_hive_store.dart';
 import 'conta_pagar_hive_store.dart';

@@ -56,7 +56,7 @@ class CatalogBootstrapLoadingScreen extends StatelessWidget {
     final hasLogo = logo.isNotEmpty;
 
     final String tituloPill;
-    final String? tituloCentral;
+    final String tituloCentral;
     final String frase;
     switch (loadingContext) {
       case WebInitialLoadingContext.app:
@@ -133,19 +133,16 @@ class CatalogBootstrapLoadingScreen extends StatelessWidget {
                     )
                   else
                     fallbackPill(),
-                  if (tituloCentral != null) ...[
-                    const SizedBox(height: 36),
-                    Text(
-                      tituloCentral,
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textPrimary,
-                          ),
-                    ),
-                    const SizedBox(height: 12),
-                  ] else
-                    const SizedBox(height: 36),
+                  const SizedBox(height: 36),
+                  Text(
+                    tituloCentral,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textPrimary,
+                        ),
+                  ),
+                  const SizedBox(height: 12),
                   Text(
                     frase,
                     textAlign: TextAlign.center,
