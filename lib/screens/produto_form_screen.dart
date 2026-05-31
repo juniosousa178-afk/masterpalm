@@ -492,6 +492,22 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     return s.isNotEmpty ? s : null;
   }
 
+  Future<void> _liberarTombstonesVarAtivasPosSave(
+    Produto p,
+    Map<String, dynamic> variacoesMap,
+    Map<String, int> estoqueMapa,
+  ) async {
+    if (lojaId == null) return;
+    final doc = _estoqueDocIdParaTombstone(p);
+    if (doc == null) return;
+    await ProdutoExclusaoTombstoneService.liberarTombstonesVariacoesAtivas(
+      lojaId: lojaId!,
+      estoqueDocId: doc,
+      variacoesMap: variacoesMap,
+      estoquePorTamanho: estoqueMapa,
+    );
+  }
+
   /// Antes de [save]/sync: `exclusao_produto` com [p: false] e chaves em [v] — só com prova (grade persistida + remoção de chave).
   Future<bool> _tentarTombstoneVarRemovidaSessaoSeNecessario({
     required Produto pBase,
@@ -1431,6 +1447,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       }
       p.updatedAt = DateTime.now();
       await p.save();
+      await _liberarTombstonesVarAtivasPosSave(p, variacoesMap, estoqueMapa);
       _syncTombSessaoBaselineAposSalvarVariacoes(variacoesMap, estoqueMapa);
       await ProdutosFirestoreService.syncProduto(p, lojaId: lojaId)
           .timeout(const Duration(seconds: 45), onTimeout: () => throw TimeoutException('Sincronização demorou muito'));
@@ -2098,6 +2115,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
 
         p.updatedAt = DateTime.now();
         await p.save();
+        await _liberarTombstonesVarAtivasPosSave(p, variacoesMap, estoqueMapa);
         _syncTombSessaoBaselineAposSalvarVariacoes(variacoesMap, estoqueMapa);
         remoteStatus = await ProdutosFirestoreService.syncProdutoComStatus(
           p,

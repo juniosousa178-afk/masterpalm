@@ -6,7 +6,7 @@
 import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:flutter/foundation.dart' show kDebugMode, visibleForTesting;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/logger.dart';
@@ -32,7 +32,11 @@ class _LojaTomb {
 class ProdutoExclusaoTombstoneService {
   ProdutoExclusaoTombstoneService._();
 
-  static final FirebaseFirestore _db = FirebaseFirestore.instance;
+  @visibleForTesting
+  static FirebaseFirestore? debugFirestoreOverride;
+
+  static FirebaseFirestore get _db =>
+      debugFirestoreOverride ?? FirebaseFirestore.instance;
   static final Map<String, _LojaTomb> _byLoja = {};
   static String? _lastHydrateLoja;
   static DateTime? _lastHydrateAt;
@@ -53,6 +57,37 @@ class ProdutoExclusaoTombstoneService {
       '$_pfxV${t.trim()}$_sep${c.trim()}$_sep';
 
   static String eKey(String outer, String cor) => '$_pfxE${outer.trim()}$_sep${cor.trim()}';
+
+  /// Mesma regra de [Produto._resolverCorKeyParaTamanho] para checagem de tombstone.
+  static String normalizarCorParaChecagem({
+    required String tamanho,
+    required String cor,
+    Map<String, dynamic>? variacoes,
+  }) {
+    final tam = tamanho.trim();
+    final corTrim = cor.trim();
+    if (tam.isEmpty) return corTrim.isEmpty ? 'sem-cor' : corTrim;
+    if (corTrim.isNotEmpty) return corTrim;
+    if (variacoes == null) return 'sem-cor';
+    final mapaCor = variacoes[tam];
+    if (mapaCor is! Map) return 'sem-cor';
+    final coresValidas = mapaCor.keys
+        .map((e) => e.toString().trim())
+        .where((e) => e.isNotEmpty && e != 'sem-cor')
+        .toSet()
+        .toList();
+    if (coresValidas.length == 1) return coresValidas.first;
+    return 'sem-cor';
+  }
+
+  @visibleForTesting
+  static void resetCacheForTests() {
+    _byLoja.clear();
+    _lastHydrateLoja = null;
+    _lastHydrateAt = null;
+    _prefsCarregou = false;
+    debugFirestoreOverride = null;
+  }
 
   // --- chaves a partir de mapa remoto / local (mesma regra em diff e filtro) ---
 
@@ -429,13 +464,15 @@ class ProdutoExclusaoTombstoneService {
         final inner = Map<String, dynamic>.from(e.value as Map);
         for (final k in (e.value as Map).keys) {
           if (bloq.contains(vKeyCelula(e.key, k.toString()))) {
-            inner.remove(k);
-            if (kDebugMode) {
-              logD(
-                '[TOMBSTONE_BLOCK] var excl do payload: ${e.key} / $k',
-                tag: 'TOMBSTONE',
-              );
-            }
+            // Célula ainda presente no payload remoto/local = tombstone legado; manter.
+            continue;
+          }
+          inner.remove(k);
+          if (kDebugMode) {
+            logD(
+              '[TOMBSTONE_BLOCK] var excl do payload: ${e.key} / $k',
+              tag: 'TOMBSTONE',
+            );
           }
         }
         if (inner.isEmpty) {
@@ -468,10 +505,12 @@ class ProdutoExclusaoTombstoneService {
     final out = Map<String, int>.from(m);
     for (final k in m.keys) {
       if (bloq.contains(tKeySoloTamanho(k))) {
-        out.remove(k);
-        if (kDebugMode) {
-          logD('[TOMBSTONE_BLOCK] tam excl: $k', tag: 'TOMBSTONE');
-        }
+        // Tamanho ainda no mapa = tombstone T:: legado; manter.
+        continue;
+      }
+      out.remove(k);
+      if (kDebugMode) {
+        logD('[TOMBSTONE_BLOCK] tam excl: $k', tag: 'TOMBSTONE');
       }
     }
     return out;
@@ -584,6 +623,146 @@ class ProdutoExclusaoTombstoneService {
     }
   }
 
+  static Future<Map<String, dynamic>?> _lerDocEstoqueRemoto(
+    String lojaId,
+    String estoqueDocId,
+  ) async {
+    final l = lojaId.trim();
+    final id = estoqueDocId.trim();
+    if (l.isEmpty || id.isEmpty) return null;
+    try {
+      final snap = await _db
+          .collection('lojas')
+          .doc(l)
+          .collection(FSPaths.estoqueProdutosCol)
+          .doc(id)
+          .get();
+      if (!snap.exists) return null;
+      return snap.data();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static bool _celulaAtivaNoMapaRemoto({
+    required Map<String, dynamic>? data,
+    required String tamanho,
+    required String corKey,
+  }) {
+    if (data == null || tamanho.isEmpty) return false;
+    final v = data['variacoes'];
+    if (v is Map) {
+      final mapaTam = v[tamanho];
+      if (mapaTam is Map && mapaTam.containsKey(corKey)) {
+        return ProdutoVariacaoExtra.somarCelula(mapaTam[corKey]) > 0;
+      }
+    }
+    final ep = data['estoquePorTamanho'];
+    if (ep is Map) {
+      return ProdutoVariacaoExtra.valorFirestoreComoInt(ep[tamanho]) > 0;
+    }
+    return false;
+  }
+
+  static bool _tombstoneIgnoradoPorCelulaAtiva({
+    required String chave,
+    required Map<String, dynamic>? dataRemoto,
+    required String tamanho,
+    required String corKey,
+  }) {
+    if (dataRemoto == null) return false;
+    if (chave.startsWith(_pfxV)) {
+      return _celulaAtivaNoMapaRemoto(
+        data: dataRemoto,
+        tamanho: tamanho,
+        corKey: corKey,
+      );
+    }
+    if (chave.startsWith(_pfxT)) {
+      final tamTomb = chave.substring(_pfxT.length);
+      if (tamTomb != tamanho.trim()) return false;
+      return _celulaAtivaNoMapaRemoto(
+        data: dataRemoto,
+        tamanho: tamanho,
+        corKey: corKey,
+      );
+    }
+    return false;
+  }
+
+  /// Remove tombstones obsoletos quando células/tamanhos voltam ao mapa ativo do produto.
+  static Future<void> liberarTombstonesVariacoesAtivas({
+    required String lojaId,
+    required String estoqueDocId,
+    required Map<String, dynamic> variacoesMap,
+    required Map<String, int> estoquePorTamanho,
+  }) async {
+    final l = lojaId.trim();
+    final id = estoqueDocId.trim();
+    if (l.isEmpty || id.isEmpty) return;
+    if (isProdutoBloqueadoSinc(l, id)) return;
+
+    await _garantirPrefsUmaVez();
+    await ensureHydratedForLoja(l);
+
+    final chavesV = chavesCelulaDeVariacoes(variacoesMap);
+    final chavesT = chavesSoloTamanhoDeEstoquePorTamanho(estoquePorTamanho);
+    final bloq = _loja(l).varKeys[id];
+    if (bloq == null || bloq.isEmpty) return;
+
+    final toRemove = <String>{};
+    for (final k in bloq) {
+      if (chavesV.contains(k) || chavesT.contains(k)) {
+        toRemove.add(k);
+        continue;
+      }
+      if (k.startsWith(_pfxT)) {
+        final tam = k.substring(_pfxT.length);
+        for (final vk in chavesV) {
+          if (vk.startsWith('$_pfxV$tam$_sep')) {
+            toRemove.add(k);
+            break;
+          }
+        }
+      }
+    }
+    if (toRemove.isEmpty) return;
+
+    bloq.removeAll(toRemove);
+    if (bloq.isEmpty) {
+      _loja(l).varKeys.remove(id);
+    }
+
+    try {
+      final updates = <String, dynamic>{
+        'at': FieldValue.serverTimestamp(),
+      };
+      for (final k in toRemove) {
+        updates['v.$k'] = FieldValue.delete();
+      }
+      await _db
+          .collection('lojas')
+          .doc(l)
+          .collection(FSPaths.exclusaoProdutoCol)
+          .doc(id)
+          .set(updates, SetOptions(merge: true));
+      if (kDebugMode) {
+        logD(
+          '[TOMBSTONE] liberadas ${toRemove.length} chaves obsoletas: loja=$l doc=$id',
+          tag: 'TOMBSTONE',
+        );
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        logW(
+          '⚠️ [TOMBSTONE] liberar obsoletas (type=${e.runtimeType})',
+          tag: 'TOMBSTONE',
+        );
+      }
+    }
+    await _savePrefs();
+  }
+
   static Future<bool> isVendaBloqueadaParaCelula({
     required String lojaId,
     required String estoqueDocId,
@@ -591,24 +770,52 @@ class ProdutoExclusaoTombstoneService {
     String cor = '',
     String variacaoExtra = '',
   }) async {
-    if (await isProdutoBloqueadoRemoto(
-        lojaId: lojaId, estoqueDocId: estoqueDocId)) {
+    final l = lojaId.trim();
+    final id = estoqueDocId.trim();
+    if (await isProdutoBloqueadoRemoto(lojaId: l, estoqueDocId: id)) {
       return true;
     }
+    await ensureHydratedForLoja(l);
+
     final t = tamanho.trim();
-    final c = cor.trim();
-    if (t.isNotEmpty) {
-      if (isVarChaveBloqueadaSinc(lojaId, estoqueDocId, tKeySoloTamanho(t))) {
-        return true;
+    final dataRemoto = await _lerDocEstoqueRemoto(l, id);
+    Map<String, dynamic>? variacoesRemotas;
+    if (dataRemoto != null) {
+      final vr = dataRemoto['variacoes'];
+      if (vr is Map) {
+        variacoesRemotas = Map<String, dynamic>.from(vr);
       }
     }
-    if (t.isNotEmpty || c.isNotEmpty) {
-      if (isVarChaveBloqueadaSinc(
-        lojaId,
-        estoqueDocId,
-        vKeyCelula(t, c),
-      )) {
-        return true;
+    final corKey = normalizarCorParaChecagem(
+      tamanho: t,
+      cor: cor,
+      variacoes: variacoesRemotas,
+    );
+
+    if (t.isNotEmpty) {
+      final tk = tKeySoloTamanho(t);
+      if (isVarChaveBloqueadaSinc(l, id, tk)) {
+        if (!_tombstoneIgnoradoPorCelulaAtiva(
+          chave: tk,
+          dataRemoto: dataRemoto,
+          tamanho: t,
+          corKey: corKey,
+        )) {
+          return true;
+        }
+      }
+    }
+    if (t.isNotEmpty || corKey.isNotEmpty) {
+      final vk = vKeyCelula(t, corKey);
+      if (isVarChaveBloqueadaSinc(l, id, vk)) {
+        if (!_tombstoneIgnoradoPorCelulaAtiva(
+          chave: vk,
+          dataRemoto: dataRemoto,
+          tamanho: t,
+          corKey: corKey,
+        )) {
+          return true;
+        }
       }
     }
     return false;
