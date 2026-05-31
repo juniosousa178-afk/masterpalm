@@ -75,6 +75,7 @@ import {
 import {
   validateMercadoPagoWebhookSignature,
   extractMercadoPagoWebhookDataId,
+  buildMercadoPagoWebhookSignatureLogContext,
 } from "./src/mercadoPagoWebhookSignature.js";
 import {
   handlePreapprovalWebhookNotification,
@@ -2444,6 +2445,7 @@ export const mpWebhook = onRequest(
             severity: "warn",
             event: evt,
             reason,
+            ...buildMercadoPagoWebhookSignatureLogContext(req),
             ...(sig.detail ? { detail: String(sig.detail).slice(0, 200) } : {}),
           }),
         );

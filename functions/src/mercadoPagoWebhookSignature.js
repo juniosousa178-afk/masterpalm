@@ -17,20 +17,83 @@ function headerGet(req, name) {
   return up ? String(h[up]).trim() : "";
 }
 
+function coalesceNotificationId(value) {
+  if (value == null) return "";
+  const s = String(value).trim();
+  return s.length > 0 ? s : "";
+}
+
 /**
- * data.id para o manifest: query ?data.id= (oficial), fallback body.data.id / body.id.
+ * data.id para o manifest HMAC — ordem alinhada ao contrato MP e formatos legados.
+ * 1. query["data.id"]  (?data.id=&type=payment)
+ * 2. query.data.id     (parser aninhado, ex. ?data[id]=)
+ * 3. query.id          (?id=&topic=payment — legado)
+ * 4. body.data.id
+ * 5. body.id
  */
 export function extractMercadoPagoWebhookDataId(req) {
-  const q = req.query || {};
-  if (q["data.id"] != null && String(q["data.id"]).length > 0) {
-    return String(q["data.id"]);
+  const q = req?.query || {};
+
+  const fromDataIdKey = coalesceNotificationId(q["data.id"]);
+  if (fromDataIdKey) return fromDataIdKey;
+
+  const qData = q.data;
+  if (qData && typeof qData === "object" && !Array.isArray(qData)) {
+    const fromNestedQuery = coalesceNotificationId(qData.id);
+    if (fromNestedQuery) return fromNestedQuery;
   }
-  const b = req.body || {};
-  if (b?.data?.id != null && String(b.data.id).length > 0) {
-    return String(b.data.id);
-  }
-  if (b?.id != null && String(b.id).length > 0) return String(b.id);
+
+  const fromQueryId = coalesceNotificationId(q.id);
+  if (fromQueryId) return fromQueryId;
+
+  const b = req?.body || {};
+  const fromBodyDataId = coalesceNotificationId(b?.data?.id);
+  if (fromBodyDataId) return fromBodyDataId;
+
+  const fromBodyId = coalesceNotificationId(b?.id);
+  if (fromBodyId) return fromBodyId;
+
   return "";
+}
+
+/**
+ * Formato da notificação (somente para logs estruturados — sem secret/assinatura).
+ * @returns {'query_data_id_type'|'query_data_id'|'query_data_object_id'|'query_id_topic'|'query_id'|'body_data_id'|'body_id'|'none'}
+ */
+export function detectMercadoPagoWebhookNotificationFormat(req) {
+  const q = req?.query || {};
+  const b = req?.body || {};
+
+  if (q["data.id"] != null && String(q["data.id"]).length > 0) {
+    return q.type != null && String(q.type).length > 0 ? "query_data_id_type" : "query_data_id";
+  }
+
+  const qData = q.data;
+  if (qData && typeof qData === "object" && !Array.isArray(qData) && qData.id != null && String(qData.id).length > 0) {
+    return "query_data_object_id";
+  }
+
+  if (q.id != null && String(q.id).length > 0) {
+    return q.topic != null && String(q.topic).length > 0 ? "query_id_topic" : "query_id";
+  }
+
+  if (b?.data?.id != null && String(b.data.id).length > 0) return "body_data_id";
+  if (b?.id != null && String(b.id).length > 0) return "body_id";
+
+  return "none";
+}
+
+/**
+ * Campos seguros para log de diagnóstico de assinatura (mpWebhook catálogo).
+ * Nunca inclui webhookSecret, x-signature completo ou tokens.
+ */
+export function buildMercadoPagoWebhookSignatureLogContext(req) {
+  return {
+    notificationFormat: detectMercadoPagoWebhookNotificationFormat(req),
+    hasXSignature: Boolean(headerGet(req, "x-signature")),
+    hasXRequestId: Boolean(headerGet(req, "x-request-id")),
+    extractedDataIdLen: extractMercadoPagoWebhookDataId(req).length,
+  };
 }
 
 function normalizeDataIdForManifest(dataId) {
