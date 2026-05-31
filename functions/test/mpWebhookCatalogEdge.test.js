@@ -9,6 +9,8 @@ import crypto from "node:crypto";
 
 import {
   verifyMpCatalogWebhookNotification,
+  pickMpCatalogWebhookSecret,
+  verifyMpCatalogWebhookNotificationWithSlots,
   MP_WEBHOOK_CATALOG_SIGNATURE_HTTP_STATUS,
   MP_WEBHOOK_CATALOG_PROCESSING_ERROR_HTTP_STATUS,
 } from "../src/mpWebhookCatalogEdge.js";
@@ -29,6 +31,94 @@ function buildValidCatalogWebhookReq({ paymentId, secret, requestId = "req-catal
     },
   };
 }
+
+describe("mpWebhookCatalogEdge / pickMpCatalogWebhookSecret", () => {
+  it("usa catalog_secret quando catalogSecret existe", () => {
+    const r = pickMpCatalogWebhookSecret({
+      catalogSecret: " catalog-secret ",
+      platformSecret: "platform-secret",
+    });
+    assert.equal(r.secretSlot, "catalog_secret");
+    assert.equal(r.secret, "catalog-secret");
+  });
+
+  it("usa platform_secret quando catalogSecret vazio e platformSecret existe", () => {
+    const r = pickMpCatalogWebhookSecret({
+      catalogSecret: "   ",
+      platformSecret: " platform-secret ",
+    });
+    assert.equal(r.secretSlot, "platform_secret");
+    assert.equal(r.secret, "platform-secret");
+  });
+
+  it("retorna none quando ambos vazios", () => {
+    const r = pickMpCatalogWebhookSecret({
+      catalogSecret: "",
+      platformSecret: "  ",
+    });
+    assert.equal(r.secretSlot, "none");
+    assert.equal(r.secret, "");
+  });
+});
+
+describe("mpWebhookCatalogEdge / verifyMpCatalogWebhookNotificationWithSlots", () => {
+  it("valida com catalog_secret e HMAC correto", () => {
+    const catalogSecret = "unit-test-catalog-only-secret";
+    const platformSecret = "unit-test-platform-secret";
+    const req = buildValidCatalogWebhookReq({ paymentId: "pay_catalog_slot", secret: catalogSecret });
+    const r = verifyMpCatalogWebhookNotificationWithSlots(req, { catalogSecret, platformSecret });
+    assert.equal(r.ok, true);
+    assert.equal(r.secretSlot, "catalog_secret");
+  });
+
+  it("valida com platform_secret se catalog ausente", () => {
+    const platformSecret = "unit-test-platform-fallback-secret";
+    const req = buildValidCatalogWebhookReq({ paymentId: "pay_platform_slot", secret: platformSecret });
+    const r = verifyMpCatalogWebhookNotificationWithSlots(req, {
+      catalogSecret: "",
+      platformSecret,
+    });
+    assert.equal(r.ok, true);
+    assert.equal(r.secretSlot, "platform_secret");
+  });
+
+  it("catalog_secret presente mas HMAC com platform_secret falha sem fallback", () => {
+    const catalogSecret = "catalog-secret-for-mismatch-test";
+    const platformSecret = "platform-secret-for-mismatch-test";
+    const req = buildValidCatalogWebhookReq({
+      paymentId: "pay_mismatch_no_fallback",
+      secret: platformSecret,
+    });
+    const r = verifyMpCatalogWebhookNotificationWithSlots(req, { catalogSecret, platformSecret });
+    assert.equal(r.ok, false);
+    assert.equal(r.reason, "hmac_mismatch");
+    assert.equal(r.secretSlot, "catalog_secret");
+  });
+
+  it("ambos ausentes retorna secret_missing e secretSlot none", () => {
+    const req = buildValidCatalogWebhookReq({ paymentId: "p-none", secret: "unused" });
+    const r = verifyMpCatalogWebhookNotificationWithSlots(req, {
+      catalogSecret: "",
+      platformSecret: "",
+    });
+    assert.equal(r.ok, false);
+    assert.equal(r.reason, "secret_missing");
+    assert.equal(r.secretSlot, "none");
+  });
+
+  it("secretSlot aparece no resultado sem expor secret", () => {
+    const secret = "slot-leak-check-secret-value";
+    const req = buildValidCatalogWebhookReq({ paymentId: "pay_leak", secret });
+    const r = verifyMpCatalogWebhookNotificationWithSlots(req, {
+      catalogSecret: secret,
+      platformSecret: "other-secret",
+    });
+    assert.equal(r.secretSlot, "catalog_secret");
+    assert.equal("secret" in r, false);
+    assert.equal("webhookSecret" in r, false);
+    assert.equal(JSON.stringify(r).includes(secret), false);
+  });
+});
 
 describe("mpWebhookCatalogEdge / verifyMpCatalogWebhookNotification", () => {
   it("assinatura válida permite seguir (ok: true)", () => {

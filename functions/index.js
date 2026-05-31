@@ -39,7 +39,7 @@ import {
 } from "./src/rateLimiter.js";
 import { processMpWebhook } from "./src/mpWebhookHandler.js";
 import {
-  verifyMpCatalogWebhookNotification,
+  verifyMpCatalogWebhookNotificationWithSlots,
   MP_WEBHOOK_CATALOG_SIGNATURE_HTTP_STATUS,
   MP_WEBHOOK_CATALOG_PROCESSING_ERROR_HTTP_STATUS,
 } from "./src/mpWebhookCatalogEdge.js";
@@ -116,6 +116,7 @@ dotenv.config();
 // ---------- Secrets (Secret Manager) ----------
 const S_MP_ACCESS_TOKEN = defineSecret("MP_ACCESS_TOKEN");
 const S_MP_WEBHOOK_SECRET = defineSecret("MP_WEBHOOK_SECRET");
+const S_MP_WEBHOOK_CATALOG_SECRET = defineSecret("MP_WEBHOOK_CATALOG_SECRET");
 const S_WEB_BASE_URL = defineSecret("WEB_BASE_URL");
 const S_MP_APP_ID = defineSecret("MP_APP_ID");
 const S_MP_CLIENT_SECRET = defineSecret("MP_CLIENT_SECRET");
@@ -2400,7 +2401,7 @@ export const mpCatalogPayment = onRequest(
  * NOTA: mercadopagoWebhook (posPagamento.js) NÃO está em uso; campanhas/números
  * via webhook requerem integração futura se necessário.
  *
- * Borda: valida x-signature (MP_WEBHOOK_SECRET) antes de processMpWebhook — alinhado ao planWebhook.
+ * Borda: valida x-signature (MP_WEBHOOK_CATALOG_SECRET ou fallback MP_WEBHOOK_SECRET) antes de processMpWebhook.
  * Sem paymentId: 200 ok (ack vazio, sem efeito).
  * Assinatura inválida: 401 (não entra no handler).
  * processMpWebhook conclui (retorno booleano): 200 OK (inclui validação de negócio false e noops internos).
@@ -2409,7 +2410,13 @@ export const mpCatalogPayment = onRequest(
 export const mpWebhook = onRequest(
   {
     cors: true,
-    secrets: [S_MP_ACCESS_TOKEN, S_MP_WEBHOOK_SECRET, S_SMTP_EMAIL, S_SMTP_PASSWORD],
+    secrets: [
+      S_MP_ACCESS_TOKEN,
+      S_MP_WEBHOOK_SECRET,
+      S_MP_WEBHOOK_CATALOG_SECRET,
+      S_SMTP_EMAIL,
+      S_SMTP_PASSWORD,
+    ],
     timeoutSeconds: 30,
     memory: "256MiB",
   },
@@ -2424,9 +2431,20 @@ export const mpWebhook = onRequest(
       const smtpUser = ((await S_SMTP_EMAIL.value()) || process.env.SMTP_EMAIL || "").trim();
       const smtpPass = ((await S_SMTP_PASSWORD.value()) || process.env.SMTP_PASSWORD || "").trim();
 
-      const WEBHOOK_SECRET =
-        (await S_MP_WEBHOOK_SECRET.value()) || process.env.MP_WEBHOOK_SECRET || "";
-      const sig = verifyMpCatalogWebhookNotification(req, WEBHOOK_SECRET);
+      const catalogSecret = (
+        (await S_MP_WEBHOOK_CATALOG_SECRET.value()) ||
+        process.env.MP_WEBHOOK_CATALOG_SECRET ||
+        ""
+      ).trim();
+      const platformSecret = (
+        (await S_MP_WEBHOOK_SECRET.value()) ||
+        process.env.MP_WEBHOOK_SECRET ||
+        ""
+      ).trim();
+      const sig = verifyMpCatalogWebhookNotificationWithSlots(req, {
+        catalogSecret,
+        platformSecret,
+      });
       if (!sig.ok) {
         const reason = sig.reason || "unknown";
         let evt = "mp_webhook_signature_invalid";
@@ -2445,6 +2463,7 @@ export const mpWebhook = onRequest(
             severity: "warn",
             event: evt,
             reason,
+            secretSlot: sig.secretSlot,
             ...buildMercadoPagoWebhookSignatureLogContext(req),
             ...(sig.detail ? { detail: String(sig.detail).slice(0, 200) } : {}),
           }),
