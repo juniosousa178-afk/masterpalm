@@ -89,6 +89,9 @@ class VendaComboEstoqueExpansion {
         p = produtosBox.values.firstWhereOrNull(
           (prod) => prod.lojaId == lojaId && prod.idFirebase.trim() == pid,
         );
+        p ??= produtosBox.values.firstWhereOrNull(
+          (prod) => prod.lojaId == lojaId && prod.slug.trim() == pid,
+        );
         if (p != null) {
           if (productIdIncoerenteComNomeExibido(
             nomeProdutoResolvido: p.nome,

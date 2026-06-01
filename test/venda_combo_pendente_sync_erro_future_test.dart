@@ -14,6 +14,7 @@ import 'package:master_palm/models/venda_item.dart';
 import 'package:master_palm/services/combo_kit_stock_service.dart';
 import 'package:master_palm/services/vendas_service.dart';
 import 'package:master_palm/services/estoque_transaction_service.dart';
+import 'package:master_palm/services/produtos_firestore_service.dart';
 import 'package:master_palm/services/firestore_paths.dart';
 import 'package:master_palm/services/produto_exclusao_tombstone_service.dart';
 import 'package:master_palm/services/venda_combo_estoque_expansion.dart';
@@ -58,11 +59,13 @@ void main() {
       ProdutoExclusaoTombstoneService.resetCacheForTests();
       firestore = FakeFirebaseFirestore();
       EstoqueTransactionService.debugFirestoreOverride = firestore;
+      ProdutosFirestoreService.debugFirestoreOverride = firestore;
     });
 
     tearDown(() {
       ProdutoExclusaoTombstoneService.resetCacheForTests();
       EstoqueTransactionService.debugFirestoreOverride = null;
+      ProdutosFirestoreService.debugFirestoreOverride = null;
     });
 
     test('vende quantidade 2 com estoque remoto 2 e zera sem erro', () async {
@@ -141,6 +144,7 @@ void main() {
       ProdutoExclusaoTombstoneService.resetCacheForTests();
       firestore = FakeFirebaseFirestore();
       EstoqueTransactionService.debugFirestoreOverride = firestore;
+      ProdutosFirestoreService.debugFirestoreOverride = firestore;
       final boxName = 'produtos_${DateTime.now().microsecondsSinceEpoch}';
       box = await Hive.openBox<Produto>(boxName);
     });
@@ -148,6 +152,7 @@ void main() {
     tearDown(() async {
       ProdutoExclusaoTombstoneService.resetCacheForTests();
       EstoqueTransactionService.debugFirestoreOverride = null;
+      ProdutosFirestoreService.debugFirestoreOverride = null;
       await box.close();
     });
 
@@ -515,6 +520,7 @@ void main() {
       ProdutoExclusaoTombstoneService.resetCacheForTests();
       firestore = FakeFirebaseFirestore();
       EstoqueTransactionService.debugFirestoreOverride = firestore;
+      ProdutosFirestoreService.debugFirestoreOverride = firestore;
 
       final suffix = DateTime.now().microsecondsSinceEpoch;
       produtosBox = await Hive.openBox<Produto>('produtos_$suffix');
@@ -525,6 +531,7 @@ void main() {
     tearDown(() async {
       ProdutoExclusaoTombstoneService.resetCacheForTests();
       EstoqueTransactionService.debugFirestoreOverride = null;
+      ProdutosFirestoreService.debugFirestoreOverride = null;
       await produtosBox.close();
       await clientesBox.close();
       await vendasBox.close();
@@ -660,19 +667,20 @@ void main() {
       },
     );
 
-    test('produto inexistente no Firestore bloqueia venda', () async {
-      await produtosBox.add(
-        Produto.vazio()
-          ..nome = 'Produto Fantasma'
-          ..idFirebase = 'id-so-hive'
-          ..lojaId = lojaId
-          ..quantidade = 3
-          ..precoFinal = 10,
-      );
+    test(
+      'produto só Hive: prep sincroniza na nuvem antes da baixa e venda conclui',
+      () async {
+        await produtosBox.add(
+          Produto.vazio()
+            ..nome = 'Produto Fantasma'
+            ..idFirebase = 'id-so-hive'
+            ..lojaId = lojaId
+            ..quantidade = 3
+            ..precoFinal = 10,
+        );
 
-      final cliente = await criarClienteTeste();
-      expect(
-        VendasService.registrarVendaMulti(
+        final cliente = await criarClienteTeste();
+        await VendasService.registrarVendaMulti(
           produtosBox: produtosBox,
           clientesBox: clientesBox,
           vendasBox: vendasBox,
@@ -688,11 +696,18 @@ void main() {
           ],
           dinheiro: 10,
           lojaId: lojaId,
-        ),
-        throwsA(isA<Exception>()),
-      );
-      expect(vendasBox, isEmpty);
-    });
+        );
+
+        expect(vendasBox.length, 1);
+        final snap = await firestore
+            .collection('lojas')
+            .doc(lojaId)
+            .collection(FSPaths.estoqueProdutosCol)
+            .doc('id-so-hive')
+            .get();
+        expect(snap.exists, isTrue);
+      },
+    );
 
     test('estoque insuficiente bloqueia venda', () async {
       const productId = 'prod-estoque-baixo';

@@ -23,6 +23,7 @@ import 'estoque_transaction_service.dart';
 import 'movimentacao_estoque_service.dart';
 import 'venda_combo_estoque_expansion.dart';
 import 'venda_custo_mercadoria.dart';
+import 'venda_estoque_remoto_prep_service.dart';
 
 class VendasService {
   // ---------------------------
@@ -144,11 +145,14 @@ class VendasService {
       lista = lista.where((p) => p.lojaId == lojaId);
     }
 
-    // 1) productId / idFirebase
+    // 1) productId / idFirebase (ou slug canônico antes do primeiro sync)
     if (idTrim != null && idTrim.isNotEmpty) {
       final p = lista.firstWhereOrNull(
-        (prod) => prod.idFirebase.trim() == idTrim,
-      );
+            (prod) => prod.idFirebase.trim() == idTrim,
+          ) ??
+          lista.firstWhereOrNull(
+            (prod) => prod.slug.trim() == idTrim,
+          );
       if (p != null) return p;
     }
 
@@ -541,7 +545,25 @@ class VendasService {
     }
     final String lojaEfetiva = lojaId.trim();
 
-    // 1) expande combos e encontra produtos (para baixa de estoque)
+    // 1) Sincroniza produtos das linhas antes de expandir (preenche idFirebase para match)
+    final produtosDasLinhas = <Produto>[];
+    for (final item in itens) {
+      final p = encontrarProdutoNoEstoque(
+        produtosBox: produtosBox,
+        productId: item.productId,
+        nome: item.produtoNome,
+        lojaId: lojaEfetiva,
+      );
+      if (p != null) produtosDasLinhas.add(p);
+    }
+    if (produtosDasLinhas.isNotEmpty) {
+      await VendaEstoqueRemotoPrepService.garantirProdutosProntosParaBaixa(
+        lojaId: lojaEfetiva,
+        produtos: produtosDasLinhas,
+      );
+    }
+
+    // 2) expande combos e encontra produtos (para baixa de estoque)
     final (itensParaEstoque, produtosEncontrados, linhaContaCustoMercadoria) =
         VendaComboEstoqueExpansion.expandirCombos(
       itens: itens,
@@ -598,6 +620,11 @@ class VendasService {
     final txItems = VendaComboEstoqueExpansion.montarTxItemsParaBaixaEstoque(
       itensParaEstoque: itensParaEstoque,
       produtosEncontrados: produtosEncontrados,
+    );
+
+    await VendaEstoqueRemotoPrepService.garantirProdutosProntosParaBaixa(
+      lojaId: lojaEfetiva,
+      produtos: produtosEncontrados,
     );
 
     final txResults = await EstoqueTransactionService.baixarEstoqueTransactionBatch(

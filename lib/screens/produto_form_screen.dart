@@ -20,6 +20,7 @@ import '../utils/text_utils.dart';
 import '../services/catalogo_sync_service.dart' show CatalogoSyncService, SyncTarget;
 import '../services/catalog_publish_service.dart';
 import '../services/limits_guard.dart';
+import '../services/produto_estoque_doc_id_service.dart';
 import '../services/produto_exclusao_tombstone_service.dart';
 import '../services/produtos_firestore_service.dart';
 import '../services/produto_imagens_storage_cleanup.dart';
@@ -1981,6 +1982,11 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             return;
           }
           // INSERIR novo produto
+          final docIdSeguro =
+              await ProdutoEstoqueDocIdService.resolverDocIdSeguroNovoProduto(
+            lojaId: lojaId!,
+            nome: _nome.text.trim(),
+          );
           final novo = Produto(
             nome: capitalizeWords(_nome.text.trim()),
             quantidade: quantidadeFinal,
@@ -1998,7 +2004,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             divideSemJuros: _divideSemJuros,
             percentualDescontoPix: percentualDescontoPix,
             maxParcelasSemJuros: maxParcelasSemJuros,
-            slug: '${lojaId!}-${gerarSlug(_nome.text.trim())}',
+            slug: docIdSeguro,
+            idFirebase: docIdSeguro,
             tamanhos: tamanhosList,
             estoquePorTamanho: estoqueMapa,
             frete: 0.0,
