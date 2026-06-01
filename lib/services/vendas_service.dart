@@ -616,7 +616,7 @@ class VendasService {
     }
 
     final txResultsComboCap =
-        await ComboKitStockService.aplicarTetoEstoqueComboAposBaixa(
+        await ComboKitStockService.aplicarTetoEstoqueComboAposBaixaSemAbortarVenda(
       lojaId: lojaEfetiva,
       produtosBox: produtosBox,
       produtoIdsDebitadosNaVenda:
@@ -1246,7 +1246,8 @@ class VendasService {
         result: result,
       );
     }
-    final txCap = await ComboKitStockService.aplicarTetoEstoqueComboAposBaixa(
+    final txCap =
+        await ComboKitStockService.aplicarTetoEstoqueComboAposBaixaSemAbortarVenda(
       lojaId: lid,
       produtosBox: produtosBox,
       produtoIdsDebitadosNaVenda:

@@ -11,6 +11,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../core/dart_error_unwrap.dart';
 import '../core/produto_variacao_extra.dart';
 import '../core/strict_product_resolution.dart';
 import '../models/produto.dart';
@@ -94,7 +95,7 @@ class EstoqueTransactionService {
   }
 
   static String? _extrairDocIdProdutosNotFound(Object e, String lojaId) {
-    final msg = e.toString();
+    final msg = formatDartErrorForUser(e);
     if (!msg.toLowerCase().contains('not-found') ||
         !msg.contains('/produtos/')) {
       return null;

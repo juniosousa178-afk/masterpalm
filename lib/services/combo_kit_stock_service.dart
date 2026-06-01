@@ -6,6 +6,8 @@ import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
+import '../core/dart_error_unwrap.dart';
+import '../core/logger.dart';
 import '../core/produto_variacao_extra.dart';
 import '../models/produto.dart';
 import 'estoque_transaction_service.dart';
@@ -229,6 +231,52 @@ class ComboKitStockService {
       results,
     );
     return results;
+  }
+
+  /// Teto do SKU combo após baixa dos componentes — **manutenção secundária**.
+  ///
+  /// A baixa principal da venda já foi commitada em transação anterior; falha aqui
+  /// (combo só-local, pendente de sync, not-found, etc.) não deve impedir [vendasBox.add].
+  static Future<List<EstoqueTransactionResult>>
+      aplicarTetoEstoqueComboAposBaixaSemAbortarVenda({
+    required String lojaId,
+    required Box<Produto> produtosBox,
+    Set<String>? produtoIdsDebitadosNaVenda,
+  }) async {
+    try {
+      return await aplicarTetoEstoqueComboAposBaixa(
+        lojaId: lojaId,
+        produtosBox: produtosBox,
+        produtoIdsDebitadosNaVenda: produtoIdsDebitadosNaVenda,
+      );
+    } catch (e, st) {
+      final detalhe = formatDartErrorForUser(e);
+      debugPrint(
+        '[COMBO_TETO] ⚠️ Ajuste pós-venda ignorado (venda principal mantida): $detalhe',
+      );
+      logW(
+        '[COMBO_TETO] Ajuste ignorado após baixa principal | lojaId=$lojaId | $detalhe',
+        tag: 'VENDA',
+      );
+      assert(() {
+        debugPrint('[COMBO_TETO] st=$st');
+        return true;
+      }());
+      return [];
+    }
+  }
+
+  /// Classifica falhas típicas do ajuste de teto (manutenção, não venda principal).
+  @visibleForTesting
+  static bool isFalhaSecundariaManutencaoTetoCombo(Object e) {
+    final msg = formatDartErrorForUser(e).toLowerCase();
+    if (msg.contains('nuvem')) return true;
+    if (msg.contains('sincroniz') || msg.contains('sincron')) return true;
+    if (msg.contains('not-found') || msg.contains('not found')) return true;
+    if (msg.contains('não encontrado no estoque da nuvem')) return true;
+    if (msg.contains('não encontrado no servidor')) return true;
+    if (msg.contains('documento válido de estoque')) return true;
+    return false;
   }
 
   /// Após devolução de componentes (ou combo), sobe [Produto.quantidade] do SKU combo até o teto [K]

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/combo_configuravel_resumo.dart';
+import '../core/dart_error_unwrap.dart';
 import '../core/logger.dart';
 import '../core/produto_variacao_extra.dart';
 import '../core/strict_product_resolution.dart';
@@ -898,14 +899,9 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     );
   }
 
-  /// Extrai o erro real quando vem encapsulado (comum no app web)
-  String _extrairErroReal(Object e) {
-    try {
-      final dyn = e as dynamic;
-      if (dyn.error != null) return dyn.error.toString();
-    } catch (_) {}
-    return e.toString();
-  }
+  /// Extrai o erro real quando vem encapsulado (comum no app web).
+  String _extrairErroReal(Object e) =>
+      formatDartErrorForUser(e);
 
   String? _extrairPathFirestore(String texto) {
     final m =
@@ -949,9 +945,31 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     required String etapa,
     required Object erro,
     StackTrace? st,
+    List<VendaItem>? itensVenda,
   }) {
     final detalhe = _detalharErroSalvarVenda(erro);
-    logE('❌ [VENDA][$etapa] $detalhe', error: erro, st: st);
+    final diag = dartErrorDiagMeta(erro);
+    final itensDiag = _resumoItensVendaParaLog(itensVenda);
+    logE(
+      '❌ [VENDA][$etapa] $detalhe | diag=$diag${itensDiag.isEmpty ? '' : ' | itens=$itensDiag'}',
+      error: unwrapDartInteropError(erro),
+      st: st,
+    );
+  }
+
+  /// Resumo seguro das linhas da venda (sem preço/cliente).
+  String _resumoItensVendaParaLog(List<VendaItem>? itens) {
+    if (itens == null || itens.isEmpty) return '';
+    final parts = <String>[];
+    for (var i = 0; i < itens.length && i < 8; i++) {
+      final it = itens[i];
+      parts.add(
+        '#$i pid=${it.productId ?? '-'} q=${it.quantidade} '
+        'tam=${it.tamanho.isEmpty ? '-' : it.tamanho} cor=${it.cor.isEmpty ? '-' : it.cor}',
+      );
+    }
+    if (itens.length > 8) parts.add('…+${itens.length - 8}');
+    return parts.join('; ');
   }
 
   Future<void> _mostrarErro(String mensagem) async {
@@ -1724,7 +1742,12 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
 
       return (true, numeroSorteRecebido, null);
     } catch (e, stackTrace) {
-      _logErroSalvarVenda(etapa: 'BACKGROUND_SAVE', erro: e, st: stackTrace);
+      _logErroSalvarVenda(
+        etapa: 'BACKGROUND_SAVE',
+        erro: e,
+        st: stackTrace,
+        itensVenda: itens,
+      );
       final msg =
           'Erro ao salvar venda. Verifique conexão e estoque. ${_detalharErroSalvarVenda(e)}';
       onErro?.call(msg);
