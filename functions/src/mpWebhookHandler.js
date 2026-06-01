@@ -39,6 +39,153 @@ const WEBHOOK_PROCESSED_COL = "_mp_webhook_processed";
 const WEBHOOK_VALIDATION_REJECTS_COL = "_mp_webhook_validation_rejects";
 
 /**
+ * Linhas de pedido elegíveis para baixa de estoque no webhook catálogo.
+ * @param {Array<Record<string, unknown>>} items
+ * @returns {Array<{ pId: string, qty: number, tamanho: string, cor: string, temVariacao: boolean }>}
+ */
+export function parseCatalogOrderLineItemsForStock(items) {
+  const out = [];
+  for (const it of items || []) {
+    const pId = it.productId || it.produtosId || it.id || it.slug;
+    if (!pId) continue;
+    const qty = Number(it.qty ?? it.quantidade ?? 0);
+    if (qty <= 0) continue;
+    const tamanho = (it.tamanho ?? "").toString().trim();
+    const cor = (it.cor ?? "").toString().trim();
+    out.push({
+      pId: String(pId),
+      qty,
+      tamanho,
+      cor,
+      temVariacao: Boolean(tamanho || cor),
+    });
+  }
+  return out;
+}
+
+/**
+ * Calcula payloads de merge para produtos/estoque a partir de um snapshot já lido.
+ * @param {{ qty: number, tamanho: string, cor: string, temVariacao: boolean, data: Record<string, unknown>, nowTs: unknown }} opts
+ */
+export function computeCatalogStockDeductionPayloads({ qty, tamanho, cor, temVariacao, data, nowTs }) {
+  let updateProdutos = {};
+  let updateEstoque = {};
+
+  if (temVariacao) {
+    const variacoesRaw = data.variacoes;
+    const estoquePorTamanhoRaw = data.estoquePorTamanho;
+
+    const variacoes =
+      variacoesRaw && typeof variacoesRaw === "object"
+        ? JSON.parse(JSON.stringify(variacoesRaw))
+        : null;
+    const estoquePorTamanho =
+      estoquePorTamanhoRaw && typeof estoquePorTamanhoRaw === "object"
+        ? JSON.parse(JSON.stringify(estoquePorTamanhoRaw))
+        : null;
+
+    const usaVariacoes = variacoes && Object.keys(variacoes).length > 0 && tamanho && cor;
+    const temEstoquePorTamanho =
+      estoquePorTamanho && Object.keys(estoquePorTamanho).length > 0 && tamanho;
+
+    if (usaVariacoes) {
+      const mapaTamanho = variacoes[tamanho];
+      if (mapaTamanho && typeof mapaTamanho === "object") {
+        const disponivel = (mapaTamanho[cor] ?? 0) | 0;
+        const novo = Math.max(0, disponivel - qty);
+        if (novo > 0) {
+          mapaTamanho[cor] = novo;
+        } else {
+          delete mapaTamanho[cor];
+        }
+        if (Object.keys(mapaTamanho).length === 0) delete variacoes[tamanho];
+        const qtdTotal = Object.values(variacoes).reduce(
+          (acc, m) => acc + Object.values(m).reduce((a, b) => a + (b | 0), 0),
+          0,
+        );
+        updateProdutos = {
+          variacoes,
+          quantidade: qtdTotal,
+          estoque: qtdTotal,
+          estoque_atual: qtdTotal,
+          updatedAt: nowTs,
+        };
+        if (qtdTotal <= 0) updateProdutos.ativo = false;
+        updateEstoque = { variacoes, quantidade: qtdTotal, updatedAt: nowTs };
+      }
+    } else if (temEstoquePorTamanho) {
+      const disponivel = (estoquePorTamanho[tamanho] ?? 0) | 0;
+      const novo = Math.max(0, disponivel - qty);
+      if (novo > 0) {
+        estoquePorTamanho[tamanho] = novo;
+      } else {
+        delete estoquePorTamanho[tamanho];
+      }
+      const qtdTotal = Object.values(estoquePorTamanho).reduce((a, b) => a + (b | 0), 0);
+      updateProdutos = {
+        estoquePorTamanho,
+        quantidade: qtdTotal,
+        estoque: qtdTotal,
+        estoque_atual: qtdTotal,
+        updatedAt: nowTs,
+      };
+      if (qtdTotal <= 0) updateProdutos.ativo = false;
+      updateEstoque = { estoquePorTamanho, quantidade: qtdTotal, updatedAt: nowTs };
+    }
+  }
+
+  if (Object.keys(updateProdutos).length === 0) {
+    const currentQty = (data.quantidade ?? data.estoque ?? 0) | 0;
+    const novoEstoque = Math.max(0, currentQty - qty);
+    updateProdutos = {
+      estoque: novoEstoque,
+      quantidade: novoEstoque,
+      estoque_atual: novoEstoque,
+      updatedAt: nowTs,
+    };
+    if (novoEstoque <= 0) updateProdutos.ativo = false;
+    updateEstoque = { quantidade: novoEstoque, updatedAt: nowTs };
+  }
+
+  return { updateProdutos, updateEstoque };
+}
+
+/** Sequência esperada de operações na transação aprovada (testes de ordem read→write). */
+export function catalogMpApprovedTxnOpSequence(itemCount) {
+  const ops = ["get_processed", "get_order"];
+  for (let i = 0; i < itemCount; i++) {
+    ops.push(`get_estoque_${i}`, `get_produtos_${i}`);
+  }
+  ops.push("set_processed", "set_order");
+  for (let i = 0; i < itemCount; i++) {
+    ops.push(`set_produtos_${i}`, `set_estoque_${i}`);
+  }
+  return ops;
+}
+
+/**
+ * @param {string[]} ops
+ */
+export function assertCatalogMpTxnNoReadAfterWrite(ops) {
+  const isWrite = (o) =>
+    o === "set_processed" ||
+    o === "set_order" ||
+    o.startsWith("set_produtos_") ||
+    o.startsWith("set_estoque_");
+  const isRead = (o) => o.startsWith("get_");
+  let firstWriteIdx = -1;
+  for (let i = 0; i < ops.length; i++) {
+    if (isWrite(ops[i]) && firstWriteIdx === -1) firstWriteIdx = i;
+  }
+  if (firstWriteIdx === -1) return;
+  for (let i = firstWriteIdx + 1; i < ops.length; i++) {
+    if (isRead(ops[i])) {
+      throw new Error(`read ${ops[i]} at ${i} after first write at ${firstWriteIdx}`);
+    }
+  }
+}
+
+/**
  * Registro mínimo consultável para snapshot (sem PII, sem payload bruto).
  * merge: reentradas atualizam updatedAt; createdAt preservado na primeira gravação.
  */
@@ -443,6 +590,20 @@ export async function processMpWebhook(paymentId, mailOpts = {}) {
   }
 
   const items = order.items || order.itens || [];
+  const stockLineItems = parseCatalogOrderLineItemsForStock(items);
+  const stockOps = stockLineItems.map((line) => ({
+    ...line,
+    produtosRef: db
+      .collection(COLLECTION_LOJAS)
+      .doc(resolvedLojaId)
+      .collection("produtos")
+      .doc(line.pId),
+    estoqueRef: db
+      .collection(COLLECTION_LOJAS)
+      .doc(resolvedLojaId)
+      .collection("estoque_produtos")
+      .doc(line.pId),
+  }));
 
   emitWebhookLog({
     event: "mpWebhook_stock_update_started",
@@ -456,141 +617,88 @@ export async function processMpWebhook(paymentId, mailOpts = {}) {
   // Transação atômica: garante que apenas uma execução processa (evita duplicar baixa de estoque)
   try {
     await getDb().runTransaction(async (tx) => {
-    const procDoc = await tx.get(webhookProcessedRef);
-    if (procDoc.exists) {
-      return; // Já processado por outra requisição
-    }
+      const procDoc = await tx.get(webhookProcessedRef);
+      if (procDoc.exists) {
+        return; // Já processado por outra requisição
+      }
 
-    const ordDoc = await tx.get(orderRefToUse);
-    const ord = ordDoc.exists ? ordDoc.data() : {};
-    if (ord.paidAt) {
+      const ordDoc = await tx.get(orderRefToUse);
+      const ord = ordDoc.exists ? ordDoc.data() : {};
+      if (ord.paidAt) {
+        tx.set(
+          webhookProcessedRef,
+          {
+            paymentId: String(paymentId),
+            processedAt: nowTs,
+            orderId,
+            lojaId: resolvedLojaId,
+            status: "already_paid",
+            effectiveOutcome: "noop_concurrent_order_already_paid",
+            updatedAt: nowTs,
+          },
+          { merge: true },
+        );
+        return;
+      }
+
+      // Fase 1 — todas as leituras de estoque/produto antes de qualquer escrita
+      const stockWrites = [];
+      for (const op of stockOps) {
+        const estoqueSnap = await tx.get(op.estoqueRef);
+        const prodSnap = await tx.get(op.produtosRef);
+        const data =
+          estoqueSnap.exists && estoqueSnap.data()
+            ? estoqueSnap.data()
+            : prodSnap.exists && prodSnap.data()
+              ? prodSnap.data()
+              : {};
+        const { updateProdutos, updateEstoque } = computeCatalogStockDeductionPayloads({
+          qty: op.qty,
+          tamanho: op.tamanho,
+          cor: op.cor,
+          temVariacao: op.temVariacao,
+          data,
+          nowTs,
+        });
+        stockWrites.push({
+          produtosRef: op.produtosRef,
+          estoqueRef: op.estoqueRef,
+          updateProdutos,
+          updateEstoque,
+        });
+      }
+
+      // Fase 2 — escritas (processed + pedido + estoque)
       tx.set(
         webhookProcessedRef,
         {
           paymentId: String(paymentId),
-          processedAt: nowTs,
           orderId,
           lojaId: resolvedLojaId,
-          status: "already_paid",
-          effectiveOutcome: "noop_concurrent_order_already_paid",
+          processedAt: nowTs,
+          status: "done",
+          effectiveOutcome: "applied_order_paid_new_effect",
           updatedAt: nowTs,
         },
         { merge: true },
       );
-      return;
-    }
 
-    tx.set(webhookProcessedRef, {
-      paymentId: String(paymentId),
-      orderId,
-      lojaId: resolvedLojaId,
-      processedAt: nowTs,
-      status: "done",
-      effectiveOutcome: "applied_order_paid_new_effect",
-      updatedAt: nowTs,
-    }, { merge: true });
-
-    const updatePayload = {
-      status: "paid",
-      paidAt: nowTs,
-      updatedAt: nowTs,
-      paymentId: String(paymentId),
-      paymentMethod: payment.payment_method_id,
-    };
-    if (isPrePedido || isPedidoPendente) {
-      updatePayload.statusPagamento = "aprovado";
-    }
-    tx.set(orderRefToUse, updatePayload, { merge: true });
-
-    for (const it of items) {
-      const pId = it.productId || it.produtosId || it.id || it.slug;
-      if (!pId) continue;
-      const qty = Number(it.qty ?? it.quantidade ?? 0);
-      if (qty <= 0) continue;
-
-      const tamanho = (it.tamanho ?? "").toString().trim();
-      const cor = (it.cor ?? "").toString().trim();
-      const temVariacao = tamanho || cor;
-
-      const produtosRef = db
-        .collection(COLLECTION_LOJAS)
-        .doc(resolvedLojaId)
-        .collection("produtos")
-        .doc(String(pId));
-      const estoqueRef = db
-        .collection(COLLECTION_LOJAS)
-        .doc(resolvedLojaId)
-        .collection("estoque_produtos")
-        .doc(String(pId));
-
-      let updateProdutos = {};
-      let updateEstoque = {};
-
-      // Priorizar estoque_produtos como fonte (alinhado com app/admin). Fallback para produtos.
-      const estoqueSnap = await tx.get(estoqueRef);
-      const prodSnap = await tx.get(produtosRef);
-      const data = (estoqueSnap.exists && estoqueSnap.data())
-        ? estoqueSnap.data()
-        : (prodSnap.exists && prodSnap.data())
-          ? prodSnap.data()
-          : {};
-
-      if (temVariacao) {
-        const variacoesRaw = data.variacoes;
-        const estoquePorTamanhoRaw = data.estoquePorTamanho;
-
-        const variacoes = variacoesRaw && typeof variacoesRaw === "object"
-          ? JSON.parse(JSON.stringify(variacoesRaw))
-          : null;
-        const estoquePorTamanho = estoquePorTamanhoRaw && typeof estoquePorTamanhoRaw === "object"
-          ? JSON.parse(JSON.stringify(estoquePorTamanhoRaw))
-          : null;
-
-        const usaVariacoes = variacoes && Object.keys(variacoes).length > 0 && tamanho && cor;
-        const temEstoquePorTamanho = estoquePorTamanho && Object.keys(estoquePorTamanho).length > 0 && tamanho;
-
-        if (usaVariacoes) {
-          const mapaTamanho = variacoes[tamanho];
-          if (mapaTamanho && typeof mapaTamanho === "object") {
-            const disponivel = (mapaTamanho[cor] ?? 0) | 0;
-            const novo = Math.max(0, disponivel - qty);
-            if (novo > 0) {
-              mapaTamanho[cor] = novo;
-            } else {
-              delete mapaTamanho[cor];
-            }
-            if (Object.keys(mapaTamanho).length === 0) delete variacoes[tamanho];
-            const qtdTotal = Object.values(variacoes).reduce((acc, m) => acc + Object.values(m).reduce((a, b) => a + (b | 0), 0), 0);
-            updateProdutos = { variacoes, quantidade: qtdTotal, estoque: qtdTotal, estoque_atual: qtdTotal, updatedAt: nowTs };
-            if (qtdTotal <= 0) updateProdutos.ativo = false;
-            updateEstoque = { variacoes, quantidade: qtdTotal, updatedAt: nowTs };
-          }
-        } else if (temEstoquePorTamanho) {
-          const disponivel = (estoquePorTamanho[tamanho] ?? 0) | 0;
-          const novo = Math.max(0, disponivel - qty);
-          if (novo > 0) {
-            estoquePorTamanho[tamanho] = novo;
-          } else {
-            delete estoquePorTamanho[tamanho];
-          }
-          const qtdTotal = Object.values(estoquePorTamanho).reduce((a, b) => a + (b | 0), 0);
-          updateProdutos = { estoquePorTamanho, quantidade: qtdTotal, estoque: qtdTotal, estoque_atual: qtdTotal, updatedAt: nowTs };
-          if (qtdTotal <= 0) updateProdutos.ativo = false;
-          updateEstoque = { estoquePorTamanho, quantidade: qtdTotal, updatedAt: nowTs };
-        }
+      const updatePayload = {
+        status: "paid",
+        paidAt: nowTs,
+        updatedAt: nowTs,
+        paymentId: String(paymentId),
+        paymentMethod: payment.payment_method_id,
+      };
+      if (isPrePedido || isPedidoPendente) {
+        updatePayload.statusPagamento = "aprovado";
       }
+      tx.set(orderRefToUse, updatePayload, { merge: true });
 
-      if (Object.keys(updateProdutos).length === 0) {
-        const currentQty = (data.quantidade ?? data.estoque ?? 0) | 0;
-        const novoEstoque = Math.max(0, currentQty - qty);
-        updateProdutos = { estoque: novoEstoque, quantidade: novoEstoque, estoque_atual: novoEstoque, updatedAt: nowTs };
-        if (novoEstoque <= 0) updateProdutos.ativo = false;
-        updateEstoque = { quantidade: novoEstoque, updatedAt: nowTs };
+      for (const w of stockWrites) {
+        tx.set(w.produtosRef, w.updateProdutos, { merge: true });
+        tx.set(w.estoqueRef, w.updateEstoque, { merge: true });
       }
-
-      tx.set(produtosRef, updateProdutos, { merge: true });
-      tx.set(estoqueRef, updateEstoque, { merge: true });
-    }
     });
   } catch (txErr) {
     emitWebhookLog({
