@@ -17,9 +17,48 @@ class FirestorePayloadSanitizeResult {
 class FirestorePayloadSanitizer {
   FirestorePayloadSanitizer._();
 
+  /// `FieldValue.delete()` cria instância nova a cada chamada — usar [==], não [identical].
+  static bool isDeleteFieldValue(dynamic value) {
+    return value is FieldValue && value == FieldValue.delete();
+  }
+
+  /// Remove sentinels `deleteField()` de payload para `set()` sem `merge: true`.
+  static Map<String, dynamic> stripDeleteSentinelsForFullSet(
+    Map<String, dynamic> input, {
+    String rootPath = 'payload',
+    List<String>? removedPaths,
+  }) {
+    final removed = removedPaths ?? <String>[];
+    final out = <String, dynamic>{};
+    for (final entry in input.entries) {
+      final key = entry.key.trim();
+      if (key.isEmpty) continue;
+      final path = '$rootPath.$key';
+      final value = entry.value;
+      if (isDeleteFieldValue(value)) {
+        removed.add(path);
+        continue;
+      }
+      if (value is Map) {
+        final nested = stripDeleteSentinelsForFullSet(
+          Map<String, dynamic>.from(value),
+          rootPath: path,
+          removedPaths: removed,
+        );
+        if (nested.isNotEmpty) {
+          out[key] = nested;
+        }
+        continue;
+      }
+      out[key] = value;
+    }
+    return out;
+  }
+
   static FirestorePayloadSanitizeResult sanitizeMap(
     Map<String, dynamic> input, {
     String rootPath = 'payload',
+    bool forFullDocumentSet = false,
   }) {
     final adjusted = <String>[];
     final out = <String, dynamic>{};
@@ -29,7 +68,16 @@ class FirestorePayloadSanitizer {
         throw FormatException('$rootPath: chave de mapa vazia');
       }
       final path = '$rootPath.$key';
-      out[key] = _sanitizeValue(entry.value, path, adjusted);
+      if (forFullDocumentSet && isDeleteFieldValue(entry.value)) {
+        adjusted.add('$path: deleteField removido (set sem merge)');
+        continue;
+      }
+      out[key] = _sanitizeValue(
+        entry.value,
+        path,
+        adjusted,
+        forFullDocumentSet: forFullDocumentSet,
+      );
     }
     return FirestorePayloadSanitizeResult(
       payload: out,
@@ -40,8 +88,13 @@ class FirestorePayloadSanitizer {
   static dynamic _sanitizeValue(
     dynamic value,
     String path,
-    List<String> adjusted,
-  ) {
+    List<String> adjusted, {
+    bool forFullDocumentSet = false,
+  }) {
+    if (forFullDocumentSet && isDeleteFieldValue(value)) {
+      adjusted.add('$path: deleteField removido (set sem merge)');
+      return null;
+    }
     if (value == null ||
         value is String ||
         value is bool ||
@@ -71,7 +124,12 @@ class FirestorePayloadSanitizer {
         if (key.isEmpty) {
           throw FormatException('$path: chave de mapa vazia');
         }
-        out[key] = _sanitizeValue(entry.value, '$path.$key', adjusted);
+        out[key] = _sanitizeValue(
+          entry.value,
+          '$path.$key',
+          adjusted,
+          forFullDocumentSet: forFullDocumentSet,
+        );
       }
       return out;
     }
@@ -80,7 +138,12 @@ class FirestorePayloadSanitizer {
       final out = <dynamic>[];
       var i = 0;
       for (final e in value) {
-        out.add(_sanitizeValue(e, '$path[$i]', adjusted));
+        out.add(_sanitizeValue(
+          e,
+          '$path[$i]',
+          adjusted,
+          forFullDocumentSet: forFullDocumentSet,
+        ));
         i++;
       }
       return out;

@@ -55,7 +55,33 @@ class ProdutosFirestoreService {
   static FirebaseFirestore get _db =>
       debugFirestoreOverride ?? FirebaseFirestore.instance;
 
-  /// Aplica campos de variação/grade no payload: mapa completo ou [FieldValue.delete].
+  /// Chaves de variação/grade no Firestore.
+  @visibleForTesting
+  static const variationFirestoreFieldKeys = <String>[
+    'variacoes',
+    'variacoesExtraTipo',
+    'estoquePorTamanho',
+    'precoPorTamanho',
+  ];
+
+  /// Campos internos que não devem existir no doc público `produtos`.
+  static const _publicoInternoKeysToStrip = <String>{
+    'custoReal',
+    'custo',
+    'precoCusto',
+    'fornecedor',
+    'frete',
+    'gastosFixos',
+    'gastosVariaveis',
+    'precoSugerido',
+    'custoEditadoNoCadastro',
+    'dataEntrada',
+    'ativoNoRascunho',
+  };
+
+  /// Aplica campos de variação/grade no patch. Mapas vazios não usam
+  /// [FieldValue.delete] (inválido em `set()` sem merge); a remoção no doc
+  /// final é feita via [variationKeysToRemove] + [buildFinalDocumentPayloadForSet].
   @visibleForTesting
   static void applyVariationFieldsToFirestorePayload(
     Map<String, dynamic> payload, {
@@ -63,22 +89,37 @@ class ProdutosFirestoreService {
     required Map<String, dynamic> variacoesExtraTipo,
     required Map<String, int> estoquePorTamanho,
     Map<String, double>? precoPorTamanho,
+    Set<String>? variationKeysToRemove,
   }) {
-    payload['variacoes'] =
-        variacoes.isNotEmpty ? variacoes : FieldValue.delete();
-    payload['variacoesExtraTipo'] = variacoesExtraTipo.isNotEmpty
-        ? variacoesExtraTipo
-        : FieldValue.delete();
-    payload['estoquePorTamanho'] = estoquePorTamanho.isNotEmpty
-        ? estoquePorTamanho
-        : FieldValue.delete();
-    if (precoPorTamanho != null && precoPorTamanho.isNotEmpty) {
-      payload['precoPorTamanho'] = precoPorTamanho;
+    void setOrMarkRemove(String key, dynamic value, bool hasValue) {
+      if (hasValue) {
+        payload[key] = value;
+      } else {
+        payload.remove(key);
+        variationKeysToRemove?.add(key);
+      }
     }
+
+    setOrMarkRemove('variacoes', variacoes, variacoes.isNotEmpty);
+    setOrMarkRemove(
+      'variacoesExtraTipo',
+      variacoesExtraTipo,
+      variacoesExtraTipo.isNotEmpty,
+    );
+    setOrMarkRemove(
+      'estoquePorTamanho',
+      estoquePorTamanho,
+      estoquePorTamanho.isNotEmpty,
+    );
+    setOrMarkRemove(
+      'precoPorTamanho',
+      precoPorTamanho,
+      precoPorTamanho != null && precoPorTamanho.isNotEmpty,
+    );
   }
 
   static bool _isFirestoreDeleteValue(dynamic value) {
-    return identical(value, FieldValue.delete());
+    return FirestorePayloadSanitizer.isDeleteFieldValue(value);
   }
 
   /// Monta o documento final em memória (campos do patch substituem o existente
@@ -88,10 +129,14 @@ class ProdutosFirestoreService {
   static Map<String, dynamic> buildFinalDocumentPayloadForSet({
     required Map<String, dynamic>? existingData,
     required Map<String, dynamic> patch,
+    Set<String> forceRemoveKeys = const {},
   }) {
     final out = existingData != null
         ? Map<String, dynamic>.from(existingData)
         : <String, dynamic>{};
+    for (final key in forceRemoveKeys) {
+      out.remove(key);
+    }
     for (final entry in patch.entries) {
       final value = entry.value;
       if (value == null || _isFirestoreDeleteValue(value)) {
@@ -100,7 +145,7 @@ class ProdutosFirestoreService {
         out[entry.key] = value;
       }
     }
-    return out;
+    return FirestorePayloadSanitizer.stripDeleteSentinelsForFullSet(out);
   }
 
   /// Uma única escrita no documento ([set] do payload final já mesclado).
@@ -108,20 +153,38 @@ class ProdutosFirestoreService {
     DocumentReference<Map<String, dynamic>> ref,
     Map<String, dynamic> payload, {
     Map<String, dynamic>? existingData,
+    Set<String> forceRemoveKeys = const {},
   }) async {
-    final finalPayload = buildFinalDocumentPayloadForSet(
+    final merged = buildFinalDocumentPayloadForSet(
       existingData: existingData,
       patch: payload,
+      forceRemoveKeys: forceRemoveKeys,
     );
-    await ref.set(finalPayload);
+    final sanitize = sanitizePayloadForFirestore(
+      merged,
+      rootPath: ref.path,
+      forFullDocumentSet: true,
+    );
+    if (sanitize.adjustedPaths.isNotEmpty) {
+      logW(
+        '[PRODUTOS-SYNC] payload final sanitizado em ${ref.path}: '
+        '${sanitize.adjustedPaths.join(' | ')}',
+      );
+    }
+    await ref.set(sanitize.payload);
   }
 
   @visibleForTesting
   static FirestorePayloadSanitizeResult sanitizePayloadForFirestore(
     Map<String, dynamic> payload, {
     required String rootPath,
+    bool forFullDocumentSet = false,
   }) {
-    return FirestorePayloadSanitizer.sanitizeMap(payload, rootPath: rootPath);
+    return FirestorePayloadSanitizer.sanitizeMap(
+      payload,
+      rootPath: rootPath,
+      forFullDocumentSet: forFullDocumentSet,
+    );
   }
 
   /// Pull: não apagar variações locais cadastradas quando o remoto vier vazio/null
@@ -701,16 +764,19 @@ class ProdutosFirestoreService {
         _dlog('[ProdutoSync] create estoque_produtos/$produtoId');
       }
 
+      final variationKeysToRemove = <String>{};
       applyVariationFieldsToFirestorePayload(
         produtoData,
         variacoes: variacoesPush,
         variacoesExtraTipo: variacoesExtraPush,
         estoquePorTamanho: estoquePorTamPush,
         precoPorTamanho: precoPorTamanhoPush,
+        variationKeysToRemove: variationKeysToRemove,
       );
       final sanitizeEstoque = sanitizePayloadForFirestore(
         produtoData,
         rootPath: 'estoque_produtos/$produtoId',
+        forFullDocumentSet: true,
       );
       if (sanitizeEstoque.adjustedPaths.isNotEmpty) {
         logW(
@@ -723,6 +789,7 @@ class ProdutosFirestoreService {
         docRef,
         sanitizeEstoque.payload,
         existingData: docSnap.exists ? docSnap.data() : null,
+        forceRemoveKeys: variationKeysToRemove,
       );
 
       // 🔹 TAMBÉM atualizar no catálogo público (produtos) se o produto está publicado
@@ -767,18 +834,7 @@ class ProdutosFirestoreService {
             'codigoBarras':
                 produto.codigoBarras.isNotEmpty ? produto.codigoBarras : null,
             'estoqueMinimo': produto.estoqueMinimo,
-            // Custo e campos internos nunca no documento público (merge não apaga se omitir)
-            'custoReal': FieldValue.delete(),
-            'custo': FieldValue.delete(),
-            'precoCusto': FieldValue.delete(),
-            'fornecedor': FieldValue.delete(),
-            'frete': FieldValue.delete(),
-            'gastosFixos': FieldValue.delete(),
-            'gastosVariaveis': FieldValue.delete(),
-            'precoSugerido': FieldValue.delete(),
-            'custoEditadoNoCadastro': FieldValue.delete(),
-            'dataEntrada': FieldValue.delete(),
-            'ativoNoRascunho': FieldValue.delete(),
+            // Custo e campos internos: removidos no doc final via forceRemoveKeys (set sem merge).
             'marketplaces': produto.marketplaces,
             'divideSemJuros': produto.divideSemJuros,
             'maxParcelasSemJuros': produto.maxParcelasSemJuros,
@@ -787,16 +843,23 @@ class ProdutosFirestoreService {
             'updatedAt': FieldValue.serverTimestamp(),
           };
           final publicoSnap = await publicoRef.get();
+          final publicoVariationKeysToRemove = <String>{};
           applyVariationFieldsToFirestorePayload(
             publicoData,
             variacoes: variacoesPush,
             variacoesExtraTipo: variacoesExtraPush,
             estoquePorTamanho: estoquePorTamPush,
             precoPorTamanho: precoPorTamanhoPush,
+            variationKeysToRemove: publicoVariationKeysToRemove,
           );
+          final publicoRemoveKeys = <String>{
+            ...publicoVariationKeysToRemove,
+            ..._publicoInternoKeysToStrip,
+          };
           final sanitizePublico = sanitizePayloadForFirestore(
             publicoData,
             rootPath: 'produtos/$produtoId',
+            forFullDocumentSet: true,
           );
           if (sanitizePublico.adjustedPaths.isNotEmpty) {
             logW(
@@ -808,6 +871,7 @@ class ProdutosFirestoreService {
             publicoRef,
             sanitizePublico.payload,
             existingData: publicoSnap.exists ? publicoSnap.data() : null,
+            forceRemoveKeys: publicoRemoveKeys,
           );
           _dlog('[ProdutoPublico] upsert produtos/$produtoId concluído');
           logD('✅ [PRODUTOS-SYNC] Catálogo público (produtos) atualizado');
