@@ -18,6 +18,7 @@ import 'catalogo_sync_service.dart';
 import 'produto_remote_sync_guard.dart';
 import 'store_resolver_facade.dart';
 import 'combo_receita_normalizacao.dart';
+import 'firestore_payload_sanitizer.dart';
 import 'image_upload_service.dart';
 import 'produto_sync_erro_util.dart';
 import 'sync_queue_service.dart';
@@ -113,6 +114,14 @@ class ProdutosFirestoreService {
       patch: payload,
     );
     await ref.set(finalPayload);
+  }
+
+  @visibleForTesting
+  static FirestorePayloadSanitizeResult sanitizePayloadForFirestore(
+    Map<String, dynamic> payload, {
+    required String rootPath,
+  }) {
+    return FirestorePayloadSanitizer.sanitizeMap(payload, rootPath: rootPath);
   }
 
   /// Pull: não apagar variações locais cadastradas quando o remoto vier vazio/null
@@ -699,10 +708,20 @@ class ProdutosFirestoreService {
         estoquePorTamanho: estoquePorTamPush,
         precoPorTamanho: precoPorTamanhoPush,
       );
+      final sanitizeEstoque = sanitizePayloadForFirestore(
+        produtoData,
+        rootPath: 'estoque_produtos/$produtoId',
+      );
+      if (sanitizeEstoque.adjustedPaths.isNotEmpty) {
+        logW(
+          '[PRODUTOS-SYNC] payload sanitizado em estoque_produtos/$produtoId: '
+          '${sanitizeEstoque.adjustedPaths.join(' | ')}',
+        );
+      }
 
       await _upsertProdutoDocument(
         docRef,
-        produtoData,
+        sanitizeEstoque.payload,
         existingData: docSnap.exists ? docSnap.data() : null,
       );
 
@@ -775,9 +794,19 @@ class ProdutosFirestoreService {
             estoquePorTamanho: estoquePorTamPush,
             precoPorTamanho: precoPorTamanhoPush,
           );
+          final sanitizePublico = sanitizePayloadForFirestore(
+            publicoData,
+            rootPath: 'produtos/$produtoId',
+          );
+          if (sanitizePublico.adjustedPaths.isNotEmpty) {
+            logW(
+              '[PRODUTOS-SYNC] payload sanitizado em produtos/$produtoId: '
+              '${sanitizePublico.adjustedPaths.join(' | ')}',
+            );
+          }
           await _upsertProdutoDocument(
             publicoRef,
-            publicoData,
+            sanitizePublico.payload,
             existingData: publicoSnap.exists ? publicoSnap.data() : null,
           );
           _dlog('[ProdutoPublico] upsert produtos/$produtoId concluído');
@@ -799,6 +828,15 @@ class ProdutosFirestoreService {
       return ProdutoSyncRemotoStatus.confirmado;
     } catch (e, st) {
       ultimoErroSyncSanitizado = ProdutoSyncErroUtil.sanitizar(e);
+      if (e is FirebaseException && e.code == 'invalid-argument') {
+        final detalhe = e.message?.trim();
+        if (detalhe != null && detalhe.isNotEmpty) {
+          ultimoErroSyncSanitizado = 'invalid-argument ($detalhe)';
+        }
+      }
+      if (e is FormatException) {
+        ultimoErroSyncSanitizado = e.message;
+      }
       logE(
           '❌ [PRODUTOS-SYNC] Erro ao sincronizar produto (type=${e.runtimeType})'
           '${ultimoErroSyncSanitizado != null ? " detalhe=$ultimoErroSyncSanitizado" : ""}',
