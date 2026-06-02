@@ -20,6 +20,7 @@ import '../models/venda.dart';
 import '../models/fornecedor.dart';
 import 'clientes_firestore_service.dart';
 import 'vendas_firestore_service.dart';
+import 'produto_sync_erro_util.dart';
 import 'produtos_firestore_service.dart';
 import 'fornecedores_firestore_service.dart';
 
@@ -125,20 +126,59 @@ class SyncQueueService {
     required String lojaId,
     required String boxName,
     required int entityKey,
+    String? lastError,
   }) async {
-    await _instance._enqueue(type, lojaId, boxName, entityKey);
+    await _instance._enqueue(
+      type,
+      lojaId,
+      boxName,
+      entityKey,
+      lastError: lastError,
+    );
+  }
+
+  /// Último [SyncQueueItem.lastError] de produto pendente para a entidade (cadastro/diagnóstico).
+  static Future<String?> lastProdutoSyncErrorForEntity({
+    required String lojaId,
+    required int entityKey,
+  }) async {
+    await _instance._ensureBox();
+    final box = _instance._box!;
+    String? melhor;
+    var melhorMs = 0;
+    for (final k in box.keys) {
+      final map = _instance._rawToMap(box.get(k));
+      if (map == null) continue;
+      final item = SyncQueueItem.fromMap(map);
+      if (item.type != SyncOperationType.upsertProduto) continue;
+      if (item.lojaId != lojaId) continue;
+      if (item.entityKey != entityKey) continue;
+      final err = item.lastError?.trim();
+      if (err == null || err.isEmpty) continue;
+      final ms =
+          item.lastAttemptAt > 0 ? item.lastAttemptAt : item.createdAt;
+      if (ms >= melhorMs) {
+        melhorMs = ms;
+        melhor = err;
+      }
+    }
+    return melhor;
   }
 
   Future<void> _enqueue(
     SyncOperationType type,
     String lojaId,
     String boxName,
-    int entityKey,
-  ) async {
+    int entityKey, {
+    String? lastError,
+  }) async {
     await _ensureBox();
     final box = _box!;
 
     final id = '${type.name}_${lojaId}_${entityKey}_${DateTime.now().millisecondsSinceEpoch}';
+    final errInicial = lastError != null && lastError.trim().isNotEmpty
+        ? SyncQueueService._truncateError(lastError.trim())
+        : null;
     final item = SyncQueueItem(
       id: id,
       type: type,
@@ -148,10 +188,14 @@ class SyncQueueService {
       createdAt: DateTime.now().millisecondsSinceEpoch,
       deadLetter: false,
       lastAttemptAt: 0,
+      lastError: errInicial,
     );
 
     await box.put(id, jsonEncode(item.toMap()));
-    logD('📋 [SYNC-QUEUE] Enfileirado: $type key=$entityKey');
+    logD(
+      '📋 [SYNC-QUEUE] Enfileirado: $type key=$entityKey'
+      '${errInicial != null ? " lastError=$errInicial" : ""}',
+    );
 
     _scheduleProcess();
   }
@@ -461,17 +505,25 @@ class SyncQueueService {
       enqueueOnFailure: false,
     );
     if (status == ProdutoSyncRemotoStatus.bloqueadoExclusaoTombstone) {
-      logD(
-        '[TOMBSTONE_BLOCK] fila descartou upsert (entityKey=${item.entityKey})',
-        tag: 'TOMBSTONE',
+      final tombErr = ProdutoSyncErroUtil.sanitizar(
+        null,
+        status: ProdutoSyncRemotoStatus.bloqueadoExclusaoTombstone,
       );
-      return true;
-    }
-    if (status != ProdutoSyncRemotoStatus.confirmado) {
       await _incrementAttempt(
         item,
-        'syncProdutoComStatus=$status para produtoKey=${item.entityKey}',
+        tombErr ?? 'identificador-excluido (tombstone)',
       );
+      logD(
+        '[TOMBSTONE_BLOCK] fila manteve item (entityKey=${item.entityKey}) — tombstone',
+        tag: 'TOMBSTONE',
+      );
+      return false;
+    }
+    if (status != ProdutoSyncRemotoStatus.confirmado) {
+      final detalhe = ProdutosFirestoreService.ultimoErroSyncSanitizado ??
+          ProdutoSyncErroUtil.sanitizar(null, status: status) ??
+          'syncProdutoComStatus=$status';
+      await _incrementAttempt(item, detalhe);
       logW(
         '⚠️ [SYNC-QUEUE] Produto pendente sem ACK remoto (status=$status, operationId=${item.operationId})',
       );

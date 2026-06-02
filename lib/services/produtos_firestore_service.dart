@@ -19,6 +19,7 @@ import 'produto_remote_sync_guard.dart';
 import 'store_resolver_facade.dart';
 import 'combo_receita_normalizacao.dart';
 import 'image_upload_service.dart';
+import 'produto_sync_erro_util.dart';
 import 'sync_queue_service.dart';
 import 'produto_exclusao_tombstone_service.dart';
 import 'produto_pull_skip_guard.dart';
@@ -447,12 +448,16 @@ class ProdutosFirestoreService {
   @visibleForTesting
   static int debugForceSyncFailureRemaining = 0;
 
+  /// Último erro sanitizado do ciclo de sync (UI / fila).
+  static String? ultimoErroSyncSanitizado;
+
   static Future<ProdutoSyncRemotoStatus> syncProdutoComStatus(
     Produto produto, {
     String? lojaId,
     bool bumpHiveTimestamp = true,
     bool enqueueOnFailure = true,
   }) async {
+    ultimoErroSyncSanitizado = null;
     try {
       if (debugForceSyncFailureRemaining > 0) {
         debugForceSyncFailureRemaining--;
@@ -462,6 +467,10 @@ class ProdutosFirestoreService {
       final storeId = lojaId ?? await StoreResolverFacade.resolveForAdminApp();
       if (storeId == null || storeId.isEmpty) {
         logD('❌ [PRODUTOS-SYNC] LojaId vazio, não pode sincronizar');
+        ultimoErroSyncSanitizado = ProdutoSyncErroUtil.sanitizar(
+          null,
+          status: ProdutoSyncRemotoStatus.lojaInvalida,
+        );
         return ProdutoSyncRemotoStatus.lojaInvalida;
       }
 
@@ -479,6 +488,10 @@ class ProdutosFirestoreService {
         logW(
           '[TOMBSTONE_BLOCK] upsert bloqueado — produto excluído: $produtoId',
           tag: 'TOMBSTONE',
+        );
+        ultimoErroSyncSanitizado = ProdutoSyncErroUtil.sanitizar(
+          null,
+          status: ProdutoSyncRemotoStatus.bloqueadoExclusaoTombstone,
         );
         return ProdutoSyncRemotoStatus.bloqueadoExclusaoTombstone;
       }
@@ -785,8 +798,10 @@ class ProdutosFirestoreService {
       logD('✅ [PRODUTOS-SYNC] Produto ${produto.nome} sincronizado');
       return ProdutoSyncRemotoStatus.confirmado;
     } catch (e, st) {
+      ultimoErroSyncSanitizado = ProdutoSyncErroUtil.sanitizar(e);
       logE(
-          '❌ [PRODUTOS-SYNC] Erro ao sincronizar produto (type=${e.runtimeType})',
+          '❌ [PRODUTOS-SYNC] Erro ao sincronizar produto (type=${e.runtimeType})'
+          '${ultimoErroSyncSanitizado != null ? " detalhe=$ultimoErroSyncSanitizado" : ""}',
           error: e,
           st: st);
       if (!enqueueOnFailure) {
@@ -799,6 +814,10 @@ class ProdutosFirestoreService {
       if (storeId != null && key != null && boxName != null) {
         final parsedKey = key is int ? key : int.tryParse(key.toString());
         if (parsedKey == null) {
+          ultimoErroSyncSanitizado = ProdutoSyncErroUtil.sanitizar(
+            null,
+            status: ProdutoSyncRemotoStatus.produtoInvalido,
+          );
           return ProdutoSyncRemotoStatus.produtoInvalido;
         }
         await SyncQueueService.enqueue(
@@ -806,6 +825,7 @@ class ProdutosFirestoreService {
           lojaId: storeId,
           boxName: boxName,
           entityKey: parsedKey,
+          lastError: ultimoErroSyncSanitizado,
         );
         return ProdutoSyncRemotoStatus.pendenteFila;
       }

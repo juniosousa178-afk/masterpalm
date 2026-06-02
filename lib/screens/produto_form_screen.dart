@@ -22,6 +22,7 @@ import '../services/catalog_publish_service.dart';
 import '../services/limits_guard.dart';
 import '../services/produto_estoque_doc_id_service.dart';
 import '../services/produto_exclusao_tombstone_service.dart';
+import '../services/produto_sync_erro_util.dart';
 import '../services/produto_sync_fila_retry_service.dart';
 import '../services/produtos_firestore_service.dart';
 import '../services/produto_imagens_storage_cleanup.dart';
@@ -2149,16 +2150,27 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
 
       if (!mounted) return;
 
+      String? detalheSyncErro;
+      if (remoteStatus == ProdutoSyncRemotoStatus.pendenteFila ||
+          remoteStatus == ProdutoSyncRemotoStatus.falhaRemota) {
+        detalheSyncErro = await ProdutoSyncFilaRetryService.detalheErroAposRetentativa(
+          lojaId: lojaId!,
+          produto: produtoSalvoParaRetorno,
+        );
+      }
+
       final mensagemSalvar = switch (remoteStatus) {
         ProdutoSyncRemotoStatus.confirmado => _publicar
             ? 'Produto salvo, publicado e sincronizado com Hive e Firestore!'
             : 'Produto salvo e sincronizado com Hive e Firestore.',
         ProdutoSyncRemotoStatus.pendenteFila =>
-          'Produto salvo no aparelho e colocado na fila de sincronização. '
-              'Quando a conexão estabilizar, ele será enviado para a nuvem automaticamente.',
+          ProdutoSyncErroUtil.mensagemCadastroPendenteFila(
+            detalheErro: detalheSyncErro,
+          ),
         ProdutoSyncRemotoStatus.falhaRemota =>
-          'Produto salvo no aparelho, mas a sincronização com a nuvem falhou agora. '
-              'Tente novamente em instantes.',
+          ProdutoSyncErroUtil.mensagemCadastroFalhaRemota(
+            detalheErro: detalheSyncErro,
+          ),
         ProdutoSyncRemotoStatus.lojaInvalida =>
           'Produto salvo no aparelho, mas sem contexto de loja para sincronizar com a nuvem.',
         ProdutoSyncRemotoStatus.produtoInvalido =>
