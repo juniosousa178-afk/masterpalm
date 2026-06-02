@@ -1309,6 +1309,21 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       return;
     }
 
+    if (_pendenteFiado) {
+      if (cliente.nome.trim().isEmpty) {
+        await _mostrarErro('Selecione um cliente para venda fiada.');
+        return;
+      }
+      if (_pendenteDiasVencimento < 1) {
+        await _mostrarErro('Informe a data de vencimento da venda fiada.');
+        return;
+      }
+      if (total <= 0) {
+        await _mostrarErro('Informe o valor da venda fiada.');
+        return;
+      }
+    }
+
     // 2) Validação do valor pago (dispensada quando venda fiada)
     if (!_pendenteFiado && (totalPago - total).abs() > 0.01) {
       await _mostrarErro(
@@ -1741,6 +1756,18 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       );
 
       return (true, numeroSorteRecebido, null);
+    } on ArgumentError catch (e, stackTrace) {
+      _logErroSalvarVenda(
+        etapa: 'BACKGROUND_SAVE_FIADO',
+        erro: e,
+        st: stackTrace,
+        itensVenda: itens,
+      );
+      final msg = e.message?.toString().trim().isNotEmpty == true
+          ? e.message!.toString().trim()
+          : e.toString();
+      onErro?.call(msg);
+      return (false, null, msg);
     } catch (e, stackTrace) {
       _logErroSalvarVenda(
         etapa: 'BACKGROUND_SAVE',
