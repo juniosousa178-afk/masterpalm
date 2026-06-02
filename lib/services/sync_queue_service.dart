@@ -258,6 +258,8 @@ class SyncQueueService {
 
   Future<SyncQueueResult> _processPending() async {
     if (_isProcessing) {
+      // Outro ciclo em andamento: reagendar para não perder itens recém-enfileirados (ex.: cadastro web).
+      _scheduleProcess();
       return SyncQueueResult(
         processed: 0,
         failed: 0,

@@ -443,6 +443,10 @@ class ProdutosFirestoreService {
     );
   }
 
+  /// Apenas testes: falhas forçadas antes do sync real (enfileira / retentativa).
+  @visibleForTesting
+  static int debugForceSyncFailureRemaining = 0;
+
   static Future<ProdutoSyncRemotoStatus> syncProdutoComStatus(
     Produto produto, {
     String? lojaId,
@@ -450,6 +454,11 @@ class ProdutosFirestoreService {
     bool enqueueOnFailure = true,
   }) async {
     try {
+      if (debugForceSyncFailureRemaining > 0) {
+        debugForceSyncFailureRemaining--;
+        throw Exception('debug: sync produto forçado a falhar (teste)');
+      }
+
       final storeId = lojaId ?? await StoreResolverFacade.resolveForAdminApp();
       if (storeId == null || storeId.isEmpty) {
         logD('❌ [PRODUTOS-SYNC] LojaId vazio, não pode sincronizar');

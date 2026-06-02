@@ -22,6 +22,7 @@ import '../services/catalog_publish_service.dart';
 import '../services/limits_guard.dart';
 import '../services/produto_estoque_doc_id_service.dart';
 import '../services/produto_exclusao_tombstone_service.dart';
+import '../services/produto_sync_fila_retry_service.dart';
 import '../services/produtos_firestore_service.dart';
 import '../services/produto_imagens_storage_cleanup.dart';
 import '../services/produto_upsert_service.dart';
@@ -1943,9 +1944,9 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           existente.updatedAt = DateTime.now();
           await existente.save();
           _syncTombSessaoBaselineAposSalvarVariacoes(variacoesMap, estoqueMapa);
-          remoteStatus = await ProdutosFirestoreService.syncProdutoComStatus(
+          remoteStatus = await ProdutoSyncFilaRetryService.syncComRetentativaFila(
             existente,
-            lojaId: lojaId,
+            lojaId: lojaId!,
             enqueueOnFailure: true,
           )
               .timeout(const Duration(seconds: 45), onTimeout: () => throw TimeoutException('Sincronização com Firestore demorou muito.'));
@@ -1999,7 +2000,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             subcategoriasExtras: subcategoriasExtras,
             descricao: _descricao.text.trim(),
             dataEntrada: DateTime.now(),
-            imagens: List.from(_imagens),
+            imagens: List.from(_imagensParaPersistir),
             publicadoNoCatalogo: _publicar,
             divideSemJuros: _divideSemJuros,
             percentualDescontoPix: percentualDescontoPix,
@@ -2035,9 +2036,9 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           );
 
           await produtosBox.add(novo);
-          remoteStatus = await ProdutosFirestoreService.syncProdutoComStatus(
+          remoteStatus = await ProdutoSyncFilaRetryService.syncComRetentativaFila(
             novo,
-            lojaId: lojaId,
+            lojaId: lojaId!,
             enqueueOnFailure: true,
           )
               .timeout(const Duration(seconds: 45), onTimeout: () => throw TimeoutException('Sincronização com Firestore demorou muito.'));
@@ -2124,9 +2125,9 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         await p.save();
         await _liberarTombstonesVarAtivasPosSave(p, variacoesMap, estoqueMapa);
         _syncTombSessaoBaselineAposSalvarVariacoes(variacoesMap, estoqueMapa);
-        remoteStatus = await ProdutosFirestoreService.syncProdutoComStatus(
+        remoteStatus = await ProdutoSyncFilaRetryService.syncComRetentativaFila(
           p,
-          lojaId: lojaId,
+          lojaId: lojaId!,
           enqueueOnFailure: true,
         )
             .timeout(const Duration(seconds: 45), onTimeout: () => throw TimeoutException('Sincronização com Firestore demorou muito.'));
