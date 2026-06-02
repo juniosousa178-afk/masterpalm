@@ -12,6 +12,7 @@ import '../models/venda.dart';
 import '../models/venda_item.dart';
 import '../models/conta_receber.dart';
 import '../core/hive_box_names.dart';
+import '../core/safe_cast.dart';
 import '../core/strict_product_resolution.dart';
 import '../utils/text_utils.dart';
 import '../services/campaign_engine_service.dart'; // 🎯 integração com campanhas/sorteio (centralizado)
@@ -87,6 +88,25 @@ class VendasService {
     }
   }
 
+  static Future<void> _excluirVendaHiveSeguro(
+    Box<Venda> vendasBox,
+    Venda venda,
+    int? vendaHiveKey,
+  ) async {
+    final key = vendaHiveKey ?? hiveKeyOrNull(venda.key);
+    if (key != null) {
+      await vendasBox.delete(key);
+      return;
+    }
+    try {
+      await venda.delete();
+    } catch (e) {
+      debugPrint(
+        '⚠️ [VENDAS-SERVICE] Falha ao excluir venda do Hive (type=${e.runtimeType}): $e',
+      );
+    }
+  }
+
   static double _resolverCustoItem(Produto produto, VendaItem item) {
     final custoVariacao = produto.custoUnitarioVariacao(
       item.tamanho,
@@ -137,9 +157,8 @@ class VendasService {
     final loja = lojaId.trim();
     if (loja.isEmpty) return;
     if (!venda.formasPagamento.toLowerCase().contains('fiado')) return;
-    if (venda.key is! int) return;
-    final vk = venda.key as int;
-    if (vk < 0) return;
+    final vk = hiveKeyOrNull(venda.key);
+    if (vk == null || vk < 0) return;
     final match = RegExp(
       r'Vencimento:\s*(\d{2})/(\d{2})/(\d{4})',
       caseSensitive: false,
@@ -953,11 +972,12 @@ class VendasService {
     debugPrint('💾 [VENDAS-SERVICE] Salvando venda - Dinheiro: R\$ ${_fmt2(dinheiro)}, Pix: R\$ ${_fmt2(pix)}, Cartão: R\$ ${_fmt2(cartao)}, Total: R\$ ${_fmt2(total)}');
     debugPrint('📤 [SYNC-DEBUG] VendasService.salvarVenda → lojaId=$lojaEfetiva | cliente=${cliente.nome} | total=R\$ ${_fmt2(total)}');
 
-    await vendasBox.add(venda);
+    final addedKey = await vendasBox.add(venda);
+    final vendaHiveKey = hiveKeyOrNull(addedKey) ?? hiveKeyOrNull(venda.key);
 
     final vIdSnapshot = (venda.idFirebase ?? '').trim().isNotEmpty
         ? venda.idFirebase!.trim()
-        : 'hive_${venda.key}';
+        : 'hive_${vendaHiveKey ?? venda.key}';
     final snapRaw = venda.itensComboSelecaoJson;
     final snapKeys =
         VendaComboEstoqueExpansion.parseItensComboSelecaoPorIndiceJson(snapRaw)
@@ -984,16 +1004,39 @@ class VendasService {
             '⚠️ [VENDAS-SERVICE] Falha ao estornar estoque (fiado sem vencimento): $estE',
           );
         }
-        await vendasBox.delete(venda.key);
+        await _excluirVendaHiveSeguro(vendasBox, venda, vendaHiveKey);
         throw ArgumentError('Informe a data de vencimento da venda fiada.');
+      }
+      if (vendaHiveKey == null) {
+        try {
+          await devolverEstoqueParaVendaRemovida(
+            venda: venda,
+            produtosBox: produtosBox,
+            lojaId: lojaEfetiva,
+          );
+        } catch (estE) {
+          debugPrint(
+            '⚠️ [VENDAS-SERVICE] Falha ao estornar estoque (fiado sem chave Hive): $estE',
+          );
+        }
+        await _excluirVendaHiveSeguro(vendasBox, venda, null);
+        throw ArgumentError(
+          'Não foi possível vincular a venda à conta a receber. Tente novamente.',
+        );
       }
       try {
         final crBoxName = HiveBoxNames.contasReceber(lojaEfetiva);
         final crBox = Hive.isBoxOpen(crBoxName)
             ? Hive.box<ContaReceber>(crBoxName)
             : await Hive.openBox<ContaReceber>(crBoxName);
-        final qtdParcelas = quantidadeParcelasFiado.clamp(1, 48);
-        final intervalo = intervaloParcelasDias.clamp(1, 120);
+        final qtdParcelas = safeInt(
+          quantidadeParcelasFiado.clamp(1, 48),
+          fallback: 1,
+        );
+        final intervalo = safeInt(
+          intervaloParcelasDias.clamp(1, 120),
+          fallback: 30,
+        );
         final valoresParcelas = _parcelarValores(total, qtdParcelas);
         for (var i = 0; i < qtdParcelas; i++) {
           final venc = vencimento.add(Duration(days: i * intervalo));
@@ -1003,7 +1046,7 @@ class VendasService {
             valor: valoresParcelas[i],
             dataVencimento: venc,
             dataVenda: venda.data,
-            vendaKey: venda.key is int ? venda.key as int : 0,
+            vendaKey: vendaHiveKey,
             observacao: qtdParcelas > 1
                 ? 'Parcela ${i + 1}/$qtdParcelas${observacao.trim().isNotEmpty ? ' - ${observacao.trim()}' : ''}'
                 : (observacao.trim().isEmpty ? 'Venda fiada' : observacao.trim()),
@@ -1028,7 +1071,12 @@ class VendasService {
             '⚠️ [VENDAS-SERVICE] Falha ao estornar estoque após erro no fiado: $estE',
           );
         }
-        await vendasBox.delete(venda.key);
+        await _excluirVendaHiveSeguro(vendasBox, venda, vendaHiveKey);
+        if (e is TypeError || e is ArgumentError) {
+          throw ArgumentError(
+            'Não foi possível vincular a venda à conta a receber. Tente novamente.',
+          );
+        }
         rethrow;
       }
     }
@@ -1183,10 +1231,11 @@ class VendasService {
       resultadosComboExtra: pisoResults,
     );
 
-    if (venda.key is int) {
+    final vkContas = hiveKeyOrNull(venda.key);
+    if (vkContas != null) {
       await removerContasReceberVinculadasAVenda(
         lojaId: lojaId,
-        vendaKey: venda.key as int,
+        vendaKey: vkContas,
       );
     }
 

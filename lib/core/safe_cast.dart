@@ -193,3 +193,28 @@ List<Map<String, dynamic>> listOfMapStringDynamic(dynamic v) {
 
 /// Alias de asDateTime; suporta Timestamp, DateTime, String ISO, int millis.
 DateTime? parseDate(dynamic v) => asDateTime(v);
+
+/// Chave Hive como [int] não negativo; null se ausente ou ilegível.
+/// No Flutter Web, [HiveObject.key] e o retorno de [Box.add] podem vir como [num].
+/// Aceita apenas inteiros reais (`3`, `3.0`, `"3"`, `"3.0"`). Rejeita quebrados (`3.5`).
+int? hiveKeyOrNull(dynamic key) {
+  if (key == null) return null;
+
+  int? fromNum(num n) {
+    if (!n.isFinite) return null;
+    if (n < 0) return null;
+    if (n % 1 != 0) return null;
+    return n.toInt();
+  }
+
+  if (key is int) return fromNum(key);
+  if (key is num) return fromNum(key);
+  if (key is String) {
+    final t = key.trim();
+    if (t.isEmpty) return null;
+    final n = num.tryParse(t);
+    if (n == null) return null;
+    return fromNum(n);
+  }
+  return null;
+}

@@ -6,6 +6,7 @@ import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:master_palm/core/hive_box_names.dart';
+import 'package:master_palm/core/safe_cast.dart';
 import 'package:master_palm/models/cliente.dart';
 import 'package:master_palm/models/conta_receber.dart';
 import 'package:master_palm/models/produto.dart';
@@ -64,6 +65,44 @@ void main() {
           total: 0,
         ),
         throwsA(isA<ArgumentError>()),
+      );
+    });
+  });
+
+  group('hiveKeyOrNull — chave Hive no web', () {
+    test('aceita inteiros reais em int, num e string', () {
+      expect(hiveKeyOrNull(0), 0);
+      expect(hiveKeyOrNull(3), 3);
+      expect(hiveKeyOrNull(7), 7);
+      expect(hiveKeyOrNull(3.0), 3);
+      expect(hiveKeyOrNull('3'), 3);
+      expect(hiveKeyOrNull('3.0'), 3);
+      expect(hiveKeyOrNull('12'), 12);
+    });
+
+    test('rejeita fracionários, negativos e tipos inválidos', () {
+      expect(hiveKeyOrNull(3.5), isNull);
+      expect(hiveKeyOrNull('3.5'), isNull);
+      expect(hiveKeyOrNull(-1), isNull);
+      expect(hiveKeyOrNull('-1'), isNull);
+      expect(hiveKeyOrNull(double.nan), isNull);
+      expect(hiveKeyOrNull(double.infinity), isNull);
+      expect(hiveKeyOrNull(null), isNull);
+      expect(hiveKeyOrNull('abc'), isNull);
+      expect(hiveKeyOrNull({}), isNull);
+      expect(hiveKeyOrNull([]), isNull);
+    });
+  });
+
+  group('contrato vendaKey fiado', () {
+    test('registrarVendaMulti usa retorno de vendasBox.add', () {
+      final src = File('lib/services/vendas_service.dart').readAsStringSync();
+      expect(src.contains('final addedKey = await vendasBox.add(venda)'), isTrue);
+      expect(src.contains('hiveKeyOrNull(addedKey)'), isTrue);
+      expect(
+        src.contains('venda.key is int ? venda.key as int : 0'),
+        isFalse,
+        reason: 'não deve usar cast inseguro para vendaKey da conta',
       );
     });
   });
@@ -186,7 +225,7 @@ void main() {
       final cr = crBox.values.first;
       expect(cr.clienteNome, cliente.nome);
       expect(cr.valor, closeTo(80, 0.01));
-      expect(cr.vendaKey, venda.key);
+      expect(cr.vendaKey, hiveKeyOrNull(venda.key));
       await crBox.close();
 
       final snap = await firestore
