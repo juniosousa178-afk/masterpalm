@@ -7,9 +7,11 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../core/hive_box_names.dart';
+import '../core/safe_cast.dart';
 import '../models/cliente.dart';
 import '../models/conta_receber.dart';
 import '../services/conta_receber_recebimento_caixa_service.dart';
+import '../services/conta_receber_service.dart';
 import '../services/loja_id_service.dart';
 import '../services/notificacao_service.dart';
 import '../services/pagamentos_service.dart';
@@ -308,7 +310,7 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
 
       if (ok != true || !mounted) return;
 
-      final pago = MoedaInputFormatter.parse(valorCtrl.text).clamp(0.0, saldo);
+      final pago = MoedaInputFormatter.parse(valorCtrl.text);
       if (pago <= 1e-9) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -320,29 +322,84 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
         }
         return;
       }
+      if (pago > saldo + 0.01) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Valor recebido maior que o saldo em aberto.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
 
-      final hiveKey = c.key is int ? c.key as int : -1;
-      await ContaReceberRecebimentoCaixaService.registrarRecebimento(
-        lojaId: _lojaId!,
-        valor: pago,
+      final hiveKey = hiveKeyOrNull(c.key) ?? -1;
+
+      if (!dividirRestante) {
+        final resultado = await ContaReceberService.registrarBaixa(
+          conta: c,
+          valorRecebido: pago,
+          formaPagamento: forma,
+          lojaId: _lojaId!,
+          contaHiveKey: hiveKey,
+          parcelaNumero: c.parcelaNumero,
+          dataRecebimento: dataRecebimento,
+        );
+        if (!resultado.sucesso) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(resultado.mensagemErro ?? 'Erro ao registrar recebimento.'),
+                backgroundColor: Colors.redAccent,
+              ),
+            );
+          }
+          return;
+        }
+        if (!mounted) return;
+        setState(() {});
+        final agora = DateTime.now();
+        final retro = dataRecebimento.isBefore(DateTime(agora.year, agora.month, 1));
+        final msgBase = resultado.mensagemSucesso ?? 'Recebimento registrado.';
+        final msgFinal = retro
+            ? '$msgBase\n\n'
+                'Este lançamento será registrado em um mês anterior e aparecerá nos relatórios daquele período.'
+            : msgBase;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(msgFinal),
+            backgroundColor: _successColor,
+            duration: Duration(seconds: retro ? 8 : 4),
+          ),
+        );
+        return;
+      }
+
+      // Dividir saldo restante: registra recebimento e cria novas parcelas.
+      final resultadoParcial = await ContaReceberService.registrarBaixa(
+        conta: c,
+        valorRecebido: pago,
         formaPagamento: forma,
-        clienteNome: c.clienteNome,
-        observacaoConta: c.observacao,
+        lojaId: _lojaId!,
         contaHiveKey: hiveKey,
         parcelaNumero: c.parcelaNumero,
         dataRecebimento: dataRecebimento,
       );
+      if (!resultadoParcial.sucesso) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(resultadoParcial.mensagemErro ?? 'Erro ao registrar recebimento.'),
+              backgroundColor: Colors.redAccent,
+            ),
+          );
+        }
+        return;
+      }
 
-      final restante = (saldo - pago).clamp(0.0, double.infinity);
-      final quitado = restante < 0.01;
-
-      if (quitado) {
-        c.pago = true;
-        await c.save();
-      } else if (!dividirRestante) {
-        c.valor = restante;
-        await c.save();
-      } else {
+      final restante = resultadoParcial.saldoRestante;
+      if (restante >= 0.01) {
         final n = (int.tryParse(qtdParcelasCtrl.text.trim()) ?? 2).clamp(2, 48);
         final intervalo = (int.tryParse(intervaloCtrl.text.trim()) ?? 30).clamp(1, 120);
         final dias1 = (int.tryParse(diasPrimeiroVencCtrl.text.trim()) ?? 30).clamp(1, 365);
@@ -358,6 +415,7 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
         final baseParcelamento = dataRecebimento;
         for (var i = 0; i < n; i++) {
           final venc = baseParcelamento.add(Duration(days: dias1 + i * intervalo));
+          final valorParcela = partes[i];
           final obsParcela = n > 1
               ? 'Parcela ${i + 1}/$n (saldo)${baseObs.isNotEmpty ? ' · $baseObs' : ''}'
               : (baseObs.isNotEmpty ? baseObs : 'Saldo');
@@ -365,7 +423,8 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
             ContaReceber(
               lojaId: loja,
               clienteNome: cliente,
-              valor: partes[i],
+              valor: valorParcela,
+              valorOriginal: valorParcela,
               dataVencimento: venc,
               dataVenda: dataVenda,
               vendaKey: vendaKey,
@@ -379,22 +438,14 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
 
       if (!mounted) return;
       setState(() {});
-      final agora = DateTime.now();
-      final retro = dataRecebimento.isBefore(DateTime(agora.year, agora.month, 1));
-      final msgBase = quitado
-          ? 'Recebimento registrado. Conta quitada.'
-          : dividirRestante
-              ? 'Recebimento registrado. Saldo dividido em novas parcelas.'
-              : 'Recebimento registrado. Saldo atualizado.';
-      final msgFinal = retro
-          ? '$msgBase\n\n'
-              'Este lançamento será registrado em um mês anterior e aparecerá nos relatórios daquele período.'
-          : msgBase;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(msgFinal),
+          content: Text(
+            restante >= 0.01
+                ? 'Recebimento registrado. Saldo dividido em novas parcelas.'
+                : (resultadoParcial.mensagemSucesso ?? 'Recebimento registrado.'),
+          ),
           backgroundColor: _successColor,
-          duration: Duration(seconds: retro ? 8 : 4),
         ),
       );
     } catch (e) {

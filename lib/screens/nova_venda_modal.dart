@@ -1246,7 +1246,6 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       _pendenteDiasVencimento = result.diasVencimento;
       _pendenteQtdParcelasFiado = result.quantidadeParcelasFiado;
       _pendenteIntervaloParcelasDias = result.intervaloParcelasDias;
-      pagamentos = [];
     } else {
       _pendenteFiado = false;
       _pendenteQtdParcelasFiado = 1;
@@ -1314,12 +1313,20 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         await _mostrarErro('Selecione um cliente para venda fiada.');
         return;
       }
-      if (_pendenteDiasVencimento < 1) {
-        await _mostrarErro('Informe a data de vencimento da venda fiada.');
-        return;
-      }
       if (total <= 0) {
         await _mostrarErro('Informe o valor da venda fiada.');
+        return;
+      }
+      if (totalPago > total + 0.01) {
+        await _mostrarErro('Pagamento informado maior que o total da venda.');
+        return;
+      }
+      final saldoFiado = VendasService.calcularSaldoFiado(
+        total: total,
+        totalPagoAgora: totalPago,
+      );
+      if (saldoFiado > 0.01 && _pendenteDiasVencimento < 1) {
+        await _mostrarErro('Informe a data de vencimento para o saldo fiado.');
         return;
       }
     }
@@ -1592,23 +1599,17 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
           ? v.toDouble()
           : (double.tryParse(v?.toString() ?? '') ?? 0.0);
 
-      double valorDinheiro = _pendenteFiado
-          ? 0.0
-          : pagamentos
-              .where((p) => (p['forma'] ?? '') == 'Dinheiro')
-              .fold(0.0, (s, p) => s + valorPagamento(p['valor']));
+      double valorDinheiro = pagamentos
+          .where((p) => (p['forma'] ?? '') == 'Dinheiro')
+          .fold(0.0, (s, p) => s + valorPagamento(p['valor']));
 
-      double valorPix = _pendenteFiado
-          ? 0.0
-          : pagamentos
-              .where((p) => (p['forma'] ?? '') == 'Pix')
-              .fold(0.0, (s, p) => s + valorPagamento(p['valor']));
+      double valorPix = pagamentos
+          .where((p) => (p['forma'] ?? '') == 'Pix')
+          .fold(0.0, (s, p) => s + valorPagamento(p['valor']));
 
-      double valorCartao = _pendenteFiado
-          ? 0.0
-          : pagamentos
-              .where((p) => (p['forma'] ?? '') == 'Cartão')
-              .fold(0.0, (s, p) => s + valorPagamento(p['valor']));
+      double valorCartao = pagamentos
+          .where((p) => (p['forma'] ?? '') == 'Cartão')
+          .fold(0.0, (s, p) => s + valorPagamento(p['valor']));
 
       logD(
           '💰 [VENDA] Pagamentos - Dinheiro: R\$ ${valorDinheiro.toStringAsFixed(2)}, Pix: R\$ ${valorPix.toStringAsFixed(2)}, Cartão: R\$ ${valorCartao.toStringAsFixed(2)}');

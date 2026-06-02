@@ -29,13 +29,17 @@ class ContaReceberAdapter extends TypeAdapter<ContaReceber> {
       parcelaNumero: fields[9] as int,
       parcelaTotal: fields[10] as int,
       lembrete2DiasEnviado: fields[11] as bool,
+      valorOriginal: fields[12] as double?,
+      valorPago: (fields[13] as double?) ?? 0,
+      status: fields[14] as String?,
+      historicoPagamentosJson: (fields[15] as String?) ?? '[]',
     );
   }
 
   @override
   void write(BinaryWriter writer, ContaReceber obj) {
     writer
-      ..writeByte(12)
+      ..writeByte(16)
       ..writeByte(0)
       ..write(obj.lojaId)
       ..writeByte(1)
@@ -59,7 +63,15 @@ class ContaReceberAdapter extends TypeAdapter<ContaReceber> {
       ..writeByte(10)
       ..write(obj.parcelaTotal)
       ..writeByte(11)
-      ..write(obj.lembrete2DiasEnviado);
+      ..write(obj.lembrete2DiasEnviado)
+      ..writeByte(12)
+      ..write(obj.valorOriginal)
+      ..writeByte(13)
+      ..write(obj.valorPago)
+      ..writeByte(14)
+      ..write(obj.status)
+      ..writeByte(15)
+      ..write(obj.historicoPagamentosJson);
   }
 
   @override

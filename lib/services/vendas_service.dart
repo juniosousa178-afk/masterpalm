@@ -51,6 +51,7 @@ class VendasService {
     required String clienteNome,
     required double total,
     int quantidadeParcelasFiado = 1,
+    double totalPagoAgora = 0,
   }) {
     if (!isFiado) return;
     if (clienteNome.trim().isEmpty) {
@@ -59,12 +60,25 @@ class VendasService {
     if (total <= 0) {
       throw ArgumentError('Informe o valor da venda fiada.');
     }
+    if (totalPagoAgora > total + 0.01) {
+      throw ArgumentError('Pagamento informado maior que o total da venda.');
+    }
+    final saldoFiado = calcularSaldoFiado(total: total, totalPagoAgora: totalPagoAgora);
+    if (saldoFiado <= 0.01) return;
     if (dataVencimentoFiado == null) {
       throw ArgumentError('Informe a data de vencimento da venda fiada.');
     }
     if (quantidadeParcelasFiado < 1) {
       throw ArgumentError('Informe o número de parcelas da venda fiada.');
     }
+  }
+
+  /// Saldo que vira conta a receber em venda fiada ou mista.
+  static double calcularSaldoFiado({
+    required double total,
+    required double totalPagoAgora,
+  }) {
+    return (total - totalPagoAgora).clamp(0.0, double.infinity);
   }
 
   /// Atualiza histórico do cliente sem abortar a venda (HiveList pode falhar no web).
@@ -177,11 +191,19 @@ class VendasService {
     final crBox = Hive.isBoxOpen(crBoxName)
         ? Hive.box<ContaReceber>(crBoxName)
         : await Hive.openBox<ContaReceber>(crBoxName);
+    final totalPago =
+        venda.pagamentoDinheiro + venda.pagamentoPix + venda.pagamentoCartao;
+    final saldo = calcularSaldoFiado(
+      total: venda.total,
+      totalPagoAgora: totalPago,
+    );
+    if (saldo <= 0.01) return;
     await crBox.add(
       ContaReceber(
         lojaId: loja,
         clienteNome: venda.clienteNome,
-        valor: venda.total,
+        valor: saldo,
+        valorOriginal: saldo,
         dataVencimento: venc,
         dataVenda: venda.data,
         vendaKey: vk,
@@ -713,6 +735,7 @@ class VendasService {
               (1 - descontoPct / 100) +
           frete,
       quantidadeParcelasFiado: quantidadeParcelasFiado,
+      totalPagoAgora: dinheiro + pix + cartao,
     );
 
     // 1) Sincroniza produtos das linhas antes de expandir (preenche idFirebase para match)
@@ -899,12 +922,11 @@ class VendasService {
     if (!isFiado && dinheiro == 0 && pix == 0 && cartao == 0) {
       dinheiro = total;
     }
-    // Fiado: não compõe dinheiro/pix/cartão na venda até o recebimento em contas a receber.
-    if (isFiado) {
-      dinheiro = 0;
-      pix = 0;
-      cartao = 0;
-    }
+
+    final totalPagoAgora = dinheiro + pix + cartao;
+    final saldoFiado = isFiado
+        ? calcularSaldoFiado(total: total, totalPagoAgora: totalPagoAgora)
+        : 0.0;
 
     // 7) textos
     final linhas = itens.map((it) {
@@ -926,13 +948,17 @@ class VendasService {
     final vencStr = dataVencimentoFiado != null
         ? 'Vencimento: ${dataVencimentoFiado.day.toString().padLeft(2, '0')}/${dataVencimentoFiado.month.toString().padLeft(2, '0')}/${dataVencimentoFiado.year}'
         : '';
-    final formasPagamentoTexto = isFiado
-        ? 'Fiado - R\$ ${_fmt2(total)}. $vencStr'
-        : [
-            if (dinheiro > 0) "Pagamento Dinheiro: R\$ ${_fmt2(dinheiro)}",
-            if (pix > 0) "Pagamento Pix: R\$ ${_fmt2(pix)}",
-            if (cartao > 0) "Pagamento Cartão: R\$ ${_fmt2(cartao)}",
-          ].join('\n');
+    final linhasPagamento = <String>[
+      if (dinheiro > 0) "Pagamento Dinheiro: R\$ ${_fmt2(dinheiro)}",
+      if (pix > 0) "Pagamento Pix: R\$ ${_fmt2(pix)}",
+      if (cartao > 0) "Pagamento Cartão: R\$ ${_fmt2(cartao)}",
+    ];
+    if (isFiado && saldoFiado > 0.01) {
+      linhasPagamento.add('Fiado - R\$ ${_fmt2(saldoFiado)}. $vencStr');
+    } else if (isFiado && linhasPagamento.isEmpty) {
+      linhasPagamento.add('Fiado - R\$ ${_fmt2(total)}. $vencStr');
+    }
+    final formasPagamentoTexto = linhasPagamento.join('\n');
 
     // 8) cria venda (com todos os itens + clienteId estável)
     final venda = Venda(
@@ -989,8 +1015,8 @@ class VendasService {
       '[COMBO-SNAPSHOT-SAVE] vendaId=$vIdSnapshot json_vazio=$snapVazio keys=$snapKeys',
     );
 
-    // 8.1) se fiado, criar conta a receber (falha = rollback venda + estoque)
-    if (isFiado) {
+    // 8.1) se fiado com saldo, criar conta a receber (falha = rollback venda + estoque)
+    if (isFiado && saldoFiado > 0.01) {
       final vencimento = dataVencimentoFiado;
       if (vencimento == null) {
         try {
@@ -1037,13 +1063,14 @@ class VendasService {
           intervaloParcelasDias.clamp(1, 120),
           fallback: 30,
         );
-        final valoresParcelas = _parcelarValores(total, qtdParcelas);
+        final valoresParcelas = _parcelarValores(saldoFiado, qtdParcelas);
         for (var i = 0; i < qtdParcelas; i++) {
           final venc = vencimento.add(Duration(days: i * intervalo));
           final conta = ContaReceber(
             lojaId: lojaEfetiva,
             clienteNome: cliente.nome,
             valor: valoresParcelas[i],
+            valorOriginal: valoresParcelas[i],
             dataVencimento: venc,
             dataVenda: venda.data,
             vendaKey: vendaHiveKey,

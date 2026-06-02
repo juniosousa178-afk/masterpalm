@@ -198,8 +198,16 @@ class _FinalizarVendaConfirmacaoDialogState
   }
 
   bool get _valorOk {
-    if (_vendaFiada) return true;
     final soma = _somarPagamentos();
+    if (_vendaFiada) {
+      if (soma > widget.total + 0.01) return false;
+      final saldoFiado = widget.total - soma;
+      if (saldoFiado > 0.01) {
+        final dias = int.tryParse(_diasVencimentoController.text.trim()) ?? 0;
+        return dias >= 1;
+      }
+      return true;
+    }
     return (soma - widget.total).abs() < 0.01;
   }
 
@@ -235,6 +243,18 @@ class _FinalizarVendaConfirmacaoDialogState
   void _confirmar() {
     if (!_valorOk) return;
 
+    final pagamentosFinais = <Map<String, dynamic>>[];
+    if (!_vendaFiada || _somarPagamentos() > 0.01) {
+      for (var i = 0; i < _pagamentos.length; i++) {
+        final v = MoedaInputFormatter.parse(_valorControllers[i].text);
+        if (v <= 0) continue;
+        pagamentosFinais.add({
+          'forma': _pagamentos[i]['forma'],
+          'valor': v,
+        });
+      }
+    }
+
     if (_vendaFiada) {
       final dias = int.tryParse(_diasVencimentoController.text.trim()) ?? 30;
       final qtdParcelas = _fiadoParcelado
@@ -244,24 +264,14 @@ class _FinalizarVendaConfirmacaoDialogState
           ? (int.tryParse(_intervaloParcelasController.text.trim()) ?? 30).clamp(1, 120)
           : 30;
       widget.onConfirmar(FinalizarVendaResult(
-        pagamentos: [],
-        trocoTotal: 0,
+        pagamentos: pagamentosFinais,
+        trocoTotal: _calcularTrocoTotal(),
         isFiado: true,
         diasVencimento: dias.clamp(1, 365),
         quantidadeParcelasFiado: qtdParcelas,
         intervaloParcelasDias: intervaloDias,
       ));
       return;
-    }
-
-    final pagamentosFinais = <Map<String, dynamic>>[];
-    for (var i = 0; i < _pagamentos.length; i++) {
-      final v = MoedaInputFormatter.parse(_valorControllers[i].text);
-      if (v <= 0) continue;
-      pagamentosFinais.add({
-        'forma': _pagamentos[i]['forma'],
-        'valor': v,
-      });
     }
 
     widget.onConfirmar(FinalizarVendaResult(
@@ -273,10 +283,13 @@ class _FinalizarVendaConfirmacaoDialogState
   String _fmt2(num v) => v.toStringAsFixed(2).replaceAll('.', ',');
 
   List<Map<String, dynamic>> _calcularPreviewParcelas() {
+    final totalPago = _somarPagamentos();
+    final saldoFiado = (widget.total - totalPago).clamp(0.0, double.infinity);
+    if (saldoFiado < 0.01) return [];
     final qtd = (int.tryParse(_quantidadeParcelasController.text.trim()) ?? 1).clamp(1, 48);
     final intervalo = (int.tryParse(_intervaloParcelasController.text.trim()) ?? 30).clamp(1, 120);
     final primeiroVenc = (int.tryParse(_diasVencimentoController.text.trim()) ?? 30).clamp(1, 365);
-    final totalCentavos = (widget.total * 100).round();
+    final totalCentavos = (saldoFiado * 100).round();
     final valorBase = totalCentavos ~/ qtd;
     final resto = totalCentavos % qtd;
     final hoje = DateTime.now();
@@ -505,24 +518,36 @@ class _FinalizarVendaConfirmacaoDialogState
 
             const SizedBox(height: 16),
 
-            // Formas de pagamento (ocultar quando fiado)
-            if (!_vendaFiada) ...[
+            // Formas de pagamento (também quando fiado — pagamento misto)
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'Formas de pagamento',
+                  _vendaFiada ? 'Pagamento agora (opcional)' : 'Formas de pagamento',
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                TextButton.icon(
-                  onPressed: _preencherComTotal,
-                  icon: const Icon(Icons.touch_app, size: 18),
-                  label: const Text('Preencher total'),
-                ),
+                if (!_vendaFiada)
+                  TextButton.icon(
+                    onPressed: _preencherComTotal,
+                    icon: const Icon(Icons.touch_app, size: 18),
+                    label: const Text('Preencher total'),
+                  ),
               ],
             ),
+            if (_vendaFiada && falta > 0.01)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  'Saldo fiado: R\$ ${_fmt2(falta)}',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.blue.shade800,
+                  ),
+                ),
+              ),
             const SizedBox(height: 8),
 
             ..._pagamentos.asMap().entries.map((entry) {
@@ -647,7 +672,7 @@ class _FinalizarVendaConfirmacaoDialogState
             const SizedBox(height: 12),
 
             // Status pagamento
-            if (falta > 0.01)
+            if (!_vendaFiada && falta > 0.01)
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
@@ -664,6 +689,27 @@ class _FinalizarVendaConfirmacaoDialogState
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         color: Colors.red.shade800,
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else if (_vendaFiada && totalPago > widget.total + 0.01)
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.red.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.warning, color: Colors.red.shade700),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'Pagamento informado maior que o total da venda.',
+                        style: TextStyle(fontWeight: FontWeight.bold),
                       ),
                     ),
                   ],
@@ -691,8 +737,7 @@ class _FinalizarVendaConfirmacaoDialogState
                   ],
                 ),
               ),
-            ],
-            ],
+          ],
         ),
       ),
       actions: [
