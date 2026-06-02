@@ -1,6 +1,5 @@
 // Mensagens sanitizadas de falha de sync de produto (UI / fila / logs).
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import 'produtos_firestore_service.dart';
@@ -70,7 +69,7 @@ class ProdutoSyncErroUtil {
   }
 
   static String mensagemCadastroPendenteFila({String? detalheErro}) {
-    final base =
+    const base =
         'Produto salvo no aparelho e colocado na fila de sincronização. '
         'Quando a conexão estabilizar, ele será enviado para a nuvem automaticamente.';
     final d = detalheErro?.trim();
@@ -79,7 +78,7 @@ class ProdutoSyncErroUtil {
   }
 
   static String mensagemCadastroFalhaRemota({String? detalheErro}) {
-    final base =
+    const base =
         'Produto salvo no aparelho, mas a sincronização com a nuvem falhou agora. '
         'Tente novamente em instantes.';
     final d = detalheErro?.trim();
