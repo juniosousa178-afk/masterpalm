@@ -15,6 +15,7 @@ import 'package:uuid/uuid.dart';
 
 import '../core/hive_box_names.dart';
 import '../core/logger.dart';
+import '../core/safe_cast.dart';
 import '../models/cliente.dart';
 import '../models/produto.dart';
 import '../models/venda.dart';
@@ -292,7 +293,8 @@ class SoftDeleteService {
     debugPrint('[VENDA-DELETE] etapa=remover_contas_start lojaId=$lojaId vendaKey=$key');
     await VendasService.removerContasReceberVinculadasAVenda(
       lojaId: lojaId,
-      vendaKey: key,
+      vendaKey: hiveKeyOrNull(key),
+      vendaIdFirebase: VendasService.idVendaEstavelParaVinculo(venda),
     );
     debugPrint('[VENDA-DELETE] etapa=remover_contas_ok');
 
@@ -682,7 +684,10 @@ class SoftDeleteService {
       final venda = trashBox.get(r.trashKey);
       await VendasService.removerContasReceberVinculadasAVenda(
         lojaId: r.lojaId,
-        vendaKey: r.hiveKey,
+        vendaKey: r.hiveKey >= 0 ? r.hiveKey : null,
+        vendaIdFirebase: venda != null
+            ? VendasService.idVendaEstavelParaVinculo(venda)
+            : null,
       );
       if (venda != null) {
         final produtosBox = await Hive.openBox<Produto>(HiveBoxNames.produtos(r.lojaId));

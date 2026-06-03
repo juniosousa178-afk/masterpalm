@@ -122,6 +122,90 @@ class VendasService {
     }
   }
 
+  /// ID estável da venda para vínculo financeiro (conta a receber, exclusão).
+  static String idVendaEstavelParaVinculo(Venda venda) {
+    return (venda.idFirebase ?? '').trim();
+  }
+
+  static bool _contaReceberVinculadaAVenda({
+    required ContaReceber conta,
+    required String lojaId,
+    int? vendaKey,
+    String? vendaIdFirebase,
+  }) {
+    if (conta.lojaId != lojaId.trim()) return false;
+    final vk = vendaKey;
+    if (vk != null && vk >= 0 && conta.vendaKey == vk) return true;
+    final idV = (vendaIdFirebase ?? '').trim();
+    if (idV.isEmpty) return false;
+    return conta.vendaIdFirebase.trim() == idV;
+  }
+
+  /// Resolve chave Hive após [Box.add] — no Web o retorno/[HiveObject.key] pode falhar.
+  static int? resolverVendaHiveKeyAposAdd({
+    required Box<Venda> vendasBox,
+    required Venda venda,
+    required dynamic addedKey,
+  }) {
+    final fromAdded = hiveKeyOrNull(addedKey);
+    if (fromAdded != null) return fromAdded;
+
+    final fromVendaKey = hiveKeyOrNull(venda.key);
+    if (fromVendaKey != null) return fromVendaKey;
+
+    if (addedKey != null) {
+      try {
+        final loaded = vendasBox.get(addedKey);
+        if (loaded != null) {
+          final k = hiveKeyOrNull(loaded.key) ?? hiveKeyOrNull(addedKey);
+          if (k != null) return k;
+        }
+      } catch (_) {}
+    }
+
+    final idV = idVendaEstavelParaVinculo(venda);
+    if (idV.isNotEmpty) {
+      for (final boxKey in vendasBox.keys) {
+        final vk = hiveKeyOrNull(boxKey);
+        if (vk == null) continue;
+        final vv = vendasBox.get(boxKey);
+        if (vv != null && idVendaEstavelParaVinculo(vv) == idV) {
+          return vk;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  static void _garantirIdFirebaseVendaAntesDeSalvar({
+    required Venda venda,
+    String? idFirebaseToReuse,
+  }) {
+    if (idFirebaseToReuse != null && idFirebaseToReuse.trim().isNotEmpty) {
+      venda.idFirebase = idFirebaseToReuse.trim();
+      return;
+    }
+    if (idVendaEstavelParaVinculo(venda).isNotEmpty) return;
+    venda.idFirebase = VendasFirestoreService.resolveFirestoreVendaDocId(venda);
+  }
+
+  static bool _podeVincularContaReceberAVenda({
+    required int? vendaHiveKey,
+    required String vendaIdEstavel,
+  }) {
+    if (vendaHiveKey != null) return true;
+    return vendaIdEstavel.isNotEmpty;
+  }
+
+  static int _vendaKeyParaContaReceber(int? vendaHiveKey) {
+    return vendaHiveKey ?? -1;
+  }
+
+  static String _vendaIdFirebaseParaContaReceber(String vendaIdEstavel) {
+    return vendaIdEstavel.trim();
+  }
+
   static double _resolverCustoItem(Produto produto, VendaItem item) {
     final custoVariacao = produto.custoUnitarioVariacao(
       item.tamanho,
@@ -133,15 +217,17 @@ class VendasService {
     return custoVariacao;
   }
 
-  /// Remove contas a receber criadas para esta venda (mesmo [vendaKey] Hive).
+  /// Remove contas a receber criadas para esta venda ([vendaKey] Hive e/ou [vendaIdFirebase]).
   static Future<void> removerContasReceberVinculadasAVenda({
     required String lojaId,
-    required int vendaKey,
+    int? vendaKey,
+    String? vendaIdFirebase,
   }) async {
-    // Hive pode usar key 0 na primeira venda; só -1 seria inválido.
-    if (vendaKey < 0) return;
     final loja = lojaId.trim();
     if (loja.isEmpty) return;
+    final vk = vendaKey;
+    final idV = (vendaIdFirebase ?? '').trim();
+    if ((vk == null || vk < 0) && idV.isEmpty) return;
     try {
       final crBoxName = HiveBoxNames.contasReceber(loja);
       final crBox = Hive.isBoxOpen(crBoxName)
@@ -150,7 +236,13 @@ class VendasService {
       final keysToDelete = <dynamic>[];
       for (final k in crBox.keys) {
         final c = crBox.get(k);
-        if (c != null && c.lojaId == loja && c.vendaKey == vendaKey) {
+        if (c != null &&
+            _contaReceberVinculadaAVenda(
+              conta: c,
+              lojaId: loja,
+              vendaKey: vk,
+              vendaIdFirebase: idV,
+            )) {
           keysToDelete.add(k);
         }
       }
@@ -173,7 +265,8 @@ class VendasService {
     if (loja.isEmpty) return;
     if (!venda.formasPagamento.toLowerCase().contains('fiado')) return;
     final vk = hiveKeyOrNull(venda.key);
-    if (vk == null || vk < 0) return;
+    final idV = idVendaEstavelParaVinculo(venda);
+    if (vk == null && idV.isEmpty) return;
     final match = RegExp(
       r'Vencimento:\s*(\d{2})/(\d{2})/(\d{4})',
       caseSensitive: false,
@@ -207,7 +300,8 @@ class VendasService {
         valorOriginal: saldo,
         dataVencimento: venc,
         dataVenda: venda.data,
-        vendaKey: vk,
+        vendaKey: _vendaKeyParaContaReceber(vk),
+        vendaIdFirebase: _vendaIdFirebaseParaContaReceber(idV),
         observacao: venda.observacao.trim().isEmpty
             ? 'Venda fiada'
             : venda.observacao.trim(),
@@ -582,7 +676,7 @@ class VendasService {
     required String lojaId,
   }) async {
     final vk = hiveKeyOrNull(venda.key);
-    if (vk == null || vk < 0) return 0;
+    if (vk == null && idVendaEstavelParaVinculo(venda).isEmpty) return 0;
 
     final loja = lojaId.trim();
     if (loja.isEmpty) return 0;
@@ -594,7 +688,12 @@ class VendasService {
           : await Hive.openBox<ContaReceber>(crBoxName);
       var pagoContas = 0.0;
       for (final c in crBox.values) {
-        if (c.lojaId == loja && c.vendaKey == vk) {
+        if (_contaReceberVinculadaAVenda(
+          conta: c,
+          lojaId: loja,
+          vendaKey: vk,
+          vendaIdFirebase: idVendaEstavelParaVinculo(venda),
+        )) {
           pagoContas += c.valorPago;
         }
       }
@@ -769,7 +868,8 @@ class VendasService {
     required double totalAnterior,
   }) async {
     final vk = hiveKeyOrNull(venda.key);
-    if (vk == null || vk < 0) return;
+    final vendaIdVinculo = idVendaEstavelParaVinculo(venda);
+    if (vk == null && vendaIdVinculo.isEmpty) return;
 
     final crBoxName = HiveBoxNames.contasReceber(lojaId);
     final crBox = Hive.isBoxOpen(crBoxName)
@@ -777,7 +877,14 @@ class VendasService {
         : await Hive.openBox<ContaReceber>(crBoxName);
 
     final contasVinculadas = crBox.values
-        .where((c) => c.lojaId == lojaId && c.vendaKey == vk)
+        .where(
+          (c) => _contaReceberVinculadaAVenda(
+            conta: c,
+            lojaId: lojaId,
+            vendaKey: vk,
+            vendaIdFirebase: vendaIdVinculo,
+          ),
+        )
         .toList();
 
     if (!isFiado || saldoFiado <= 0.01) {
@@ -816,7 +923,8 @@ class VendasService {
             valorOriginal: valoresParcelas[i],
             dataVencimento: venc,
             dataVenda: venda.data,
-            vendaKey: vk,
+            vendaKey: _vendaKeyParaContaReceber(vk),
+            vendaIdFirebase: _vendaIdFirebaseParaContaReceber(vendaIdVinculo),
             observacao: qtdParcelas > 1
                 ? 'Parcela ${i + 1}/$qtdParcelas${observacao.trim().isNotEmpty ? ' - ${observacao.trim()}' : ''}'
                 : (observacao.trim().isEmpty ? 'Venda fiada' : observacao.trim()),
@@ -1371,18 +1479,27 @@ class VendasService {
     );
 
     // Em edição: reutiliza idFirebase da venda antiga (evita duplicata no Firestore)
-    if (idFirebaseToReuse != null && idFirebaseToReuse.isNotEmpty) {
-      venda.idFirebase = idFirebaseToReuse;
-    }
+    _garantirIdFirebaseVendaAntesDeSalvar(
+      venda: venda,
+      idFirebaseToReuse: idFirebaseToReuse,
+    );
 
     debugPrint('💾 [VENDAS-SERVICE] Salvando venda - Dinheiro: R\$ ${_fmt2(dinheiro)}, Pix: R\$ ${_fmt2(pix)}, Cartão: R\$ ${_fmt2(cartao)}, Total: R\$ ${_fmt2(total)}');
     debugPrint('📤 [SYNC-DEBUG] VendasService.salvarVenda → lojaId=$lojaEfetiva | cliente=${cliente.nome} | total=R\$ ${_fmt2(total)}');
 
     final addedKey = await vendasBox.add(venda);
-    final vendaHiveKey = hiveKeyOrNull(addedKey) ?? hiveKeyOrNull(venda.key);
+    try {
+      await venda.save();
+    } catch (_) {}
+    final vendaHiveKey = resolverVendaHiveKeyAposAdd(
+      vendasBox: vendasBox,
+      venda: venda,
+      addedKey: addedKey,
+    );
+    final vendaIdVinculo = idVendaEstavelParaVinculo(venda);
 
-    final vIdSnapshot = (venda.idFirebase ?? '').trim().isNotEmpty
-        ? venda.idFirebase!.trim()
+    final vIdSnapshot = vendaIdVinculo.isNotEmpty
+        ? vendaIdVinculo
         : 'hive_${vendaHiveKey ?? venda.key}';
     final snapRaw = venda.itensComboSelecaoJson;
     final snapKeys =
@@ -1413,7 +1530,10 @@ class VendasService {
         await _excluirVendaHiveSeguro(vendasBox, venda, vendaHiveKey);
         throw ArgumentError('Informe a data de vencimento da venda fiada.');
       }
-      if (vendaHiveKey == null) {
+      if (!_podeVincularContaReceberAVenda(
+        vendaHiveKey: vendaHiveKey,
+        vendaIdEstavel: vendaIdVinculo,
+      )) {
         try {
           await devolverEstoqueParaVendaRemovida(
             venda: venda,
@@ -1425,7 +1545,10 @@ class VendasService {
             '⚠️ [VENDAS-SERVICE] Falha ao estornar estoque (fiado sem chave Hive): $estE',
           );
         }
-        await _excluirVendaHiveSeguro(vendasBox, venda, null);
+        await _excluirVendaHiveSeguro(vendasBox, venda, vendaHiveKey);
+        debugPrint(
+          '⚠️ [VENDAS-SERVICE] Fiado sem vínculo: addedKey=$addedKey venda.key=${venda.key} idFirebase=$vendaIdVinculo',
+        );
         throw ArgumentError(
           'Não foi possível vincular a venda à conta a receber. Tente novamente.',
         );
@@ -1453,7 +1576,8 @@ class VendasService {
             valorOriginal: valoresParcelas[i],
             dataVencimento: venc,
             dataVenda: venda.data,
-            vendaKey: vendaHiveKey,
+            vendaKey: _vendaKeyParaContaReceber(vendaHiveKey),
+            vendaIdFirebase: _vendaIdFirebaseParaContaReceber(vendaIdVinculo),
             observacao: qtdParcelas > 1
                 ? 'Parcela ${i + 1}/$qtdParcelas${observacao.trim().isNotEmpty ? ' - ${observacao.trim()}' : ''}'
                 : (observacao.trim().isEmpty ? 'Venda fiada' : observacao.trim()),
@@ -1970,12 +2094,11 @@ class VendasService {
     );
 
     final vkContas = hiveKeyOrNull(venda.key);
-    if (vkContas != null) {
-      await removerContasReceberVinculadasAVenda(
-        lojaId: lojaId,
-        vendaKey: vkContas,
-      );
-    }
+    await removerContasReceberVinculadasAVenda(
+      lojaId: lojaId,
+      vendaKey: vkContas,
+      vendaIdFirebase: idVendaEstavelParaVinculo(venda),
+    );
 
     // remove do histórico (apenas se cliente existir na box - evita erro em vendas catálogo sem cliente)
     final Cliente? cliente = clientesBox.values.firstWhereOrNull(

@@ -209,6 +209,10 @@ int? hiveKeyOrNull(dynamic key) {
 
   if (key is int) return fromNum(key);
   if (key is num) return fromNum(key);
+  if (key is BigInt) {
+    if (key.isNegative) return null;
+    return key.toInt();
+  }
   if (key is String) {
     final t = key.trim();
     if (t.isEmpty) return null;

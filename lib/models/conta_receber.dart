@@ -70,6 +70,10 @@ class ContaReceber extends HiveObject {
   @HiveField(15)
   String historicoPagamentosJson;
 
+  /// ID estável da venda (idFirebase) para vínculo quando [vendaKey] Hive falha no Web.
+  @HiveField(16)
+  String vendaIdFirebase;
+
   ContaReceber({
     required this.lojaId,
     required this.clienteNome,
@@ -87,6 +91,7 @@ class ContaReceber extends HiveObject {
     this.valorPago = 0,
     String? status,
     this.historicoPagamentosJson = '[]',
+    this.vendaIdFirebase = '',
   })  : valorOriginal = valorOriginal ?? valor,
         status = status ?? ContaReceberStatus.pendente {
     normalizarCamposFinanceiros();
