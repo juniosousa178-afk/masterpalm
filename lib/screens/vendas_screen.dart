@@ -2000,7 +2000,7 @@ class _VendasScreenState extends State<VendasScreen>
     );
     if (result == true && mounted) {
       _showSnackBar(
-        'Venda atualizada com sucesso! O estoque foi recalculado.',
+        'Venda atualizada com sucesso!',
         duration: const Duration(seconds: 5),
       );
     }

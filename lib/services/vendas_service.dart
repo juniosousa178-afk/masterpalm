@@ -24,6 +24,7 @@ import 'estoque_transaction_service.dart';
 import 'movimentacao_estoque_service.dart';
 import 'venda_combo_estoque_expansion.dart';
 import 'venda_custo_mercadoria.dart';
+import 'venda_edicao_estoque_diff.dart';
 import 'venda_estoque_remoto_prep_service.dart';
 
 class VendasService {
@@ -490,6 +491,337 @@ class VendasService {
       itensParaEstoque: itensFiltrados,
       produtosEncontrados: prodFiltrados,
     );
+  }
+
+  /// Linhas canônicas de estoque (componentes de combo expandidos) para diff na edição.
+  static List<Map<String, dynamic>> montarLinhasEstoqueCanonicasParaEdicao({
+    required List<VendaItem> itens,
+    required Box<Produto> produtosBox,
+    required String lojaId,
+    Map<int, List<Map<String, dynamic>>>? itensComboSelecaoPorIndice,
+    String? itensComboSelecaoJson,
+  }) {
+    final comboJson = itensComboSelecaoJson ??
+        VendaComboEstoqueExpansion.serializeItensComboSelecaoPorIndice(
+          itensComboSelecaoPorIndice,
+        );
+    final vTemp = Venda(
+      clienteNome: '_edicao_diff_',
+      produtosDescricao: '',
+      quantidade: itens.length,
+      preco: 0,
+      total: 0,
+      formasPagamento: '',
+      data: DateTime.now(),
+      tamanho: '',
+      vendedor: 'App',
+      observacao: '',
+      itens: itens,
+      itensComboSelecaoJson: comboJson,
+      lojaId: lojaId,
+    );
+    return _resolverItensDevolucaoParaVenda(
+      venda: vTemp,
+      produtosBox: produtosBox,
+      lojaId: lojaId,
+      vendaIdLog: 'edicao_diff',
+    );
+  }
+
+  /// Soma [valorPago] nas contas a receber vinculadas à venda (baixas parciais).
+  static Future<double> valorPagoParcialContasVenda({
+    required Venda venda,
+    required String lojaId,
+  }) async {
+    final vk = hiveKeyOrNull(venda.key);
+    if (vk == null || vk < 0) return 0;
+
+    final loja = lojaId.trim();
+    if (loja.isEmpty) return 0;
+
+    try {
+      final crBoxName = HiveBoxNames.contasReceber(loja);
+      final crBox = Hive.isBoxOpen(crBoxName)
+          ? Hive.box<ContaReceber>(crBoxName)
+          : await Hive.openBox<ContaReceber>(crBoxName);
+      var pagoContas = 0.0;
+      for (final c in crBox.values) {
+        if (c.lojaId == loja && c.vendaKey == vk) {
+          pagoContas += c.valorPago;
+        }
+      }
+      return pagoContas;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// Valor já recebido (pagamentos na venda + baixas parciais nas contas vinculadas).
+  static Future<double> valorJaRecebidoNaVenda({
+    required Venda venda,
+    required String lojaId,
+  }) async {
+    final pagamentosVenda =
+        venda.pagamentoDinheiro + venda.pagamentoPix + venda.pagamentoCartao;
+    return pagamentosVenda +
+        await valorPagoParcialContasVenda(venda: venda, lojaId: lojaId);
+  }
+
+  static Future<void> validarEdicaoNaoReduzAbaixoValorRecebido({
+    required Venda vendaOriginal,
+    required double novoTotal,
+    required String lojaId,
+  }) async {
+    final pagoParcialContas = await valorPagoParcialContasVenda(
+      venda: vendaOriginal,
+      lojaId: lojaId,
+    );
+    if (pagoParcialContas <= 0.01) return;
+
+    final recebido = await valorJaRecebidoNaVenda(
+      venda: vendaOriginal,
+      lojaId: lojaId,
+    );
+    if (novoTotal + 0.01 < recebido) {
+      throw ArgumentError(
+        'Não é possível reduzir a venda abaixo do valor já recebido.',
+      );
+    }
+  }
+
+  static Future<void> _aplicarDeltaEstoqueEdicaoVenda({
+    required String lojaId,
+    required Box<Produto> produtosBox,
+    required VendaEdicaoDeltaEstoque delta,
+    required String vendedor,
+    required String vendaIdLog,
+  }) async {
+    if (delta.semMovimento) {
+      debugPrint(
+        '[VENDA-EDICAO] sem_movimento_estoque vendaId=$vendaIdLog',
+      );
+      return;
+    }
+
+    var devolucaoResults = <EstoqueTransactionResult>[];
+    if (delta.devolver.isNotEmpty) {
+      debugPrint(
+        '[VENDA-EDICAO] devolver_delta count=${delta.devolver.length} vendaId=$vendaIdLog',
+      );
+      devolucaoResults =
+          await EstoqueTransactionService.devolverEstoqueTransactionBatch(
+        lojaId: lojaId,
+        itens: delta.devolver,
+      );
+      for (final r in devolucaoResults) {
+        await EstoqueTransactionService.atualizarHiveAposTransacao(
+          produtosBox: produtosBox,
+          lojaId: lojaId,
+          result: r,
+        );
+      }
+      final pisoResults =
+          await ComboKitStockService.aplicarPisoEstoqueComboAposDevolucao(
+        lojaId: lojaId,
+        produtosBox: produtosBox,
+      );
+      devolucaoResults = [...devolucaoResults, ...pisoResults];
+      await CatalogoWebAposEstoqueService.sincronizarAposResultadosTransacao(
+        lojaId: lojaId,
+        produtosBox: produtosBox,
+        resultadosPrincipais: devolucaoResults,
+        resultadosComboExtra: const [],
+      );
+    }
+
+    var baixaResults = <EstoqueTransactionResult>[];
+    if (delta.baixar.isNotEmpty) {
+      debugPrint(
+        '[VENDA-EDICAO] baixar_delta count=${delta.baixar.length} vendaId=$vendaIdLog',
+      );
+      await VendaEstoqueRemotoPrepService.garantirProdutosProntosParaBaixa(
+        lojaId: lojaId,
+        produtos: produtosBox.values
+            .where((p) => p.lojaId == lojaId)
+            .where((p) => delta.baixar.any((m) {
+                  final pid = (m['productId'] ?? '').toString().trim();
+                  final nome = (m['nome'] ?? '').toString().trim().toLowerCase();
+                  return (pid.isNotEmpty && p.idFirebase.trim() == pid) ||
+                      p.nome.trim().toLowerCase() == nome;
+                }))
+            .toList(),
+      );
+      baixaResults = await EstoqueTransactionService.baixarEstoqueTransactionBatch(
+        lojaId: lojaId,
+        itens: delta.baixar,
+      );
+      await EstoqueTransactionService.removerDoCatalogoSeEstoqueZerado(
+        lojaId,
+        baixaResults,
+      );
+      for (final r in baixaResults) {
+        await EstoqueTransactionService.atualizarHiveAposTransacao(
+          produtosBox: produtosBox,
+          lojaId: lojaId,
+          result: r,
+        );
+        MovimentacaoEstoqueService.registrar(
+          lojaId: lojaId,
+          produtoId: r.produtoId,
+          produtoNome: r.produtoNome,
+          tipo: 'saida',
+          quantidade: r.quantidadeDebitada,
+          motivo: 'Venda (edição)',
+          usuario: vendedor,
+        ).catchError((_) {});
+      }
+      final tetoResults =
+          await ComboKitStockService.aplicarTetoEstoqueComboAposBaixaSemAbortarVenda(
+        lojaId: lojaId,
+        produtosBox: produtosBox,
+        produtoIdsDebitadosNaVenda:
+            ComboKitStockService.produtoIdsDeResultadosBaixa(baixaResults),
+      );
+      baixaResults = [...baixaResults, ...tetoResults];
+      await CatalogoWebAposEstoqueService.sincronizarAposResultadosTransacao(
+        lojaId: lojaId,
+        produtosBox: produtosBox,
+        resultadosPrincipais: baixaResults,
+        resultadosComboExtra: const [],
+      );
+    }
+
+    for (final r in devolucaoResults) {
+      final q = r.quantidadeDebitada.abs();
+      if (q <= 0) continue;
+      MovimentacaoEstoqueService.registrar(
+        lojaId: lojaId,
+        produtoId: r.produtoId,
+        produtoNome: r.produtoNome,
+        tipo: 'entrada',
+        quantidade: q,
+        motivo: 'Devolução (edição venda)',
+        usuario: vendedor,
+        vendaId: vendaIdLog,
+      ).catchError((_) {});
+    }
+  }
+
+  static Future<void> _atualizarContasReceberAposEdicaoVenda({
+    required Venda venda,
+    required String lojaId,
+    required bool isFiado,
+    required double saldoFiado,
+    required DateTime? dataVencimentoFiado,
+    required int quantidadeParcelasFiado,
+    required int intervaloParcelasDias,
+    required String observacao,
+    required String clienteNome,
+    required bool itensEquivalentes,
+    required double totalAnterior,
+  }) async {
+    final vk = hiveKeyOrNull(venda.key);
+    if (vk == null || vk < 0) return;
+
+    final crBoxName = HiveBoxNames.contasReceber(lojaId);
+    final crBox = Hive.isBoxOpen(crBoxName)
+        ? Hive.box<ContaReceber>(crBoxName)
+        : await Hive.openBox<ContaReceber>(crBoxName);
+
+    final contasVinculadas = crBox.values
+        .where((c) => c.lojaId == lojaId && c.vendaKey == vk)
+        .toList();
+
+    if (!isFiado || saldoFiado <= 0.01) {
+      if (contasVinculadas.any((c) => c.valorPago > 0.01)) {
+        throw ArgumentError(
+          'Não é possível remover o fiado: existem recebimentos parciais nesta venda.',
+        );
+      }
+      for (final c in contasVinculadas) {
+        await c.delete();
+      }
+      return;
+    }
+
+    if (dataVencimentoFiado == null) {
+      throw ArgumentError('Informe a data de vencimento da venda fiada.');
+    }
+
+    if (contasVinculadas.isEmpty) {
+      final qtdParcelas = safeInt(
+        quantidadeParcelasFiado.clamp(1, 48),
+        fallback: 1,
+      );
+      final intervalo = safeInt(
+        intervaloParcelasDias.clamp(1, 120),
+        fallback: 30,
+      );
+      final valoresParcelas = _parcelarValores(saldoFiado, qtdParcelas);
+      for (var i = 0; i < qtdParcelas; i++) {
+        final venc = dataVencimentoFiado.add(Duration(days: i * intervalo));
+        await crBox.add(
+          ContaReceber(
+            lojaId: lojaId,
+            clienteNome: clienteNome,
+            valor: valoresParcelas[i],
+            valorOriginal: valoresParcelas[i],
+            dataVencimento: venc,
+            dataVenda: venda.data,
+            vendaKey: vk,
+            observacao: qtdParcelas > 1
+                ? 'Parcela ${i + 1}/$qtdParcelas${observacao.trim().isNotEmpty ? ' - ${observacao.trim()}' : ''}'
+                : (observacao.trim().isEmpty ? 'Venda fiada' : observacao.trim()),
+            parcelaNumero: i + 1,
+            parcelaTotal: qtdParcelas,
+          ),
+        );
+      }
+      return;
+    }
+
+    final totalPagoContas =
+        contasVinculadas.fold<double>(0, (s, c) => s + c.valorPago);
+    final novoSaldoAberto = (saldoFiado - totalPagoContas).clamp(0.0, double.infinity);
+
+    if (itensEquivalentes && (totalAnterior - venda.total).abs() < 0.01) {
+      for (final c in contasVinculadas) {
+        c.clienteNome = clienteNome;
+        c.dataVenda = venda.data;
+        if (contasVinculadas.length == 1 && c.valorPago <= 0.01) {
+          c.dataVencimento = dataVencimentoFiado;
+        }
+        await c.save();
+      }
+      return;
+    }
+
+    if (contasVinculadas.length == 1) {
+      final c = contasVinculadas.single;
+      c.clienteNome = clienteNome;
+      c.dataVenda = venda.data;
+      c.valor = novoSaldoAberto;
+      c.valorOriginal = novoSaldoAberto + c.valorPago;
+      c.dataVencimento = dataVencimentoFiado;
+      c.normalizarCamposFinanceiros();
+      await c.save();
+      return;
+    }
+
+    // Várias parcelas: ajusta saldo proporcional preservando histórico de pagamentos.
+    final saldoAnterior =
+        contasVinculadas.fold<double>(0, (s, c) => s + c.valor);
+    if (saldoAnterior <= 0.01) return;
+    final fator = novoSaldoAberto / saldoAnterior;
+    for (final c in contasVinculadas) {
+      c.clienteNome = clienteNome;
+      c.dataVenda = venda.data;
+      final novoValor = (c.valor * fator);
+      c.valor = novoValor;
+      c.valorOriginal = novoValor + c.valorPago;
+      c.normalizarCamposFinanceiros();
+      await c.save();
+    }
   }
 
   /// Resolve itens para devolução: agrupado → expansão → texto legado.
@@ -1159,6 +1491,337 @@ class VendasService {
       }
     } catch (e) {
       debugPrint('⚠️ [VENDA-MANUAL] Campanha/sorteio: ${e.runtimeType}');
+    }
+
+    return venda;
+  }
+
+  // ---------------------------
+  // Editar venda (delta de estoque)
+  // ---------------------------
+
+  /// Atualiza venda existente aplicando delta de estoque só quando itens mudam.
+  static Future<Venda> editarVendaMulti({
+    required Venda vendaOriginal,
+    required Box<Produto> produtosBox,
+    required Box<Cliente> clientesBox,
+    required Box<Venda> vendasBox,
+    required String clienteNome,
+    required List<VendaItem> itens,
+    double dinheiro = 0.0,
+    double pix = 0.0,
+    double cartao = 0.0,
+    String vendedor = 'App',
+    String observacao = '',
+    double frete = 0.0,
+    double descontoPct = 0.0,
+    String? lojaId,
+    Cliente? clienteExistente,
+    void Function(String message)? onSyncError,
+    bool isFiado = false,
+    DateTime? dataVencimentoFiado,
+    int quantidadeParcelasFiado = 1,
+    int intervaloParcelasDias = 30,
+    Map<int, List<Map<String, dynamic>>>? itensComboSelecaoPorIndice,
+    DateTime? dataVenda,
+  }) async {
+    if (itens.isEmpty) {
+      throw Exception('Nenhum item informado.');
+    }
+
+    if (lojaId == null || lojaId.trim().isEmpty) {
+      throw ArgumentError('lojaId é obrigatório para editar venda multi-loja');
+    }
+    final String lojaEfetiva = lojaId.trim();
+
+    final subtotalPreview = itens.fold<double>(
+      0.0,
+      (acc, it) => acc + (it.precoUnitario * it.quantidade),
+    );
+    final totalPreview = subtotalPreview * (1 - descontoPct / 100) + frete;
+
+    validarParametrosVendaFiada(
+      isFiado: isFiado,
+      dataVencimentoFiado: dataVencimentoFiado,
+      clienteNome: clienteExistente?.nome ?? clienteNome,
+      total: totalPreview,
+      quantidadeParcelasFiado: quantidadeParcelasFiado,
+      totalPagoAgora: dinheiro + pix + cartao,
+    );
+
+    await validarEdicaoNaoReduzAbaixoValorRecebido(
+      vendaOriginal: vendaOriginal,
+      novoTotal: totalPreview,
+      lojaId: lojaEfetiva,
+    );
+
+    final comboJsonNovo =
+        VendaComboEstoqueExpansion.serializeItensComboSelecaoPorIndice(
+      itensComboSelecaoPorIndice,
+    );
+    final itensAntigos = vendaOriginal.itens ?? <VendaItem>[];
+    final itensEquivalentes = VendaEdicaoEstoqueDiff.itensVendaEquivalentes(
+      antigos: itensAntigos,
+      novos: itens,
+      comboJsonAntigo: vendaOriginal.itensComboSelecaoJson,
+      comboJsonNovo: comboJsonNovo,
+    );
+
+    final vendaId = (vendaOriginal.idFirebase ?? '').trim().isNotEmpty
+        ? vendaOriginal.idFirebase!.trim()
+        : 'hive_${vendaOriginal.key}';
+
+    if (!itensEquivalentes) {
+      final linhasAntigas = montarLinhasEstoqueCanonicasParaEdicao(
+        itens: itensAntigos,
+        produtosBox: produtosBox,
+        lojaId: lojaEfetiva,
+        itensComboSelecaoJson: vendaOriginal.itensComboSelecaoJson,
+      );
+      final linhasNovas = montarLinhasEstoqueCanonicasParaEdicao(
+        itens: itens,
+        produtosBox: produtosBox,
+        lojaId: lojaEfetiva,
+        itensComboSelecaoPorIndice: itensComboSelecaoPorIndice,
+        itensComboSelecaoJson: comboJsonNovo,
+      );
+
+      final (itensParaEstoque, produtosEncontrados, _) =
+          VendaComboEstoqueExpansion.expandirCombos(
+        itens: itens,
+        produtosBox: produtosBox,
+        lojaId: lojaEfetiva,
+        itensComboSelecaoPorIndice: itensComboSelecaoPorIndice,
+      );
+      VendaComboEstoqueExpansion.validarExpansaoParaBaixaFirestore(
+        itensParaEstoque: itensParaEstoque,
+        produtosEncontrados: produtosEncontrados,
+      );
+
+      final delta = VendaEdicaoEstoqueDiff.calcularDelta(
+        linhasAntigas: linhasAntigas,
+        linhasNovas: linhasNovas,
+      );
+
+      if (!delta.semMovimento) {
+        final produtosDasLinhas = <Produto>[];
+        for (final item in itens) {
+          final p = encontrarProdutoNoEstoque(
+            produtosBox: produtosBox,
+            productId: item.productId,
+            nome: item.produtoNome,
+            lojaId: lojaEfetiva,
+          );
+          if (p != null) produtosDasLinhas.add(p);
+        }
+        if (produtosDasLinhas.isNotEmpty) {
+          await VendaEstoqueRemotoPrepService.garantirProdutosProntosParaBaixa(
+            lojaId: lojaEfetiva,
+            produtos: produtosDasLinhas,
+          );
+        }
+        await _aplicarDeltaEstoqueEdicaoVenda(
+          lojaId: lojaEfetiva,
+          produtosBox: produtosBox,
+          delta: delta,
+          vendedor: vendedor,
+          vendaIdLog: vendaId,
+        );
+      }
+    } else {
+      debugPrint(
+        '[VENDA-EDICAO] itens_equivalentes sem_movimento_estoque vendaId=$vendaId',
+      );
+    }
+
+    final cliente = _getOrCreateCliente(
+      clientesBox: clientesBox,
+      vendasBox: vendasBox,
+      clienteNome: clienteNome,
+      lojaId: lojaEfetiva,
+      clienteExistente: clienteExistente,
+    );
+
+    final (itensParaCusto, produtosEncCusto, linhaContaCustoMercadoria) =
+        VendaComboEstoqueExpansion.expandirCombos(
+      itens: itens,
+      produtosBox: produtosBox,
+      lojaId: lojaEfetiva,
+      itensComboSelecaoPorIndice: itensComboSelecaoPorIndice,
+    );
+
+    final explicitExp = List<bool>.generate(
+      itensParaCusto.length,
+      (i) => itensParaCusto[i].custoUnitario != null,
+    );
+    for (var i = 0; i < itensParaCusto.length; i++) {
+      itensParaCusto[i].custoUnitario =
+          _resolverCustoItem(produtosEncCusto[i], itensParaCusto[i]);
+    }
+
+    final explicitOrig = List<bool>.generate(
+      itens.length,
+      (i) => itens[i].custoUnitario != null,
+    );
+    final produtosLinhaOriginal = <Produto>[];
+    for (var k = 0; k < itens.length; k++) {
+      final itemOriginal = itens[k];
+      final pLocal = encontrarProdutoNoEstoque(
+        produtosBox: produtosBox,
+        productId: itemOriginal.productId,
+        nome: itemOriginal.produtoNome,
+        lojaId: lojaEfetiva,
+      );
+      produtosLinhaOriginal.add(pLocal ?? Produto.vazio());
+      if (pLocal != null) {
+        itemOriginal.custoUnitario = _resolverCustoItem(pLocal, itemOriginal);
+      }
+    }
+
+    final subtotal = itens.fold<double>(
+      0.0,
+      (acc, it) => acc + (it.precoUnitario * it.quantidade),
+    );
+    final total = subtotal * (1 - descontoPct / 100) + frete;
+    final totalAnterior = vendaOriginal.total;
+
+    if (!isFiado && dinheiro == 0 && pix == 0 && cartao == 0) {
+      dinheiro = total;
+    }
+
+    final totalPagoAgora = dinheiro + pix + cartao;
+    final saldoFiado = isFiado
+        ? calcularSaldoFiado(total: total, totalPagoAgora: totalPagoAgora)
+        : 0.0;
+
+    final linhas = itens.map((it) {
+      final variacoes = <String>[];
+      if (it.tamanho.isNotEmpty) variacoes.add('Tam: ${it.tamanho}');
+      if (it.cor.isNotEmpty) variacoes.add('Cor: ${it.cor}');
+      if (it.variacaoExtraResumo.isNotEmpty) {
+        variacoes.add(it.variacaoExtraResumo);
+      }
+      final variacoesStr =
+          variacoes.isNotEmpty ? ' (${variacoes.join(', ')})' : '';
+      return "${it.quantidade} x ${it.produtoNome}$variacoesStr - R\$ ${_fmt2(it.precoUnitario)}";
+    }).join('\n');
+
+    final produtosDescricao = "$linhas\n"
+        "Frete: R\$ ${_fmt2(frete)}\n"
+        "Desconto: ${descontoPct.toStringAsFixed(0)}%\n"
+        "Total: R\$ ${_fmt2(total)}";
+
+    final vencStr = dataVencimentoFiado != null
+        ? 'Vencimento: ${dataVencimentoFiado.day.toString().padLeft(2, '0')}/${dataVencimentoFiado.month.toString().padLeft(2, '0')}/${dataVencimentoFiado.year}'
+        : '';
+    final linhasPagamento = <String>[
+      if (dinheiro > 0) "Pagamento Dinheiro: R\$ ${_fmt2(dinheiro)}",
+      if (pix > 0) "Pagamento Pix: R\$ ${_fmt2(pix)}",
+      if (cartao > 0) "Pagamento Cartão: R\$ ${_fmt2(cartao)}",
+    ];
+    if (isFiado && saldoFiado > 0.01) {
+      linhasPagamento.add('Fiado - R\$ ${_fmt2(saldoFiado)}. $vencStr');
+    } else if (isFiado && linhasPagamento.isEmpty) {
+      linhasPagamento.add('Fiado - R\$ ${_fmt2(total)}. $vencStr');
+    }
+    final formasPagamentoTexto = linhasPagamento.join('\n');
+
+    final custoProdutos = VendaCustoMercadoria.somarCustoReal(
+      itens: itensParaCusto,
+      produtos: produtosEncCusto,
+      linhaContaCustoMercadoria: linhaContaCustoMercadoria,
+    );
+    VendaCustoMercadoria.aplicarRastreioOrigemAposSomarCustoReal(
+      itens: itensParaCusto,
+      produtos: produtosEncCusto,
+      linhaContaCustoMercadoria: linhaContaCustoMercadoria,
+      tinhaCustoUnitarioExplicitoAntesDoResolver: explicitExp,
+    );
+    VendaCustoMercadoria.aplicarRastreioOrigemAposSomarCustoReal(
+      itens: itens,
+      produtos: produtosLinhaOriginal,
+      linhaContaCustoMercadoria: List<bool>.filled(itens.length, true),
+      tinhaCustoUnitarioExplicitoAntesDoResolver: explicitOrig,
+    );
+    final origensAtivas = <String?>[];
+    for (var i = 0; i < itensParaCusto.length; i++) {
+      if (linhaContaCustoMercadoria[i]) {
+        origensAtivas.add(itensParaCusto[i].origemCustoItem);
+      }
+    }
+    final origemCustoVenda = VendaCustoMercadoria.agregarOrigemCustoVenda(
+      custoProdutos: custoProdutos,
+      origensLinhasAtivas: origensAtivas,
+    );
+    final totalUnidades = VendaCustoMercadoria.unidadesMercadoria(
+      itens: itensParaCusto,
+      linhaContaCustoMercadoria: linhaContaCustoMercadoria,
+    );
+    final taxas = VendaCustoMercadoria.taxasLegadoVendaApk(
+      custoMercadoria: custoProdutos,
+      unidadesMercadoria: totalUnidades,
+    );
+
+    final venda = vendaOriginal;
+    venda.clienteNome = cliente.nome;
+    venda.produtosDescricao = "$produtosDescricao\n$formasPagamentoTexto";
+    venda.quantidade = itens.length;
+    venda.preco = subtotal;
+    venda.total = total;
+    venda.formasPagamento = formasPagamentoTexto;
+    venda.data = dataVenda ?? venda.data;
+    venda.tamanho = '';
+    venda.vendedor = vendedor;
+    venda.frete = frete;
+    venda.desconto = descontoPct;
+    venda.observacao = observacao.trim();
+    venda.itens = itens;
+    venda.pagamentoDinheiro = dinheiro;
+    venda.pagamentoPix = pix;
+    venda.pagamentoCartao = cartao;
+    venda.taxas = taxas;
+    venda.custoProdutos = custoProdutos;
+    venda.descontoValor = subtotal * (descontoPct / 100);
+    venda.lojaId = lojaEfetiva;
+    venda.clienteId = cliente.key?.toString() ?? cliente.idFirebase;
+    venda.origemCusto = origemCustoVenda;
+    venda.itensComboSelecaoJson = comboJsonNovo;
+
+    await venda.save();
+
+    await _atualizarContasReceberAposEdicaoVenda(
+      venda: venda,
+      lojaId: lojaEfetiva,
+      isFiado: isFiado,
+      saldoFiado: saldoFiado,
+      dataVencimentoFiado: dataVencimentoFiado,
+      quantidadeParcelasFiado: quantidadeParcelasFiado,
+      intervaloParcelasDias: intervaloParcelasDias,
+      observacao: observacao,
+      clienteNome: cliente.nome,
+      itensEquivalentes: itensEquivalentes,
+      totalAnterior: totalAnterior,
+    );
+
+    try {
+      await ClientesFirestoreService.syncCliente(cliente, lojaId: lojaEfetiva);
+    } catch (e) {
+      debugPrint('⚠️ Erro ao sincronizar cliente com Firestore (type=${e.runtimeType})');
+      onSyncError?.call('Cliente não sincronizado. Verifique a conexão.');
+    }
+
+    try {
+      final ok = await VendasFirestoreService.syncVenda(venda, lojaId: lojaEfetiva);
+      if (!ok) {
+        onSyncError?.call(
+          'Venda salva localmente, mas não sincronizou na nuvem. Verifique a conexão ou tente sincronizar novamente.',
+        );
+      }
+    } catch (e) {
+      debugPrint('⚠️ Erro inesperado ao sincronizar venda com Firestore (type=${e.runtimeType})');
+      onSyncError?.call(
+        'Venda salva localmente, mas não sincronizou na nuvem. Verifique a conexão ou tente sincronizar novamente.',
+      );
     }
 
     return venda;

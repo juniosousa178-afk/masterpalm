@@ -1706,15 +1706,33 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     Venda? vendaParaEditar,
   }) async {
     try {
-      String? idFirebaseToReuse;
       if (vendaParaEditar != null) {
-        idFirebaseToReuse = vendaParaEditar.idFirebase;
-        await VendasService.desfazerVenda(
+        await VendasService.editarVendaMulti(
+          vendaOriginal: vendaParaEditar,
           produtosBox: produtosBox,
           clientesBox: clientesBox,
           vendasBox: vendasBox,
-          venda: vendaParaEditar,
+          clienteNome: nomeClienteFinal,
+          itens: itens,
+          dinheiro: valorDinheiro,
+          pix: valorPix,
+          cartao: valorCartao,
+          vendedor: vendedor,
+          observacao: observacao,
+          frete: frete,
+          descontoPct: _descontoPctEquivalenteParaSalvar(),
+          lojaId: lojaId,
+          clienteExistente: cliente,
+          onSyncError: onErro,
+          isFiado: isFiado,
+          dataVencimentoFiado: isFiado
+              ? DateTime.now().add(Duration(days: diasVencimentoFiado))
+              : null,
+          quantidadeParcelasFiado: quantidadeParcelasFiado,
+          intervaloParcelasDias: intervaloParcelasDias,
+          itensComboSelecaoPorIndice: itensComboSelecaoPorIndice,
         );
+        return (true, null, null);
       }
 
       final guard = LimitsGuard();
@@ -1744,7 +1762,6 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         descontoPct: _descontoPctEquivalenteParaSalvar(),
         lojaId: lojaId,
         clienteExistente: cliente,
-        idFirebaseToReuse: idFirebaseToReuse,
         onSyncError: onErro,
         isFiado: isFiado,
         dataVencimentoFiado: isFiado
