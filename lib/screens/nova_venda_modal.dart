@@ -45,7 +45,7 @@ class NovaVendaModal extends StatefulWidget {
   /// Chamado se o salvamento falhar depois do modal fechar (venda já confirmada pelo usuário).
   final void Function(String message)? onErroAoFinalizar;
 
-  /// Quando informado, abre em modo edição: desfaz a venda antiga e registra nova com dados editados.
+  /// Quando informado, abre em modo edição (atualização in-place via [VendasService.editarVendaMulti]).
   final Venda? vendaParaEditar;
 
   const NovaVendaModal({
@@ -1286,6 +1286,256 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     await _executarFinalizacaoVenda();
   }
 
+  void _sincronizarQuantidadesDosControllers() {
+    for (var i = 0;
+        i < produtosSelecionados.length && i < _quantityControllers.length;
+        i++) {
+      final q = int.tryParse(_quantityControllers[i].text) ?? 1;
+      produtosSelecionados[i]['quantidade'] = q < 1 ? 1 : q;
+    }
+  }
+
+  (List<VendaItem>, Map<int, List<Map<String, dynamic>>>?) _montarItensVendaAtual() {
+    final itens = <VendaItem>[];
+    final itensComboSelecaoPorIndice = <int, List<Map<String, dynamic>>>{};
+    for (var i = 0; i < produtosSelecionados.length; i++) {
+      final m = produtosSelecionados[i];
+      final nome = (m['produto'] ?? '').toString().trim();
+      if (nome.isEmpty) continue;
+      final sel = m['itensComboComSelecao'];
+      if (sel is List && sel.isNotEmpty) {
+        final listaSegura = <Map<String, dynamic>>[];
+        for (final e in sel) {
+          if (e is Map) {
+            try {
+              listaSegura.add(Map<String, dynamic>.from(e));
+            } catch (_) {
+              logD('[VENDA] Item de combo ignorado (formato inválido)');
+            }
+          }
+        }
+        if (listaSegura.isNotEmpty) {
+          itensComboSelecaoPorIndice[itens.length] = listaSegura;
+        }
+      }
+      final productId = (m['productId'] as String?)?.trim();
+      itens.add(
+        VendaItem(
+          produtoNome: nome,
+          quantidade: (m['quantidade'] ?? 1) as int,
+          precoUnitario: (m['preco'] ?? 0.0) as double,
+          tamanho: (m['tamanho'] ?? '').toString(),
+          cor: (m['cor'] ?? '').toString(),
+          lojaId: lojaId,
+          productId:
+              productId != null && productId.isNotEmpty ? productId : null,
+          variacaoExtraResumo: (m['variacaoExtraResumo'] ?? '').toString(),
+          extraValor: (m['extraValor'] ?? '').toString(),
+        ),
+      );
+    }
+    return (
+      itens,
+      itensComboSelecaoPorIndice.isEmpty ? null : itensComboSelecaoPorIndice,
+    );
+  }
+
+  Produto _resolverProdutoLinhaVenda({
+    required String nome,
+    String? productId,
+  }) {
+    Produto prod = Produto.vazio();
+    final pid = (productId ?? '').trim();
+    if (pid.isNotEmpty) {
+      try {
+        prod = widget.produtosBox.values.firstWhere(
+          (p) =>
+              p.lojaId == lojaId &&
+              (p.idFirebase == pid || p.key?.toString() == pid),
+          orElse: () => Produto.vazio(),
+        );
+        if (prod.nome.isNotEmpty &&
+            productIdIncoerenteComNomeExibido(
+              nomeProdutoResolvido: prod.nome,
+              nomeExibido: nome,
+            )) {
+          prod = Produto.vazio();
+        }
+      } catch (_) {}
+    }
+    if (prod.nome.isEmpty) {
+      prod = widget.produtosBox.values.firstWhere(
+        (p) =>
+            p.lojaId == lojaId &&
+            p.nome.trim().toLowerCase() == nome.trim().toLowerCase(),
+        orElse: () => Produto.vazio(),
+      );
+    }
+    return prod;
+  }
+
+  /// Retorna `false` se o usuário cancelou ou foi redirecionado (não continuar finalização).
+  Future<bool> _validarEstoqueLinhaVenda({
+    required Produto prod,
+    required String nome,
+    required int qtdExigida,
+    required String tamanho,
+    required String cor,
+    required String extraValor,
+    int? indiceRemoverNaLista,
+    bool validarDisponibilidade = true,
+  }) async {
+    if (prod.ehCombo) {
+      return true;
+    }
+
+    if (prod.temVariacaoSoloCor && cor.isEmpty) {
+      await _mostrarErro('Informe a cor para o produto "$nome".');
+      return false;
+    }
+    if (prod.temVariacaoTamanhoECor && (tamanho.isEmpty || cor.isEmpty)) {
+      await _mostrarErro('Informe tamanho e cor para o produto "$nome".');
+      return false;
+    }
+    if ((prod.temVariacaoSoloTamanho || prod.estoquePorTamanho.isNotEmpty) &&
+        tamanho.isEmpty) {
+      await _mostrarErro('Informe o tamanho para o produto "$nome".');
+      return false;
+    }
+
+    final opcoesExtra =
+        ProdutoVariacaoExtra.opcoesExtraPara(prod.variacoes, tamanho, cor);
+    if (opcoesExtra.isNotEmpty && extraValor.isEmpty) {
+      await _mostrarErro(
+        'Selecione a personalização (letra, estampa, etc.) para o produto "$nome".',
+      );
+      return false;
+    }
+
+    if (!validarDisponibilidade) return true;
+
+    int disponivel;
+    String msgEstoque = '';
+
+    if (prod.temVariacaoSoloCor && cor.isNotEmpty) {
+      disponivel = prod.obterEstoqueVariacao('', cor, extraValor);
+      msgEstoque = 'cor $cor';
+    } else if (prod.usaVariacoes && (tamanho.isNotEmpty || cor.isNotEmpty)) {
+      final tamKey = tamanho.isEmpty ? '' : tamanho;
+      final corKey = cor.isEmpty ? 'sem-cor' : cor;
+      disponivel = prod.obterEstoqueVariacao(tamKey, corKey, extraValor);
+      msgEstoque = tamanho.isNotEmpty
+          ? 'tamanho $tamanho${cor.isEmpty ? '' : ' - cor $cor'}'
+          : 'cor $cor';
+    } else if (prod.estoquePorTamanho.isNotEmpty && tamanho.isNotEmpty) {
+      disponivel = prod.estoquePorTamanho[tamanho] ?? 0;
+      msgEstoque = 'tamanho $tamanho';
+    } else {
+      disponivel = prod.quantidade;
+      msgEstoque = '';
+    }
+
+    if (disponivel >= qtdExigida) return true;
+
+    final msg = msgEstoque.isNotEmpty
+        ? 'Estoque insuficiente para "$nome" no $msgEstoque. Disponível: $disponivel.'
+        : 'Estoque insuficiente para "$nome". Disponível: $disponivel.';
+
+    if (!mounted) return false;
+    final acao = await showDialog<String>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Produto com estoque zerado'),
+        content: Text('$msg\n\nO que deseja fazer?'),
+        actions: [
+          if (indiceRemoverNaLista != null)
+            TextButton(
+              onPressed: () => Navigator.pop(context, 'remover'),
+              child: const Text('Remover da venda'),
+            ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, 'atualizar'),
+            child: const Text('Ir para o produto'),
+          ),
+        ],
+      ),
+    );
+
+    if (acao == 'remover' && indiceRemoverNaLista != null) {
+      produtosSelecionados.removeAt(indiceRemoverNaLista);
+      if (produtosSelecionados.isEmpty) {
+        produtosSelecionados.add({
+          'produto': '',
+          'preco': 0.0,
+          'quantidade': 1,
+          'tamanho': '',
+          'cor': '',
+          'extraValor': '',
+          'variacaoExtraResumo': '',
+        });
+      }
+      setState(() {});
+      return false;
+    }
+    if (acao == 'atualizar') {
+      if (!mounted) return false;
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ProdutoFormScreen(produto: prod),
+          settings: const RouteSettings(
+            name: '/produto_editar',
+            arguments: {'returnToVenda': true},
+          ),
+        ),
+      );
+    }
+    return false;
+  }
+
+  Future<bool> _validarEstoquePreSalvamentoEdicaoVenda(Venda vendaOriginal) async {
+    final montagem = _montarItensVendaAtual();
+    if (montagem.$1.isEmpty) {
+      await _mostrarErro('Adicione pelo menos um produto.');
+      return false;
+    }
+
+    final pre = VendasService.resolverValidacaoEstoquePreSalvamentoEdicao(
+      vendaOriginal: vendaOriginal,
+      itensNovos: montagem.$1,
+      produtosBox: widget.produtosBox,
+      lojaId: lojaId,
+      itensComboSelecaoPorIndice: montagem.$2,
+    );
+
+    if (pre.pularValidacaoEstoque) return true;
+
+    for (final linha in pre.linhasValidarBaixa) {
+      final nome = (linha['nome'] ?? '').toString().trim();
+      final qtdDelta = (linha['quantidade'] as num?)?.toInt() ?? 0;
+      if (nome.isEmpty || qtdDelta <= 0) continue;
+
+      final prod = _resolverProdutoLinhaVenda(
+        nome: nome,
+        productId: (linha['productId'] ?? '').toString(),
+      );
+      if (prod.nome.isEmpty) {
+        await _mostrarErro('Produto não encontrado no estoque: $nome');
+        return false;
+      }
+
+      final ok = await _validarEstoqueLinhaVenda(
+        prod: prod,
+        nome: nome,
+        qtdExigida: qtdDelta,
+        tamanho: (linha['tamanho'] ?? '').toString().trim(),
+        cor: (linha['cor'] ?? '').toString().trim(),
+        extraValor: (linha['extraValor'] ?? '').toString().trim(),
+      );
+      if (!ok) return false;
+    }
+    return true;
+  }
+
   Future<void> _executarFinalizacaoVenda() async {
     final total = _calcularTotal();
     final totalPago = _somarPagamentos();
@@ -1341,214 +1591,194 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     }
 
     // 3) Validação dos produtos (estoque + produto não cadastrado + tamanho + cor)
-    for (var i = 0; i < produtosSelecionados.length; i++) {
-      final item = produtosSelecionados[i];
-      final nome = (item['produto'] ?? '').toString().trim();
-      final qtd = (item['quantidade'] ?? 1) as int;
-      final tamanho = (item['tamanho'] ?? '').toString().trim();
-      final cor = (item['cor'] ?? '').toString().trim();
-      final extraValor = (item['extraValor'] ?? '').toString().trim();
+    _sincronizarQuantidadesDosControllers();
 
-      if (nome.isEmpty || qtd <= 0) {
-        await _mostrarErro('Preencha os produtos corretamente.');
-        return;
-      }
+    final vendaRef = widget.vendaParaEditar;
+    if (vendaRef != null) {
+      for (var i = 0; i < produtosSelecionados.length; i++) {
+        final item = produtosSelecionados[i];
+        final nome = (item['produto'] ?? '').toString().trim();
+        final qtd = (item['quantidade'] ?? 1) as int;
+        final tamanho = (item['tamanho'] ?? '').toString().trim();
+        final cor = (item['cor'] ?? '').toString().trim();
+        final extraValor = (item['extraValor'] ?? '').toString().trim();
 
-      // 🔥 Buscar produto da loja atual — prefer productId para evitar falso "sem estoque"
-      final productId = (item['productId'] as String?)?.trim();
-      Produto prod = Produto.vazio();
-      if (productId != null && productId.isNotEmpty) {
-        try {
-          prod = widget.produtosBox.values.firstWhere(
-            (p) =>
-                p.lojaId == lojaId &&
-                (p.idFirebase == productId || p.key?.toString() == productId),
-            orElse: () => Produto.vazio(),
-          );
-          if (prod.nome.isNotEmpty &&
-              productIdIncoerenteComNomeExibido(
-                nomeProdutoResolvido: prod.nome,
-                nomeExibido: nome,
-              )) {
-            prod = Produto.vazio();
-          }
-        } catch (_) {}
-      }
-      if (prod.nome.isEmpty) {
-        prod = widget.produtosBox.values.firstWhere(
-          (p) =>
-              p.lojaId == lojaId &&
-              p.nome.trim().toLowerCase() == nome.trim().toLowerCase(),
-          orElse: () => Produto.vazio(),
-        );
-      }
+        if (nome.isEmpty || qtd <= 0) {
+          await _mostrarErro('Preencha os produtos corretamente.');
+          return;
+        }
 
-      // Se NÃO existir, oferece cadastro no Estoque
-      if (prod.nome.isEmpty) {
-        if (!mounted) return;
-        final irCadastro = await showDialog<bool>(
-          context: context,
-          builder: (_) => AlertDialog(
-            title: const Text('Produto não cadastrado'),
-            content: Text(
-              'O produto "$nome" não existe no estoque desta loja.\n\n'
-              'Deseja cadastrar agora?',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Cancelar'),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Cadastrar'),
-              ),
-            ],
-          ),
+        final productId = (item['productId'] as String?)?.trim();
+        final prod = _resolverProdutoLinhaVenda(
+          nome: nome,
+          productId: productId,
         );
 
-        if (irCadastro == true) {
-          // Abre a tela de Estoque por rota nomeada, SEM fechar o modal
+        if (prod.nome.isEmpty) {
           if (!mounted) return;
-          await Navigator.of(context).pushNamed(
-            '/estoque',
-            arguments: {
-              'nomeInicial': nome,
-              'lojaId': lojaId,
-            },
-          );
-        }
-
-        // Para aqui. Depois que o usuário cadastrar, ele clica "Finalizar" de novo.
-        return;
-      }
-
-      if (prod.ehCombo) {
-        final sel = item['itensComboComSelecao'];
-        if (sel is! List || sel.isEmpty) {
-          await _mostrarErro(
-            'Configure o combo "$nome" antes de finalizar. '
-            'Toque em "Configurar combo" e confirme tamanho, cor e personalização de cada item do kit.',
-          );
-          return;
-        }
-        var selecaoValida = true;
-        for (final e in sel) {
-          if (e is! Map || e.isEmpty) {
-            selecaoValida = false;
-            break;
-          }
-        }
-        if (!selecaoValida) {
-          await _mostrarErro(
-            'A configuração do combo "$nome" está incompleta. Abra "Configurar combo" e confirme novamente.',
-          );
-          return;
-        }
-      } else {
-        // 🔹 Validação de variações conforme tipo (linha avulsa — não é SKU combo)
-        if (prod.temVariacaoSoloCor && cor.isEmpty) {
-          await _mostrarErro('Informe a cor para o produto "$nome".');
-          return;
-        }
-        if (prod.temVariacaoTamanhoECor && (tamanho.isEmpty || cor.isEmpty)) {
-          await _mostrarErro('Informe tamanho e cor para o produto "$nome".');
-          return;
-        }
-        if ((prod.temVariacaoSoloTamanho ||
-                prod.estoquePorTamanho.isNotEmpty) &&
-            tamanho.isEmpty) {
-          await _mostrarErro('Informe o tamanho para o produto "$nome".');
-          return;
-        }
-
-        final opcoesExtra =
-            ProdutoVariacaoExtra.opcoesExtraPara(prod.variacoes, tamanho, cor);
-        if (opcoesExtra.isNotEmpty && extraValor.isEmpty) {
-          await _mostrarErro(
-            'Selecione a personalização (letra, estampa, etc.) para o produto "$nome".',
-          );
-          return;
-        }
-      }
-
-      // 🔹 Calcula estoque disponível: variações, por tamanho, ou total
-      int disponivel;
-      String msgEstoque = '';
-
-      if (prod.temVariacaoSoloCor && cor.isNotEmpty) {
-        disponivel = prod.obterEstoqueVariacao('', cor, extraValor);
-        msgEstoque = 'cor $cor';
-      } else if (prod.usaVariacoes && (tamanho.isNotEmpty || cor.isNotEmpty)) {
-        final tamKey = tamanho.isEmpty ? '' : tamanho;
-        final corKey = cor.isEmpty ? 'sem-cor' : cor;
-        disponivel = prod.obterEstoqueVariacao(tamKey, corKey, extraValor);
-        msgEstoque = tamanho.isNotEmpty
-            ? 'tamanho $tamanho${cor.isEmpty ? '' : ' - cor $cor'}'
-            : 'cor $cor';
-      } else if (prod.estoquePorTamanho.isNotEmpty && tamanho.isNotEmpty) {
-        disponivel = prod.estoquePorTamanho[tamanho] ?? 0;
-        msgEstoque = 'tamanho $tamanho';
-      } else {
-        disponivel = prod.quantidade;
-        msgEstoque = '';
-      }
-
-      if (disponivel < qtd) {
-        final msg = msgEstoque.isNotEmpty
-            ? 'Estoque insuficiente para "$nome" no $msgEstoque. Disponível: $disponivel.'
-            : 'Estoque insuficiente para "$nome". Disponível: $disponivel.';
-
-        if (!mounted) return;
-        final acao = await showDialog<String>(
-          context: context,
-          builder: (_) => AlertDialog(
-            title: const Text('Produto com estoque zerado'),
-            content: Text(
-              '$msg\n\nO que deseja fazer?',
+          final irCadastro = await showDialog<bool>(
+            context: context,
+            builder: (_) => AlertDialog(
+              title: const Text('Produto não cadastrado'),
+              content: Text(
+                'O produto "$nome" não existe no estoque desta loja.\n\n'
+                'Deseja cadastrar agora?',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancelar'),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Cadastrar'),
+                ),
+              ],
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, 'remover'),
-                child: const Text('Remover da venda'),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context, 'atualizar'),
-                child: const Text('Ir para o produto'),
-              ),
-            ],
-          ),
+          );
+
+          if (irCadastro == true) {
+            if (!mounted) return;
+            await Navigator.of(context).pushNamed(
+              '/estoque',
+              arguments: {
+                'nomeInicial': nome,
+                'lojaId': lojaId,
+              },
+            );
+          }
+          return;
+        }
+
+        if (prod.ehCombo) {
+          final sel = item['itensComboComSelecao'];
+          if (sel is! List || sel.isEmpty) {
+            await _mostrarErro(
+              'Configure o combo "$nome" antes de finalizar. '
+              'Toque em "Configurar combo" e confirme tamanho, cor e personalização de cada item do kit.',
+            );
+            return;
+          }
+          var selecaoValida = true;
+          for (final e in sel) {
+            if (e is! Map || e.isEmpty) {
+              selecaoValida = false;
+              break;
+            }
+          }
+          if (!selecaoValida) {
+            await _mostrarErro(
+              'A configuração do combo "$nome" está incompleta. Abra "Configurar combo" e confirme novamente.',
+            );
+            return;
+          }
+        } else {
+          final okEstrutura = await _validarEstoqueLinhaVenda(
+            prod: prod,
+            nome: nome,
+            qtdExigida: qtd,
+            tamanho: tamanho,
+            cor: cor,
+            extraValor: extraValor,
+            validarDisponibilidade: false,
+          );
+          if (!okEstrutura) return;
+        }
+      }
+
+      final okEdicao = await _validarEstoquePreSalvamentoEdicaoVenda(vendaRef);
+      if (!okEdicao) return;
+    } else {
+      for (var i = 0; i < produtosSelecionados.length; i++) {
+        final item = produtosSelecionados[i];
+        final nome = (item['produto'] ?? '').toString().trim();
+        final qtd = (item['quantidade'] ?? 1) as int;
+        final tamanho = (item['tamanho'] ?? '').toString().trim();
+        final cor = (item['cor'] ?? '').toString().trim();
+        final extraValor = (item['extraValor'] ?? '').toString().trim();
+
+        if (nome.isEmpty || qtd <= 0) {
+          await _mostrarErro('Preencha os produtos corretamente.');
+          return;
+        }
+
+        final productId = (item['productId'] as String?)?.trim();
+        final prod = _resolverProdutoLinhaVenda(
+          nome: nome,
+          productId: productId,
         );
 
-        if (acao == 'remover') {
-          produtosSelecionados.removeAt(i);
-          if (produtosSelecionados.isEmpty) {
-            produtosSelecionados.add({
-              'produto': '',
-              'preco': 0.0,
-              'quantidade': 1,
-              'tamanho': '',
-              'cor': '',
-              'extraValor': '',
-              'variacaoExtraResumo': '',
-            });
-          }
-          setState(() {});
-          return;
-        }
-        if (acao == 'atualizar') {
+        // Se NÃO existir, oferece cadastro no Estoque
+        if (prod.nome.isEmpty) {
           if (!mounted) return;
-          await Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => ProdutoFormScreen(produto: prod),
-              settings: const RouteSettings(
-                name: '/produto_editar',
-                arguments: {'returnToVenda': true},
+          final irCadastro = await showDialog<bool>(
+            context: context,
+            builder: (_) => AlertDialog(
+              title: const Text('Produto não cadastrado'),
+              content: Text(
+                'O produto "$nome" não existe no estoque desta loja.\n\n'
+                'Deseja cadastrar agora?',
               ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancelar'),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Cadastrar'),
+                ),
+              ],
             ),
           );
+
+          if (irCadastro == true) {
+            if (!mounted) return;
+            await Navigator.of(context).pushNamed(
+              '/estoque',
+              arguments: {
+                'nomeInicial': nome,
+                'lojaId': lojaId,
+              },
+            );
+          }
+          return;
         }
-        return;
+
+        if (prod.ehCombo) {
+          final sel = item['itensComboComSelecao'];
+          if (sel is! List || sel.isEmpty) {
+            await _mostrarErro(
+              'Configure o combo "$nome" antes de finalizar. '
+              'Toque em "Configurar combo" e confirme tamanho, cor e personalização de cada item do kit.',
+            );
+            return;
+          }
+          var selecaoValida = true;
+          for (final e in sel) {
+            if (e is! Map || e.isEmpty) {
+              selecaoValida = false;
+              break;
+            }
+          }
+          if (!selecaoValida) {
+            await _mostrarErro(
+              'A configuração do combo "$nome" está incompleta. Abra "Configurar combo" e confirme novamente.',
+            );
+            return;
+          }
+        } else {
+          final okEstoque = await _validarEstoqueLinhaVenda(
+            prod: prod,
+            nome: nome,
+            qtdExigida: qtd,
+            tamanho: tamanho,
+            cor: cor,
+            extraValor: extraValor,
+            indiceRemoverNaLista: i,
+          );
+          if (!okEstoque) return;
+        }
       }
     }
 

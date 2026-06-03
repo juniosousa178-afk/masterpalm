@@ -528,6 +528,54 @@ class VendasService {
     );
   }
 
+  /// Validação pré-salvamento na UI: edição administrativa pula estoque; mudança de itens valida só o delta de baixa.
+  static VendaEdicaoValidacaoPreSalvamentoUi resolverValidacaoEstoquePreSalvamentoEdicao({
+    required Venda vendaOriginal,
+    required List<VendaItem> itensNovos,
+    required Box<Produto> produtosBox,
+    required String lojaId,
+    Map<int, List<Map<String, dynamic>>>? itensComboSelecaoPorIndice,
+  }) {
+    final comboJsonNovo =
+        VendaComboEstoqueExpansion.serializeItensComboSelecaoPorIndice(
+      itensComboSelecaoPorIndice,
+    );
+    if (VendaEdicaoEstoqueDiff.itensVendaEquivalentes(
+      antigos: vendaOriginal.itens ?? <VendaItem>[],
+      novos: itensNovos,
+      comboJsonAntigo: vendaOriginal.itensComboSelecaoJson,
+      comboJsonNovo: comboJsonNovo,
+    )) {
+      return const VendaEdicaoValidacaoPreSalvamentoUi(
+        pularValidacaoEstoque: true,
+        linhasValidarBaixa: [],
+      );
+    }
+
+    final linhasAntigas = montarLinhasEstoqueCanonicasParaEdicao(
+      itens: vendaOriginal.itens ?? <VendaItem>[],
+      produtosBox: produtosBox,
+      lojaId: lojaId,
+      itensComboSelecaoJson: vendaOriginal.itensComboSelecaoJson,
+    );
+    final linhasNovas = montarLinhasEstoqueCanonicasParaEdicao(
+      itens: itensNovos,
+      produtosBox: produtosBox,
+      lojaId: lojaId,
+      itensComboSelecaoPorIndice: itensComboSelecaoPorIndice,
+      itensComboSelecaoJson: comboJsonNovo,
+    );
+    final delta = VendaEdicaoEstoqueDiff.calcularDelta(
+      linhasAntigas: linhasAntigas,
+      linhasNovas: linhasNovas,
+    );
+
+    return VendaEdicaoValidacaoPreSalvamentoUi(
+      pularValidacaoEstoque: false,
+      linhasValidarBaixa: delta.baixar,
+    );
+  }
+
   /// Soma [valorPago] nas contas a receber vinculadas à venda (baixas parciais).
   static Future<double> valorPagoParcialContasVenda({
     required Venda venda,

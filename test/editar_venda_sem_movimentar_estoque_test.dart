@@ -119,6 +119,249 @@ void main() {
     });
   });
 
+  group('resolverValidacaoEstoquePreSalvamentoEdicao (UI)', () {
+    late Box<Produto> produtosBox;
+    const lojaUi = 'loja-ui-pre-salv-20260602';
+
+    setUpAll(() async {
+      final dir = await Directory.systemTemp.createTemp('hive_ui_pre_salv_');
+      Hive.init(dir.path);
+      if (!Hive.isAdapterRegistered(2)) {
+        Hive.registerAdapter(ProdutoAdapter());
+      }
+      if (!Hive.isAdapterRegistered(7)) {
+        Hive.registerAdapter(VendaItemAdapter());
+      }
+    });
+
+    setUp(() async {
+      produtosBox = await Hive.openBox<Produto>(
+        'prod_ui_pre_${DateTime.now().microsecondsSinceEpoch}',
+      );
+      await produtosBox.add(
+        Produto.vazio()
+          ..nome = 'Camiseta'
+          ..idFirebase = 'cam-1'
+          ..lojaId = lojaUi
+          ..quantidade = 0
+          ..precoFinal = 20,
+      );
+      await produtosBox.add(
+        Produto.vazio()
+          ..nome = 'Calça'
+          ..idFirebase = 'cal-1'
+          ..lojaId = lojaUi
+          ..quantidade = 0
+          ..precoFinal = 30,
+      );
+    });
+
+    tearDown(() async {
+      await produtosBox.close();
+    });
+
+    Venda vendaComItens(List<VendaItem> itens, {String? comboJson}) {
+      return Venda(
+        clienteNome: 'Cliente',
+        produtosDescricao: '',
+        quantidade: itens.length,
+        preco: 10,
+        total: 10,
+        formasPagamento: 'Dinheiro',
+        data: DateTime(2026, 1, 10),
+        tamanho: '',
+        vendedor: 'App',
+        observacao: '',
+        itens: itens,
+        lojaId: lojaUi,
+        itensComboSelecaoJson: comboJson,
+      );
+    }
+
+    test('edição administrativa (mesmos itens) pula validação de estoque', () {
+      final original = vendaComItens([
+        VendaItem(
+          produtoNome: 'Camiseta',
+          quantidade: 2,
+          precoUnitario: 20,
+          productId: 'cam-1',
+        ),
+      ]);
+      final pre = VendasService.resolverValidacaoEstoquePreSalvamentoEdicao(
+        vendaOriginal: original,
+        itensNovos: original.itens!,
+        produtosBox: produtosBox,
+        lojaId: lojaUi,
+      );
+      expect(pre.pularValidacaoEstoque, isTrue);
+      expect(pre.linhasValidarBaixa, isEmpty);
+    });
+
+    test('só data/pagamento equivalente não exige linhas de baixa com estoque 0', () {
+      final itens = [
+        VendaItem(
+          produtoNome: 'Camiseta',
+          quantidade: 1,
+          precoUnitario: 25,
+          productId: 'cam-1',
+        ),
+      ];
+      final original = vendaComItens(itens);
+      final pre = VendasService.resolverValidacaoEstoquePreSalvamentoEdicao(
+        vendaOriginal: original,
+        itensNovos: [
+          VendaItem(
+            produtoNome: 'Camiseta',
+            quantidade: 1,
+            precoUnitario: 99,
+            productId: 'cam-1',
+          ),
+        ],
+        produtosBox: produtosBox,
+        lojaId: lojaUi,
+      );
+      expect(pre.pularValidacaoEstoque, isTrue);
+    });
+
+    test('aumentar quantidade com estoque 0 exige validar delta de baixa', () {
+      final original = vendaComItens([
+        VendaItem(
+          produtoNome: 'Camiseta',
+          quantidade: 1,
+          precoUnitario: 20,
+          productId: 'cam-1',
+        ),
+      ]);
+      final pre = VendasService.resolverValidacaoEstoquePreSalvamentoEdicao(
+        vendaOriginal: original,
+        itensNovos: [
+          VendaItem(
+            produtoNome: 'Camiseta',
+            quantidade: 3,
+            precoUnitario: 20,
+            productId: 'cam-1',
+          ),
+        ],
+        produtosBox: produtosBox,
+        lojaId: lojaUi,
+      );
+      expect(pre.pularValidacaoEstoque, isFalse);
+      expect(pre.linhasValidarBaixa.length, 1);
+      expect(pre.linhasValidarBaixa.first['quantidade'], 2);
+      expect(pre.linhasValidarBaixa.first['productId'], 'cam-1');
+    });
+
+    test('diminuir quantidade não exige validação de baixa', () {
+      final original = vendaComItens([
+        VendaItem(
+          produtoNome: 'Camiseta',
+          quantidade: 3,
+          precoUnitario: 20,
+          productId: 'cam-1',
+        ),
+      ]);
+      final pre = VendasService.resolverValidacaoEstoquePreSalvamentoEdicao(
+        vendaOriginal: original,
+        itensNovos: [
+          VendaItem(
+            produtoNome: 'Camiseta',
+            quantidade: 1,
+            precoUnitario: 20,
+            productId: 'cam-1',
+          ),
+        ],
+        produtosBox: produtosBox,
+        lojaId: lojaUi,
+      );
+      expect(pre.pularValidacaoEstoque, isFalse);
+      expect(pre.linhasValidarBaixa, isEmpty);
+    });
+
+    test('adicionar produto exige validar só o item novo', () {
+      final original = vendaComItens([
+        VendaItem(
+          produtoNome: 'Camiseta',
+          quantidade: 1,
+          precoUnitario: 20,
+          productId: 'cam-1',
+        ),
+      ]);
+      final pre = VendasService.resolverValidacaoEstoquePreSalvamentoEdicao(
+        vendaOriginal: original,
+        itensNovos: [
+          ...original.itens!,
+          VendaItem(
+            produtoNome: 'Calça',
+            quantidade: 1,
+            precoUnitario: 30,
+            productId: 'cal-1',
+          ),
+        ],
+        produtosBox: produtosBox,
+        lojaId: lojaUi,
+      );
+      expect(pre.linhasValidarBaixa.length, 1);
+      expect(pre.linhasValidarBaixa.first['productId'], 'cal-1');
+    });
+
+    test('trocar produto valida baixa apenas do produto novo', () {
+      final original = vendaComItens([
+        VendaItem(
+          produtoNome: 'Camiseta',
+          quantidade: 1,
+          precoUnitario: 20,
+          productId: 'cam-1',
+        ),
+      ]);
+      final pre = VendasService.resolverValidacaoEstoquePreSalvamentoEdicao(
+        vendaOriginal: original,
+        itensNovos: [
+          VendaItem(
+            produtoNome: 'Calça',
+            quantidade: 1,
+            precoUnitario: 30,
+            productId: 'cal-1',
+          ),
+        ],
+        produtosBox: produtosBox,
+        lojaId: lojaUi,
+      );
+      expect(pre.linhasValidarBaixa.length, 1);
+      expect(pre.linhasValidarBaixa.first['productId'], 'cal-1');
+    });
+
+    test('variação alterada valida só célula nova no delta', () {
+      final original = vendaComItens([
+        VendaItem(
+          produtoNome: 'Camiseta',
+          quantidade: 1,
+          precoUnitario: 20,
+          productId: 'cam-1',
+          tamanho: 'P',
+          cor: 'Azul',
+        ),
+      ]);
+      final pre = VendasService.resolverValidacaoEstoquePreSalvamentoEdicao(
+        vendaOriginal: original,
+        itensNovos: [
+          VendaItem(
+            produtoNome: 'Camiseta',
+            quantidade: 1,
+            precoUnitario: 20,
+            productId: 'cam-1',
+            tamanho: 'M',
+            cor: 'Azul',
+          ),
+        ],
+        produtosBox: produtosBox,
+        lojaId: lojaUi,
+      );
+      expect(pre.linhasValidarBaixa.length, 1);
+      expect(pre.linhasValidarBaixa.first['tamanho'], 'M');
+      expect(pre.linhasValidarBaixa.first['quantidade'], 1);
+    });
+  });
+
   group('editarVendaMulti integração', () {
     late FakeFirebaseFirestore firestore;
     late String hivePath;
@@ -229,7 +472,7 @@ void main() {
       DateTime? venc,
     }) async {
       final cliente = clientesBox.values.first;
-      final preco = 10.0;
+      const preco = 10.0;
       return VendasService.registrarVendaMulti(
         produtosBox: produtosBox,
         clientesBox: clientesBox,

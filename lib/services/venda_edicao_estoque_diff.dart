@@ -118,3 +118,17 @@ class VendaEdicaoEstoqueDiff {
     return VendaEdicaoDeltaEstoque(baixar: baixar, devolver: devolver);
   }
 }
+
+/// Resultado da validação pré-salvamento na UI (edição de venda).
+class VendaEdicaoValidacaoPreSalvamentoUi {
+  /// `true` = edição administrativa; não validar estoque na tela.
+  final bool pularValidacaoEstoque;
+
+  /// Linhas canônicas cuja baixa (delta) exige checagem de estoque disponível.
+  final List<Map<String, dynamic>> linhasValidarBaixa;
+
+  const VendaEdicaoValidacaoPreSalvamentoUi({
+    required this.pularValidacaoEstoque,
+    required this.linhasValidarBaixa,
+  });
+}
