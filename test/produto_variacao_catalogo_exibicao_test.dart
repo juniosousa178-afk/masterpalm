@@ -72,10 +72,11 @@ void main() {
       expect(m.containsKey('variacoes'), isFalse);
     });
 
-    test('tamanhos com estoque zero ainda entram no mapa de variacoes (vitrine)',
+    test('tamanhos com estoque zero entram no mapa quando não há estoque positivo',
         () {
       final m = <String, dynamic>{
-        'estoquePorTamanho': {'14': 0, '16': 2},
+        'estoquePorTamanho': {'14': 0, '16': 0},
+        'tamanhos': ['14', '16'],
       };
       ProdutoVariacaoNormalizer.applyToCatalogProductMap(m);
       final vars = m['variacoes'] as Map?;

@@ -19,10 +19,32 @@ class ProdutoVariacaoNormalizado {
   final bool hydratedFromLegacy;
 }
 
+/// Componentes de uma chave legada/composta em `estoquePorTamanho`.
+class EstoqueChaveComposta {
+  const EstoqueChaveComposta({
+    required this.tamanho,
+    this.cor = '',
+    this.extraTipo = '',
+    this.extraValor = '',
+  });
+
+  final String tamanho;
+  final String cor;
+  final String extraTipo;
+  final String extraValor;
+}
+
 /// Linha da grade do formulário (valores em texto).
 typedef ProdutoVariacaoGradeRow = Map<String, String>;
 
 abstract final class ProdutoVariacaoNormalizer {
+  static const _nestedQtyKeys = <String>[
+    'quantidade',
+    'qtd',
+    'estoque',
+    'saldo',
+  ];
+
   static bool hasRepresentacaoVariacao({
     Map<String, dynamic>? variacoes,
     Map<String, int>? estoquePorTamanho,
@@ -40,21 +62,271 @@ abstract final class ProdutoVariacaoNormalizer {
     return false;
   }
 
-  /// Monta `variacoes` no formato tamanho → cor → qtd (sem eixo extra) a partir de estoque por tamanho.
-  static Map<String, dynamic> rebuildVariacoesFromEstoquePorTamanho(
-    Map<String, int> estoquePorTamanho, {
+  /// Decodifica chaves como `14`, `14|Prata`, `15/16|Prata`, `14|Prata|Letra|A`.
+  static EstoqueChaveComposta parseChaveCompostaEstoque(String key) {
+    final k = key.trim();
+    if (k.isEmpty) {
+      return const EstoqueChaveComposta(tamanho: '');
+    }
+    if (!k.contains('|')) {
+      return EstoqueChaveComposta(tamanho: k);
+    }
+    final parts =
+        k.split('|').map((p) => p.trim()).where((p) => p.isNotEmpty).toList();
+    if (parts.isEmpty) {
+      return const EstoqueChaveComposta(tamanho: '');
+    }
+    if (parts.length == 1) {
+      return EstoqueChaveComposta(tamanho: parts[0]);
+    }
+    if (parts.length == 2) {
+      return EstoqueChaveComposta(tamanho: parts[0], cor: parts[1]);
+    }
+    if (parts.length == 3) {
+      return EstoqueChaveComposta(
+        tamanho: parts[0],
+        cor: parts[1],
+        extraValor: parts[2],
+      );
+    }
+    return EstoqueChaveComposta(
+      tamanho: parts[0],
+      cor: parts[1],
+      extraTipo: parts[2],
+      extraValor: parts[3],
+    );
+  }
+
+  /// Codifica chave composta preservando cor/extra (não reduz ao tamanho).
+  static String encodeChaveCompostaEstoque({
+    required String tamanho,
+    String cor = '',
+    String extraTipo = '',
+    String extraValor = '',
+  }) {
+    final t = tamanho.trim();
+    if (t.isEmpty) return '';
+    final c = cor.trim();
+    final ev = extraValor.trim();
+    final et = extraTipo.trim();
+    if (c.isEmpty && ev.isEmpty) return t;
+    if (ev.isEmpty) return '$t|$c';
+    if (et.isNotEmpty) return '$t|$c|$et|$ev';
+    return '$t|$c|$ev';
+  }
+
+  /// Parse robusto de `estoquePorTamanho` — preserva chaves originais (incl. compostas).
+  static Map<String, int> parseEstoquePorTamanhoRaw(dynamic raw) {
+    if (raw == null) return {};
+    if (raw is Map<String, int>) {
+      return Map<String, int>.from(raw);
+    }
+    if (raw is Map) {
+      final parsed = <String, int>{};
+      raw.forEach((key, value) {
+        final k = key.toString().trim();
+        if (k.isEmpty) return;
+        parsed[k] = parseQuantidadeCelulaEstoque(value);
+      });
+      return parsed;
+    }
+    return {};
+  }
+
+  /// Quantidade numérica de um valor de estoque (escalar ou mapa aninhado).
+  static int parseQuantidadeCelulaEstoque(dynamic value) {
+    if (value == null) return 0;
+    if (value is num) return value.toInt();
+    if (value is Map) {
+      for (final nestedKey in _nestedQtyKeys) {
+        if (value.containsKey(nestedKey)) {
+          return ProdutoVariacaoExtra.valorFirestoreComoInt(value[nestedKey]);
+        }
+      }
+      return ProdutoVariacaoExtra.valorFirestoreComoInt(value);
+    }
+    return int.tryParse(value.toString().trim()) ?? 0;
+  }
+
+  static int somaEstoquePorTamanho(Map<String, int> estoque) {
+    var s = 0;
+    for (final v in estoque.values) {
+      s += v;
+    }
+    return s;
+  }
+
+  static int somaVariacoesMap(Map<String, dynamic> variacoes) {
+    return estoquePorTamanhoFromVariacoes(variacoes)
+        .values
+        .fold<int>(0, (a, b) => a + b);
+  }
+
+  static bool variacoesSemQuantidadeUtil(Map<String, dynamic>? variacoes) {
+    if (variacoes == null || variacoes.isEmpty) return true;
+    return somaVariacoesMap(variacoes) <= 0;
+  }
+
+  static bool estoqueTemQuantidadePositiva(Map<String, int> estoque) {
+    return estoque.values.any((q) => q > 0);
+  }
+
+  static bool estoqueRawUsaChavesCompostas(Map<String, int> raw) {
+    return raw.keys.any((k) => k.contains('|'));
+  }
+
+  static bool variacoesTemEstruturaRica(Map<String, dynamic> variacoes) {
+    for (final tamEntry in variacoes.entries) {
+      final cores = tamEntry.value;
+      if (cores is! Map) continue;
+      for (final corEntry in cores.entries) {
+        final cor = corEntry.key.toString();
+        if (cor != 'sem-cor' && cor.isNotEmpty) return true;
+        final raw = corEntry.value;
+        if (raw is Map && ProdutoVariacaoExtra.celulaTemExtrasNaoVazios(raw)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  static int lookupQuantidadeEstoqueRaw(
+    Map<String, int> raw, {
+    required String tamanho,
+    String cor = '',
+    String extraTipo = '',
+    String extraValor = '',
+  }) {
+    final candidates = <String>{
+      encodeChaveCompostaEstoque(
+        tamanho: tamanho,
+        cor: cor,
+        extraTipo: extraTipo,
+        extraValor: extraValor,
+      ),
+      if (cor.isNotEmpty)
+        encodeChaveCompostaEstoque(tamanho: tamanho, cor: cor),
+      tamanho.trim(),
+    }..removeWhere((k) => k.isEmpty);
+    for (final k in candidates) {
+      if (raw.containsKey(k)) return raw[k]!;
+    }
+    return 0;
+  }
+
+  /// Monta `variacoes` + `variacoesExtraTipo` a partir do mapa bruto de estoque.
+  static ({
+    Map<String, dynamic> variacoes,
+    Map<String, dynamic>? variacoesExtraTipo,
+  }) rebuildVariacoesFromEstoqueRaw(
+    Map<String, int> estoqueRaw, {
     bool includeZeroQty = false,
   }) {
-    final out = <String, dynamic>{};
-    for (final e in estoquePorTamanho.entries) {
-      final tam = e.key.trim();
+    final variacoes = <String, dynamic>{};
+    final tipos = <String, Map<String, Map<String, String>>>{};
+
+    void addCelula({
+      required String tamanho,
+      required String cor,
+      required String extraTipo,
+      required String extraValor,
+      required int qtd,
+    }) {
+      if (qtd <= 0 && !includeZeroQty) return;
+      final chaveT = tamanho.isEmpty ? 'sem-tamanho' : tamanho;
+      final chaveC = cor.isEmpty ? 'sem-cor' : cor;
+      final mapaT = variacoes.putIfAbsent(chaveT, () => <String, dynamic>{});
+      final mapaC =
+          (mapaT[chaveC] as Map<String, dynamic>?) ?? <String, dynamic>{};
+      if (extraValor.isEmpty) {
+        mapaC[ProdutoVariacaoExtra.kSemExtraKey] = qtd;
+      } else {
+        mapaC[extraValor] = qtd;
+        if (extraTipo.isNotEmpty) {
+          final tm = tipos.putIfAbsent(chaveT, () => {});
+          final cm = tm.putIfAbsent(chaveC, () => {});
+          cm[extraValor] = extraTipo;
+        }
+      }
+      mapaT[chaveC] = mapaC;
+    }
+
+    for (final e in estoqueRaw.entries) {
+      final parsed = parseChaveCompostaEstoque(e.key);
+      if (parsed.tamanho.isEmpty) continue;
+      addCelula(
+        tamanho: parsed.tamanho,
+        cor: parsed.cor,
+        extraTipo: parsed.extraTipo,
+        extraValor: parsed.extraValor,
+        qtd: e.value,
+      );
+    }
+
+    Map<String, dynamic>? tiposOut;
+    if (tipos.isNotEmpty) {
+      tiposOut = tipos.map(
+        (t, m) => MapEntry(
+          t,
+          m.map((c, em) => MapEntry(c, Map<String, dynamic>.from(em))),
+        ),
+      );
+    }
+
+    return (variacoes: variacoes, variacoesExtraTipo: tiposOut);
+  }
+
+  /// Preenche quantidades em `variacoes` existente a partir do estoque bruto (preserva cor/extra).
+  static void mergeQuantidadeFromEstoqueRawIntoVariacoes(
+    Map<String, dynamic> variacoes,
+    Map<String, int> estoqueRaw,
+  ) {
+    for (final tamEntry in variacoes.entries) {
+      final tamanho = tamEntry.key.toString();
+      final mapaCores = tamEntry.value;
+      if (mapaCores is! Map) continue;
+      for (final corEntry in mapaCores.entries) {
+        final cor = corEntry.key.toString();
+        final raw = corEntry.value;
+        final corDisp = cor == 'sem-cor' ? '' : cor;
+        final tamDisp = tamanho == 'sem-tamanho' ? '' : tamanho;
+
+        if (raw is num) {
+          final q = lookupQuantidadeEstoqueRaw(
+            estoqueRaw,
+            tamanho: tamDisp,
+            cor: corDisp,
+          );
+          if (q > 0) mapaCores[cor] = q;
+          continue;
+        }
+        if (raw is! Map) continue;
+
+        for (final ie in raw.entries) {
+          if (ProdutoVariacaoExtra.isMetaKey(ie.key.toString())) continue;
+          final ev = ie.key.toString();
+          final evDisp =
+              ProdutoVariacaoExtra.isSemExtraMapKey(ev) ? '' : ev;
+          final q = lookupQuantidadeEstoqueRaw(
+            estoqueRaw,
+            tamanho: tamDisp,
+            cor: corDisp,
+            extraValor: evDisp,
+          );
+          if (q > 0) raw[ie.key] = q;
+        }
+      }
+    }
+  }
+
+  /// Resumo por tamanho (soma) — só para derivar campo agregado, não para grade.
+  static Map<String, int> estoquePorTamanhoResumoFromRaw(Map<String, int> raw) {
+    final out = <String, int>{};
+    for (final e in raw.entries) {
+      final tam = parseChaveCompostaEstoque(e.key).tamanho;
       if (tam.isEmpty) continue;
-      final qtd = e.value;
-      if (qtd <= 0 && !includeZeroQty) continue;
-      final chaveT = tam;
-      out[chaveT] = {
-        'sem-cor': {ProdutoVariacaoExtra.kSemExtraKey: qtd},
-      };
+      out[tam] = (out[tam] ?? 0) + e.value;
     }
     return out;
   }
@@ -77,55 +349,144 @@ abstract final class ProdutoVariacaoNormalizer {
     return estoqueMapa;
   }
 
-  /// Garante mapa `variacoes` para o catálogo/Hive quando só existe estoque legado.
-  static Map<String, dynamic>? ensureVariacoesMap({
-    Map<String, dynamic>? variacoes,
-    Map<String, int>? estoquePorTamanho,
-    bool includeZeroQty = false,
-  }) {
-    if (variacoes != null && variacoes.isNotEmpty) return variacoes;
-    final est = estoquePorTamanho ?? const {};
-    if (est.isEmpty) return variacoes;
-    final rebuilt = rebuildVariacoesFromEstoquePorTamanho(
-      est,
-      includeZeroQty: includeZeroQty,
-    );
-    return rebuilt.isEmpty ? variacoes : rebuilt;
-  }
+  /// Estoque bruto coalescido (preserva chaves compostas).
+  static Map<String, int> coalesceEstoquePorTamanho(Produto p) {
+    var estoque = parseEstoquePorTamanhoRaw(p.estoquePorTamanho);
+    if (estoqueTemQuantidadePositiva(estoque)) return estoque;
 
-  /// Normaliza a partir de um [Produto] (Hive/admin).
-  static ProdutoVariacaoNormalizado normalizedFromProduto(Produto p) {
-    final variacoesExistentes = p.variacoes;
-    if (variacoesExistentes != null && variacoesExistentes.isNotEmpty) {
-      final est = p.estoquePorTamanho.isNotEmpty
-          ? Map<String, int>.from(p.estoquePorTamanho)
-          : estoquePorTamanhoFromVariacoes(variacoesExistentes);
-      return ProdutoVariacaoNormalizado(
-        variacoes: Map<String, dynamic>.from(variacoesExistentes),
-        variacoesExtraTipo: p.variacoesExtraTipo == null
-            ? null
-            : Map<String, dynamic>.from(p.variacoesExtraTipo!),
-        estoquePorTamanho: est,
-        hydratedFromLegacy: false,
-      );
+    final fromVars = p.variacoes == null || p.variacoes!.isEmpty
+        ? const <String, int>{}
+        : estoquePorTamanhoFromVariacoes(p.variacoes!);
+    if (estoqueTemQuantidadePositiva(fromVars)) {
+      return fromVars;
     }
 
-    var estoque = Map<String, int>.from(p.estoquePorTamanho);
-    if (estoque.isEmpty && p.tamanhos.isNotEmpty) {
+    if (estoque.isNotEmpty) return estoque;
+    if (fromVars.isNotEmpty) return fromVars;
+
+    if (p.tamanhos.isNotEmpty) {
       for (final t in p.tamanhos) {
         final key = t.trim();
         if (key.isEmpty) continue;
         estoque.putIfAbsent(key, () => 0);
       }
     }
+    return estoque;
+  }
 
-    if (estoque.isNotEmpty) {
-      final vars = rebuildVariacoesFromEstoquePorTamanho(estoque);
+  static Map<String, dynamic>? ensureVariacoesMap({
+    Map<String, dynamic>? variacoes,
+    Map<String, int>? estoquePorTamanho,
+    bool includeZeroQty = false,
+  }) {
+    final est = estoquePorTamanho ?? const {};
+    final vars = variacoes;
+    final varsSemQtd = vars != null && vars.isNotEmpty && variacoesSemQuantidadeUtil(vars);
+    final estComQtd = estoqueTemQuantidadePositiva(est);
+
+    if (vars != null &&
+        vars.isNotEmpty &&
+        variacoesSemQuantidadeUtil(vars) &&
+        estComQtd) {
+      if (variacoesTemEstruturaRica(vars)) {
+        final merged = Map<String, dynamic>.from(vars);
+        mergeQuantidadeFromEstoqueRawIntoVariacoes(merged, est);
+        return merged;
+      }
+      final rebuilt = rebuildVariacoesFromEstoqueRaw(
+        est,
+        includeZeroQty: includeZeroQty,
+      );
+      return rebuilt.variacoes.isEmpty ? vars : rebuilt.variacoes;
+    }
+
+    if (vars != null && vars.isNotEmpty && !varsSemQtd) return vars;
+
+    if (est.isEmpty) return vars;
+    final rebuilt = rebuildVariacoesFromEstoqueRaw(
+      est,
+      includeZeroQty: includeZeroQty,
+    );
+    return rebuilt.variacoes.isEmpty ? vars : rebuilt.variacoes;
+  }
+
+  static Map<String, dynamic>? ensureVariacoesExtraTipoMap({
+    Map<String, dynamic>? variacoesExtraTipo,
+    Map<String, int>? estoquePorTamanho,
+    Map<String, dynamic>? variacoes,
+    bool includeZeroQty = false,
+  }) {
+    if (variacoesExtraTipo != null && variacoesExtraTipo.isNotEmpty) {
+      return variacoesExtraTipo;
+    }
+    final est = estoquePorTamanho ?? const {};
+    if (est.isEmpty || !estoqueRawUsaChavesCompostas(est)) return variacoesExtraTipo;
+    final rebuilt = rebuildVariacoesFromEstoqueRaw(
+      est,
+      includeZeroQty: includeZeroQty,
+    );
+    return rebuilt.variacoesExtraTipo;
+  }
+
+  /// Normaliza a partir de um [Produto] (Hive/admin).
+  static ProdutoVariacaoNormalizado normalizedFromProduto(Produto p) {
+    final estoqueRaw = coalesceEstoquePorTamanho(p);
+    final variacoesExistentes = p.variacoes;
+
+    if (variacoesExistentes != null && variacoesExistentes.isNotEmpty) {
+      final varsSemQtd = variacoesSemQuantidadeUtil(variacoesExistentes);
+      final estPositivo = estoqueTemQuantidadePositiva(estoqueRaw);
+
+      if (varsSemQtd && estPositivo) {
+        if (variacoesTemEstruturaRica(variacoesExistentes)) {
+          final merged = Map<String, dynamic>.from(variacoesExistentes);
+          mergeQuantidadeFromEstoqueRawIntoVariacoes(merged, estoqueRaw);
+          return ProdutoVariacaoNormalizado(
+            variacoes: merged,
+            variacoesExtraTipo: p.variacoesExtraTipo == null
+                ? null
+                : Map<String, dynamic>.from(p.variacoesExtraTipo!),
+            estoquePorTamanho: estoqueRaw,
+            hydratedFromLegacy: true,
+          );
+        }
+        final rebuilt = rebuildVariacoesFromEstoqueRaw(estoqueRaw);
+        return ProdutoVariacaoNormalizado(
+          variacoes: rebuilt.variacoes,
+          variacoesExtraTipo: rebuilt.variacoesExtraTipo ??
+              (p.variacoesExtraTipo == null
+                  ? null
+                  : Map<String, dynamic>.from(p.variacoesExtraTipo!)),
+          estoquePorTamanho: estoqueRaw,
+          hydratedFromLegacy: true,
+        );
+      }
+
+      final estResumo = estoqueTemQuantidadePositiva(estoqueRaw)
+          ? estoqueRaw
+          : estoquePorTamanhoFromVariacoes(variacoesExistentes);
       return ProdutoVariacaoNormalizado(
-        variacoes: vars,
-        variacoesExtraTipo: null,
-        estoquePorTamanho: estoque,
-        hydratedFromLegacy: vars.isNotEmpty,
+        variacoes: Map<String, dynamic>.from(variacoesExistentes),
+        variacoesExtraTipo: p.variacoesExtraTipo == null
+            ? null
+            : Map<String, dynamic>.from(p.variacoesExtraTipo!),
+        estoquePorTamanho: estResumo,
+        hydratedFromLegacy: false,
+      );
+    }
+
+    if (estoqueRaw.isNotEmpty) {
+      final rebuilt = rebuildVariacoesFromEstoqueRaw(
+        estoqueRaw,
+        includeZeroQty: !estoqueTemQuantidadePositiva(estoqueRaw),
+      );
+      return ProdutoVariacaoNormalizado(
+        variacoes: rebuilt.variacoes,
+        variacoesExtraTipo: rebuilt.variacoesExtraTipo,
+        estoquePorTamanho: estoqueRaw,
+        hydratedFromLegacy:
+            rebuilt.variacoes.isNotEmpty ||
+            !estoqueTemQuantidadePositiva(estoqueRaw),
       );
     }
 
@@ -141,16 +502,31 @@ abstract final class ProdutoVariacaoNormalizer {
   static bool applyToProduto(Produto p) {
     final n = normalizedFromProduto(p);
     if (!n.hydratedFromLegacy && n.variacoes.isEmpty) return false;
-    if (n.variacoes.isNotEmpty) {
+
+    final varsSemQtd =
+        p.variacoes != null && p.variacoes!.isNotEmpty && variacoesSemQuantidadeUtil(p.variacoes!);
+    final estPositivo = estoqueTemQuantidadePositiva(n.estoquePorTamanho);
+    final deveAtualizarVariacoes = n.variacoes.isNotEmpty &&
+        (n.hydratedFromLegacy || (varsSemQtd && estPositivo));
+
+    if (deveAtualizarVariacoes) {
       p.variacoes = Map<String, dynamic>.from(n.variacoes);
-      if (n.variacoesExtraTipo != null) {
+      if (n.variacoesExtraTipo != null && n.variacoesExtraTipo!.isNotEmpty) {
         p.variacoesExtraTipo = Map<String, dynamic>.from(n.variacoesExtraTipo!);
       }
     }
-    if (n.estoquePorTamanho.isNotEmpty) {
+
+    if (n.estoquePorTamanho.isNotEmpty &&
+        (!estoqueTemQuantidadePositiva(parseEstoquePorTamanhoRaw(p.estoquePorTamanho)) ||
+            estPositivo)) {
       p.estoquePorTamanho = Map<String, int>.from(n.estoquePorTamanho);
     }
-    return n.hydratedFromLegacy;
+    return n.hydratedFromLegacy || (varsSemQtd && estPositivo);
+  }
+
+  static String _precoTextoGrade(double? v) {
+    if (v == null || v <= 0) return '';
+    return v.toStringAsFixed(2).replaceAll('.', ',');
   }
 
   /// Linhas da grade do cadastro a partir do produto (variações completas ou legado).
@@ -214,41 +590,62 @@ abstract final class ProdutoVariacaoNormalizer {
         }
       }
     }
+
     if (rows.isEmpty) {
-      final est = p.estoquePorTamanho;
+      final est = n.estoquePorTamanho;
       final chaves = est.isNotEmpty
           ? est.keys.map((k) => k.toString()).toList()
           : p.tamanhos.map((t) => t.toString()).toList();
-      for (final tam in chaves) {
-        final key = tam.trim();
+      for (final chave in chaves) {
+        final key = chave.trim();
         if (key.isEmpty) continue;
+        final parsed = parseChaveCompostaEstoque(key);
+        final tam = parsed.tamanho.isEmpty ? key : parsed.tamanho;
+        final precoTam = p.precoPorTamanho?[tam] ??
+            p.precoPorTamanho?['sem-tamanho'];
         rows.add({
-          'tamanho': key,
-          'cor': '',
-          'extraTipo': '',
-          'extraValor': '',
+          'tamanho': tam,
+          'cor': parsed.cor,
+          'extraTipo': parsed.extraTipo,
+          'extraValor': parsed.extraValor,
           'qtd': (est[key] ?? 0).toString(),
-          'custo': '',
+          'custo': _precoTextoGrade(precoTam),
         });
       }
+    } else {
+      _aplicarQuantidadeEstoqueNasLinhas(rows, n.estoquePorTamanho);
     }
     return rows;
   }
 
+  /// Se a grade veio de `variacoes` com qtd 0, preenche a partir do estoque bruto.
+  static void _aplicarQuantidadeEstoqueNasLinhas(
+    List<ProdutoVariacaoGradeRow> rows,
+    Map<String, int> estoqueRaw,
+  ) {
+    if (!estoqueTemQuantidadePositiva(estoqueRaw)) return;
+    for (final row in rows) {
+      final tam = (row['tamanho'] ?? '').trim();
+      if (tam.isEmpty) continue;
+      final qtdLinha = int.tryParse(row['qtd'] ?? '') ?? 0;
+      if (qtdLinha > 0) continue;
+      final qtdEstoque = lookupQuantidadeEstoqueRaw(
+        estoqueRaw,
+        tamanho: tam,
+        cor: row['cor'] ?? '',
+        extraTipo: row['extraTipo'] ?? '',
+        extraValor: row['extraValor'] ?? '',
+      );
+      if (qtdEstoque > 0) {
+        row['qtd'] = qtdEstoque.toString();
+      }
+    }
+  }
+
   /// Mapa de produto do catálogo (Firestore): garante `variacoes` para o seletor.
   static void applyToCatalogProductMap(Map<String, dynamic> m) {
-    Map<String, int>? estoquePorTamanho;
-    final estoqueTamRaw = m['estoquePorTamanho'];
-    if (estoqueTamRaw is Map && estoqueTamRaw.isNotEmpty) {
-      estoquePorTamanho = {};
-      estoqueTamRaw.forEach((key, value) {
-        final k = key.toString().trim();
-        if (k.isEmpty) return;
-        estoquePorTamanho![k] =
-            ProdutoVariacaoExtra.valorFirestoreComoInt(value);
-      });
-      if (estoquePorTamanho.isEmpty) estoquePorTamanho = null;
-    }
+    final estoqueRaw = parseEstoquePorTamanhoRaw(m['estoquePorTamanho']);
+    final estoqueFinal = estoqueRaw.isEmpty ? null : estoqueRaw;
 
     Map<String, dynamic>? variacoes;
     final variacoesRaw = m['variacoes'];
@@ -256,19 +653,37 @@ abstract final class ProdutoVariacaoNormalizer {
       variacoes = Map<String, dynamic>.from(variacoesRaw);
     }
 
+    Map<String, dynamic>? variacoesExtraTipo;
+    final vetRaw = m['variacoesExtraTipo'];
+    if (vetRaw is Map && vetRaw.isNotEmpty) {
+      variacoesExtraTipo = Map<String, dynamic>.from(vetRaw);
+    }
+
+    final includeZero = !estoqueTemQuantidadePositiva(estoqueFinal ?? const {});
+
     final ensured = ensureVariacoesMap(
       variacoes: variacoes,
-      estoquePorTamanho: estoquePorTamanho,
-      includeZeroQty: true,
+      estoquePorTamanho: estoqueFinal,
+      includeZeroQty: includeZero,
     );
     if (ensured != null && ensured.isNotEmpty) {
       m['variacoes'] = ensured;
     }
-    if (estoquePorTamanho != null && estoquePorTamanho.isNotEmpty) {
-      m['estoquePorTamanho'] = estoquePorTamanho;
+
+    final ensuredExtra = ensureVariacoesExtraTipoMap(
+      variacoesExtraTipo: variacoesExtraTipo,
+      estoquePorTamanho: estoqueFinal,
+      variacoes: ensured ?? variacoes,
+      includeZeroQty: includeZero,
+    );
+    if (ensuredExtra != null && ensuredExtra.isNotEmpty) {
+      m['variacoesExtraTipo'] = ensuredExtra;
+    }
+
+    if (estoqueFinal != null && estoqueFinal.isNotEmpty) {
+      m['estoquePorTamanho'] = estoqueFinal;
     } else if (ensured != null && ensured.isNotEmpty) {
-      m['estoquePorTamanho'] =
-          estoquePorTamanhoFromVariacoes(ensured);
+      m['estoquePorTamanho'] = estoquePorTamanhoFromVariacoes(ensured);
     }
   }
 }

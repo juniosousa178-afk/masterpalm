@@ -342,8 +342,9 @@ class ProdutosFirestoreService {
           tamanhos: _dedupeStringListPreserveOrder(
             (data['tamanhos'] as List?)?.map((e) => e.toString()).toList(),
           ),
-          estoquePorTamanho:
-              Map<String, int>.from(data['estoquePorTamanho'] ?? {}),
+          estoquePorTamanho: ProdutoVariacaoNormalizer.parseEstoquePorTamanhoRaw(
+            data['estoquePorTamanho'],
+          ),
           cores: _dedupeStringListPreserveOrder(
             (data['cores'] as List?)?.map((e) => e.toString()).toList(),
           ),
@@ -1272,12 +1273,8 @@ class ProdutosFirestoreService {
                     p.estoquePorTamanho = {};
                     logD('[VARIACAO_PULL] estoquePorTamanho remoto {} → limpo');
                   } else {
-                    p.estoquePorTamanho = rawE.map(
-                      (k, v) => MapEntry(
-                        k.toString(),
-                        ProdutoVariacaoExtra.valorFirestoreComoInt(v),
-                      ),
-                    );
+                    p.estoquePorTamanho =
+                        ProdutoVariacaoNormalizer.parseEstoquePorTamanhoRaw(rawE);
                   }
                 }
               } else {
