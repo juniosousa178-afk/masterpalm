@@ -1,5 +1,8 @@
 // Baixa parcial/total de contas a receber com validação e histórico.
 
+import 'package:hive/hive.dart';
+
+import '../core/hive_box_names.dart';
 import '../models/conta_receber.dart';
 import 'conta_receber_recebimento_caixa_service.dart';
 
@@ -21,6 +24,57 @@ class ResultadoBaixaContaReceber {
 
 class ContaReceberService {
   ContaReceberService._();
+
+  /// Abre a box tipada da loja (obrigatório no Web para leitura correta).
+  static Future<Box<ContaReceber>> openBoxLoja(String lojaId) async {
+    final loja = lojaId.trim();
+    if (loja.isEmpty) {
+      throw ArgumentError('lojaId vazio ao abrir contas a receber.');
+    }
+    final name = HiveBoxNames.contasReceber(loja);
+    return Hive.isBoxOpen(name)
+        ? Hive.box<ContaReceber>(name)
+        : await Hive.openBox<ContaReceber>(name);
+  }
+
+  /// Conta pertence à loja (trim + legado sem lojaId na box por loja).
+  static bool contaPertenceALoja(ContaReceber conta, String lojaId) {
+    final loja = lojaId.trim();
+    if (loja.isEmpty) return false;
+    final cl = conta.lojaId.trim();
+    return cl == loja || cl.isEmpty;
+  }
+
+  /// Listagem usada pela tela de contas a receber e resumos financeiros.
+  /// [filtro]: pendentes | pagas | vencidas | todas
+  static List<ContaReceber> listar({
+    required Iterable<ContaReceber> contas,
+    required String lojaId,
+    String filtro = 'todas',
+  }) {
+    final hoje = DateTime.now();
+    var list = contas.where((c) => contaPertenceALoja(c, lojaId)).toList();
+    list.sort((a, b) => b.dataVencimento.compareTo(a.dataVencimento));
+    switch (filtro) {
+      case 'pendentes':
+        list = list.where((c) => !c.pago && c.valor >= 0.01).toList();
+        break;
+      case 'vencidas':
+        list = list
+            .where(
+              (c) =>
+                  !c.pago &&
+                  c.valor >= 0.01 &&
+                  c.dataVencimento.isBefore(hoje),
+            )
+            .toList();
+        break;
+      case 'pagas':
+        list = list.where((c) => c.pago).toList();
+        break;
+    }
+    return list;
+  }
 
   static void validarValorBaixa({
     required double valorRecebido,

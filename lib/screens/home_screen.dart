@@ -36,7 +36,7 @@ import '../models/produto.dart';
 import '../models/cliente.dart';
 import '../models/fornecedor.dart';
 import '../models/venda.dart';
-import '../models/conta_receber.dart';
+import '../services/conta_receber_service.dart';
 
 // ✅ tela fretes/cupons
 import '../screens/fretes_cupons_screen.dart';
@@ -334,17 +334,16 @@ class _HomeScreenState extends State<HomeScreen>
   Future<void> _alertarContasReceberPendentes() async {
     if (!mounted || _lojaIdInterno.trim().isEmpty) return;
     try {
-      final boxName = HiveBoxNames.contasReceber(_lojaIdInterno.trim());
-      final box = Hive.isBoxOpen(boxName)
-          ? Hive.box<ContaReceber>(boxName)
-          : await Hive.openBox<ContaReceber>(boxName);
+      final box = await ContaReceberService.openBoxLoja(_lojaIdInterno.trim());
       if (!mounted) return;
 
       final hoje = DateTime.now();
       final hojeBase = DateTime(hoje.year, hoje.month, hoje.day);
-      final pendentes = box.values
-          .where((c) => c.lojaId == _lojaIdInterno && !c.pago)
-          .toList();
+      final pendentes = ContaReceberService.listar(
+        contas: box.values,
+        lojaId: _lojaIdInterno,
+        filtro: 'pendentes',
+      );
       if (pendentes.isEmpty) return;
 
       final vencidas = pendentes.where((c) {

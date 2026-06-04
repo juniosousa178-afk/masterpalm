@@ -11,7 +11,6 @@ import '../models/produto.dart';
 import '../models/venda.dart';
 import '../models/venda_item.dart';
 import '../models/conta_receber.dart';
-import '../core/hive_box_names.dart';
 import '../core/safe_cast.dart';
 import '../core/strict_product_resolution.dart';
 import '../utils/text_utils.dart';
@@ -26,6 +25,7 @@ import 'venda_combo_estoque_expansion.dart';
 import 'venda_custo_mercadoria.dart';
 import 'venda_edicao_estoque_diff.dart';
 import 'venda_estoque_remoto_prep_service.dart';
+import 'conta_receber_service.dart';
 
 class VendasService {
   // ---------------------------
@@ -206,6 +206,31 @@ class VendasService {
     return vendaIdEstavel.trim();
   }
 
+  static Future<void> _persistirContasReceberNaBox({
+    required Box<ContaReceber> crBox,
+    required List<ContaReceber> contas,
+    required String lojaId,
+    required String vendaIdVinculo,
+    required int? vendaHiveKey,
+  }) async {
+    for (var i = 0; i < contas.length; i++) {
+      final conta = contas[i];
+      await crBox.add(conta);
+      try {
+        await conta.save();
+      } catch (e) {
+        debugPrint(
+          '⚠️ [VENDAS-SERVICE] conta.save após add falhou (parcela ${i + 1}, type=${e.runtimeType})',
+        );
+      }
+    }
+    debugPrint(
+      '[VENDAS-SERVICE] contas_receber criadas qtd=${contas.length} lojaId=$lojaId '
+      'vendaKey=${_vendaKeyParaContaReceber(vendaHiveKey)} '
+      'vendaIdFirebase=$vendaIdVinculo box=${crBox.name} total=${crBox.length}',
+    );
+  }
+
   static double _resolverCustoItem(Produto produto, VendaItem item) {
     final custoVariacao = produto.custoUnitarioVariacao(
       item.tamanho,
@@ -229,10 +254,7 @@ class VendasService {
     final idV = (vendaIdFirebase ?? '').trim();
     if ((vk == null || vk < 0) && idV.isEmpty) return;
     try {
-      final crBoxName = HiveBoxNames.contasReceber(loja);
-      final crBox = Hive.isBoxOpen(crBoxName)
-          ? Hive.box<ContaReceber>(crBoxName)
-          : await Hive.openBox<ContaReceber>(crBoxName);
+      final crBox = await ContaReceberService.openBoxLoja(loja);
       final keysToDelete = <dynamic>[];
       for (final k in crBox.keys) {
         final c = crBox.get(k);
@@ -281,10 +303,7 @@ class VendasService {
     } else {
       venc = DateTime.now().add(const Duration(days: 30));
     }
-    final crBoxName = HiveBoxNames.contasReceber(loja);
-    final crBox = Hive.isBoxOpen(crBoxName)
-        ? Hive.box<ContaReceber>(crBoxName)
-        : await Hive.openBox<ContaReceber>(crBoxName);
+    final crBox = await ContaReceberService.openBoxLoja(loja);
     final totalPago =
         venda.pagamentoDinheiro + venda.pagamentoPix + venda.pagamentoCartao;
     final saldo = calcularSaldoFiado(
@@ -682,10 +701,7 @@ class VendasService {
     if (loja.isEmpty) return 0;
 
     try {
-      final crBoxName = HiveBoxNames.contasReceber(loja);
-      final crBox = Hive.isBoxOpen(crBoxName)
-          ? Hive.box<ContaReceber>(crBoxName)
-          : await Hive.openBox<ContaReceber>(crBoxName);
+      final crBox = await ContaReceberService.openBoxLoja(loja);
       var pagoContas = 0.0;
       for (final c in crBox.values) {
         if (_contaReceberVinculadaAVenda(
@@ -871,10 +887,7 @@ class VendasService {
     final vendaIdVinculo = idVendaEstavelParaVinculo(venda);
     if (vk == null && vendaIdVinculo.isEmpty) return;
 
-    final crBoxName = HiveBoxNames.contasReceber(lojaId);
-    final crBox = Hive.isBoxOpen(crBoxName)
-        ? Hive.box<ContaReceber>(crBoxName)
-        : await Hive.openBox<ContaReceber>(crBoxName);
+    final crBox = await ContaReceberService.openBoxLoja(lojaId);
 
     final contasVinculadas = crBox.values
         .where(
@@ -913,9 +926,10 @@ class VendasService {
         fallback: 30,
       );
       final valoresParcelas = _parcelarValores(saldoFiado, qtdParcelas);
+      final contasNovas = <ContaReceber>[];
       for (var i = 0; i < qtdParcelas; i++) {
         final venc = dataVencimentoFiado.add(Duration(days: i * intervalo));
-        await crBox.add(
+        contasNovas.add(
           ContaReceber(
             lojaId: lojaId,
             clienteNome: clienteNome,
@@ -933,6 +947,13 @@ class VendasService {
           ),
         );
       }
+      await _persistirContasReceberNaBox(
+        crBox: crBox,
+        contas: contasNovas,
+        lojaId: lojaId,
+        vendaIdVinculo: vendaIdVinculo,
+        vendaHiveKey: vk,
+      );
       return;
     }
 
@@ -1554,10 +1575,7 @@ class VendasService {
         );
       }
       try {
-        final crBoxName = HiveBoxNames.contasReceber(lojaEfetiva);
-        final crBox = Hive.isBoxOpen(crBoxName)
-            ? Hive.box<ContaReceber>(crBoxName)
-            : await Hive.openBox<ContaReceber>(crBoxName);
+        final crBox = await ContaReceberService.openBoxLoja(lojaEfetiva);
         final qtdParcelas = safeInt(
           quantidadeParcelasFiado.clamp(1, 48),
           fallback: 1,
@@ -1567,25 +1585,34 @@ class VendasService {
           fallback: 30,
         );
         final valoresParcelas = _parcelarValores(saldoFiado, qtdParcelas);
+        final contasNovas = <ContaReceber>[];
         for (var i = 0; i < qtdParcelas; i++) {
           final venc = vencimento.add(Duration(days: i * intervalo));
-          final conta = ContaReceber(
-            lojaId: lojaEfetiva,
-            clienteNome: cliente.nome,
-            valor: valoresParcelas[i],
-            valorOriginal: valoresParcelas[i],
-            dataVencimento: venc,
-            dataVenda: venda.data,
-            vendaKey: _vendaKeyParaContaReceber(vendaHiveKey),
-            vendaIdFirebase: _vendaIdFirebaseParaContaReceber(vendaIdVinculo),
-            observacao: qtdParcelas > 1
-                ? 'Parcela ${i + 1}/$qtdParcelas${observacao.trim().isNotEmpty ? ' - ${observacao.trim()}' : ''}'
-                : (observacao.trim().isEmpty ? 'Venda fiada' : observacao.trim()),
-            parcelaNumero: i + 1,
-            parcelaTotal: qtdParcelas,
+          contasNovas.add(
+            ContaReceber(
+              lojaId: lojaEfetiva,
+              clienteNome: cliente.nome,
+              valor: valoresParcelas[i],
+              valorOriginal: valoresParcelas[i],
+              dataVencimento: venc,
+              dataVenda: venda.data,
+              vendaKey: _vendaKeyParaContaReceber(vendaHiveKey),
+              vendaIdFirebase: _vendaIdFirebaseParaContaReceber(vendaIdVinculo),
+              observacao: qtdParcelas > 1
+                  ? 'Parcela ${i + 1}/$qtdParcelas${observacao.trim().isNotEmpty ? ' - ${observacao.trim()}' : ''}'
+                  : (observacao.trim().isEmpty ? 'Venda fiada' : observacao.trim()),
+              parcelaNumero: i + 1,
+              parcelaTotal: qtdParcelas,
+            ),
           );
-          await crBox.add(conta);
         }
+        await _persistirContasReceberNaBox(
+          crBox: crBox,
+          contas: contasNovas,
+          lojaId: lojaEfetiva,
+          vendaIdVinculo: vendaIdVinculo,
+          vendaHiveKey: vendaHiveKey,
+        );
       } catch (e) {
         debugPrint('⚠️ [VENDAS-SERVICE] Erro ao criar conta a receber (type=${e.runtimeType})');
         onSyncError?.call(

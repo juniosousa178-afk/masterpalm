@@ -9,7 +9,7 @@ import '../../core/hive_box_names.dart';
 import '../../financeiro/financeiro_constants.dart';
 import '../../financeiro/lancamento_financeiro_competencia_ui.dart';
 import '../../financeiro/lancamento_financeiro_origem_ui.dart';
-import '../../models/conta_receber.dart';
+import '../../services/conta_receber_service.dart';
 import '../../services/conta_pagar_hive_store.dart';
 import '../../services/conta_pagar_service.dart';
 import '../../models/lancamento_financeiro.dart';
@@ -216,14 +216,13 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
 
       var totalCr = 0.0;
       try {
-        final crName = HiveBoxNames.contasReceber(id);
-        final crBox = Hive.isBoxOpen(crName)
-            ? Hive.box<ContaReceber>(crName)
-            : await Hive.openBox<ContaReceber>(crName);
-        for (final c in crBox.values) {
-          if (c.lojaId == id && !c.pago) {
-            totalCr += c.valor;
-          }
+        final crBox = await ContaReceberService.openBoxLoja(id);
+        for (final c in ContaReceberService.listar(
+          contas: crBox.values,
+          lojaId: id,
+          filtro: 'pendentes',
+        )) {
+          totalCr += c.valor;
         }
       } catch (_) {}
 

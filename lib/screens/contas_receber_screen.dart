@@ -49,10 +49,11 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
   }
 
   Future<void> _init() async {
-    _lojaId = await LojaIdService.getWithTimeoutThenSessionFallback(
+    final id = await LojaIdService.getWithTimeoutThenSessionFallback(
         timeout: const Duration(seconds: 10));
+    _lojaId = id?.trim();
     if (!mounted) return;
-    if (_lojaId == null || _lojaId!.trim().isEmpty) {
+    if (_lojaId == null || _lojaId!.isEmpty) {
       if (mounted) {
         setState(() {
           _loading = false;
@@ -62,8 +63,7 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
       return;
     }
     try {
-      final name = HiveBoxNames.contasReceber(_lojaId!);
-      _box = Hive.isBoxOpen(name) ? Hive.box(name) : await Hive.openBox(name);
+      _box = await ContaReceberService.openBoxLoja(_lojaId!);
       await _carregarTemplateMensagem();
       await _verificarLembretesDoisDias();
     } catch (e) {
@@ -79,13 +79,12 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
   }
 
   List<ContaReceber> get _lista {
-    final hoje = DateTime.now();
-    var list = _box.values.where((c) => c.lojaId == _lojaId).toList();
-    list.sort((a, b) => b.dataVencimento.compareTo(a.dataVencimento));
-    if (_filtro == 'pendentes') list = list.where((c) => !c.pago).toList();
-    if (_filtro == 'vencidas') list = list.where((c) => !c.pago && c.dataVencimento.isBefore(hoje)).toList();
-    if (_filtro == 'pagas') list = list.where((c) => c.pago).toList();
-    return list;
+    if (_lojaId == null || _lojaId!.isEmpty) return [];
+    return ContaReceberService.listar(
+      contas: _box.values,
+      lojaId: _lojaId!,
+      filtro: _filtro,
+    );
   }
 
   Future<void> _marcarPago(ContaReceber c) async {
@@ -409,6 +408,7 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
         final cliente = c.clienteNome;
         final dataVenda = c.dataVenda;
         final vendaKey = c.vendaKey;
+        final vendaIdFirebase = c.vendaIdFirebase;
 
         await c.delete();
 
@@ -428,6 +428,7 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
               dataVencimento: venc,
               dataVenda: dataVenda,
               vendaKey: vendaKey,
+              vendaIdFirebase: vendaIdFirebase,
               observacao: obsParcela,
               parcelaNumero: i + 1,
               parcelaTotal: n,
@@ -481,7 +482,11 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
   Future<void> _verificarLembretesDoisDias() async {
     if (_lojaId == null || _lojaId!.isEmpty) return;
     final hoje = DateTime.now();
-    for (final c in _box.values.where((e) => e.lojaId == _lojaId && !e.pago)) {
+    for (final c in ContaReceberService.listar(
+      contas: _box.values,
+      lojaId: _lojaId!,
+      filtro: 'pendentes',
+    )) {
       final venc = DateTime(c.dataVencimento.year, c.dataVencimento.month, c.dataVencimento.day);
       final baseHoje = DateTime(hoje.year, hoje.month, hoje.day);
       final diffDias = venc.difference(baseHoje).inDays;
