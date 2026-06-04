@@ -230,6 +230,20 @@ class _FinalizarVendaConfirmacaoDialogState
     });
   }
 
+  /// Fiado: não assumir pagamento total; vendedor informa só o que recebeu agora.
+  void _zerarPagamentosAdiantado() {
+    for (var i = 0; i < _pagamentos.length; i++) {
+      _pagamentos[i]['valor'] = 0.0;
+      _pagamentos[i]['valorRecebido'] = null;
+      if (i < _valorControllers.length) {
+        _valorControllers[i].text = '';
+      }
+      if (i < _valorRecebidoControllers.length) {
+        _valorRecebidoControllers[i].text = '';
+      }
+    }
+  }
+
   void _preencherComTotal() {
     if (_pagamentos.isEmpty) return;
     _pagamentos[0]['valor'] = widget.total;
@@ -238,6 +252,21 @@ class _FinalizarVendaConfirmacaoDialogState
       offset: _valorControllers[0].text.length,
     );
     setState(() {});
+  }
+
+  void _aoAlternarVendaFiada(bool? marcado) {
+    final fiado = marcado ?? false;
+    setState(() {
+      _vendaFiada = fiado;
+      if (fiado) {
+        _zerarPagamentosAdiantado();
+      } else if (_somarPagamentos() < 0.01) {
+        _pagamentos[0]['valor'] = widget.total;
+        if (_valorControllers.isNotEmpty) {
+          _valorControllers[0].text = MoedaInputFormatter.format(widget.total);
+        }
+      }
+    });
   }
 
   void _confirmar() {
@@ -433,7 +462,7 @@ class _FinalizarVendaConfirmacaoDialogState
             // Venda fiada
             CheckboxListTile(
               value: _vendaFiada,
-              onChanged: (v) => setState(() => _vendaFiada = v ?? false),
+              onChanged: _aoAlternarVendaFiada,
               title: const Text('Venda fiada (conta a receber)'),
               subtitle: _vendaFiada
                   ? Padding(

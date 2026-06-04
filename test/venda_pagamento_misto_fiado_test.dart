@@ -3,8 +3,11 @@
 import 'dart:io';
 
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
+import 'package:master_palm/screens/nova_venda/finalizar_confirmacao_dialog.dart';
+import 'package:master_palm/widgets/moeda_text_field.dart';
 import 'package:master_palm/core/hive_box_names.dart';
 import 'package:master_palm/core/safe_cast.dart';
 import 'package:master_palm/models/cliente.dart';
@@ -89,6 +92,121 @@ void main() {
         ),
         returnsNormally,
       );
+    });
+  });
+
+  group('FinalizarVendaConfirmacaoDialog — pagamento adiantado fiado', () {
+    Future<void> abrirDialog(WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (ctx) => Center(
+                child: ElevatedButton(
+                  onPressed: () async {
+                    await FinalizarVendaConfirmacaoDialog.show(
+                      ctx,
+                      total: 300,
+                      resumoProdutos: const [
+                        {'produto': 'Produto', 'quantidade': 1, 'preco': 300.0},
+                      ],
+                      initialPagamentos: const [
+                        {'forma': 'Pix', 'valor': 0.0},
+                      ],
+                    );
+                  },
+                  child: const Text('Abrir'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Abrir'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('marca fiado zera pagamento adiantado', (tester) async {
+      await abrirDialog(tester);
+
+      final campo = tester.widget<MoedaTextField>(find.byType(MoedaTextField).first);
+      expect(campo.controller.text, '300,00');
+
+      await tester.tap(find.text('Venda fiada (conta a receber)'));
+      await tester.pumpAndSettle();
+
+      final campoZerado =
+          tester.widget<MoedaTextField>(find.byType(MoedaTextField).first);
+      expect(campoZerado.controller.text, isEmpty);
+      expect(find.text('Saldo fiado: R\$ 300,00'), findsOneWidget);
+    });
+
+    testWidgets('confirmar fiado sem alterar pagamento retorna lista vazia',
+        (tester) async {
+      FinalizarVendaResult? result;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (ctx) => Center(
+                child: ElevatedButton(
+                  onPressed: () async {
+                    result = await FinalizarVendaConfirmacaoDialog.show(
+                      ctx,
+                      total: 300,
+                      resumoProdutos: const [
+                        {'produto': 'Produto', 'quantidade': 1, 'preco': 300.0},
+                      ],
+                      initialPagamentos: const [
+                        {'forma': 'Pix', 'valor': 0.0},
+                      ],
+                    );
+                  },
+                  child: const Text('Abrir'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Abrir'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Venda fiada (conta a receber)'));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.widgetWithText(FilledButton, 'Confirmar venda').last,
+      );
+      await tester.pumpAndSettle();
+
+      final r = result;
+      expect(r, isNotNull);
+      expect(r!.isFiado, isTrue);
+      expect(r.pagamentos, isEmpty);
+      expect(r.trocoTotal, 0);
+    });
+
+    testWidgets('venda normal mantém sugestão do total no pagamento',
+        (tester) async {
+      await abrirDialog(tester);
+      final campo = tester.widget<MoedaTextField>(find.byType(MoedaTextField).first);
+      expect(campo.controller.text, '300,00');
+      expect(find.text('Preencher total'), findsOneWidget);
+    });
+
+    testWidgets('pagamento maior que total bloqueia confirmar em fiado',
+        (tester) async {
+      await abrirDialog(tester);
+      await tester.tap(find.text('Venda fiada (conta a receber)'));
+      await tester.pumpAndSettle();
+
+      final campo = find.byType(MoedaTextField).first;
+      await tester.enterText(campo, '35000');
+      await tester.pumpAndSettle();
+
+      final botao = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, 'Confirmar venda'),
+      );
+      expect(botao.onPressed, isNull);
     });
   });
 
@@ -246,6 +364,65 @@ void main() {
         cliente: cliente,
         qtd: 2,
         pix: 200,
+        isFiado: true,
+        venc: DateTime.now().add(const Duration(days: 30)),
+      );
+
+      final crBox = await Hive.openBox<ContaReceber>(
+        HiveBoxNames.contasReceber(lojaId),
+      );
+      expect(crBox.length, 0);
+      await crBox.close();
+    });
+
+    test('fiado R\$ 300 sem pagamento agora cria CR R\$ 300', () async {
+      final cliente = clientesBox.values.first;
+      final venc = DateTime.now().add(const Duration(days: 30));
+
+      final venda = await vender(
+        cliente: cliente,
+        qtd: 3,
+        isFiado: true,
+        venc: venc,
+      );
+
+      expect(venda.total, closeTo(300, 0.01));
+      expect(venda.pagamentoPix, 0);
+      expect(venda.pagamentoDinheiro, 0);
+      expect(venda.pagamentoCartao, 0);
+
+      final crBox = await Hive.openBox<ContaReceber>(
+        HiveBoxNames.contasReceber(lojaId),
+      );
+      expect(crBox.length, 1);
+      expect(crBox.values.first.valor, closeTo(300, 0.01));
+      await crBox.close();
+    });
+
+    test('fiado R\$ 300 com R\$ 120 agora cria CR R\$ 180', () async {
+      final cliente = clientesBox.values.first;
+      await vender(
+        cliente: cliente,
+        qtd: 3,
+        pix: 120,
+        isFiado: true,
+        venc: DateTime.now().add(const Duration(days: 30)),
+      );
+
+      final crBox = await Hive.openBox<ContaReceber>(
+        HiveBoxNames.contasReceber(lojaId),
+      );
+      expect(crBox.length, 1);
+      expect(crBox.values.first.valor, closeTo(180, 0.01));
+      await crBox.close();
+    });
+
+    test('fiado R\$ 300 com R\$ 300 pago manualmente não cria CR', () async {
+      final cliente = clientesBox.values.first;
+      await vender(
+        cliente: cliente,
+        qtd: 3,
+        pix: 300,
         isFiado: true,
         venc: DateTime.now().add(const Duration(days: 30)),
       );
