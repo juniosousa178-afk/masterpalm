@@ -5,6 +5,7 @@
 import 'dart:math' as math;
 
 import '../../core/produto_variacao_extra.dart';
+import '../../core/produto_variacao_normalizer.dart';
 import '../../core/safe_cast.dart';
 
 /// Helpers de estoque para catálogo público (produtos processados ou raw Firestore).
@@ -115,6 +116,10 @@ class CatalogEstoqueHelper {
     Map<String, dynamic> m, {
     required bool isCombo,
   }) {
+    final mNorm = Map<String, dynamic>.from(m);
+    ProdutoVariacaoNormalizer.applyToCatalogProductMap(mNorm);
+    m = mNorm;
+
     final estoqueBase = readFallbackNumericStock(m);
 
     Map<String, int>? estoquePorTamanho;

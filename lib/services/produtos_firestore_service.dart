@@ -10,6 +10,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import '../core/combo_config_canonical.dart';
 import '../core/hive_box_names.dart';
 import '../core/produto_variacao_extra.dart';
+import '../core/produto_variacao_normalizer.dart';
 import 'firestore_paths.dart';
 import '../core/logger.dart';
 import 'package:hive/hive.dart';
@@ -388,6 +389,7 @@ class ProdutosFirestoreService {
           ativoNoRascunho: data['ativoNoRascunho'] == true,
         );
 
+        ProdutoVariacaoNormalizer.applyToProduto(produto);
         produto.recalcularQuantidadeTotal();
         await produtosBox.add(produto);
         logD(
@@ -1336,6 +1338,7 @@ class ProdutosFirestoreService {
                   tag: 'VARIACAO_GUARD',
                 );
               }
+              ProdutoVariacaoNormalizer.applyToProduto(p);
               if (data.containsKey('precoPorTamanho')) {
                 final ppt = data['precoPorTamanho'];
                 if (ppt != null && ppt is Map) {

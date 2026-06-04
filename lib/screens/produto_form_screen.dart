@@ -12,6 +12,7 @@ import '../core/compra_item_pipeline_constants.dart';
 import '../core/logger.dart';
 import '../core/hive_box_names.dart';
 import '../core/produto_variacao_extra.dart';
+import '../core/produto_variacao_normalizer.dart';
 import '../models/compra_item_pipeline.dart';
 import '../models/produto.dart';
 import '../services/compra_item_pipeline_store.dart';
@@ -408,13 +409,22 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           });
         }
       } else {
-        // Sem [variacoes] persistidas: não simular grade a partir de estoquePorTamanho/tamanhos
-        // (evita "variação fantasma"). Quantidade total continua em [quantidade].
-        _legadoEstoqueSemVariacoesCadastradas =
-            p.estoquePorTamanho.isNotEmpty || p.tamanhos.isNotEmpty;
-        debugPrint(
-          '[VARIACAO_GUARD] edição: sem variacoes persistidas; legado estoque/tamanhos=$_legadoEstoqueSemVariacoesCadastradas',
-        );
+        final linhasLegado = ProdutoVariacaoNormalizer.gradeRowsFromProduto(p);
+        if (linhasLegado.isNotEmpty) {
+          _gradeVariacoes = linhasLegado
+              .map((row) => Map<String, String>.from(row))
+              .toList();
+          _legadoEstoqueSemVariacoesCadastradas = false;
+          debugPrint(
+            '[VARIACAO_HIDRATAR] edição: grade reidratada de estoquePorTamanho/tamanhos (${_gradeVariacoes.length} linhas)',
+          );
+        } else {
+          _legadoEstoqueSemVariacoesCadastradas =
+              p.estoquePorTamanho.isNotEmpty || p.tamanhos.isNotEmpty;
+          debugPrint(
+            '[VARIACAO_GUARD] edição: sem variacoes persistidas; legado estoque/tamanhos=$_legadoEstoqueSemVariacoesCadastradas',
+          );
+        }
       }
 
       // 🔹 Preenche campos de promoção
@@ -1797,7 +1807,19 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       // 🔹 Processa variações a partir dos controllers (garante valores salvos)
       debugPrint('\n🔍 [DEBUG SALVAR] Processando ${_variacaoControllers.length} linhas da grade:');
       final mergedSalvar = produtoFormMergeVariacoesGrade(_variacaoControllers);
-      final variacoesMap = mergedSalvar.variacoes;
+      var variacoesMap = mergedSalvar.variacoes;
+      var variacoesExtraTipoSalvar = mergedSalvar.variacoesExtraTipo;
+      if (variacoesMap.isEmpty && widget.produto != null) {
+        final normLegado =
+            ProdutoVariacaoNormalizer.normalizedFromProduto(widget.produto!);
+        if (normLegado.variacoes.isNotEmpty) {
+          variacoesMap = normLegado.variacoes;
+          variacoesExtraTipoSalvar = normLegado.variacoesExtraTipo;
+          debugPrint(
+            '[VARIACAO_PRESERVE] save: grade vazia — preservando variações legado (${variacoesMap.length} tamanhos)',
+          );
+        }
+      }
       final Set<String> tamanhosSet = {};
       final Set<String> coresSet = {};
       int quantidadeTotalVariacoes = 0;
@@ -1930,7 +1952,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             ..marketplaces = _marketplacesSelecionados.toList()
             ..variacoes = variacoesMap.isNotEmpty ? variacoesMap : null
             ..variacoesExtraTipo =
-                variacoesMap.isNotEmpty ? mergedSalvar.variacoesExtraTipo : null
+                variacoesMap.isNotEmpty ? variacoesExtraTipoSalvar : null
             ..estoqueMinimo = int.tryParse(_estoqueMinimo.text) ?? 0
             ..fornecedor = _fornecedor.text.trim()
             ..precoPorTamanho = precoPorTamanhoMap.isNotEmpty ? precoPorTamanhoMap : null
@@ -2027,7 +2049,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             marketplaces: _marketplacesSelecionados.toList(),
             variacoes: variacoesMap.isNotEmpty ? variacoesMap : null,
             variacoesExtraTipo:
-                variacoesMap.isNotEmpty ? mergedSalvar.variacoesExtraTipo : null,
+                variacoesMap.isNotEmpty ? variacoesExtraTipoSalvar : null,
             videoUrl: '',
             estoqueMinimo: int.tryParse(_estoqueMinimo.text) ?? 0,
             fornecedor: _fornecedor.text.trim(),
@@ -2091,7 +2113,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           ..marketplaces = _marketplacesSelecionados.toList()
           ..variacoes = variacoesMap.isNotEmpty ? variacoesMap : null
           ..variacoesExtraTipo =
-              variacoesMap.isNotEmpty ? mergedSalvar.variacoesExtraTipo : null
+              variacoesMap.isNotEmpty ? variacoesExtraTipoSalvar : null
           ..estoqueMinimo = int.tryParse(_estoqueMinimo.text) ?? 0
           ..fornecedor = _fornecedor.text.trim()
           ..precoPorTamanho = precoPorTamanhoMap.isNotEmpty ? precoPorTamanhoMap : null
@@ -2305,8 +2327,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                             const SizedBox(width: 12),
                             Expanded(
                               child: Text(
-                                'Estoque ou tamanhos legados (sem variações cadastradas). '
-                                'A quantidade total do produto continua válida. A grade só mostra variações salvas explicitamente.',
+                                'Este produto tinha estoque por tamanho sem grade salva. '
+                                'As linhas abaixo foram reidratadas automaticamente — revise e salve para sincronizar com o catálogo.',
                                 style: TextStyle(color: Colors.blue.shade900, fontSize: 13),
                               ),
                             ),
