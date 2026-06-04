@@ -9,6 +9,7 @@ import '../core/combo_configuravel_resumo.dart';
 import '../core/logger.dart';
 import '../core/produto_variacao_extra.dart';
 import '../services/pre_pedido_service.dart';
+import '../services/catalog_cart_item_snapshot.dart';
 import '../services/catalogo_venda_service.dart';
 import '../services/pos_pagamento_service.dart';
 import '../utils/cleanup_cancelled_orders.dart';
@@ -1363,7 +1364,8 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                 ),
                 const SizedBox(height: 12),
                 ...itens.take(3).map((item) {
-                  final nome = item['nome'] ?? '';
+                  final nome = catalogPedidoItemDisplayName(
+                      Map<String, dynamic>.from(item));
                   final qty = item['quantidade'] ?? 1;
                   final preco =
                       (item['precoUnitario'] as num?)?.toDouble() ?? 0.0;
@@ -2063,7 +2065,8 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
 
     return Column(
       children: itens.map((item) {
-        final nome = item['nome'] ?? '';
+        final nome = catalogPedidoItemDisplayName(
+            Map<String, dynamic>.from(item));
         final qty = item['quantidade'] ?? 1;
         final preco = (item['precoUnitario'] as num?)?.toDouble() ?? 0.0;
         final total = (item['total'] as num?)?.toDouble() ?? 0.0;
@@ -2528,9 +2531,11 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
         final productId = (item['productId'] ?? item['id'] ?? item['produtosId'] ?? '')
             .toString()
             .trim();
+        final nomeItem = catalogPedidoItemDisplayName(
+            Map<String, dynamic>.from(item));
         return {
-          'nome': item['nome'] ?? '',
-          'name': item['nome'] ?? '',
+          'nome': nomeItem,
+          'name': nomeItem,
           'productId': productId,
           'id': productId,
           'produtosId': item['produtosId'] ?? productId,

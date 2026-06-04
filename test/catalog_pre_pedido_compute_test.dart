@@ -41,6 +41,7 @@ void main() {
       expect(i0['id'], 'sku1');
       expect(i0['produtosId'], 'sku1');
       expect(i0['nome'], 'Camisa');
+      expect(i0['nomeSnapshot'], 'Camisa');
       expect(i0['quantidade'], 2);
       expect(i0['precoUnitario'], 50.0);
       expect(i0['total'], 100.0);

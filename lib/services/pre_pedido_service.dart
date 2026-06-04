@@ -21,6 +21,7 @@ import 'cliente_auth_service.dart';
 import 'cliente_auth_helpers.dart';
 import 'pre_pedido_helpers.dart';
 import 'catalog_pre_pedido_compute.dart';
+import 'catalog_cart_item_snapshot.dart';
 
 /// Serviço para gerenciar pré-pedidos do catálogo
 /// Pré-pedidos são enviados via WhatsApp e aguardam confirmação do vendedor
@@ -275,7 +276,7 @@ class PrePedidoService {
             .whereType<Map>()
             .map((item) => Map<String, dynamic>.from(item))
             .map((item) => {
-                  'nome': (item['nome'] ?? '').toString(),
+                  'nome': catalogPedidoItemDisplayName(item),
                   'quantidade': (item['quantidade'] as num?)?.toInt() ?? 1,
                 })
             .where((item) => (item['nome'] ?? '').toString().trim().isNotEmpty)
@@ -1083,10 +1084,10 @@ class PrePedidoService {
     // Itens
     final itens = (prePedido['itens'] as List?) ?? [];
     for (final item in itens) {
-      final nome = item['nome'] ?? '';
+      final itemMap = Map<String, dynamic>.from(item as Map);
+      final nome = catalogPedidoItemDisplayName(itemMap);
       final qty = item['quantidade'] ?? 1;
       final preco = (item['precoUnitario'] as num?)?.toDouble() ?? 0.0;
-      final itemMap = Map<String, dynamic>.from(item as Map);
       final linhaVar =
           ProdutoVariacaoExtra.linhaVariacoesParaSeparacao(itemMap);
 

@@ -20,6 +20,7 @@ import '../services/store_resolver_facade.dart';
 import '../widgets/campanha_banner_widget.dart';
 import '../services/catalogo_venda_service.dart';
 import '../services/pre_pedido_service.dart';
+import '../services/catalog_cart_item_snapshot.dart';
 import 'auth/login_screen_cliente.dart';
 import 'package:master_palm/screens/auth/cadastro_screen_cliente.dart';
 import 'auth/perfil_cliente_screen_novo.dart';
@@ -2174,13 +2175,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     final addrKey = _enderecoFingerprintKey(end);
     final em = (customer['email'] ?? '').toString().trim().toLowerCase();
     final tel = (customer['telefone'] ?? '').toString().trim();
-    final cartPart = _cart.map((e) {
-      final id = '${e['id'] ?? e['produtosId'] ?? ''}';
-      final q = CatalogEstoqueHelper.parseCartItemQuantidade(e['quantidade']);
-      final tam = (e['tamanho'] ?? '').toString();
-      final cor = (e['cor'] ?? '').toString();
-      return '$id|$q|$tam|$cor';
-    }).join(';');
+    final cartPart =
+        _cart.map(catalogCartFingerprintPart).join(';');
     final fv = safeDouble(entrega['valor']);
     final fg = entrega['freteGratis'] == true;
     final tipo = (entrega['tipo'] ?? '').toString();
@@ -2903,6 +2899,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
         final cur = CatalogEstoqueHelper.parseCartItemQuantidade(
             _cart[idx]['quantidade']);
         _cart[idx]['quantidade'] = cur + addQty;
+        refreshCatalogCartLineFromAdd(_cart[idx], item);
       } else {
         final copy = Map<String, dynamic>.from(item);
         copy['quantidade'] = addQty;
@@ -3778,7 +3775,11 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                         prePedido = await PrePedidoService.criarPrePedido(
                           lojaId: lojaId,
                           customer: customer,
-                          items: _cart,
+                          items: prepareCatalogCheckoutCartItems(
+                            cartLines: _cart,
+                            catalogProducts: catalogProducts,
+                            pagamento: pagamento,
+                          ),
                           entrega: entrega,
                           pagamento: pagamento,
                           observacao: observacao,
@@ -4032,7 +4033,11 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                       final prePedido = await PrePedidoService.criarPrePedido(
                         lojaId: lojaId,
                         customer: customer,
-                        items: _cart,
+                        items: prepareCatalogCheckoutCartItems(
+                          cartLines: _cart,
+                          catalogProducts: catalogProducts,
+                          pagamento: pagamento,
+                        ),
                         clienteId: cliente?['clienteId']?.toString(),
                         entrega: entrega,
                         pagamento: pagamento,

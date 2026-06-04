@@ -1,6 +1,8 @@
 // Cálculo puro de itens normalizados + subtotal + total do pré-pedido do catálogo.
 // Espelha a primeira fase de [PrePedidoService.criarPrePedido] (sem Firestore).
 
+import 'catalog_cart_item_snapshot.dart';
+
 /// Resultado estável para persistência no documento de pré-pedido (itens + valores).
 class CatalogPrePedidoMoneySnapshot {
   const CatalogPrePedidoMoneySnapshot({
@@ -25,7 +27,11 @@ CatalogPrePedidoMoneySnapshot computeCatalogPrePedidoMoneySnapshot({
   final itensList = <Map<String, dynamic>>[];
   final isPix = pagamento.toUpperCase() == 'PIX';
 
-  for (final item in items) {
+  for (final raw in items) {
+    final item = enrichCatalogCartLineSnapshot(
+      line: Map<String, dynamic>.from(raw),
+      pagamento: pagamento,
+    );
     final qty = (item['quantidade'] as int?) ?? (item['qty'] as int?) ?? 1;
     final price = (item['preco'] as num?)?.toDouble() ??
         (item['price'] as num?)?.toDouble() ??
@@ -40,19 +46,26 @@ CatalogPrePedidoMoneySnapshot computeCatalogPrePedidoMoneySnapshot({
     final productId = (item['productId'] ?? item['id'] ?? item['produtosId'] ?? '')
         .toString()
         .trim();
+    final nomeSnap =
+        (item['nomeSnapshot'] ?? item['nome'] ?? item['name'] ?? '').toString();
     final storedItem = <String, dynamic>{
       'productId': productId,
       'id': productId,
       'produtosId': item['produtosId'] ?? productId,
-      'nome': item['nome'] ?? item['name'] ?? '',
+      'nome': nomeSnap,
+      'nomeSnapshot': nomeSnap,
       'quantidade': qty,
       'precoUnitario': precoEfetivo,
+      'precoUnitarioSnapshot': precoEfetivo,
       'tamanho': item['tamanho'] ?? item['size'] ?? '',
       'cor': item['cor'] ?? item['color'] ?? '',
       'imagem': item['imageUrl'] ?? item['url_foto'] ?? item['image'] ?? '',
       'slug': item['slug'] ?? '',
       'total': itemTotal,
     };
+    if (isPix) {
+      storedItem['precoPixSnapshot'] = precoEfetivo;
+    }
     final resumoExtra =
         (item['variacaoExtraResumo'] ?? '').toString().trim();
     if (resumoExtra.isNotEmpty) {
