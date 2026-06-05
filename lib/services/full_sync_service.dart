@@ -16,6 +16,7 @@ import 'produto_pull_skip_guard.dart';
 import 'produto_exclusao_tombstone_service.dart';
 import 'produto_remote_sync_guard.dart';
 import 'produtos_firestore_service.dart';
+import 'sync_queue_service.dart';
 import 'importar_vendas_firestore_service.dart';
 import 'financeiro_firestore_service.dart';
 import 'store_resolver_facade.dart';
@@ -248,36 +249,72 @@ class FullSyncService {
             final existente = candidatos.isEmpty ? null : candidatos.first;
 
             if (existente != null) {
-              // Atualizar existente; custo via [ProdutoCustoGuard] (não copiar remoto cegamente).
-              existente
-                ..nome = produto.nome
-                ..descricao = produto.descricao
-                ..precoFinal = produto.precoFinal
-                ..precoUnitario = produto.precoUnitario
-                ..precoSugerido = produto.precoSugerido
-                ..frete = produto.frete
-                ..gastosFixos = produto.gastosFixos
-                ..gastosVariaveis = produto.gastosVariaveis
-                ..quantidade = produto.quantidade
-                ..peso = produto.peso
-                ..tipoEmbalagem = produto.tipoEmbalagem
-                ..categoria = produto.categoria
-                ..subcategoria = produto.subcategoria
-                ..categoriasExtras = List<String>.from(produto.categoriasExtras)
-                ..subcategoriasExtras =
-                    List<String>.from(produto.subcategoriasExtras)
-                ..imagens = produto.imagens
-                ..tamanhos = produto.tamanhos
-                ..estoquePorTamanho = produto.estoquePorTamanho
-                ..cores = produto.cores
-                ..variacoes = produto.variacoes
-                ..publicadoNoCatalogo = produto.publicadoNoCatalogo
-                ..divideSemJuros = produto.divideSemJuros
-                ..percentualDescontoPix = produto.percentualDescontoPix
-                ..maxParcelasSemJuros = produto.maxParcelasSemJuros
-                ..slug = produto.slug.isNotEmpty ? produto.slug : existente.slug
-                ..updatedAt = produto.updatedAt
-                ..idFirebase = doc.id;
+              final remoteUpdatedAt =
+                  ProdutosFirestoreService.parseFirestoreUpdatedAt(data);
+              final localHiveKey = existente.key;
+              final pendingProdutoSync = localHiveKey is int
+                  ? await SyncQueueService.hasPendingProdutoSync(
+                      lojaId: lojaId,
+                      entityKey: localHiveKey,
+                      includeDeadLetter: true,
+                    )
+                  : false;
+              final preserveLocalEdits = pendingProdutoSync ||
+                  ProdutosFirestoreService
+                      .shouldPreserveLocalQuantidadeOnFirestorePull(
+                    localUpdatedAt: existente.updatedAt,
+                    remoteUpdatedAt: remoteUpdatedAt,
+                  );
+
+              if (preserveLocalEdits) {
+                final motivo = pendingProdutoSync
+                    ? 'sync pendente na fila'
+                    : 'updatedAt local mais recente que remoto';
+                logD(
+                  '[FULL-SYNC][PULL_EDIT_GUARD] doc=${doc.id} mantendo edição local ($motivo)',
+                );
+                if (remoteUpdatedAt != null) {
+                  final localAt = existente.updatedAt;
+                  existente.updatedAt = localAt != null &&
+                          localAt.isAfter(remoteUpdatedAt)
+                      ? localAt
+                      : remoteUpdatedAt;
+                }
+              } else {
+                existente
+                  ..nome = produto.nome
+                  ..descricao = produto.descricao
+                  ..precoFinal = produto.precoFinal
+                  ..precoUnitario = produto.precoUnitario
+                  ..precoSugerido = produto.precoSugerido
+                  ..frete = produto.frete
+                  ..gastosFixos = produto.gastosFixos
+                  ..gastosVariaveis = produto.gastosVariaveis
+                  ..quantidade = produto.quantidade
+                  ..peso = produto.peso
+                  ..tipoEmbalagem = produto.tipoEmbalagem
+                  ..categoria = produto.categoria
+                  ..subcategoria = produto.subcategoria
+                  ..categoriasExtras =
+                      List<String>.from(produto.categoriasExtras)
+                  ..subcategoriasExtras =
+                      List<String>.from(produto.subcategoriasExtras)
+                  ..imagens = produto.imagens
+                  ..publicadoNoCatalogo = produto.publicadoNoCatalogo
+                  ..divideSemJuros = produto.divideSemJuros
+                  ..percentualDescontoPix = produto.percentualDescontoPix
+                  ..maxParcelasSemJuros = produto.maxParcelasSemJuros
+                  ..slug =
+                      produto.slug.isNotEmpty ? produto.slug : existente.slug
+                  ..updatedAt = produto.updatedAt
+                  ..idFirebase = doc.id;
+                ProdutosFirestoreService
+                    .applyRemoteVariationFieldsToExistingOnPull(
+                  local: existente,
+                  data: data,
+                );
+              }
+              existente.idFirebase = doc.id;
               ProdutoCustoGuard.applyRemoteCustoOnExistingProduct(
                 local: existente,
                 remoteData: data,
@@ -464,7 +501,13 @@ class FullSyncService {
       tamanhos: _parseListString(data['tamanhos']),
       estoquePorTamanho: _parseMapStringInt(data['estoquePorTamanho']),
       cores: _parseListString(data['cores']),
-      variacoes: _parseMapDynamic(data['variacoes']),
+      variacoes: ProdutosFirestoreService.parseVariacoesFromFirestore(
+        data['variacoes'],
+      ),
+      variacoesExtraTipo:
+          ProdutosFirestoreService.parseVariacoesExtraTipoFromFirestoreForPull(
+        data['variacoesExtraTipo'],
+      ),
       publicadoNoCatalogo:
           data['publicadoNoCatalogo'] == true || data['publicar'] == true,
       divideSemJuros: data['divideSemJuros'] == true,
@@ -512,13 +555,6 @@ class FullSyncService {
     return {};
   }
 
-  static Map<String, dynamic>? _parseMapDynamic(dynamic value) {
-    if (value == null) return null;
-    if (value is Map) {
-      return Map<String, dynamic>.from(value);
-    }
-    return null;
-  }
 }
 
 /// Resultado da sincronização

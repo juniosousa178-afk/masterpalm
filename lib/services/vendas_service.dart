@@ -1630,12 +1630,19 @@ class VendasService {
           );
         }
         await _excluirVendaHiveSeguro(vendasBox, venda, vendaHiveKey);
-        if (e is TypeError || e is ArgumentError) {
-          throw ArgumentError(
-            'Não foi possível vincular a venda à conta a receber. Tente novamente.',
-          );
+        if (VendaComboEstoqueExpansion.isErroVariacaoObrigatoria(e)) {
+          rethrow;
         }
-        rethrow;
+        if (e is ArgumentError) {
+          final msg = e.message?.toString().trim() ?? '';
+          if (msg.contains('vincular a venda à conta a receber') ||
+              msg.contains('vencimento')) {
+            rethrow;
+          }
+        }
+        throw ArgumentError(
+          'Não foi possível gerar a conta a receber. A venda fiada não foi registrada.',
+        );
       }
     }
 

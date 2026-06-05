@@ -188,6 +188,20 @@ class ProdutosFirestoreService {
     );
   }
 
+  /// Grade manual persistida localmente (cadastro/edição de variações).
+  @visibleForTesting
+  static bool localTemGradeManualPersistida(Produto local) {
+    final localVars = local.variacoes;
+    if (localVars != null && localVars.isNotEmpty) return true;
+    if (local.custoEditadoNoCadastro == true && local.estoquePorTamanho.isNotEmpty) {
+      return true;
+    }
+    if (local.custoEditadoNoCadastro == true && local.tamanhos.isNotEmpty) {
+      return true;
+    }
+    return false;
+  }
+
   /// Pull: não apagar variações locais cadastradas quando o remoto vier vazio/null
   /// (ex.: estado transitório corrompido no doc remoto).
   @visibleForTesting
@@ -195,12 +209,149 @@ class ProdutosFirestoreService {
     required Produto local,
     required dynamic remoteVariacoes,
   }) {
-    if (local.custoEditadoNoCadastro != true) return false;
-    final localVars = local.variacoes;
-    if (localVars == null || localVars.isEmpty) return false;
+    if (!localTemGradeManualPersistida(local)) return false;
     if (remoteVariacoes == null) return true;
     if (remoteVariacoes is Map && remoteVariacoes.isEmpty) return true;
     return false;
+  }
+
+  @visibleForTesting
+  static bool shouldIgnoreEmptyRemoteEstoquePorTamanhoOnPull({
+    required Produto local,
+    required dynamic remoteEstoquePorTamanho,
+  }) {
+    if (!localTemGradeManualPersistida(local)) return false;
+    if (remoteEstoquePorTamanho == null) return true;
+    if (remoteEstoquePorTamanho is Map && remoteEstoquePorTamanho.isEmpty) {
+      return true;
+    }
+    return false;
+  }
+
+  /// Mescla campos de grade do doc remoto em [local] com guards anti-sobrescrita vazia.
+  static void applyRemoteVariationFieldsToExistingOnPull({
+    required Produto local,
+    required Map<String, dynamic> data,
+  }) {
+    if (data.containsKey('tamanhos')) {
+      final rawT = data['tamanhos'];
+      if (rawT is List && rawT.isNotEmpty) {
+        local.tamanhos = _dedupeStringListPreserveOrder(
+          rawT.map((e) => e.toString()).toList(),
+        );
+      } else if (rawT == null || (rawT is List && rawT.isEmpty)) {
+        if (!localTemGradeManualPersistida(local)) {
+          local.tamanhos = [];
+        } else {
+          logW(
+            '[VARIACAO_PULL] tamanhos remotos vazios ignorados — mantendo local',
+            tag: 'VARIACAO_GUARD',
+          );
+        }
+      }
+    }
+
+    if (data.containsKey('cores')) {
+      final rawC = data['cores'];
+      if (rawC is List) {
+        local.cores = _dedupeStringListPreserveOrder(
+          rawC.map((e) => e.toString()).toList(),
+        );
+      }
+    }
+
+    if (data.containsKey('estoquePorTamanho')) {
+      final rawE = data['estoquePorTamanho'];
+      if (shouldIgnoreEmptyRemoteEstoquePorTamanhoOnPull(
+        local: local,
+        remoteEstoquePorTamanho: rawE,
+      )) {
+        logW(
+          '[VARIACAO_PULL] estoquePorTamanho remoto vazio ignorado — '
+          'mantendo grade local',
+          tag: 'VARIACAO_GUARD',
+        );
+      } else if (rawE == null) {
+        local.estoquePorTamanho = {};
+        logD('[VARIACAO_PULL] estoquePorTamanho remoto null → limpo');
+      } else if (rawE is Map) {
+        if (rawE.isEmpty) {
+          local.estoquePorTamanho = {};
+          logD('[VARIACAO_PULL] estoquePorTamanho remoto {} → limpo');
+        } else {
+          local.estoquePorTamanho = rawE.map(
+            (k, v) => MapEntry(
+              k.toString(),
+              ProdutoVariacaoExtra.valorFirestoreComoInt(v),
+            ),
+          );
+        }
+      }
+    } else {
+      logW(
+        '[VARIACAO_PULL] estoquePorTamanho ausente no doc — mantendo local (legado)',
+        tag: 'VARIACAO_GUARD',
+      );
+    }
+
+    if (data.containsKey('variacoes')) {
+      final varData = data['variacoes'];
+      if (shouldIgnoreEmptyRemoteVariacoesOnPull(
+        local: local,
+        remoteVariacoes: varData,
+      )) {
+        logW(
+          '[VARIACAO_PULL] variacoes remotas vazias ignoradas — '
+          'mantendo grade local (cadastro manual)',
+          tag: 'VARIACAO_GUARD',
+        );
+      } else if (varData == null) {
+        local.variacoes = null;
+        logD('[VARIACAO_PULL] variacoes remotas null → limpo local');
+      } else if (varData is Map) {
+        if (varData.isEmpty) {
+          local.variacoes = null;
+          logD('[VARIACAO_PULL] variacoes remotas {} → limpo local');
+        } else {
+          local.variacoes = parseVariacoesFromFirestore(varData);
+        }
+      }
+    } else {
+      logW(
+        '[VARIACAO_PULL] variacoes ausente no doc — mantendo local (legado)',
+        tag: 'VARIACAO_GUARD',
+      );
+    }
+
+    if (data.containsKey('variacoesExtraTipo')) {
+      final vet = data['variacoesExtraTipo'];
+      if (vet == null) {
+        local.variacoesExtraTipo = null;
+        logD('[VARIACAO_PULL] variacoesExtraTipo remoto null → limpo');
+      } else if (vet is Map) {
+        if (vet.isEmpty) {
+          local.variacoesExtraTipo = null;
+          logD('[VARIACAO_PULL] variacoesExtraTipo remoto {} → limpo');
+        } else {
+          local.variacoesExtraTipo =
+              _parseVariacoesExtraTipoFromFirestore(vet);
+        }
+      }
+    } else {
+      logW(
+        '[VARIACAO_PULL] variacoesExtraTipo ausente — mantendo local (legado)',
+        tag: 'VARIACAO_GUARD',
+      );
+    }
+
+    if (data.containsKey('precoPorTamanho')) {
+      final ppt = data['precoPorTamanho'];
+      if (ppt != null && ppt is Map) {
+        local.precoPorTamanho = parsePrecoPorTamanhoFromFirestore(ppt);
+      } else if (ppt == null) {
+        local.precoPorTamanho = null;
+      }
+    }
   }
 
   /// Estado explícito da persistência remota de produto.
@@ -1250,102 +1401,7 @@ class ProdutosFirestoreService {
               }
               p.publicadoNoCatalogo =
                   data['publicadoNoCatalogo'] ?? p.publicadoNoCatalogo;
-              p.tamanhos = _dedupeStringListPreserveOrder(
-                (data['tamanhos'] as List?)
-                        ?.map((e) => e.toString())
-                        .toList() ??
-                    p.tamanhos,
-              );
-              p.cores = _dedupeStringListPreserveOrder(
-                (data['cores'] as List?)?.map((e) => e.toString()).toList() ??
-                    p.cores,
-              );
-
-              // estoquePorTamanho / variações: semântica explícita (ausência = doc legado)
-              if (data.containsKey('estoquePorTamanho')) {
-                final rawE = data['estoquePorTamanho'];
-                if (rawE == null) {
-                  p.estoquePorTamanho = {};
-                  logD('[VARIACAO_PULL] estoquePorTamanho remoto null → limpo');
-                } else if (rawE is Map) {
-                  if (rawE.isEmpty) {
-                    p.estoquePorTamanho = {};
-                    logD('[VARIACAO_PULL] estoquePorTamanho remoto {} → limpo');
-                  } else {
-                    p.estoquePorTamanho = rawE.map(
-                      (k, v) => MapEntry(
-                        k.toString(),
-                        ProdutoVariacaoExtra.valorFirestoreComoInt(v),
-                      ),
-                    );
-                  }
-                }
-              } else {
-                logW(
-                  '[VARIACAO_PULL] estoquePorTamanho ausente no doc — mantendo local (legado)',
-                  tag: 'VARIACAO_GUARD',
-                );
-              }
-
-              if (data.containsKey('variacoes')) {
-                final varData = data['variacoes'];
-                if (shouldIgnoreEmptyRemoteVariacoesOnPull(
-                  local: p,
-                  remoteVariacoes: varData,
-                )) {
-                  logW(
-                    '[VARIACAO_PULL] variacoes remotas vazias ignoradas — '
-                    'mantendo grade local (cadastro manual)',
-                    tag: 'VARIACAO_GUARD',
-                  );
-                } else if (varData == null) {
-                  p.variacoes = null;
-                  logD('[VARIACAO_PULL] variacoes remotas null → limpo local');
-                } else if (varData is Map) {
-                  if (varData.isEmpty) {
-                    p.variacoes = null;
-                    logD('[VARIACAO_PULL] variacoes remotas {} → limpo local');
-                  } else {
-                    p.variacoes = parseVariacoesFromFirestore(varData);
-                  }
-                }
-              } else {
-                logW(
-                  '[VARIACAO_PULL] variacoes ausente no doc — mantendo local (legado)',
-                  tag: 'VARIACAO_GUARD',
-                );
-              }
-
-              if (data.containsKey('variacoesExtraTipo')) {
-                final vet = data['variacoesExtraTipo'];
-                if (vet == null) {
-                  p.variacoesExtraTipo = null;
-                  logD(
-                      '[VARIACAO_PULL] variacoesExtraTipo remoto null → limpo');
-                } else if (vet is Map) {
-                  if (vet.isEmpty) {
-                    p.variacoesExtraTipo = null;
-                    logD(
-                        '[VARIACAO_PULL] variacoesExtraTipo remoto {} → limpo');
-                  } else {
-                    p.variacoesExtraTipo =
-                        _parseVariacoesExtraTipoFromFirestore(vet);
-                  }
-                }
-              } else {
-                logW(
-                  '[VARIACAO_PULL] variacoesExtraTipo ausente — mantendo local (legado)',
-                  tag: 'VARIACAO_GUARD',
-                );
-              }
-              if (data.containsKey('precoPorTamanho')) {
-                final ppt = data['precoPorTamanho'];
-                if (ppt != null && ppt is Map) {
-                  p.precoPorTamanho = parsePrecoPorTamanhoFromFirestore(ppt);
-                } else if (ppt == null) {
-                  p.precoPorTamanho = null;
-                }
-              }
+              applyRemoteVariationFieldsToExistingOnPull(local: p, data: data);
               p.precoUnitario = (data['precoUnitario'] as num?)?.toDouble() ??
                   (data['preco'] as num?)?.toDouble() ??
                   p.precoUnitario;
@@ -2041,6 +2097,11 @@ class ProdutosFirestoreService {
     }
     return out.isEmpty ? null : out;
   }
+
+  static Map<String, dynamic>? parseVariacoesExtraTipoFromFirestoreForPull(
+    dynamic d,
+  ) =>
+      _parseVariacoesExtraTipoFromFirestore(d);
 
   /// Atualiza apenas a quantidade de um produto no Firestore
   static Future<void> atualizarQuantidade({

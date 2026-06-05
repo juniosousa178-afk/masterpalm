@@ -240,6 +240,17 @@ class VendaComboEstoqueExpansion {
     return (itensExpandidos, produtosExpandidos, linhaContaCustoMercadoria);
   }
 
+  /// Erro de variação obrigatória (tamanho/cor/extra) antes da baixa de estoque.
+  static bool isErroVariacaoObrigatoria(Object e) {
+    final msg = e.toString().toLowerCase();
+    return msg.contains('possui variação') ||
+        msg.contains('possui variacao') ||
+        msg.contains('clique em "selecionar"') ||
+        msg.contains('é obrigatório informar o tamanho') ||
+        msg.contains('e obrigatorio informar o tamanho') ||
+        msg.contains('exige personalização');
+  }
+
   /// Mesmas validações que [VendasService.registrarVendaMulti] antes da transação.
   static void validarExpansaoParaBaixaFirestore({
     required List<VendaItem> itensParaEstoque,

@@ -17,6 +17,7 @@ import '../models/cliente.dart';
 import '../models/produto.dart';
 import '../models/venda.dart';
 import '../models/venda_item.dart';
+import '../services/venda_combo_estoque_expansion.dart';
 import '../services/vendas_service.dart';
 import '../services/limits_guard.dart';
 import 'dart:async';
@@ -2023,6 +2024,11 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         st: stackTrace,
         itensVenda: itens,
       );
+      if (VendaComboEstoqueExpansion.isErroVariacaoObrigatoria(e)) {
+        final msg = _detalharErroSalvarVenda(e);
+        onErro?.call(msg);
+        return (false, null, msg);
+      }
       final msg =
           'Erro ao salvar venda. Verifique conexão e estoque. ${_detalharErroSalvarVenda(e)}';
       onErro?.call(msg);
