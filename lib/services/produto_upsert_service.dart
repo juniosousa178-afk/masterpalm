@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import '../core/combo_config_canonical.dart';
 import '../core/logger.dart';
+import '../core/produto_custo_guard.dart';
 import '../models/produto.dart';
 import 'combo_receita_normalizacao.dart';
 
@@ -129,17 +130,18 @@ bool _importNovoIndicaProdutoSimples(Produto novo) {
   return true;
 }
 
-void _mergeProdutoExistente(Produto existente, Produto novo) {
+void _mergeProdutoExistente(
+  Produto existente,
+  Produto novo, {
+  ImportCustoInput importCusto = ImportCustoInput.colunaAusente,
+}) {
   // Campos numéricos principais (importação traz valores concretos)
   existente.quantidade = novo.quantidade;
-  if (existente.custoEditadoNoCadastro) {
-    logW(
-      '[CUSTO_GUARD] import merge: mantendo custoReal ${existente.custoReal} (cadastro manual)',
-      tag: 'CUSTO_GUARD',
-    );
-  } else {
-    existente.custoReal = novo.custoReal;
-  }
+  ProdutoCustoGuard.applyImportCustoMerge(
+    existente: existente,
+    importCusto: importCusto,
+    fallbackNovoProduto: novo.custoReal,
+  );
   existente.precoFinal = novo.precoFinal;
   existente.precoUnitario = novo.precoUnitario;
   existente.precoSugerido = novo.precoSugerido;
@@ -245,6 +247,7 @@ Future<UpsertResultWithProduct> upsertProduto(
   Produto novo, {
   String? codigoBarras,
   String? sku,
+  ImportCustoInput importCusto = ImportCustoInput.colunaAusente,
   void Function(String msg)? onLog,
 }) async {
   final codigoBarrasStr = codigoBarras?.trim();
@@ -275,7 +278,7 @@ Future<UpsertResultWithProduct> upsertProduto(
       return (UpsertResult.skippedConflict, null);
     }
 
-    _mergeProdutoExistente(existente, novo);
+    _mergeProdutoExistente(existente, novo, importCusto: importCusto);
 
     if (novo.precoPorTamanho != null && novo.precoPorTamanho!.isNotEmpty) {
       existente.precoPorTamanho = Map<String, double>.from(novo.precoPorTamanho!);

@@ -6,6 +6,7 @@ import 'package:hive/hive.dart';
 
 import '../core/hive_box_names.dart';
 import '../core/logger.dart';
+import '../core/produto_custo_guard.dart';
 import '../core/produto_variacao_extra.dart';
 import 'firestore_paths.dart';
 import '../models/produto.dart';
@@ -247,11 +248,10 @@ class FullSyncService {
             final existente = candidatos.isEmpty ? null : candidatos.first;
 
             if (existente != null) {
-              // Atualizar existente (inclui custo/peso — antes ficavam presos no Hive)
+              // Atualizar existente; custo via [ProdutoCustoGuard] (não copiar remoto cegamente).
               existente
                 ..nome = produto.nome
                 ..descricao = produto.descricao
-                ..custoReal = produto.custoReal
                 ..precoFinal = produto.precoFinal
                 ..precoUnitario = produto.precoUnitario
                 ..precoSugerido = produto.precoSugerido
@@ -276,9 +276,13 @@ class FullSyncService {
                 ..percentualDescontoPix = produto.percentualDescontoPix
                 ..maxParcelasSemJuros = produto.maxParcelasSemJuros
                 ..slug = produto.slug.isNotEmpty ? produto.slug : existente.slug
-                ..custoEditadoNoCadastro = produto.custoEditadoNoCadastro
                 ..updatedAt = produto.updatedAt
                 ..idFirebase = doc.id;
+              ProdutoCustoGuard.applyRemoteCustoOnExistingProduct(
+                local: existente,
+                remoteData: data,
+                logContext: 'fullsync_preservou_custo_local',
+              );
               ProdutosFirestoreService.applyComboMetadataPullForExisting(
                 data,
                 existente,

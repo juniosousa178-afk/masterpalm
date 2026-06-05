@@ -21,6 +21,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../core/combo_config_canonical.dart';
 import '../core/hive_box_names.dart';
 import '../core/logger.dart';
+import '../core/produto_custo_guard.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
@@ -2845,7 +2846,8 @@ Future<void> _importarProdutos() async {
       final pesoStr = (r['peso'] ?? '0').toString().trim();
       final pesoNum = double.tryParse(pesoStr.replaceAll(',', '.')) ?? 0.0;
 
-      final custoReal = _toDouble(r['custo']) ?? 0.0;
+      final importCusto = ImportCustoInput.fromRowMap(r);
+      final custoReal = importCusto.valorExplicito ?? 0.0;
       final frete = _toDouble(r['frete']) ?? 0.0;
       final gastosFixos = _toDouble(r['gastos_fixos']) ?? 0.0;
       final gastosVariaveis = _toDouble(r['gastos_variaveis']) ?? 0.0;
@@ -2947,6 +2949,7 @@ Future<void> _importarProdutos() async {
         p,
         codigoBarras: codigoBarras.isNotEmpty ? codigoBarras : null,
         sku: sku.isNotEmpty ? sku : null,
+        importCusto: importCusto,
       );
 
       if (result == UpsertResult.skippedConflict) {

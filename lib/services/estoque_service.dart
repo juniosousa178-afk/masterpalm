@@ -15,6 +15,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
+import '../core/produto_custo_guard.dart';
 import '../core/produto_variacao_extra.dart';
 import '../models/produto.dart';
 import 'combo_kit_stock_service.dart';
@@ -631,11 +632,40 @@ class EstoqueService {
         if (slugMatch || nomeMatch) {
           debugPrint('[ESTOQUE] Produto encontrado no Firestore: ${data['nome']}');
 
-          // Criar produto e salvar no Hive
+          for (final p in produtosBox.values) {
+            if (p.lojaId != lojaId) continue;
+            final idMatch = p.idFirebase == doc.id;
+            final slugLocal = p.slug.trim().toLowerCase();
+            final slugDoc = docSlug;
+            if (idMatch || (slugLocal.isNotEmpty && slugLocal == slugDoc)) {
+              p.nome = data['nome'] ?? p.nome;
+              p.quantidade = (data['quantidade'] as num?)?.toInt() ?? p.quantidade;
+              p.precoFinal =
+                  (data['preco'] as num?)?.toDouble() ?? p.precoFinal;
+              p.precoUnitario = (data['precoUnitario'] as num?)?.toDouble() ??
+                  (data['preco'] as num?)?.toDouble() ??
+                  p.precoUnitario;
+              ProdutoCustoGuard.applyRemoteCustoOnExistingProduct(
+                local: p,
+                remoteData: data,
+                logContext: 'estoque_catalogo_publico',
+              );
+              if (p.idFirebase.isEmpty) {
+                p.idFirebase = doc.id;
+              }
+              await p.save();
+              debugPrint(
+                '[ESTOQUE] Produto catálogo público mesclado no Hive (custo preservado se aplicável)',
+              );
+              return p;
+            }
+          }
+
+          // Criar produto e salvar no Hive (doc público sem custo → 0 inicial, não sobrescreve existente acima)
           final produto = Produto(
             idFirebase: doc.id,
             nome: data['nome'] ?? '',
-            custoReal: (data['custoReal'] as num?)?.toDouble() ?? 0.0,
+            custoReal: ProdutoCustoGuard.custoInicialFromRemoteDoc(data),
             frete: 0.0,
             gastosFixos: 0.0,
             gastosVariaveis: 0.0,

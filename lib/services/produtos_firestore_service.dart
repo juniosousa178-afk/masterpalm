@@ -9,6 +9,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 
 import '../core/combo_config_canonical.dart';
 import '../core/hive_box_names.dart';
+import '../core/produto_custo_guard.dart';
 import '../core/produto_variacao_extra.dart';
 import 'firestore_paths.dart';
 import '../core/logger.dart';
@@ -1186,10 +1187,11 @@ class ProdutosFirestoreService {
                 );
                 p.custoEditadoNoCadastro = true;
               } else {
-                p.custoReal =
-                    (data['custoReal'] as num?)?.toDouble() ?? p.custoReal;
-                final ce = data['custoEditadoNoCadastro'];
-                p.custoEditadoNoCadastro = ce is bool ? ce : false;
+                ProdutoCustoGuard.applyRemoteCustoOnExistingProduct(
+                  local: p,
+                  remoteData: data,
+                  logContext: 'sync_pull',
+                );
               }
               p.frete = (data['frete'] as num?)?.toDouble() ?? p.frete;
               p.gastosFixos =
