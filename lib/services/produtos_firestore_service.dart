@@ -792,15 +792,41 @@ class ProdutosFirestoreService {
     return out;
   }
 
-  /// Pull `estoque_produtos`: evita sobrescrever [Produto.quantidade] local quando o Hive
+  /// Pull `estoque_produtos`: evita sobrescrever edição local quando o Hive
   /// foi modificado **depois** do `updatedAt` remoto (push atrasado/falho antes do próximo pull).
   static bool shouldPreserveLocalQuantidadeOnFirestorePull({
+    required DateTime? localUpdatedAt,
+    required DateTime? remoteUpdatedAt,
+  }) {
+    return shouldPreserveLocalEditsOnFirestorePull(
+      localUpdatedAt: localUpdatedAt,
+      remoteUpdatedAt: remoteUpdatedAt,
+    );
+  }
+
+  @visibleForTesting
+  static bool shouldPreserveLocalEditsOnFirestorePull({
     required DateTime? localUpdatedAt,
     required DateTime? remoteUpdatedAt,
   }) {
     if (localUpdatedAt == null) return false;
     if (remoteUpdatedAt == null) return true;
     return localUpdatedAt.isAfter(remoteUpdatedAt);
+  }
+
+  /// Push automático (auto-sync/fila sem bump): não sobrescrever remoto mais novo com Hive stale.
+  @visibleForTesting
+  static bool shouldSkipStaleProdutoPushOnAutoSync({
+    required Produto local,
+    required Map<String, dynamic>? existingData,
+    required bool bumpHiveTimestamp,
+  }) {
+    if (bumpHiveTimestamp) return false;
+    if (existingData == null) return false;
+    final remoteAt = _firestoreUpdatedAtToDate(existingData['updatedAt']);
+    final localAt = local.updatedAt;
+    if (localAt == null || remoteAt == null) return false;
+    return remoteAt.isAfter(localAt.add(const Duration(seconds: 2)));
   }
 
   static DateTime? parseFirestoreUpdatedAt(Map<String, dynamic> data) {
@@ -1033,6 +1059,19 @@ class ProdutosFirestoreService {
       final docSnap = await docRef.get();
       final existingData = docSnap.data();
       final dynamic createdAtPersistido = existingData?['createdAt'];
+
+      if (shouldSkipStaleProdutoPushOnAutoSync(
+        local: produto,
+        existingData: docSnap.exists ? existingData : null,
+        bumpHiveTimestamp: bumpHiveTimestamp,
+      )) {
+        logW(
+          '[PUSH_EDIT_GUARD] push ignorado — remoto mais recente que Hive '
+          '(auto-sync/fila sem bump; doc=$produtoId)',
+          tag: 'PUSH_EDIT_GUARD',
+        );
+        return ProdutoSyncRemotoStatus.confirmado;
+      }
 
       // Não registrar tombstone de variação via diff remoto×local no sync geral: payload
       // local pode estar incompleto (pull parcial, import, race) e marcar célula ativa como "excluída".
