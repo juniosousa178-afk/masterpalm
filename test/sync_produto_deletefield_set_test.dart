@@ -184,6 +184,7 @@ void main() {
           .set({
         'id': productId,
         'nome': 'Com grade',
+        'updatedAt': Timestamp.fromDate(DateTime(2020, 1, 1)),
         'variacoes': {
           'M': {
             'Azul': {ProdutoVariacaoExtra.kSemExtraKey: 2},

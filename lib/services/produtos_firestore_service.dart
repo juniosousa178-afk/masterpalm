@@ -91,13 +91,16 @@ class ProdutosFirestoreService {
     required Map<String, int> estoquePorTamanho,
     Map<String, double>? precoPorTamanho,
     Set<String>? variationKeysToRemove,
+    bool treatEmptyAsOmitOnly = false,
   }) {
     void setOrMarkRemove(String key, dynamic value, bool hasValue) {
       if (hasValue) {
         payload[key] = value;
       } else {
         payload.remove(key);
-        variationKeysToRemove?.add(key);
+        if (!treatEmptyAsOmitOnly) {
+          variationKeysToRemove?.add(key);
+        }
       }
     }
 
@@ -352,6 +355,228 @@ class ProdutosFirestoreService {
         local.precoPorTamanho = null;
       }
     }
+  }
+
+  /// Remoto com grade rica (variações ou estoque por tamanho preenchidos).
+  @visibleForTesting
+  static bool remoteTemGradeRica(Map<String, dynamic>? data) {
+    if (data == null) return false;
+    final v = data['variacoes'];
+    if (v is Map && v.isNotEmpty) return true;
+    final e = data['estoquePorTamanho'];
+    if (e is Map && e.isNotEmpty) return true;
+    return false;
+  }
+
+  static bool _localPushVariationContentVazia({
+    required Map<String, dynamic> variacoes,
+    required Map<String, dynamic> variacoesExtraTipo,
+    required Map<String, int> estoquePorTamanho,
+  }) {
+    return variacoes.isEmpty &&
+        variacoesExtraTipo.isEmpty &&
+        estoquePorTamanho.isEmpty;
+  }
+
+  static DateTime? _firestoreUpdatedAtToDate(dynamic v) {
+    if (v is Timestamp) return v.toDate();
+    return null;
+  }
+
+  /// Push explícito para apagar grade: usuário salvou versão mais nova sem grade.
+  @visibleForTesting
+  static bool isExplicitGradeRemovalOnPush({
+    required Produto local,
+    required Map<String, dynamic>? existingData,
+    required Map<String, dynamic> variacoesPush,
+    required Map<String, dynamic> variacoesExtraPush,
+    required Map<String, int> estoquePorTamPush,
+  }) {
+    if (!_localPushVariationContentVazia(
+      variacoes: variacoesPush,
+      variacoesExtraTipo: variacoesExtraPush,
+      estoquePorTamanho: estoquePorTamPush,
+    )) {
+      return false;
+    }
+    if (!remoteTemGradeRica(existingData)) return true;
+
+    final remoteAt = _firestoreUpdatedAtToDate(existingData?['updatedAt']);
+    final localAt = local.updatedAt;
+    if (localAt == null) return false;
+    if (remoteAt == null) return false;
+    return localAt.isAfter(remoteAt.add(const Duration(seconds: 2)));
+  }
+
+  /// Push: não apagar grade remota quando o local enviaria mapas vazios/stale.
+  @visibleForTesting
+  static bool shouldPreserveRemoteGradeOnEmptyLocalPush({
+    required Produto local,
+    required Map<String, dynamic>? existingData,
+    required Map<String, dynamic> variacoesPush,
+    required Map<String, dynamic> variacoesExtraPush,
+    required Map<String, int> estoquePorTamPush,
+  }) {
+    if (!remoteTemGradeRica(existingData)) return false;
+    if (!_localPushVariationContentVazia(
+      variacoes: variacoesPush,
+      variacoesExtraTipo: variacoesExtraPush,
+      estoquePorTamanho: estoquePorTamPush,
+    )) {
+      return false;
+    }
+    if (isExplicitGradeRemovalOnPush(
+      local: local,
+      existingData: existingData,
+      variacoesPush: variacoesPush,
+      variacoesExtraPush: variacoesExtraPush,
+      estoquePorTamPush: estoquePorTamPush,
+    )) {
+      return false;
+    }
+    return true;
+  }
+
+  static Map<String, dynamic> _variacoesMapParaPushFromRemoteData(
+    Map<String, dynamic> data,
+  ) {
+    final raw = data['variacoes'];
+    if (raw is! Map || raw.isEmpty) return {};
+    return sanitizeVariacoesForFirestore(Map<String, dynamic>.from(raw));
+  }
+
+  static Map<String, dynamic> _variacoesExtraTipoParaPushFromRemoteData(
+    Map<String, dynamic> data,
+  ) {
+    final raw = data['variacoesExtraTipo'];
+    if (raw is! Map || raw.isEmpty) return {};
+    return _parseVariacoesExtraTipoFromFirestore(raw) ?? {};
+  }
+
+  static Map<String, int> _estoquePorTamanhoParaPushFromRemoteData(
+    Map<String, dynamic> data,
+  ) {
+    final raw = data['estoquePorTamanho'];
+    if (raw is! Map || raw.isEmpty) return {};
+    return raw.map(
+      (k, v) => MapEntry(
+        k.toString(),
+        ProdutoVariacaoExtra.valorFirestoreComoInt(v),
+      ),
+    );
+  }
+
+  static List<String> _tamanhosParaPushFromRemoteData(Map<String, dynamic> data) {
+    final raw = data['tamanhos'];
+    if (raw is! List || raw.isEmpty) return [];
+    return _dedupeStringListPreserveOrder(
+      raw.map((e) => e.toString()).toList(),
+    );
+  }
+
+  static Map<String, double>? _precoPorTamanhoParaPushFromRemoteData(
+    Map<String, dynamic> data,
+  ) {
+    final raw = data['precoPorTamanho'];
+    if (raw is! Map || raw.isEmpty) return null;
+    return parsePrecoPorTamanhoFromFirestore(raw);
+  }
+
+  static void _applyRemoteGradeToProdutoForRehydrate({
+    required Produto produto,
+    required Map<String, dynamic> existingData,
+  }) {
+    final tamanhos = _tamanhosParaPushFromRemoteData(existingData);
+    if (tamanhos.isNotEmpty) produto.tamanhos = tamanhos;
+
+    final estoque = _estoquePorTamanhoParaPushFromRemoteData(existingData);
+    if (estoque.isNotEmpty) produto.estoquePorTamanho = estoque;
+
+    final varData = existingData['variacoes'];
+    if (varData is Map && varData.isNotEmpty) {
+      produto.variacoes = parseVariacoesFromFirestore(varData);
+    }
+
+    final vetData = existingData['variacoesExtraTipo'];
+    if (vetData is Map && vetData.isNotEmpty) {
+      produto.variacoesExtraTipo =
+          _parseVariacoesExtraTipoFromFirestore(vetData);
+    }
+
+    final ppt = _precoPorTamanhoParaPushFromRemoteData(existingData);
+    produto.precoPorTamanho = ppt;
+  }
+
+  static Future<void> _rehydrateLocalGradeFromRemoteOnStalePush(
+    Produto produto,
+    Map<String, dynamic> existingData,
+  ) async {
+    ProdutoRemoteSyncGuard.applyingRemoteToHive = true;
+    try {
+      _applyRemoteGradeToProdutoForRehydrate(
+        produto: produto,
+        existingData: existingData,
+      );
+      await produto.save();
+      logW(
+        '[VARIACAO_PUSH] Hive reidratado a partir de grade remota preservada',
+        tag: 'VARIACAO_GUARD',
+      );
+    } finally {
+      ProdutoRemoteSyncGuard.applyingRemoteToHive = false;
+    }
+  }
+
+  @visibleForTesting
+  static ({
+    Map<String, dynamic> variacoes,
+    Map<String, dynamic> variacoesExtraTipo,
+    Map<String, int> estoquePorTamanho,
+    Map<String, double>? precoPorTamanho,
+    List<String> tamanhos,
+    bool rehydrateLocalFromRemote,
+  }) resolveVariationFieldsForFirestorePush({
+    required Produto local,
+    required Map<String, dynamic>? existingData,
+    required Map<String, dynamic> variacoesPush,
+    required Map<String, dynamic> variacoesExtraPush,
+    required Map<String, int> estoquePorTamPush,
+    Map<String, double>? precoPorTamanhoPush,
+  }) {
+    final tamanhosLocal = List<String>.from(local.tamanhos);
+    if (!shouldPreserveRemoteGradeOnEmptyLocalPush(
+      local: local,
+      existingData: existingData,
+      variacoesPush: variacoesPush,
+      variacoesExtraPush: variacoesExtraPush,
+      estoquePorTamPush: estoquePorTamPush,
+    )) {
+      return (
+        variacoes: variacoesPush,
+        variacoesExtraTipo: variacoesExtraPush,
+        estoquePorTamanho: estoquePorTamPush,
+        precoPorTamanho: precoPorTamanhoPush,
+        tamanhos: tamanhosLocal,
+        rehydrateLocalFromRemote: false,
+      );
+    }
+
+    final data = existingData!;
+    logW(
+      '[VARIACAO_PUSH] push local vazio com remoto rico — preservando grade remota',
+      tag: 'VARIACAO_GUARD',
+    );
+    final tamanhosRemotos = _tamanhosParaPushFromRemoteData(data);
+    return (
+      variacoes: _variacoesMapParaPushFromRemoteData(data),
+      variacoesExtraTipo: _variacoesExtraTipoParaPushFromRemoteData(data),
+      estoquePorTamanho: _estoquePorTamanhoParaPushFromRemoteData(data),
+      precoPorTamanho:
+          _precoPorTamanhoParaPushFromRemoteData(data) ?? precoPorTamanhoPush,
+      tamanhos:
+          tamanhosRemotos.isNotEmpty ? tamanhosRemotos : tamanhosLocal,
+      rehydrateLocalFromRemote: true,
+    );
   }
 
   /// Estado explícito da persistência remota de produto.
@@ -838,6 +1063,23 @@ class ProdutosFirestoreService {
         'estoquePorTamKeys=${estoquePorTamPush.length}',
       );
 
+      final resolvedVariationPush = resolveVariationFieldsForFirestorePush(
+        local: produto,
+        existingData: docSnap.exists ? existingData : null,
+        variacoesPush: variacoesPush,
+        variacoesExtraPush: variacoesExtraPush,
+        estoquePorTamPush: estoquePorTamPush,
+        precoPorTamanhoPush: precoPorTamanhoPush,
+      );
+      if (resolvedVariationPush.rehydrateLocalFromRemote && existingData != null) {
+        await _rehydrateLocalGradeFromRemoteOnStalePush(produto, existingData);
+      }
+      final variacoesPushEfetivo = resolvedVariationPush.variacoes;
+      final variacoesExtraPushEfetivo = resolvedVariationPush.variacoesExtraTipo;
+      final estoquePorTamPushEfetivo = resolvedVariationPush.estoquePorTamanho;
+      final precoPorTamanhoPushEfetivo = resolvedVariationPush.precoPorTamanho;
+      final tamanhosPushEfetivo = resolvedVariationPush.tamanhos;
+
       final produtoData = {
         'id': produtoId,
         'lojaId': storeId,
@@ -851,7 +1093,7 @@ class ProdutosFirestoreService {
         'descricao': produto.descricao,
         'imagens': imagensFinais, // ✅ Usa URLs do Firebase
         'slug': produto.slug,
-        'tamanhos': produto.tamanhos,
+        'tamanhos': tamanhosPushEfetivo,
         'publicadoNoCatalogo': produto.publicadoNoCatalogo,
         'custoReal': produto.custoReal,
         'precoUnitario': produto.precoUnitario,
@@ -917,13 +1159,16 @@ class ProdutosFirestoreService {
       }
 
       final variationKeysToRemove = <String>{};
+      final preservouGradeRemotaNoPush =
+          resolvedVariationPush.rehydrateLocalFromRemote;
       applyVariationFieldsToFirestorePayload(
         produtoData,
-        variacoes: variacoesPush,
-        variacoesExtraTipo: variacoesExtraPush,
-        estoquePorTamanho: estoquePorTamPush,
-        precoPorTamanho: precoPorTamanhoPush,
+        variacoes: variacoesPushEfetivo,
+        variacoesExtraTipo: variacoesExtraPushEfetivo,
+        estoquePorTamanho: estoquePorTamPushEfetivo,
+        precoPorTamanho: precoPorTamanhoPushEfetivo,
         variationKeysToRemove: variationKeysToRemove,
+        treatEmptyAsOmitOnly: preservouGradeRemotaNoPush,
       );
       final sanitizeEstoque = sanitizePayloadForFirestore(
         produtoData,
@@ -998,11 +1243,12 @@ class ProdutosFirestoreService {
           final publicoVariationKeysToRemove = <String>{};
           applyVariationFieldsToFirestorePayload(
             publicoData,
-            variacoes: variacoesPush,
-            variacoesExtraTipo: variacoesExtraPush,
-            estoquePorTamanho: estoquePorTamPush,
-            precoPorTamanho: precoPorTamanhoPush,
+            variacoes: variacoesPushEfetivo,
+            variacoesExtraTipo: variacoesExtraPushEfetivo,
+            estoquePorTamanho: estoquePorTamPushEfetivo,
+            precoPorTamanho: precoPorTamanhoPushEfetivo,
             variationKeysToRemove: publicoVariationKeysToRemove,
+            treatEmptyAsOmitOnly: preservouGradeRemotaNoPush,
           );
           final publicoRemoveKeys = <String>{
             ...publicoVariationKeysToRemove,
