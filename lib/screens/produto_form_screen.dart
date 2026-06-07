@@ -247,6 +247,9 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
   /// Grade reidratada na UI a partir de estoque/tamanhos (mesma base da lista).
   bool _gradeHidratadaDeLegado = false;
 
+  /// Grade/variação capturada ao abrir o formulário (protege save acidental).
+  ProdutoFormGradeBaseline? _gradeBaseline;
+
   /// Baseline de chaves `V::` / `T::` ao abrir o form (só quando havia [variacoes] persistidas).
   /// Usado para tombstone explícito ao remover linha(s) da grade e salvar — não é diff remoto/local.
   bool _tombSessaoAplicaVarTomb = false;
@@ -383,8 +386,46 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         }
       }
       _initTombSessaoBaseline(p);
+      _gradeBaseline = ProdutoFormGradeBaseline.capture(p);
     }
     _initVariacaoControllers();
+  }
+
+  /// Evita que save com grade vazia na UI apague variações existentes sem remoção parcial explícita.
+  ProdutoFormGradeSavePayload _resolverGradeParaSave({
+    required Map<String, dynamic> variacoesMap,
+    required Map<String, dynamic>? variacoesExtraTipo,
+    required Map<String, int> estoqueMapa,
+    required List<String> tamanhosList,
+  }) {
+    final novoV =
+        ProdutoExclusaoTombstoneService.chavesCelulaDeVariacoes(variacoesMap);
+    final novoT =
+        ProdutoExclusaoTombstoneService.chavesSoloTamanhoDeEstoquePorTamanho(
+      estoqueMapa,
+    );
+    final remV =
+        _tombSessaoAplicaVarTomb ? _tombSessaoV.difference(novoV) : <String>{};
+    final remT =
+        _tombSessaoAplicaVarTomb ? _tombSessaoT.difference(novoT) : <String>{};
+
+    final resolved = produtoFormResolveGradeForSave(
+      baseline: _gradeBaseline,
+      uiVariacoes: variacoesMap,
+      uiVariacoesExtraTipo: variacoesExtraTipo,
+      uiEstoquePorTamanho: estoqueMapa,
+      uiTamanhos: tamanhosList,
+      removedVarKeys: remV,
+      removedTamKeys: remT,
+      baselineVarKeys: _tombSessaoV,
+      baselineTamKeys: _tombSessaoT,
+    );
+    if (resolved.preservedFromBaseline) {
+      debugPrint(
+        '[GRADE_PRESERVE] save preservou grade do baseline ao abrir o formulário',
+      );
+    }
+    return resolved;
   }
 
   void _initTombSessaoBaseline(Produto p) {
@@ -1286,7 +1327,6 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       final custo = MoedaInputFormatter.parse(_custo.text);
       final preco = MoedaInputFormatter.parse(_preco.text);
       final merged = produtoFormMergeVariacoesGrade(_variacaoControllers);
-      final variacoesMap = merged.variacoes;
       final Set<String> tamanhosSet = {};
       final Set<String> coresSet = {};
       int quantidadeTotalVariacoes = 0;
@@ -1301,19 +1341,54 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         if (cor.isNotEmpty) coresSet.add(cor);
         quantidadeTotalVariacoes += qtd;
       }
-      final int quantidadeFinal = variacoesMap.isEmpty ? qtdGeral : quantidadeTotalVariacoes;
-      final List<String> tamanhosList = tamanhosSet.toList();
-      final List<String> coresList = coresSet.toList();
-      final Map<String, int> estoqueMapa = {};
-      for (final t in variacoesMap.keys) {
+      var variacoesMapResolved = merged.variacoes;
+      var variacoesExtraResolved = merged.variacoesExtraTipo;
+      var tamanhosList = tamanhosSet.toList();
+      final Map<String, int> estoqueMapaUi = {};
+      for (final t in variacoesMapResolved.keys) {
         if (t == 'sem-tamanho') continue;
-        final m = variacoesMap[t] as Map<String, dynamic>;
+        final m = variacoesMapResolved[t] as Map<String, dynamic>;
         var sum = 0;
         for (final v in m.values) {
           sum += ProdutoVariacaoExtra.somarCelula(v);
         }
-        estoqueMapa[t] = sum;
+        estoqueMapaUi[t] = sum;
       }
+      final gradeResolved = _resolverGradeParaSave(
+        variacoesMap: variacoesMapResolved,
+        variacoesExtraTipo: variacoesExtraResolved,
+        estoqueMapa: estoqueMapaUi,
+        tamanhosList: tamanhosList,
+      );
+      variacoesMapResolved = gradeResolved.variacoes;
+      variacoesExtraResolved = gradeResolved.variacoesExtraTipo;
+      final estoqueMapa = Map<String, int>.from(gradeResolved.estoquePorTamanho);
+      tamanhosList = List<String>.from(gradeResolved.tamanhos);
+      if (gradeResolved.preservedFromBaseline) {
+        for (final t in variacoesMapResolved.keys) {
+          if (t == 'sem-tamanho') continue;
+          final m = variacoesMapResolved[t];
+          if (m is! Map) continue;
+          for (final ce in m.entries) {
+            final cor = ce.key.toString();
+            if (cor.isNotEmpty && cor != 'sem-cor') coresSet.add(cor);
+          }
+          tamanhosSet.add(t.toString());
+        }
+      }
+      int quantidadeFinal =
+          variacoesMapResolved.isEmpty ? qtdGeral : quantidadeTotalVariacoes;
+      if (gradeResolved.preservedFromBaseline && variacoesMapResolved.isNotEmpty) {
+        quantidadeFinal = 0;
+        for (final tm in variacoesMapResolved.values) {
+          if (tm is Map) {
+            for (final cell in tm.values) {
+              quantidadeFinal += ProdutoVariacaoExtra.somarCelula(cell);
+            }
+          }
+        }
+      }
+      final List<String> coresList = coresSet.toList();
       final percentualDescontoPix = (double.tryParse(_percentualDescontoPix.text.trim()) ?? 0.0).clamp(0.0, 100.0);
       final maxParcelasSemJuros = (int.tryParse(_maxParcelasSemJuros.text.trim()) ?? 12).clamp(1, 24);
       final categoriaPrincipal = canonicalizeCategoria(_categoria.text.trim());
@@ -1366,19 +1441,21 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         ..tipoEmbalagem = _tipoEmbalagem
         ..cores = coresList
         ..marketplaces = _marketplacesSelecionados.toList()
-        ..variacoes = variacoesMap.isNotEmpty ? variacoesMap : null
-        ..variacoesExtraTipo =
-            variacoesMap.isNotEmpty ? merged.variacoesExtraTipo : null
+        ..variacoes =
+            variacoesMapResolved.isNotEmpty ? variacoesMapResolved : null
+        ..variacoesExtraTipo = variacoesMapResolved.isNotEmpty
+            ? variacoesExtraResolved
+            : null
         ..estoqueMinimo = int.tryParse(_estoqueMinimo.text) ?? 0
         ..fornecedor = _fornecedor.text.trim()
         ..custoEditadoNoCadastro = true;
       final precoPorTamanhoMap =
           produtoFormBuildPrecoPorTamanhoFromControllers(_precoPorTamanhoCtrl);
       p.precoPorTamanho = precoPorTamanhoMap.isNotEmpty ? precoPorTamanhoMap : null;
-      if (variacoesMap.isNotEmpty) p.recalcularQuantidadeTotal();
+      if (variacoesMapResolved.isNotEmpty) p.recalcularQuantidadeTotal();
       if (!await _tentarTombstoneVarRemovidaSessaoSeNecessario(
         pBase: p,
-        variacoesMap: Map<String, dynamic>.from(variacoesMap),
+        variacoesMap: Map<String, dynamic>.from(variacoesMapResolved),
         estoqueMapa: estoqueMapa,
       )) {
         if (mounted) {
@@ -1395,8 +1472,15 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       }
       p.updatedAt = DateTime.now();
       await p.save();
-      await _liberarTombstonesVarAtivasPosSave(p, variacoesMap, estoqueMapa);
-      _syncTombSessaoBaselineAposSalvarVariacoes(variacoesMap, estoqueMapa);
+      await _liberarTombstonesVarAtivasPosSave(
+        p,
+        variacoesMapResolved,
+        estoqueMapa,
+      );
+      _syncTombSessaoBaselineAposSalvarVariacoes(
+        variacoesMapResolved,
+        estoqueMapa,
+      );
       await ProdutosFirestoreService.syncProduto(
         p,
         lojaId: lojaId,
@@ -1781,20 +1865,57 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         variacoes: variacoesMap,
       );
 
-      int quantidadeFinal = variacoesMap.isEmpty ? qtdGeral : quantidadeTotalVariacoes;
-      List<String> tamanhosList = tamanhosSet.toList();
+      var variacoesMapResolved = mergedSalvar.variacoes;
+      var variacoesExtraResolved = mergedSalvar.variacoesExtraTipo;
+      var tamanhosList = tamanhosSet.toList();
       List<String> coresList = coresSet.toList();
 
-      // Mapa estoquePorTamanho para compatibilidade (soma por tamanho; ignora sem-tamanho)
-      final Map<String, int> estoqueMapa = {};
-      for (final tamanho in variacoesMap.keys) {
+      final Map<String, int> estoqueMapaUi = {};
+      for (final tamanho in variacoesMapResolved.keys) {
         if (tamanho == 'sem-tamanho') continue;
-        final mapaInterno = variacoesMap[tamanho] as Map<String, dynamic>;
+        final mapaInterno = variacoesMapResolved[tamanho] as Map<String, dynamic>;
         var total = 0;
         for (final v in mapaInterno.values) {
           total += ProdutoVariacaoExtra.somarCelula(v);
         }
-        estoqueMapa[tamanho] = total;
+        estoqueMapaUi[tamanho] = total;
+      }
+
+      final gradeResolved = _resolverGradeParaSave(
+        variacoesMap: variacoesMapResolved,
+        variacoesExtraTipo: variacoesExtraResolved,
+        estoqueMapa: estoqueMapaUi,
+        tamanhosList: tamanhosList,
+      );
+      variacoesMapResolved = gradeResolved.variacoes;
+      variacoesExtraResolved = gradeResolved.variacoesExtraTipo;
+      final estoqueMapa = Map<String, int>.from(gradeResolved.estoquePorTamanho);
+      tamanhosList = List<String>.from(gradeResolved.tamanhos);
+      if (gradeResolved.preservedFromBaseline) {
+        for (final t in variacoesMapResolved.keys) {
+          if (t == 'sem-tamanho') continue;
+          final m = variacoesMapResolved[t];
+          if (m is! Map) continue;
+          for (final ce in m.entries) {
+            final cor = ce.key.toString();
+            if (cor.isNotEmpty && cor != 'sem-cor') coresSet.add(cor);
+          }
+          tamanhosSet.add(t.toString());
+        }
+        coresList = coresSet.toList();
+      }
+
+      int quantidadeFinal =
+          variacoesMapResolved.isEmpty ? qtdGeral : quantidadeTotalVariacoes;
+      if (gradeResolved.preservedFromBaseline && variacoesMapResolved.isNotEmpty) {
+        quantidadeFinal = 0;
+        for (final tm in variacoesMapResolved.values) {
+          if (tm is Map) {
+            for (final cell in tm.values) {
+              quantidadeFinal += ProdutoVariacaoExtra.somarCelula(cell);
+            }
+          }
+        }
       }
 
       final percentualDescontoPix = (double.tryParse(_percentualDescontoPix.text.trim()) ?? 0.0).clamp(0.0, 100.0);
@@ -1877,23 +1998,29 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             ..tipoEmbalagem = _tipoEmbalagem
             ..cores = coresList
             ..marketplaces = _marketplacesSelecionados.toList()
-            ..variacoes = variacoesMap.isNotEmpty ? variacoesMap : null
-            ..variacoesExtraTipo =
-                variacoesMap.isNotEmpty ? mergedSalvar.variacoesExtraTipo : null
+            ..variacoes = variacoesMapResolved.isNotEmpty
+                ? variacoesMapResolved
+                : null
+            ..variacoesExtraTipo = variacoesMapResolved.isNotEmpty
+                ? variacoesExtraResolved
+                : null
             ..estoqueMinimo = int.tryParse(_estoqueMinimo.text) ?? 0
             ..fornecedor = _fornecedor.text.trim()
             ..precoPorTamanho = precoPorTamanhoMap.isNotEmpty ? precoPorTamanhoMap : null
             ..custoEditadoNoCadastro = true;
 
-          if (variacoesMap.isNotEmpty) {
+          if (variacoesMapResolved.isNotEmpty) {
             existente.recalcularQuantidadeTotal();
-          } else {
+          } else if (!gradeResolved.preservedFromBaseline) {
             debugPrint('[VARIACAO_CLEAR] save: grade vazia → variacoes/extra limpos no Hive');
           }
 
           existente.updatedAt = DateTime.now();
           await existente.save();
-          _syncTombSessaoBaselineAposSalvarVariacoes(variacoesMap, estoqueMapa);
+          _syncTombSessaoBaselineAposSalvarVariacoes(
+            variacoesMapResolved,
+            estoqueMapa,
+          );
           remoteStatus = await ProdutoSyncFilaRetryService.syncComRetentativaFila(
             existente,
             lojaId: lojaId!,
@@ -1976,9 +2103,12 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             codigoBarras: _codigoBarras.text.trim(),
             cores: coresList,
             marketplaces: _marketplacesSelecionados.toList(),
-            variacoes: variacoesMap.isNotEmpty ? variacoesMap : null,
-            variacoesExtraTipo:
-                variacoesMap.isNotEmpty ? mergedSalvar.variacoesExtraTipo : null,
+            variacoes: variacoesMapResolved.isNotEmpty
+                ? variacoesMapResolved
+                : null,
+            variacoesExtraTipo: variacoesMapResolved.isNotEmpty
+                ? variacoesExtraResolved
+                : null,
             videoUrl: '',
             estoqueMinimo: int.tryParse(_estoqueMinimo.text) ?? 0,
             fornecedor: _fornecedor.text.trim(),
@@ -2042,24 +2172,26 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           ..tipoEmbalagem = _tipoEmbalagem
           ..cores = coresList
           ..marketplaces = _marketplacesSelecionados.toList()
-          ..variacoes = variacoesMap.isNotEmpty ? variacoesMap : null
-          ..variacoesExtraTipo =
-              variacoesMap.isNotEmpty ? mergedSalvar.variacoesExtraTipo : null
+          ..variacoes = variacoesMapResolved.isNotEmpty
+              ? variacoesMapResolved
+              : null
+          ..variacoesExtraTipo = variacoesMapResolved.isNotEmpty
+              ? variacoesExtraResolved
+              : null
           ..estoqueMinimo = int.tryParse(_estoqueMinimo.text) ?? 0
           ..fornecedor = _fornecedor.text.trim()
           ..precoPorTamanho = precoPorTamanhoMap.isNotEmpty ? precoPorTamanhoMap : null
           ..custoEditadoNoCadastro = true;
 
-        // 🔹 Recalcular quantidade total com base nas variações
-        if (variacoesMap.isNotEmpty) {
+        if (variacoesMapResolved.isNotEmpty) {
           p.recalcularQuantidadeTotal();
-        } else {
+        } else if (!gradeResolved.preservedFromBaseline) {
           debugPrint('[VARIACAO_CLEAR] save: grade vazia → variacoes/extra limpos no Hive');
         }
 
         if (!await _tentarTombstoneVarRemovidaSessaoSeNecessario(
           pBase: p,
-          variacoesMap: Map<String, dynamic>.from(variacoesMap),
+          variacoesMap: Map<String, dynamic>.from(variacoesMapResolved),
           estoqueMapa: estoqueMapa,
         )) {
           if (mounted) {
@@ -2077,8 +2209,15 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
 
         p.updatedAt = DateTime.now();
         await p.save();
-        await _liberarTombstonesVarAtivasPosSave(p, variacoesMap, estoqueMapa);
-        _syncTombSessaoBaselineAposSalvarVariacoes(variacoesMap, estoqueMapa);
+        await _liberarTombstonesVarAtivasPosSave(
+          p,
+          variacoesMapResolved,
+          estoqueMapa,
+        );
+        _syncTombSessaoBaselineAposSalvarVariacoes(
+          variacoesMapResolved,
+          estoqueMapa,
+        );
         remoteStatus = await ProdutoSyncFilaRetryService.syncComRetentativaFila(
           p,
           lojaId: lojaId!,
