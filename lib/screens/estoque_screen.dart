@@ -3036,7 +3036,8 @@ Future<void> _importarProdutos() async {
     setState(() => _publicando = true);
 
     try {
-      final results = await CatalogPublishService.publishEverything();
+      final results =
+          await CatalogPublishService.publicarCatalogoCanonicamente();
 
       if (!mounted) return;
 

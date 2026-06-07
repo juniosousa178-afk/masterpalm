@@ -32,7 +32,7 @@ import '../services/catalog_recent_service.dart';
 import '../services/catalog_public_url_service.dart';
 import '../services/catalog_share_service.dart';
 import '../services/catalog_visitas_service.dart';
-import '../services/pagamentos_service.dart';
+import '../services/catalog_publish_service.dart';
 
 import '../utils/instagram_launcher.dart';
 import '../utils/pix_brcode.dart';
@@ -3418,71 +3418,20 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     setState(() => _publicando = true);
 
     try {
-      final lojaDoc =
-          FirebaseFirestore.instance.collection('lojas').doc(lojaId);
-
-      final draftRef = lojaDoc.collection(kDraftProdutosCol);
-      final liveRef = lojaDoc.collection(kLiveProdutosCol);
-
-      final draftSnap = await draftRef.get();
-      if (draftSnap.docs.isEmpty) {
-        _snack('Rascunho vazio. Nada para publicar.');
-        return;
+      final results = await CatalogPublishService.publicarCatalogoCanonicamente(
+        lojaIdOverride: lojaId,
+      );
+      if (!mounted) return;
+      if (results['success'] == true) {
+        await CatalogPublishService.limparCatalogoPrecisaAtualizar();
+        _snack(
+          'Catálogo publicado! Produtos: ${results['products'] ?? 0}',
+        );
+      } else {
+        final errors =
+            results['errors'] is List ? results['errors'] as List : <dynamic>[];
+        _snack('Erro na publicação: ${errors.join(', ')}');
       }
-
-      WriteBatch batch = FirebaseFirestore.instance.batch();
-      int ops = 0;
-
-      Future<void> commitIfNeeded() async {
-        if (ops == 0) return;
-        await batch.commit();
-        batch = FirebaseFirestore.instance.batch();
-        ops = 0;
-      }
-
-      for (final d in draftSnap.docs) {
-        final data = asMapDeep(d.data());
-
-        data['ativo'] = (data['ativo'] ?? true) == true;
-        data['publishedAt'] = FieldValue.serverTimestamp();
-        data['updatedAt'] = FieldValue.serverTimestamp();
-
-        final liveDoc = liveRef.doc(d.id);
-        batch.set(liveDoc, data, SetOptions(merge: true));
-        ops++;
-
-        if (ops >= 450) {
-          await commitIfNeeded();
-        }
-      }
-
-      await commitIfNeeded();
-
-      await lojaDoc.collection('config').doc('config').set({
-        'catalog_published_at': FieldValue.serverTimestamp(),
-        'catalog_source': 'draft',
-      }, SetOptions(merge: true));
-
-      final draftCfgRef = lojaDoc.collection('draft_config').doc('config');
-      final liveCfgRef = lojaDoc.collection('config').doc('config');
-
-      final draftCfgSnap = await draftCfgRef.get();
-      if (draftCfgSnap.exists) {
-        await liveCfgRef.set(
-            asMapDeep(draftCfgSnap.data() ?? {}), SetOptions(merge: true));
-      }
-
-      final draftPayRef = lojaDoc.collection('draft_config').doc('payments');
-      final livePayRef = lojaDoc.collection('config').doc('payments');
-
-      final draftPaySnap = await draftPayRef.get();
-      if (draftPaySnap.exists) {
-        await livePayRef.set(
-            asMapDeep(draftPaySnap.data() ?? {}), SetOptions(merge: true));
-        await PagamentosService.syncPaymentsPublic(lojaId);
-      }
-
-      _snack('Catálogo publicado com sucesso!');
     } catch (e) {
       _snack('Erro ao publicar: $e');
     } finally {

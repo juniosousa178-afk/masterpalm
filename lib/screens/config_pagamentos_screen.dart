@@ -5,7 +5,7 @@ import '../services/mercadopago_manual_connect_helper.dart';
 import '../services/pagamentos_service.dart';
 import '../services/payment_gateway_service.dart';
 import '../services/sync_firestore_script.dart';
-import '../services/catalogo_sync_service.dart';
+import '../services/catalog_publish_service.dart';
 import 'package:hive/hive.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -592,10 +592,26 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
     if (_publicando || _lojaId == null) return;
     setState(() => _publicando = true);
     try {
-      await CatalogoSyncService.pushAllToLive(lojaIdOverride: _lojaId);
+      final results = await CatalogPublishService.publicarCatalogoCanonicamente(
+        lojaIdOverride: _lojaId,
+      );
       if (!mounted) return;
-      _mostrarSnackBarModerno(
-          'Catálogo publicado com sucesso!', Icons.cloud_done, successColor);
+      if (results['success'] == true) {
+        await CatalogPublishService.limparCatalogoPrecisaAtualizar();
+        _mostrarSnackBarModerno(
+          'Catálogo publicado! Produtos: ${results['products'] ?? 0}',
+          Icons.cloud_done,
+          successColor,
+        );
+      } else {
+        final errors =
+            results['errors'] is List ? results['errors'] as List : <dynamic>[];
+        _mostrarSnackBarModerno(
+          'Erro na publicação: ${errors.join(', ')}',
+          Icons.error_outline,
+          errorColor,
+        );
+      }
     } catch (e) {
       if (mounted) {
         _mostrarSnackBarModerno(

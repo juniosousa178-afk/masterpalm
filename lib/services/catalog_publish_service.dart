@@ -102,6 +102,38 @@ class CatalogPublishService {
     return raw.map((k, v) => MapEntry(k.toString(), v));
   }
 
+  /// Campo de grade no estoque: ausente → mantém draft; presente (mesmo `{}`) → canônico.
+  static Map<String, dynamic> _mapGradeCanonico({
+    required Map<String, dynamic>? estoqueData,
+    required Map<String, dynamic> draftData,
+    required String field,
+  }) {
+    if (estoqueData == null) {
+      return _asStringDynamicMap(draftData[field]);
+    }
+    if (!estoqueData.containsKey(field)) {
+      return _asStringDynamicMap(draftData[field]);
+    }
+    return _asStringDynamicMap(estoqueData[field]);
+  }
+
+  static List<String> _tamanhosCanonico({
+    required Map<String, dynamic>? estoqueData,
+    required Map<String, dynamic> draftData,
+  }) {
+    if (estoqueData != null && estoqueData.containsKey('tamanhos')) {
+      final raw = estoqueData['tamanhos'];
+      if (raw is List) {
+        return raw.map((e) => e.toString()).where((t) => t.isNotEmpty).toList();
+      }
+    }
+    final draftRaw = draftData['tamanhos'];
+    if (draftRaw is List) {
+      return draftRaw.map((e) => e.toString()).where((t) => t.isNotEmpty).toList();
+    }
+    return const [];
+  }
+
   static Map<String, dynamic> _draftComEstoqueCanonico({
     required String lojaId,
     required String productId,
@@ -125,10 +157,30 @@ class CatalogPublishService {
     merged['estoque'] = estoqueQtd;
     merged['estoque_atual'] = estoqueQtd;
     merged['qtdEstoque'] = estoqueQtd;
-    merged['variacoes'] = _asStringDynamicMap(estoqueData['variacoes']);
-    merged['estoquePorTamanho'] =
-        _asStringDynamicMap(estoqueData['estoquePorTamanho']);
-    merged['estoquePorCor'] = _asStringDynamicMap(estoqueData['estoquePorCor']);
+    merged['variacoes'] = _mapGradeCanonico(
+      estoqueData: estoqueData,
+      draftData: draftData,
+      field: 'variacoes',
+    );
+    merged['estoquePorTamanho'] = _mapGradeCanonico(
+      estoqueData: estoqueData,
+      draftData: draftData,
+      field: 'estoquePorTamanho',
+    );
+    merged['estoquePorCor'] = _mapGradeCanonico(
+      estoqueData: estoqueData,
+      draftData: draftData,
+      field: 'estoquePorCor',
+    );
+    merged['variacoesExtraTipo'] = _mapGradeCanonico(
+      estoqueData: estoqueData,
+      draftData: draftData,
+      field: 'variacoesExtraTipo',
+    );
+    merged['tamanhos'] = _tamanhosCanonico(
+      estoqueData: estoqueData,
+      draftData: draftData,
+    );
     final draftPrecoPorTamanho = draftData['precoPorTamanho'];
     final estoquePrecoPorTamanho = estoqueData['precoPorTamanho'];
     final draftTemPrecoPorTamanho =
@@ -137,9 +189,34 @@ class CatalogPublishService {
         estoquePrecoPorTamanho is Map &&
         estoquePrecoPorTamanho.isNotEmpty) {
       merged['precoPorTamanho'] = _asStringDynamicMap(estoquePrecoPorTamanho);
+    } else if (estoqueData.containsKey('precoPorTamanho') &&
+        estoquePrecoPorTamanho is Map &&
+        estoquePrecoPorTamanho.isNotEmpty) {
+      merged['precoPorTamanho'] = _asStringDynamicMap(estoquePrecoPorTamanho);
     }
     return merged;
   }
+
+  /// Fluxo canônico único de publicação do catálogo (config + payments + produtos + campanhas).
+  /// Usado por Publicar catálogo, Atualizar catálogo e demais botões equivalentes.
+  static Future<Map<String, dynamic>> publicarCatalogoCanonicamente({
+    String? lojaIdOverride,
+  }) =>
+      publishEverything(lojaIdOverride: lojaIdOverride);
+
+  @visibleForTesting
+  static Map<String, dynamic> mergeDraftComEstoqueCanonicoForTest({
+    required String lojaId,
+    required String productId,
+    required Map<String, dynamic> draftData,
+    required Map<String, dynamic>? estoqueData,
+  }) =>
+      _draftComEstoqueCanonico(
+        lojaId: lojaId,
+        productId: productId,
+        draftData: draftData,
+        estoqueData: estoqueData,
+      );
 
   /// Promove UM item do draft para live (mantém o mesmo docId).
   /// Se não existir no draft, remove do live.

@@ -27,6 +27,7 @@ import '../services/store_resolver_facade.dart';
 import '../services/upload_manager.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import '../services/catalogo_sync_service.dart';
+import '../services/catalog_publish_service.dart';
 import '../services/catalog_cache_service.dart';
 import '../services/catalogo_config_service.dart';
 import '../services/limits_guard.dart';
@@ -4030,9 +4031,10 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
       }
       await lojaDoc.set(updateData, SetOptions(merge: true));
 
-      // 4) Publica produtos (LIVE)
+      // 4) Publica produtos (LIVE) — mesmo fluxo canônico do botão Atualizar catálogo
       logD('🚀 [PUBLICAR] Iniciando publicação de produtos para LIVE...');
-      await CatalogoSyncService.pushAllToLive(lojaIdOverride: loja);
+      await CatalogPublishService.promoteAll(lojaIdOverride: loja);
+      await CatalogPublishService.limparCatalogoPrecisaAtualizar();
       logD('✅ [PUBLICAR] Produtos publicados com sucesso!');
 
       // 5) IMPORTANTE: Atualizar Hive local com as configurações publicadas

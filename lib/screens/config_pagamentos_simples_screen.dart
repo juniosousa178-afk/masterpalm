@@ -13,7 +13,7 @@ import '../services/pagseguro_service.dart';
 import '../services/ton_service.dart';
 import '../services/infinitepay_service.dart';
 import '../services/sync_firestore_script.dart';
-import '../services/catalogo_sync_service.dart';
+import '../services/catalog_publish_service.dart';
 
 /// Tela SIMPLIFICADA de configuração de pagamentos
 /// Conexão rápida com gateways - máximo 2 cliques
@@ -1918,14 +1918,30 @@ class _ConfigPagamentosSimplesScreenState
     if (_publicando || _lojaId == null) return;
     setState(() => _publicando = true);
     try {
-      await CatalogoSyncService.pushAllToLive(lojaIdOverride: _lojaId);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Catálogo publicado com sucesso!'),
-          backgroundColor: Colors.green,
-        ),
+      final results = await CatalogPublishService.publicarCatalogoCanonicamente(
+        lojaIdOverride: _lojaId,
       );
+      if (!mounted) return;
+      if (results['success'] == true) {
+        await CatalogPublishService.limparCatalogoPrecisaAtualizar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Catálogo publicado! Produtos: ${results['products'] ?? 0}',
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        final errors =
+            results['errors'] is List ? results['errors'] as List : <dynamic>[];
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erro na publicação: ${errors.join(', ')}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
