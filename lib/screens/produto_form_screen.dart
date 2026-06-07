@@ -11,6 +11,7 @@ import 'package:image_picker/image_picker.dart';
 import '../core/compra_item_pipeline_constants.dart';
 import '../core/logger.dart';
 import '../core/hive_box_names.dart';
+import '../core/produto_form_grade_hydration.dart';
 import '../core/produto_variacao_extra.dart';
 import '../models/compra_item_pipeline.dart';
 import '../models/produto.dart';
@@ -243,6 +244,9 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
   /// Produto só com estoque/tamanhos legados (sem [variacoes] persistidas).
   bool _legadoEstoqueSemVariacoesCadastradas = false;
 
+  /// Grade reidratada na UI a partir de estoque/tamanhos (mesma base da lista).
+  bool _gradeHidratadaDeLegado = false;
+
   /// Baseline de chaves `V::` / `T::` ao abrir o form (só quando havia [variacoes] persistidas).
   /// Usado para tombstone explícito ao remover linha(s) da grade e salvar — não é diff remoto/local.
   bool _tombSessaoAplicaVarTomb = false;
@@ -321,100 +325,37 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           ? p.percentualDescontoPix.toStringAsFixed(1)
           : '0';
 
-      // 🔹 Preenche grade de variações (tamanho + cor + quantidade)
-      if (p.variacoes != null && p.variacoes!.isNotEmpty) {
-        debugPrint('\n🔍 [DEBUG CARREGAR] Carregando variações do Firestore:');
+      // 🔹 Preenche grade (variacoes → estoquePorTamanho → tamanhos; alinhado à lista)
+      final hydration = produtoFormHydrateGradeRows(p);
+      if (hydration.source == ProdutoFormGradeHydrationSource.variacoes) {
+        debugPrint('\n🔍 [DEBUG CARREGAR] Carregando variações persistidas:');
         debugPrint('  p.variacoes = ${p.variacoes}');
-
-        _gradeVariacoes = [];
-        final vet = p.variacoesExtraTipo;
-        for (final tamanhoEntry in p.variacoes!.entries) {
-          final tamanho = tamanhoEntry.key;
-          final mapaCores = tamanhoEntry.value;
-          if (mapaCores is Map) {
-            for (final corEntry in mapaCores.entries) {
-              final cor = corEntry.key;
-              final raw = corEntry.value;
-              String tipoPara(String ev) {
-                if (vet == null) return '';
-                final tm = vet[tamanho];
-                if (tm is! Map) return '';
-                final cm = tm[cor];
-                if (cm is! Map) return '';
-                for (final e in cm.entries) {
-                  if (ProdutoVariacaoExtra.keysMatch(e.key.toString(), ev)) {
-                    return e.value?.toString() ?? '';
-                  }
-                }
-                return '';
-              }
-
-              if (raw is num) {
-                debugPrint('  ➜ Linha: $tamanho + $cor = $raw');
-                _gradeVariacoes.add({
-                  'tamanho': tamanho == 'sem-tamanho' ? '' : tamanho,
-                  'cor': cor == 'sem-cor' ? '' : cor,
-                  'extraTipo': '',
-                  'extraValor': '',
-                  'qtd': raw.toInt().toString(),
-                  'custo': '',
-                });
-              } else if (raw is Map) {
-                final custoCelula = ProdutoVariacaoExtra.custoUnitarioNaCelula(raw);
-                final custoTexto =
-                    (custoCelula != null && custoCelula > 0)
-                        ? MoedaInputFormatter.format(custoCelula)
-                        : '';
-                for (final ie in raw.entries) {
-                  if (ProdutoVariacaoExtra.isMetaKey(ie.key.toString())) {
-                    continue;
-                  }
-                  final ev = ie.key.toString();
-                  final q = ie.value is num
-                      ? (ie.value as num).toInt()
-                      : int.tryParse(ie.value?.toString() ?? '') ?? 0;
-                  final evDisp = ProdutoVariacaoExtra.isSemExtraMapKey(ev)
-                      ? ''
-                      : ev;
-                  debugPrint('  ➜ Linha: $tamanho + $cor + extra=$evDisp = $q');
-                  _gradeVariacoes.add({
-                    'tamanho': tamanho == 'sem-tamanho' ? '' : tamanho,
-                    'cor': cor == 'sem-cor' ? '' : cor,
-                    'extraTipo': tipoPara(evDisp),
-                    'extraValor': evDisp,
-                    'qtd': q.toString(),
-                    'custo': custoTexto,
-                  });
-                }
-              }
-            }
-          }
-        }
+        _gradeVariacoes = List<Map<String, String>>.from(hydration.rows);
         debugPrint('  Total de linhas carregadas: ${_gradeVariacoes.length}');
         _logDiagnosticoVariacoes(
           evento: 'carregar',
           productId: p.idFirebase.isNotEmpty ? p.idFirebase : p.slug,
           variacoes: Map<String, dynamic>.from(p.variacoes!),
         );
-
-        if (_gradeVariacoes.isEmpty) {
-          _gradeVariacoes.add({
-            'tamanho': '',
-            'cor': '',
-            'extraTipo': '',
-            'extraValor': '',
-            'qtd': '',
-            'custo': '',
-          });
-        }
+      } else if (hydration.source ==
+              ProdutoFormGradeHydrationSource.estoquePorTamanho ||
+          hydration.source == ProdutoFormGradeHydrationSource.tamanhosSomente) {
+        _gradeVariacoes = List<Map<String, String>>.from(hydration.rows);
+        _legadoEstoqueSemVariacoesCadastradas = true;
+        _gradeHidratadaDeLegado = true;
+        debugPrint(
+          '[VARIACAO_HYDRATE] grade reidratada de legado '
+          '(source=${hydration.source.name}, linhas=${_gradeVariacoes.length})',
+        );
       } else {
-        // Sem [variacoes] persistidas: não simular grade a partir de estoquePorTamanho/tamanhos
-        // (evita "variação fantasma"). Quantidade total continua em [quantidade].
         _legadoEstoqueSemVariacoesCadastradas =
             p.estoquePorTamanho.isNotEmpty || p.tamanhos.isNotEmpty;
         debugPrint(
-          '[VARIACAO_GUARD] edição: sem variacoes persistidas; legado estoque/tamanhos=$_legadoEstoqueSemVariacoesCadastradas',
+          '[VARIACAO_GUARD] edição: sem grade hidratável; legado=$_legadoEstoqueSemVariacoesCadastradas',
         );
+      }
+      if (_gradeVariacoes.isEmpty) {
+        _gradeVariacoes.add(produtoFormEmptyGradeRow());
       }
 
       // 🔹 Preenche campos de promoção
@@ -458,7 +399,11 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     } else {
       _tombSessaoAplicaVarTomb = false;
       _tombSessaoV = {};
-      _tombSessaoT = {};
+      _tombSessaoT = p.estoquePorTamanho.isNotEmpty
+          ? ProdutoExclusaoTombstoneService.chavesSoloTamanhoDeEstoquePorTamanho(
+              p.estoquePorTamanho,
+            )
+          : {};
     }
   }
 
@@ -2315,8 +2260,11 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                             const SizedBox(width: 12),
                             Expanded(
                               child: Text(
-                                'Estoque ou tamanhos legados (sem variações cadastradas). '
-                                'A quantidade total do produto continua válida. A grade só mostra variações salvas explicitamente.',
+                                _gradeHidratadaDeLegado
+                                    ? 'Grade carregada a partir do estoque/tamanhos legados (mesma base da lista). '
+                                        'Revise e salve para registrar variações explicitamente — nada é gravado automaticamente ao abrir.'
+                                    : 'Estoque ou tamanhos legados sem grade visível. '
+                                        'A quantidade total do produto continua válida.',
                                 style: TextStyle(color: Colors.blue.shade900, fontSize: 13),
                               ),
                             ),
