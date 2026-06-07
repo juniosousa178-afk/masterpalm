@@ -1452,8 +1452,12 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       await p.save();
       await _liberarTombstonesVarAtivasPosSave(p, variacoesMap, estoqueMapa);
       _syncTombSessaoBaselineAposSalvarVariacoes(variacoesMap, estoqueMapa);
-      await ProdutosFirestoreService.syncProduto(p, lojaId: lojaId)
-          .timeout(const Duration(seconds: 45), onTimeout: () => throw TimeoutException('Sincronização demorou muito'));
+      await ProdutosFirestoreService.syncProduto(
+        p,
+        lojaId: lojaId,
+        forcePushFromCadastro: true,
+        writeOrigin: 'produto_form.persistir_atual',
+      ).timeout(const Duration(seconds: 45), onTimeout: () => throw TimeoutException('Sincronização demorou muito'));
       await CatalogoSyncService.upsertFromProduto(p, target: SyncTarget.draft)
           .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Catálogo demorou muito'));
       await CatalogoSyncService.upsertFromProduto(p, target: SyncTarget.live)
@@ -1948,11 +1952,13 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           remoteStatus = await ProdutoSyncFilaRetryService.syncComRetentativaFila(
             existente,
             lojaId: lojaId!,
+            forcePushFromCadastro: true,
             enqueueOnFailure: true,
           )
               .timeout(const Duration(seconds: 45), onTimeout: () => throw TimeoutException('Sincronização com Firestore demorou muito.'));
-          if (remoteStatus == ProdutoSyncRemotoStatus.confirmado) {
-            await CatalogoSyncService.upsertFromProduto(existente, target: SyncTarget.draft, lojaIdOverride: lojaId)
+        if (remoteStatus == ProdutoSyncRemotoStatus.confirmado ||
+            remoteStatus == ProdutoSyncRemotoStatus.semMudancas) {
+          await CatalogoSyncService.upsertFromProduto(existente, target: SyncTarget.draft, lojaIdOverride: lojaId)
                 .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Sincronização com catálogo demorou muito.'));
             await CatalogoSyncService.upsertFromProduto(existente, target: SyncTarget.live, lojaIdOverride: lojaId)
                 .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Sincronização com catálogo demorou muito.'));
@@ -2040,10 +2046,12 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           remoteStatus = await ProdutoSyncFilaRetryService.syncComRetentativaFila(
             novo,
             lojaId: lojaId!,
+            forcePushFromCadastro: true,
             enqueueOnFailure: true,
           )
               .timeout(const Duration(seconds: 45), onTimeout: () => throw TimeoutException('Sincronização com Firestore demorou muito.'));
-          if (remoteStatus == ProdutoSyncRemotoStatus.confirmado) {
+          if (remoteStatus == ProdutoSyncRemotoStatus.confirmado ||
+              remoteStatus == ProdutoSyncRemotoStatus.semMudancas) {
             await CatalogoSyncService.upsertFromProduto(novo, target: SyncTarget.draft, lojaIdOverride: lojaId)
                 .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Sincronização com catálogo demorou muito.'));
             await CatalogoSyncService.upsertFromProduto(novo, target: SyncTarget.live, lojaIdOverride: lojaId)
@@ -2129,10 +2137,12 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         remoteStatus = await ProdutoSyncFilaRetryService.syncComRetentativaFila(
           p,
           lojaId: lojaId!,
+          forcePushFromCadastro: true,
           enqueueOnFailure: true,
         )
             .timeout(const Duration(seconds: 45), onTimeout: () => throw TimeoutException('Sincronização com Firestore demorou muito.'));
-        if (remoteStatus == ProdutoSyncRemotoStatus.confirmado) {
+        if (remoteStatus == ProdutoSyncRemotoStatus.confirmado ||
+            remoteStatus == ProdutoSyncRemotoStatus.semMudancas) {
           await CatalogoSyncService.upsertFromProduto(p, target: SyncTarget.draft, lojaIdOverride: lojaId)
               .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Sincronização com catálogo demorou muito.'));
           await CatalogoSyncService.upsertFromProduto(p, target: SyncTarget.live, lojaIdOverride: lojaId)

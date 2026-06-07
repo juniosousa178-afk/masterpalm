@@ -848,9 +848,12 @@ class EstoqueService {
             final status = await ProdutosFirestoreService.syncProdutoComStatus(
               produto,
               lojaId: lojaId,
+              bumpHiveTimestamp: false,
+              writeOrigin: 'estoque_service.fallback_sync',
               enqueueOnFailure: true,
             );
-            persistiuRemoto = status == ProdutoSyncRemotoStatus.confirmado;
+            persistiuRemoto = status == ProdutoSyncRemotoStatus.confirmado ||
+                status == ProdutoSyncRemotoStatus.semMudancas;
             debugPrint(
               '$tag syncProduto após falha no update parcial: status=$status',
             );
@@ -876,9 +879,12 @@ class EstoqueService {
           final status = await ProdutosFirestoreService.syncProdutoComStatus(
             produto,
             lojaId: lojaId,
+            bumpHiveTimestamp: false,
+            writeOrigin: 'estoque_service.sem_id_firebase',
             enqueueOnFailure: true,
           );
-          persistiuRemoto = status == ProdutoSyncRemotoStatus.confirmado;
+          persistiuRemoto = status == ProdutoSyncRemotoStatus.confirmado ||
+              status == ProdutoSyncRemotoStatus.semMudancas;
           debugPrint('$tag Produto enviado ao Firestore: status=$status');
         } catch (e) {
           debugPrint('$tag Erro ao sincronizar produto sem idFirebase (type=${e.runtimeType})');

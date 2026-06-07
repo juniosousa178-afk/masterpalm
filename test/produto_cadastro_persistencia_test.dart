@@ -192,7 +192,7 @@ void main() {
           bumpHiveTimestamp: false,
           enqueueOnFailure: false,
         );
-        expect(status, ProdutoSyncRemotoStatus.confirmado);
+        expect(status, ProdutoSyncRemotoStatus.semMudancas);
 
         final snap = await firestore
             .collection('lojas')
@@ -207,7 +207,73 @@ void main() {
       }
     });
 
-    test('save explícito (bump) ainda envia mesmo com remoto mais novo', () async {
+    test('bump sem cadastro explícito não sobrescreve remoto mais novo', () async {
+      SharedPreferences.setMockInitialValues({});
+      final firestore = FakeFirebaseFirestore();
+      ProdutosFirestoreService.debugFirestoreOverride = firestore;
+      final hiveDir =
+          Directory.systemTemp.createTempSync('produto_cadastro_bump_stale_hive_');
+      Hive.init(hiveDir.path);
+      if (!Hive.isAdapterRegistered(2)) {
+        Hive.registerAdapter(ProdutoAdapter());
+      }
+
+      try {
+        await firestore
+            .collection('lojas')
+            .doc(_lojaId)
+            .collection('estoque_produtos')
+            .doc(_productId)
+            .set({
+          'id': _productId,
+          'descricao': 'Remoto correto',
+          'updatedAt': Timestamp.fromDate(DateTime(2026, 6, 5, 16, 0)),
+        });
+
+        final box = await Hive.openBox<Produto>('produto_cadastro_bump_stale');
+        final staleLocal = _produtoBase(
+          descricao: 'Hive stale com bump indevido',
+          updatedAt: DateTime(2026, 6, 5, 12, 0),
+        );
+        await box.add(staleLocal);
+
+        expect(
+          ProdutosFirestoreService.shouldSkipStaleProdutoPushOnAutoSync(
+            local: staleLocal,
+            existingData: {
+              'updatedAt': Timestamp.fromDate(DateTime(2026, 6, 5, 16, 0)),
+            },
+            bumpHiveTimestamp: true,
+            updatedAtBeforeBump: staleLocal.updatedAt,
+            forcePushFromCadastro: false,
+          ),
+          isTrue,
+        );
+
+        final status = await ProdutosFirestoreService.syncProdutoComStatus(
+          staleLocal,
+          lojaId: _lojaId,
+          bumpHiveTimestamp: true,
+          enqueueOnFailure: false,
+        );
+        expect(status, ProdutoSyncRemotoStatus.semMudancas);
+
+        final snap = await firestore
+            .collection('lojas')
+            .doc(_lojaId)
+            .collection('estoque_produtos')
+            .doc(_productId)
+            .get();
+        expect(snap.data()!['descricao'], 'Remoto correto');
+        await box.close();
+      } finally {
+        ProdutosFirestoreService.debugFirestoreOverride = null;
+        Hive.close();
+        if (hiveDir.existsSync()) hiveDir.deleteSync(recursive: true);
+      }
+    });
+
+    test('save explícito (forcePushFromCadastro) ainda envia mesmo com remoto mais novo', () async {
       SharedPreferences.setMockInitialValues({});
       final firestore = FakeFirebaseFirestore();
       ProdutosFirestoreService.debugFirestoreOverride = firestore;
@@ -237,6 +303,8 @@ void main() {
         );
         await box.add(editado);
 
+        editado.updatedAt = DateTime(2026, 6, 5, 17, 0);
+
         expect(
           ProdutosFirestoreService.shouldSkipStaleProdutoPushOnAutoSync(
             local: editado,
@@ -244,6 +312,8 @@ void main() {
               'updatedAt': Timestamp.fromDate(DateTime(2026, 6, 5, 16, 0)),
             },
             bumpHiveTimestamp: true,
+            updatedAtBeforeBump: editado.updatedAt,
+            forcePushFromCadastro: true,
           ),
           isFalse,
         );
@@ -252,6 +322,7 @@ void main() {
           editado,
           lojaId: _lojaId,
           bumpHiveTimestamp: true,
+          forcePushFromCadastro: true,
           enqueueOnFailure: false,
         );
         expect(status, ProdutoSyncRemotoStatus.confirmado);

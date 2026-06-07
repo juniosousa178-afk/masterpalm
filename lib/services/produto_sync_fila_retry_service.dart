@@ -18,12 +18,17 @@ class ProdutoSyncFilaRetryService {
     Produto produto, {
     required String lojaId,
     bool bumpHiveTimestamp = true,
+    bool forcePushFromCadastro = false,
     bool enqueueOnFailure = true,
   }) async {
     var status = await ProdutosFirestoreService.syncProdutoComStatus(
       produto,
       lojaId: lojaId,
       bumpHiveTimestamp: bumpHiveTimestamp,
+      forcePushFromCadastro: forcePushFromCadastro,
+      writeOrigin: forcePushFromCadastro
+          ? 'produto_form.save'
+          : 'produto_sync_fila_retry.primeira',
       enqueueOnFailure: enqueueOnFailure,
     );
 
@@ -38,6 +43,10 @@ class ProdutoSyncFilaRetryService {
       produto,
       lojaId: lojaId,
       bumpHiveTimestamp: false,
+      forcePushFromCadastro: forcePushFromCadastro,
+      writeOrigin: forcePushFromCadastro
+          ? 'produto_form.save_retry'
+          : 'produto_sync_fila_retry.segunda',
       enqueueOnFailure: enqueueOnFailure,
     );
   }

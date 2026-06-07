@@ -177,15 +177,25 @@ class ProdutoAutoSyncService {
           '[PRECO-TAMANHO][AUTO-SYNC-INPUT] productId=${produto.idFirebase.isNotEmpty ? produto.idFirebase : produto.slug} '
           'produto.precoPorTamanho=${produto.precoPorTamanho}',
         );
-        await ProdutosFirestoreService.syncProduto(
+        final estoqueStatus = await ProdutosFirestoreService.syncProdutoComStatus(
           produto,
           lojaId: lojaId,
           bumpHiveTimestamp: false,
+          writeOrigin: 'produto_auto_sync.estoque',
+          enqueueOnFailure: true,
         );
+        if (estoqueStatus == ProdutoSyncRemotoStatus.semMudancas) {
+          debugPrint(
+            '⏸️ [AUTO-SYNC] Push estoque ignorado (remoto mais recente) — '
+            'catálogo também não será regravado: ${produto.nome}',
+          );
+          return;
+        }
       } catch (e) {
         debugPrint(
           '❌ [AUTO-SYNC] Falha em estoque_produtos (type=${e.runtimeType})',
         );
+        return;
       }
 
       // Determina o target baseado no estado do produto

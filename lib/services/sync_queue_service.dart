@@ -502,6 +502,8 @@ class SyncQueueService {
     final status = await ProdutosFirestoreService.syncProdutoComStatus(
       produto,
       lojaId: item.lojaId,
+      bumpHiveTimestamp: false,
+      writeOrigin: 'sync_queue.upsert_produto',
       enqueueOnFailure: false,
     );
     if (status == ProdutoSyncRemotoStatus.bloqueadoExclusaoTombstone) {
@@ -519,7 +521,8 @@ class SyncQueueService {
       );
       return false;
     }
-    if (status != ProdutoSyncRemotoStatus.confirmado) {
+    if (status != ProdutoSyncRemotoStatus.confirmado &&
+        status != ProdutoSyncRemotoStatus.semMudancas) {
       final detalhe = ProdutosFirestoreService.ultimoErroSyncSanitizado ??
           ProdutoSyncErroUtil.sanitizar(null, status: status) ??
           'syncProdutoComStatus=$status';

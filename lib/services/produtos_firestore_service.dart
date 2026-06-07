@@ -814,17 +814,23 @@ class ProdutosFirestoreService {
     return localUpdatedAt.isAfter(remoteUpdatedAt);
   }
 
-  /// Push automático (auto-sync/fila sem bump): não sobrescrever remoto mais novo com Hive stale.
+  /// Push: não sobrescrever remoto mais novo com Hive stale.
+  ///
+  /// Usa [updatedAtBeforeBump] (capturado antes de `bumpHiveTimestamp`) para que
+  /// `bump=true` não mascare conteúdo antigo com timestamp local fresco.
+  /// [forcePushFromCadastro] só no save explícito do formulário.
   @visibleForTesting
   static bool shouldSkipStaleProdutoPushOnAutoSync({
     required Produto local,
     required Map<String, dynamic>? existingData,
     required bool bumpHiveTimestamp,
+    DateTime? updatedAtBeforeBump,
+    bool forcePushFromCadastro = false,
   }) {
-    if (bumpHiveTimestamp) return false;
+    if (forcePushFromCadastro) return false;
     if (existingData == null) return false;
     final remoteAt = _firestoreUpdatedAtToDate(existingData['updatedAt']);
-    final localAt = local.updatedAt;
+    final localAt = updatedAtBeforeBump ?? local.updatedAt;
     if (localAt == null || remoteAt == null) return false;
     return remoteAt.isAfter(localAt.add(const Duration(seconds: 2)));
   }
@@ -910,11 +916,19 @@ class ProdutosFirestoreService {
     /// (evita re-disparar [ProdutoAutoSyncService] em loop). Upload de imagem / novo
     /// [Produto.idFirebase] continuam persistindo no Hive.
     bool bumpHiveTimestamp = true,
+
+    /// Save explícito do cadastro: ignora guard de push stale.
+    bool forcePushFromCadastro = false,
+
+    /// Metadado de auditoria opcional (não commitar em produção sem aprovação).
+    String? writeOrigin,
   }) async {
     await syncProdutoComStatus(
       produto,
       lojaId: lojaId,
       bumpHiveTimestamp: bumpHiveTimestamp,
+      forcePushFromCadastro: forcePushFromCadastro,
+      writeOrigin: writeOrigin,
       enqueueOnFailure: true,
     );
   }
@@ -930,6 +944,8 @@ class ProdutosFirestoreService {
     Produto produto, {
     String? lojaId,
     bool bumpHiveTimestamp = true,
+    bool forcePushFromCadastro = false,
+    String? writeOrigin,
     bool enqueueOnFailure = true,
   }) async {
     ultimoErroSyncSanitizado = null;
@@ -1046,6 +1062,8 @@ class ProdutosFirestoreService {
             '✅ [PRODUTOS-SYNC] Imagens atualizadas no Hive com URLs do Firebase');
       }
 
+      final updatedAtBeforeBump = produto.updatedAt;
+
       if (bumpHiveTimestamp) {
         produto.updatedAt = DateTime.now();
         await produto.save();
@@ -1064,13 +1082,16 @@ class ProdutosFirestoreService {
         local: produto,
         existingData: docSnap.exists ? existingData : null,
         bumpHiveTimestamp: bumpHiveTimestamp,
+        updatedAtBeforeBump: updatedAtBeforeBump,
+        forcePushFromCadastro: forcePushFromCadastro,
       )) {
         logW(
           '[PUSH_EDIT_GUARD] push ignorado — remoto mais recente que Hive '
-          '(auto-sync/fila sem bump; doc=$produtoId)',
+          '(doc=$produtoId bump=$bumpHiveTimestamp '
+          'localBeforeBump=$updatedAtBeforeBump forceCadastro=$forcePushFromCadastro)',
           tag: 'PUSH_EDIT_GUARD',
         );
-        return ProdutoSyncRemotoStatus.confirmado;
+        return ProdutoSyncRemotoStatus.semMudancas;
       }
 
       // Não registrar tombstone de variação via diff remoto×local no sync geral: payload
@@ -1182,6 +1203,17 @@ class ProdutosFirestoreService {
 
         // Metadata
         'updatedAt': FieldValue.serverTimestamp(),
+        if (writeOrigin != null && writeOrigin.isNotEmpty)
+          'lastWriteOrigin': writeOrigin,
+        if (writeOrigin != null && writeOrigin.isNotEmpty)
+          'lastWriteReason': writeOrigin,
+        'lastWriteAtClient': Timestamp.fromDate(DateTime.now()),
+        'lastWriteBumpHiveTimestamp': bumpHiveTimestamp,
+        'lastWritePath': 'lojas/$storeId/${FSPaths.estoqueProdutosCol}/$produtoId',
+        'lastWriteBuildId': const String.fromEnvironment(
+          'CATALOG_BUILD_ID',
+          defaultValue: 'dev',
+        ),
       };
       if (docSnap.exists) {
         if (createdAtPersistido != null) {
