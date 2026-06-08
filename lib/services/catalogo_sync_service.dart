@@ -1,7 +1,8 @@
 // lib/services/catalogo_sync_service.dart
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show debugPrint, kDebugMode, kIsWeb;
+import 'package:flutter/foundation.dart'
+    show debugPrint, kDebugMode, kIsWeb, visibleForTesting;
 import 'package:collection/collection.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -17,6 +18,7 @@ import '../src/blob_fetch_stub.dart' if (dart.library.html) '../src/blob_fetch_w
 import '../models/produto.dart';
 import 'catalog_cache_service.dart';
 import 'produto_exclusao_tombstone_service.dart';
+import 'produtos_firestore_service.dart';
 import 'sync_mass_delete_guard.dart';
 import '../services/store_resolver_facade.dart';
 import '../services/upload_manager.dart';
@@ -34,10 +36,18 @@ enum SyncTarget { draft, live }
 class CatalogoSyncService {
   CatalogoSyncService._();
 
+  /// Somente testes: força falha em um alvo específico de upsert.
+  @visibleForTesting
+  static SyncTarget? debugForceUpsertFailureTarget;
+
   // ===============================================================
   // SDKs
   // ===============================================================
-  static FirebaseFirestore get _db => FirebaseFirestore.instance;
+  @visibleForTesting
+  static FirebaseFirestore? debugFirestoreOverride;
+
+  static FirebaseFirestore get _db =>
+      debugFirestoreOverride ?? FirebaseFirestore.instance;
   static FirebaseStorage get _storage => FirebaseStorage.instance;
 
   static final UploadManager _uploader = UploadManager(maxConcurrent: 3);
@@ -740,6 +750,49 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
       removerSeSemEstoque: removerSeSemEstoque,
       lojaIdOverride: lojaIdOverride,
     );
+  }
+
+  /// Upsert em draft/live registrando falha parcial sem propagar exceção.
+  static Future<void> upsertFromProdutoRegistrandoFalha(
+    Produto produto, {
+    required SyncTarget target,
+    bool removerSeSemEstoque = false,
+    String? lojaIdOverride,
+  }) async {
+    final lojaId = await _resolveLojaId(lojaIdOverride);
+    final docId = catalogFirestoreDocId(produto);
+    final path = 'lojas/$lojaId/${_collectionName(target)}/$docId';
+    final operacao = target == SyncTarget.draft
+        ? 'upsert_draft_produtos'
+        : 'upsert_produtos_live';
+    try {
+      if (debugForceUpsertFailureTarget == target) {
+        throw FirebaseException(
+          plugin: 'cloud_firestore',
+          code: 'permission-denied',
+          message: 'debug: upsert $operacao bloqueado (teste)',
+        );
+      }
+      await upsertFromProduto(
+        produto,
+        target: target,
+        removerSeSemEstoque: removerSeSemEstoque,
+        lojaIdOverride: lojaIdOverride,
+      );
+    } catch (e, st) {
+      ProdutosFirestoreService.registrarFalhaUpsertCatalogo(
+        lojaId: lojaId,
+        produtoId: docId,
+        path: path,
+        operacao: operacao,
+        error: e,
+      );
+      logE(
+        '[CATALOGO_UPSERT_FAIL] $path operacao=$operacao',
+        error: e,
+        st: st,
+      );
+    }
   }
 
   /// Compat com telas antigas

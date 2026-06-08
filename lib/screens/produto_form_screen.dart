@@ -18,11 +18,11 @@ import '../models/produto.dart';
 import '../services/compra_item_pipeline_store.dart';
 import '../utils/moeda_input_formatter.dart';
 import '../utils/text_utils.dart';
-import '../services/catalogo_sync_service.dart' show CatalogoSyncService, SyncTarget;
-import '../services/catalog_publish_service.dart';
 import '../services/limits_guard.dart';
 import '../services/produto_estoque_doc_id_service.dart';
 import '../services/produto_exclusao_tombstone_service.dart';
+import '../services/produto_cadastro_pos_save_service.dart';
+import '../services/produto_catalogo_upsert_falha.dart';
 import '../services/produto_sync_erro_util.dart';
 import '../services/produto_sync_fila_retry_service.dart';
 import '../services/produtos_firestore_service.dart';
@@ -1481,25 +1481,41 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         variacoesMapResolved,
         estoqueMapa,
       );
-      await ProdutosFirestoreService.syncProduto(
+      final remoteStatusPersist = await ProdutosFirestoreService.syncProdutoComStatus(
         p,
         lojaId: lojaId,
         forcePushFromCadastro: true,
         writeOrigin: 'produto_form.persistir_atual',
+        gradeBaseline: _gradeBaseline,
       ).timeout(const Duration(seconds: 45), onTimeout: () => throw TimeoutException('Sincronização demorou muito'));
-      await CatalogoSyncService.upsertFromProduto(p, target: SyncTarget.draft)
-          .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Catálogo demorou muito'));
-      await CatalogoSyncService.upsertFromProduto(p, target: SyncTarget.live)
-          .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Catálogo demorou muito'));
-      await CatalogPublishService.marcarCatalogoPrecisaAtualizar();
+      final rehydratePersist =
+          await ProdutoCadastroPosSaveService.executarAposEstoqueRemotoOk(
+        produto: p,
+        lojaId: lojaId!,
+        remoteStatus: remoteStatusPersist,
+        gradeBaseline: _gradeBaseline,
+      );
       await ProdutoImagensStorageCleanup.apagarUrlsRemovidasGerenciadas(
         anteriores: imagensAntesPersist,
         atuais: List<String>.from(p.imagens),
         lojaId: lojaId!,
       );
       if (mounted && mostrarSnackSucesso) {
+        final falhas = ProdutosFirestoreService.falhasUpsertCatalogo;
+        final msg = falhas.isNotEmpty
+            ? ProdutoSyncErroUtil.mensagemCadastroFalhaParcialCatalogo(
+                falhas: falhas,
+                avisoRehydrate: rehydratePersist?.aviso,
+              )
+            : ProdutoSyncErroUtil.mensagemCadastroConfirmado(
+                publicar: _publicar,
+                avisoRehydrate: rehydratePersist?.aviso,
+              );
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Alterações salvas localmente e na nuvem.')),
+          SnackBar(
+            content: Text(msg),
+            backgroundColor: falhas.isNotEmpty ? Colors.orange : null,
+          ),
         );
       }
     } on TimeoutException catch (e) {
@@ -1821,6 +1837,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
 
       late final Produto produtoSalvoParaRetorno;
       var remoteStatus = ProdutoSyncRemotoStatus.confirmado;
+      ProdutoRehydratePosSaveResult? rehydratePosSave;
 
     try {
       final qtdGeral = int.tryParse(_quantidade.text) ?? 0;
@@ -2026,16 +2043,16 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             lojaId: lojaId!,
             forcePushFromCadastro: true,
             enqueueOnFailure: true,
+            gradeBaseline: _gradeBaseline,
           )
               .timeout(const Duration(seconds: 45), onTimeout: () => throw TimeoutException('Sincronização com Firestore demorou muito.'));
-        if (remoteStatus == ProdutoSyncRemotoStatus.confirmado ||
-            remoteStatus == ProdutoSyncRemotoStatus.semMudancas) {
-          await CatalogoSyncService.upsertFromProduto(existente, target: SyncTarget.draft, lojaIdOverride: lojaId)
-                .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Sincronização com catálogo demorou muito.'));
-            await CatalogoSyncService.upsertFromProduto(existente, target: SyncTarget.live, lojaIdOverride: lojaId)
-                .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Sincronização com catálogo demorou muito.'));
-            await CatalogPublishService.marcarCatalogoPrecisaAtualizar();
-          }
+        rehydratePosSave =
+            await ProdutoCadastroPosSaveService.executarAposEstoqueRemotoOk(
+          produto: existente,
+          lojaId: lojaId!,
+          remoteStatus: remoteStatus,
+          gradeBaseline: _gradeBaseline,
+        );
           await ProdutoImagensStorageCleanup.apagarUrlsRemovidasGerenciadas(
             anteriores: imagensAntesExistente,
             atuais: List<String>.from(existente.imagens),
@@ -2123,16 +2140,16 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             lojaId: lojaId!,
             forcePushFromCadastro: true,
             enqueueOnFailure: true,
+            gradeBaseline: _gradeBaseline,
           )
               .timeout(const Duration(seconds: 45), onTimeout: () => throw TimeoutException('Sincronização com Firestore demorou muito.'));
-          if (remoteStatus == ProdutoSyncRemotoStatus.confirmado ||
-              remoteStatus == ProdutoSyncRemotoStatus.semMudancas) {
-            await CatalogoSyncService.upsertFromProduto(novo, target: SyncTarget.draft, lojaIdOverride: lojaId)
-                .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Sincronização com catálogo demorou muito.'));
-            await CatalogoSyncService.upsertFromProduto(novo, target: SyncTarget.live, lojaIdOverride: lojaId)
-                .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Sincronização com catálogo demorou muito.'));
-            await CatalogPublishService.marcarCatalogoPrecisaAtualizar();
-          }
+          rehydratePosSave =
+              await ProdutoCadastroPosSaveService.executarAposEstoqueRemotoOk(
+            produto: novo,
+            lojaId: lojaId!,
+            remoteStatus: remoteStatus,
+            gradeBaseline: _gradeBaseline,
+          );
           await _vincularCompraPipelineAposSalvar(novo);
           produtoSalvoParaRetorno = novo;
         }
@@ -2223,16 +2240,16 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           lojaId: lojaId!,
           forcePushFromCadastro: true,
           enqueueOnFailure: true,
+          gradeBaseline: _gradeBaseline,
         )
             .timeout(const Duration(seconds: 45), onTimeout: () => throw TimeoutException('Sincronização com Firestore demorou muito.'));
-        if (remoteStatus == ProdutoSyncRemotoStatus.confirmado ||
-            remoteStatus == ProdutoSyncRemotoStatus.semMudancas) {
-          await CatalogoSyncService.upsertFromProduto(p, target: SyncTarget.draft, lojaIdOverride: lojaId)
-              .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Sincronização com catálogo demorou muito.'));
-          await CatalogoSyncService.upsertFromProduto(p, target: SyncTarget.live, lojaIdOverride: lojaId)
-              .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Sincronização com catálogo demorou muito.'));
-          await CatalogPublishService.marcarCatalogoPrecisaAtualizar();
-        }
+        rehydratePosSave =
+            await ProdutoCadastroPosSaveService.executarAposEstoqueRemotoOk(
+          produto: p,
+          lojaId: lojaId!,
+          remoteStatus: remoteStatus,
+          gradeBaseline: _gradeBaseline,
+        );
         await ProdutoImagensStorageCleanup.apagarUrlsRemovidasGerenciadas(
           anteriores: imagensAntesEdit,
           atuais: List<String>.from(p.imagens),
@@ -2253,10 +2270,20 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         );
       }
 
+      final falhasCatalogo = ProdutosFirestoreService.falhasUpsertCatalogo;
+      final temFalhasCatalogo = falhasCatalogo.isNotEmpty;
+
       final mensagemSalvar = switch (remoteStatus) {
-        ProdutoSyncRemotoStatus.confirmado => _publicar
-            ? 'Produto salvo, publicado e sincronizado com Hive e Firestore!'
-            : 'Produto salvo e sincronizado com Hive e Firestore.',
+        ProdutoSyncRemotoStatus.confirmado =>
+          temFalhasCatalogo
+              ? ProdutoSyncErroUtil.mensagemCadastroFalhaParcialCatalogo(
+                  falhas: falhasCatalogo,
+                  avisoRehydrate: rehydratePosSave?.aviso,
+                )
+              : ProdutoSyncErroUtil.mensagemCadastroConfirmado(
+                  publicar: _publicar,
+                  avisoRehydrate: rehydratePosSave?.aviso,
+                ),
         ProdutoSyncRemotoStatus.pendenteFila =>
           ProdutoSyncErroUtil.mensagemCadastroPendenteFila(
             detalheErro: detalheSyncErro,
@@ -2270,15 +2297,22 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         ProdutoSyncRemotoStatus.produtoInvalido =>
           'Produto salvo no aparelho, mas o identificador local ficou inválido para sincronização automática.',
         ProdutoSyncRemotoStatus.semMudancas =>
-          'Produto salvo sem alterações remotas pendentes.',
+          temFalhasCatalogo
+              ? ProdutoSyncErroUtil.mensagemCadastroFalhaParcialCatalogo(
+                  falhas: falhasCatalogo,
+                  avisoRehydrate: rehydratePosSave?.aviso,
+                )
+              : 'Produto salvo sem alterações remotas pendentes.',
         ProdutoSyncRemotoStatus.bloqueadoExclusaoTombstone =>
           'Produto salvo localmente, porém bloqueado para sincronização porque foi marcado para exclusão remota.',
       };
 
-      final corMensagem = remoteStatus == ProdutoSyncRemotoStatus.confirmado ||
-              remoteStatus == ProdutoSyncRemotoStatus.semMudancas
-          ? null
-          : Colors.orange;
+      final sucessoPleno = (remoteStatus == ProdutoSyncRemotoStatus.confirmado ||
+              remoteStatus == ProdutoSyncRemotoStatus.semMudancas) &&
+          !temFalhasCatalogo &&
+          (rehydratePosSave == null || rehydratePosSave.sucesso);
+
+      final corMensagem = sucessoPleno ? null : Colors.orange;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

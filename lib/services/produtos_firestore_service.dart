@@ -10,6 +10,8 @@ import 'package:firebase_storage/firebase_storage.dart';
 import '../core/combo_config_canonical.dart';
 import '../core/hive_box_names.dart';
 import '../core/produto_custo_guard.dart';
+import '../core/produto_estoque_grade_canonical_guard.dart';
+import '../core/produto_form_grade_hydration.dart';
 import '../core/produto_variacao_extra.dart';
 import 'firestore_paths.dart';
 import '../core/logger.dart';
@@ -23,6 +25,7 @@ import 'firestore_payload_sanitizer.dart';
 import 'image_upload_service.dart';
 import 'produto_sync_erro_util.dart';
 import 'sync_queue_service.dart';
+import 'produto_catalogo_upsert_falha.dart';
 import 'produto_exclusao_tombstone_service.dart';
 import 'produto_pull_skip_guard.dart';
 import 'sync_mass_delete_guard.dart';
@@ -940,6 +943,163 @@ class ProdutosFirestoreService {
   /// Último erro sanitizado do ciclo de sync (UI / fila).
   static String? ultimoErroSyncSanitizado;
 
+  /// Falhas parciais de upsert em draft/live no último ciclo de sync do cadastro.
+  static List<ProdutoCatalogoUpsertFalha> ultimasFalhasUpsertCatalogo = [];
+
+  static void limparFalhasUpsertCatalogo() {
+    ultimasFalhasUpsertCatalogo = [];
+  }
+
+  static List<ProdutoCatalogoUpsertFalha> get falhasUpsertCatalogo =>
+      List<ProdutoCatalogoUpsertFalha>.unmodifiable(ultimasFalhasUpsertCatalogo);
+
+  static bool get temFalhasUpsertCatalogo =>
+      ultimasFalhasUpsertCatalogo.isNotEmpty;
+
+  static void registrarFalhaUpsertCatalogo({
+    required String lojaId,
+    required String produtoId,
+    required String path,
+    required String operacao,
+    required Object error,
+  }) {
+    final falha = ProdutoCatalogoUpsertFalha(
+      lojaId: lojaId,
+      produtoId: produtoId,
+      path: path,
+      operacao: operacao,
+      erro: ProdutoCatalogoUpsertFalha.erroDe(error),
+    );
+    ultimasFalhasUpsertCatalogo = [...ultimasFalhasUpsertCatalogo, falha];
+    logE(
+      '[CATALOGO_UPSERT_FAIL] lojaId=$lojaId produtoId=$produtoId '
+      'path=$path operacao=$operacao erro=${falha.erro}',
+      tag: 'CATALOGO_UPSERT_FAIL',
+    );
+  }
+
+  /// Após save confirmado em estoque_produtos, alinha Hive com o doc remoto canônico.
+  static Future<ProdutoRehydratePosSaveResult>
+      rehydrateProdutoConfirmadoFromEstoqueRemoto(
+    Produto produto, {
+    required String lojaId,
+    ProdutoFormGradeBaseline? gradeBaseline,
+  }) async {
+    final storeId = lojaId.trim();
+    final produtoId = produto.idFirebase.trim().isNotEmpty
+        ? produto.idFirebase.trim()
+        : produto.slug.trim();
+    if (storeId.isEmpty || produtoId.isEmpty) {
+      return const ProdutoRehydratePosSaveResult(
+        sucesso: false,
+        aviso: 'identificador ausente para reidratação',
+      );
+    }
+
+    try {
+      final snap = await _db
+          .collection('lojas')
+          .doc(storeId)
+          .collection(FSPaths.estoqueProdutosCol)
+          .doc(produtoId)
+          .get();
+      if (!snap.exists) {
+        return const ProdutoRehydratePosSaveResult(
+          sucesso: false,
+          aviso: 'documento estoque_produtos ausente após save',
+        );
+      }
+      final data = Map<String, dynamic>.from(snap.data() ?? {});
+      final gradeDecision =
+          ProdutoEstoqueGradeCanonicalGuard.resolveForRehydrate(
+        local: produto,
+        remoteData: data,
+        baseline: gradeBaseline,
+      );
+      await _applyEstoqueRemotoConfirmadoToProdutoLocal(
+        produto,
+        data,
+        gradeDecision: gradeDecision,
+      );
+      logD(
+        '[REHYDRATE_POS_SAVE] Hive alinhado com estoque_produtos/$produtoId '
+        'gradeRemota=${gradeDecision.aplicarGradeRemota} '
+        'aviso=${gradeDecision.aviso ?? '-'}',
+        tag: 'REHYDRATE_POS_SAVE',
+      );
+      return ProdutoRehydratePosSaveResult(
+        sucesso: true,
+        aviso: gradeDecision.aviso,
+      );
+    } catch (e, st) {
+      final aviso = ProdutoSyncErroUtil.sanitizar(e);
+      logE(
+        '[REHYDRATE_POS_SAVE] falha estoque_produtos/$produtoId '
+        '${aviso ?? e.runtimeType}',
+        tag: 'REHYDRATE_POS_SAVE',
+        error: e,
+        st: st,
+      );
+      return ProdutoRehydratePosSaveResult(
+        sucesso: false,
+        aviso: aviso ?? 'falha ao ler estoque remoto',
+      );
+    }
+  }
+
+  static Future<void> _applyEstoqueRemotoConfirmadoToProdutoLocal(
+    Produto produto,
+    Map<String, dynamic> data, {
+    ProdutoEstoqueGradeRehydrateResult? gradeDecision,
+  }) async {
+    ProdutoRemoteSyncGuard.applyingRemoteToHive = true;
+    try {
+      produto.descricao = (data['descricao'] ?? produto.descricao).toString();
+      produto.quantidade =
+          (data['quantidade'] as num?)?.toInt() ?? produto.quantidade;
+      produto.nome = (data['nome'] ?? produto.nome).toString();
+      produto.precoFinal =
+          (data['preco'] as num?)?.toDouble() ?? produto.precoFinal;
+      produto.precoUnitario = (data['precoUnitario'] as num?)?.toDouble() ??
+          (data['preco'] as num?)?.toDouble() ??
+          produto.precoUnitario;
+      produto.publicadoNoCatalogo =
+          data['publicadoNoCatalogo'] == true || produto.publicadoNoCatalogo;
+      ProdutoCustoGuard.applyRemoteCustoOnExistingProduct(
+        local: produto,
+        remoteData: data,
+        logContext: 'rehydrate_pos_save',
+      );
+      final aplicarGradeRemota = gradeDecision?.aplicarGradeRemota ?? true;
+      if (aplicarGradeRemota) {
+        _applyRemoteGradeToProdutoForRehydrate(
+          produto: produto,
+          existingData: data,
+        );
+      } else if (gradeDecision?.variacoes != null &&
+          gradeDecision!.estoquePorTamanho != null) {
+        produto.variacoes = gradeDecision.variacoes!.isNotEmpty
+            ? Map<String, dynamic>.from(gradeDecision.variacoes!)
+            : null;
+        produto.variacoesExtraTipo = gradeDecision.variacoesExtraTipo;
+        produto.estoquePorTamanho =
+            Map<String, int>.from(gradeDecision.estoquePorTamanho!);
+        if (gradeDecision.tamanhos != null &&
+            gradeDecision.tamanhos!.isNotEmpty) {
+          produto.tamanhos = List<String>.from(gradeDecision.tamanhos!);
+        }
+        produto.precoPorTamanho = gradeDecision.precoPorTamanho;
+      }
+      final uAt = data['updatedAt'];
+      if (uAt is Timestamp) {
+        produto.updatedAt = uAt.toDate();
+      }
+      await produto.save();
+    } finally {
+      ProdutoRemoteSyncGuard.applyingRemoteToHive = false;
+    }
+  }
+
   static Future<ProdutoSyncRemotoStatus> syncProdutoComStatus(
     Produto produto, {
     String? lojaId,
@@ -947,8 +1107,10 @@ class ProdutosFirestoreService {
     bool forcePushFromCadastro = false,
     String? writeOrigin,
     bool enqueueOnFailure = true,
+    ProdutoFormGradeBaseline? gradeBaseline,
   }) async {
     ultimoErroSyncSanitizado = null;
+    limparFalhasUpsertCatalogo();
     try {
       if (debugForceSyncFailureRemaining > 0) {
         debugForceSyncFailureRemaining--;
@@ -1097,30 +1259,60 @@ class ProdutosFirestoreService {
       // Não registrar tombstone de variação via diff remoto×local no sync geral: payload
       // local pode estar incompleto (pull parcial, import, race) e marcar célula ativa como "excluída".
 
+      final unfilteredVariacoes = _variacoesParaFirestorePush(produto);
+      final unfilteredExtra = _variacoesExtraTipoParaFirestorePush(produto);
+      final unfilteredEstoque = _estoquePorTamanhoParaFirestorePush(produto);
+
       // Sempre enviar mapas explícitos (vazios = limpar com merge:true).
-      final variacoesPush = ProdutoExclusaoTombstoneService.filtrarMapVariacoes(
+      var variacoesPush = ProdutoExclusaoTombstoneService.filtrarMapVariacoes(
         storeId,
         produtoId,
-        _variacoesParaFirestorePush(produto),
+        unfilteredVariacoes,
       );
-      final variacoesExtraPush =
+      var variacoesExtraPush =
           ProdutoExclusaoTombstoneService.filtrarVariacoesExtraTipo(
         storeId,
         produtoId,
-        _variacoesExtraTipoParaFirestorePush(produto),
+        unfilteredExtra,
       );
-      final estoquePorTamPush =
+      var estoquePorTamPush =
           ProdutoExclusaoTombstoneService.filtrarEstoquePorTamanho(
         storeId,
         produtoId,
-        _estoquePorTamanhoParaFirestorePush(produto),
+        unfilteredEstoque,
       );
-      final precoPorTamanhoPush =
+      var precoPorTamanhoPush =
           _sanitizePrecoPorTamanhoForFirestore(produto.precoPorTamanho);
+
+      final gradeCompleted =
+          ProdutoEstoqueGradeCanonicalGuard.completeForEstoquePush(
+        lojaId: storeId,
+        produtoId: produtoId,
+        variacoesPush: variacoesPush,
+        variacoesExtraPush: variacoesExtraPush,
+        estoquePorTamPush: estoquePorTamPush,
+        tamanhosPush: List<String>.from(produto.tamanhos),
+        precoPorTamanhoPush: precoPorTamanhoPush,
+        quantidade: produto.quantidade,
+        existingEstoqueData: docSnap.exists ? existingData : null,
+        localUnfilteredVariacoes: unfilteredVariacoes,
+        localUnfilteredEstoque: unfilteredEstoque,
+        localUnfilteredExtra: unfilteredExtra,
+        localUnfilteredTamanhos: List<String>.from(produto.tamanhos),
+        baseline: gradeBaseline,
+      );
+      variacoesPush = gradeCompleted.variacoes;
+      variacoesExtraPush = gradeCompleted.variacoesExtraTipo;
+      estoquePorTamPush = gradeCompleted.estoquePorTamanho;
+      precoPorTamanhoPush =
+          gradeCompleted.precoPorTamanho ?? precoPorTamanhoPush;
+
       logD(
         '[VARIACAO_CLEAR] push estoque_produtos/$produtoId '
         'variacoesKeys=${variacoesPush.length} extraKeys=${variacoesExtraPush.length} '
-        'estoquePorTamKeys=${estoquePorTamPush.length}',
+        'estoquePorTamKeys=${estoquePorTamPush.length} '
+        'gradeAcao=${gradeCompleted.acao ?? 'none'} '
+        'gradeOrigem=${gradeCompleted.origem ?? '-'}',
       );
 
       final resolvedVariationPush = resolveVariationFieldsForFirestorePush(
@@ -1138,7 +1330,9 @@ class ProdutosFirestoreService {
       final variacoesExtraPushEfetivo = resolvedVariationPush.variacoesExtraTipo;
       final estoquePorTamPushEfetivo = resolvedVariationPush.estoquePorTamanho;
       final precoPorTamanhoPushEfetivo = resolvedVariationPush.precoPorTamanho;
-      final tamanhosPushEfetivo = resolvedVariationPush.tamanhos;
+      final tamanhosPushEfetivo = gradeCompleted.tamanhos.isNotEmpty
+          ? gradeCompleted.tamanhos
+          : resolvedVariationPush.tamanhos;
 
       final produtoData = {
         'id': produtoId,
@@ -1344,9 +1538,21 @@ class ProdutosFirestoreService {
           );
           _dlog('[ProdutoPublico] upsert produtos/$produtoId concluído');
           logD('✅ [PRODUTOS-SYNC] Catálogo público (produtos) atualizado');
-        } catch (e) {
-          logW(
-              '⚠️ [PRODUTOS-SYNC] Produto não encontrado no catálogo público (normal se não publicado) (type=${e.runtimeType})');
+        } catch (e, st) {
+          registrarFalhaUpsertCatalogo(
+            lojaId: storeId,
+            produtoId: produtoId,
+            path: 'lojas/$storeId/produtos/$produtoId',
+            operacao: 'upsert_produtos_live_inline',
+            error: e,
+          );
+          logE(
+            '⚠️ [PRODUTOS-SYNC] Falha ao atualizar produtos/$produtoId '
+            '(estoque já salvo) type=${e.runtimeType}',
+            tag: 'CATALOGO_UPSERT_FAIL',
+            error: e,
+            st: st,
+          );
         }
       }
 

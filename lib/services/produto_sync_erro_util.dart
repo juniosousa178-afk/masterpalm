@@ -2,6 +2,7 @@
 
 import 'package:firebase_auth/firebase_auth.dart';
 
+import 'produto_catalogo_upsert_falha.dart';
 import 'produtos_firestore_service.dart';
 
 /// Converte exceções/status de sync em texto curto, sem dados sensíveis.
@@ -84,5 +85,42 @@ class ProdutoSyncErroUtil {
     final d = detalheErro?.trim();
     if (d == null || d.isEmpty) return base;
     return '$base\n\nFalha ao sincronizar produto: $d';
+  }
+
+  static String mensagemCadastroFalhaParcialCatalogo({
+    required List<ProdutoCatalogoUpsertFalha> falhas,
+    String? avisoRehydrate,
+  }) {
+    final buffer = StringBuffer(
+      'Produto salvo no estoque, mas houve falha ao atualizar o catálogo/draft. '
+      'Use Atualizar catálogo ou chame o suporte.',
+    );
+    if (falhas.isNotEmpty) {
+      buffer.writeln();
+      for (final f in falhas) {
+        buffer.writeln('• ${f.operacao} (${f.path}): ${f.erro}');
+      }
+    }
+    final r = avisoRehydrate?.trim();
+    if (r != null && r.isNotEmpty) {
+      buffer.writeln();
+      buffer.write('Aviso ao alinhar dados locais: $r');
+    }
+    return buffer.toString().trim();
+  }
+
+  static String mensagemCadastroConfirmado({
+    required bool publicar,
+    String? avisoRehydrate,
+  }) {
+    final r = avisoRehydrate?.trim();
+    if (r != null && r.isNotEmpty) {
+      return publicar
+          ? 'Produto salvo e publicado no estoque. Aviso: não foi possível alinhar todos os dados locais ($r).'
+          : 'Produto salvo no estoque. Aviso: não foi possível alinhar todos os dados locais ($r).';
+    }
+    return publicar
+        ? 'Produto salvo, publicado e sincronizado com Hive e Firestore!'
+        : 'Produto salvo e sincronizado com Hive e Firestore.';
   }
 }
