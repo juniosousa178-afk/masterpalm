@@ -266,6 +266,213 @@ class ProdutoEstoqueGradeCanonicalGuard {
     return produtoFormEstoquePorTamanhoFromVariacoes(variacoes);
   }
 
+  /// Quantidade total a partir de [variacoes] (soma de todas as células).
+  @visibleForTesting
+  static int quantidadeTotalFromVariacoes(Map<String, dynamic> variacoes) {
+    var total = 0;
+    for (final tam in variacoes.values) {
+      if (tam is! Map) continue;
+      for (final cell in tam.values) {
+        total += ProdutoVariacaoExtra.somarCelula(cell);
+      }
+    }
+    return total;
+  }
+
+  @visibleForTesting
+  static bool variacoesQuantidadesIguais(
+    Map<String, dynamic> a,
+    Map<String, dynamic> b,
+  ) {
+    if (a.length != b.length) return false;
+    for (final te in a.entries) {
+      final bm = b[te.key];
+      if (bm is! Map) return false;
+      final am = te.value;
+      if (am is! Map) return false;
+      if (am.length != bm.length) return false;
+      for (final ce in am.entries) {
+        final bv = bm[ce.key];
+        if (ProdutoVariacaoExtra.somarCelula(ce.value) !=
+            ProdutoVariacaoExtra.somarCelula(bv)) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  static Map<String, double>? _resolverPrecoPorTamanhoAusente(
+    Map<String, double>? preco,
+    Map<String, dynamic>? existingEstoqueData,
+  ) {
+    if (preco != null && preco.isNotEmpty) return preco;
+    if (existingEstoqueData == null) return preco;
+    final rawPpt = existingEstoqueData['precoPorTamanho'];
+    if (rawPpt is Map && rawPpt.isNotEmpty) {
+      return rawPpt.map(
+        (k, v) => MapEntry(k.toString(), (v as num).toDouble()),
+      );
+    }
+    return preco;
+  }
+
+  static void _preencherMetadadosGradeAusentes({
+    required Map<String, dynamic> extra,
+    required List<String> tamanhos,
+    Map<String, dynamic>? localUnfilteredExtra,
+    List<String>? localUnfilteredTamanhos,
+    ProdutoFormGradeBaseline? baseline,
+    Map<String, dynamic>? existingEstoqueData,
+    Map<String, dynamic>? fallbackCatalogData,
+  }) {
+    if (extra.isEmpty && localUnfilteredExtra != null && localUnfilteredExtra.isNotEmpty) {
+      extra.addAll(localUnfilteredExtra);
+    }
+    if (tamanhos.isEmpty &&
+        localUnfilteredTamanhos != null &&
+        localUnfilteredTamanhos.isNotEmpty) {
+      tamanhos.addAll(localUnfilteredTamanhos);
+    }
+    if (baseline != null && produtoFormBaselineHadGrade(baseline)) {
+      final base = produtoFormBaselineGradePayload(baseline);
+      if (extra.isEmpty && base.variacoesExtraTipo != null) {
+        extra.addAll(base.variacoesExtraTipo!);
+      }
+      if (tamanhos.isEmpty && base.tamanhos.isNotEmpty) {
+        tamanhos.addAll(base.tamanhos);
+      }
+    }
+    if (existingEstoqueData != null) {
+      if (extra.isEmpty) {
+        extra.addAll(mapFromDynamic(existingEstoqueData['variacoesExtraTipo']));
+      }
+      if (tamanhos.isEmpty) {
+        tamanhos.addAll(tamanhosFromDynamic(existingEstoqueData['tamanhos']));
+      }
+    }
+    if (fallbackCatalogData != null) {
+      if (extra.isEmpty) {
+        extra.addAll(mapFromDynamic(fallbackCatalogData['variacoesExtraTipo']));
+      }
+      if (tamanhos.isEmpty) {
+        tamanhos.addAll(tamanhosFromDynamic(fallbackCatalogData['tamanhos']));
+      }
+    }
+  }
+
+  static ProdutoEstoqueGradePushResult _resultadoPushVariacoesAutoritativo({
+    required String lojaId,
+    required String produtoId,
+    required Map<String, dynamic> variacoesPush,
+    required Map<String, dynamic> variacoesExtraPush,
+    required List<String> tamanhosPush,
+    Map<String, double>? precoPorTamanhoPush,
+    Map<String, dynamic>? localUnfilteredExtra,
+    List<String>? localUnfilteredTamanhos,
+    ProdutoFormGradeBaseline? baseline,
+    Map<String, dynamic>? existingEstoqueData,
+    Map<String, dynamic>? fallbackCatalogData,
+    required int quantidade,
+  }) {
+    var variacoes = Map<String, dynamic>.from(variacoesPush);
+    var extra = Map<String, dynamic>.from(variacoesExtraPush);
+    var tamanhos = List<String>.from(tamanhosPush);
+    if (tamanhos.isNotEmpty) {
+      variacoes = _filtrarVariacoesPorTamanhos(variacoes, tamanhos);
+    }
+    final estoque = _estoqueFromVariacoes(variacoes);
+    _preencherMetadadosGradeAusentes(
+      extra: extra,
+      tamanhos: tamanhos,
+      localUnfilteredExtra: localUnfilteredExtra,
+      localUnfilteredTamanhos: localUnfilteredTamanhos,
+      baseline: baseline,
+      existingEstoqueData: existingEstoqueData,
+      fallbackCatalogData: fallbackCatalogData,
+    );
+    final preco = _resolverPrecoPorTamanhoAusente(
+      precoPorTamanhoPush,
+      existingEstoqueData,
+    );
+    _logGradeCanonical(
+      'PRODUTO_GRADE_CANONICAL_PRESERVE',
+      lojaId: lojaId,
+      produtoId: produtoId,
+      origem: 'push_variacoes_tela',
+      variacoes: variacoes,
+      variacoesExtraTipo: extra,
+      estoquePorTamanho: estoque,
+      tamanhos: tamanhos,
+      quantidade: quantidadeTotalFromVariacoes(variacoes),
+    );
+    return ProdutoEstoqueGradePushResult(
+      variacoes: variacoes,
+      variacoesExtraTipo: extra,
+      estoquePorTamanho: estoque,
+      tamanhos: tamanhos,
+      precoPorTamanho: preco,
+      origem: 'push_variacoes_tela',
+      acao: 'preserve',
+    );
+  }
+
+  static ProdutoEstoqueGradePushResult _resultadoPushEstoqueAutoritativo({
+    required String lojaId,
+    required String produtoId,
+    required Map<String, int> estoquePorTamPush,
+    required Map<String, dynamic> variacoesExtraPush,
+    required List<String> tamanhosPush,
+    Map<String, double>? precoPorTamanhoPush,
+    Map<String, dynamic>? localUnfilteredExtra,
+    List<String>? localUnfilteredTamanhos,
+    ProdutoFormGradeBaseline? baseline,
+    Map<String, dynamic>? existingEstoqueData,
+    Map<String, dynamic>? fallbackCatalogData,
+    required int quantidade,
+  }) {
+    var estoque = Map<String, int>.from(estoquePorTamPush);
+    var extra = Map<String, dynamic>.from(variacoesExtraPush);
+    var tamanhos = List<String>.from(tamanhosPush);
+    if (tamanhos.isNotEmpty) {
+      estoque = _filtrarEstoquePorTamanhos(estoque, tamanhos);
+    }
+    final variacoes = produtoFormVariacoesFromEstoquePorTamanho(estoque);
+    _preencherMetadadosGradeAusentes(
+      extra: extra,
+      tamanhos: tamanhos,
+      localUnfilteredExtra: localUnfilteredExtra,
+      localUnfilteredTamanhos: localUnfilteredTamanhos,
+      baseline: baseline,
+      existingEstoqueData: existingEstoqueData,
+      fallbackCatalogData: fallbackCatalogData,
+    );
+    final preco = _resolverPrecoPorTamanhoAusente(
+      precoPorTamanhoPush,
+      existingEstoqueData,
+    );
+    _logGradeCanonical(
+      'PRODUTO_GRADE_CANONICAL_PRESERVE',
+      lojaId: lojaId,
+      produtoId: produtoId,
+      origem: 'push_estoque_tela',
+      variacoes: variacoes,
+      variacoesExtraTipo: extra,
+      estoquePorTamanho: estoque,
+      tamanhos: tamanhos,
+      quantidade: quantidade,
+    );
+    return ProdutoEstoqueGradePushResult(
+      variacoes: variacoes,
+      variacoesExtraTipo: extra,
+      estoquePorTamanho: estoque,
+      tamanhos: tamanhos,
+      precoPorTamanho: preco,
+      origem: 'push_estoque_tela',
+      acao: 'preserve',
+    );
+  }
+
   static void _logGradeCanonical(
     String tag, {
     required String lojaId,
@@ -290,8 +497,9 @@ class ProdutoEstoqueGradeCanonicalGuard {
 
   /// Completa o payload de grade antes do write em estoque_produtos.
   ///
-  /// Prioridade: push/tela → local não filtrado → remoto estoque → reconstrução
-  /// (live/draft só como fallback de reconstrução).
+  /// Prioridade: quantidade editada na tela (variacoes/estoque do push) →
+  /// local não filtrado → baseline → remoto estoque → reconstrução
+  /// (live/draft só como fallback de metadados/reconstrução).
   static ProdutoEstoqueGradePushResult completeForEstoquePush({
     required String lojaId,
     required String produtoId,
@@ -309,6 +517,40 @@ class ProdutoEstoqueGradeCanonicalGuard {
     Map<String, dynamic>? fallbackCatalogData,
     ProdutoFormGradeBaseline? baseline,
   }) {
+    // Quantidade editada na tela sempre vence baseline/remoto.
+    if (variacoesPush.isNotEmpty) {
+      return _resultadoPushVariacoesAutoritativo(
+        lojaId: lojaId,
+        produtoId: produtoId,
+        variacoesPush: variacoesPush,
+        variacoesExtraPush: variacoesExtraPush,
+        tamanhosPush: tamanhosPush,
+        precoPorTamanhoPush: precoPorTamanhoPush,
+        localUnfilteredExtra: localUnfilteredExtra,
+        localUnfilteredTamanhos: localUnfilteredTamanhos,
+        baseline: baseline,
+        existingEstoqueData: existingEstoqueData,
+        fallbackCatalogData: fallbackCatalogData,
+        quantidade: quantidade,
+      );
+    }
+    if (estoquePorTamPush.isNotEmpty) {
+      return _resultadoPushEstoqueAutoritativo(
+        lojaId: lojaId,
+        produtoId: produtoId,
+        estoquePorTamPush: estoquePorTamPush,
+        variacoesExtraPush: variacoesExtraPush,
+        tamanhosPush: tamanhosPush,
+        precoPorTamanhoPush: precoPorTamanhoPush,
+        localUnfilteredExtra: localUnfilteredExtra,
+        localUnfilteredTamanhos: localUnfilteredTamanhos,
+        baseline: baseline,
+        existingEstoqueData: existingEstoqueData,
+        fallbackCatalogData: fallbackCatalogData,
+        quantidade: quantidade,
+      );
+    }
+
     var variacoes = Map<String, dynamic>.from(variacoesPush);
     var extra = Map<String, dynamic>.from(variacoesExtraPush);
     var estoque = Map<String, int>.from(estoquePorTamPush);
@@ -321,11 +563,6 @@ class ProdutoEstoqueGradeCanonicalGuard {
       estoquePorTamanho: estoque,
       tamanhos: tamanhos,
     )) {
-      if (variacoes.isNotEmpty && estoque.isEmpty) {
-        estoque = _estoqueFromVariacoes(variacoes);
-      } else if (estoque.isNotEmpty && variacoes.isEmpty) {
-        variacoes = produtoFormVariacoesFromEstoquePorTamanho(estoque);
-      }
       return ProdutoEstoqueGradePushResult(
         variacoes: variacoes,
         variacoesExtraTipo: extra,
@@ -470,9 +707,9 @@ class ProdutoEstoqueGradeCanonicalGuard {
       }
     }
 
-    if (variacoes.isNotEmpty && estoque.isEmpty) {
+    if (variacoes.isNotEmpty) {
       estoque = _estoqueFromVariacoes(variacoes);
-    } else if (estoque.isNotEmpty && variacoes.isEmpty) {
+    } else if (estoque.isNotEmpty) {
       variacoes = produtoFormVariacoesFromEstoquePorTamanho(estoque);
     }
 
@@ -545,6 +782,25 @@ class ProdutoEstoqueGradeCanonicalGuard {
         baseline != null && produtoFormBaselineHadGrade(baseline);
 
     if (remoteCompleta) {
+      if (localCompleta) {
+        final localV = mapFromDynamic(local.variacoes);
+        final remoteV = mapFromDynamic(remoteData['variacoes']);
+        if (!variacoesQuantidadesIguais(localV, remoteV)) {
+          return ProdutoEstoqueGradeRehydrateResult(
+            aplicarGradeRemota: false,
+            aviso: avisoGradeRemotaIncompleta,
+            variacoes: localV,
+            variacoesExtraTipo: local.variacoesExtraTipo == null
+                ? null
+                : Map<String, dynamic>.from(local.variacoesExtraTipo!),
+            estoquePorTamanho: Map<String, int>.from(local.estoquePorTamanho),
+            tamanhos: List<String>.from(local.tamanhos),
+            precoPorTamanho: local.precoPorTamanho == null
+                ? null
+                : Map<String, double>.from(local.precoPorTamanho!),
+          );
+        }
+      }
       return const ProdutoEstoqueGradeRehydrateResult(aplicarGradeRemota: true);
     }
 

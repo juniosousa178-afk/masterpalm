@@ -294,6 +294,142 @@ void main() {
       );
       expect(p.custoReal, custoAntes);
     });
+
+    test('20/rosa 1→2 na tela vence remoto e recalcula estoquePorTamanho', () {
+      final remote = _gradeRemotaCompleta();
+      final completed = ProdutoEstoqueGradeCanonicalGuard.completeForEstoquePush(
+        lojaId: _lojaId,
+        produtoId: _docId,
+        variacoesPush: {
+          '20': {'rosa': 2},
+          '22': {'rosa': 1},
+        },
+        variacoesExtraPush: {},
+        estoquePorTamPush: const {},
+        tamanhosPush: const ['20', '22'],
+        quantidade: 3,
+        existingEstoqueData: remote,
+      );
+
+      expect(completed.origem, 'push_variacoes_tela');
+      expect(completed.variacoes['20']?['rosa'], 2);
+      expect(completed.variacoes['22']?['rosa'], 1);
+      expect(completed.estoquePorTamanho['20'], 2);
+      expect(completed.estoquePorTamanho['22'], 1);
+      expect(
+        ProdutoEstoqueGradeCanonicalGuard.quantidadeTotalFromVariacoes(
+          completed.variacoes,
+        ),
+        3,
+      );
+    });
+
+    test('baseline/remoto antigo não sobrescreve variacoes editadas localmente', () {
+      final baseline = ProdutoFormGradeBaseline.capture(
+        Produto(
+          nome: 'Com grade',
+          custoReal: 1,
+          frete: 0,
+          gastosFixos: 0,
+          gastosVariaveis: 0,
+          precoSugerido: 0,
+          precoFinal: 10,
+          quantidade: 2,
+          precoUnitario: 10,
+          categoria: 'A',
+          dataEntrada: DateTime(2026, 1, 1),
+          lojaId: _lojaId,
+          variacoes: {
+            '20': {'rosa': 1},
+            '22': {'rosa': 1},
+          },
+          estoquePorTamanho: const {'20': 1, '22': 1},
+        ),
+      );
+
+      final completed = ProdutoEstoqueGradeCanonicalGuard.completeForEstoquePush(
+        lojaId: _lojaId,
+        produtoId: _docId,
+        variacoesPush: {
+          '20': {'rosa': 2},
+          '22': {'rosa': 1},
+        },
+        variacoesExtraPush: {},
+        estoquePorTamPush: const {},
+        tamanhosPush: const ['20', '22'],
+        quantidade: 3,
+        existingEstoqueData: _gradeRemotaCompleta(),
+        baseline: baseline,
+      );
+
+      expect(completed.variacoes['20']?['rosa'], 2);
+      expect(completed.estoquePorTamanho['20'], 2);
+      expect(completed.origem, 'push_variacoes_tela');
+    });
+
+    test('duas variações no mesmo tamanho somam estoquePorTamanho', () {
+      final completed = ProdutoEstoqueGradeCanonicalGuard.completeForEstoquePush(
+        lojaId: _lojaId,
+        produtoId: _docId,
+        variacoesPush: {
+          '20': {
+            'rosa': 2,
+            'azul': 1,
+          },
+        },
+        variacoesExtraPush: {},
+        estoquePorTamPush: const {},
+        tamanhosPush: const ['20'],
+        quantidade: 3,
+      );
+
+      expect(completed.estoquePorTamanho['20'], 3);
+      expect(completed.variacoes['20']?['rosa'], 2);
+      expect(completed.variacoes['20']?['azul'], 1);
+    });
+
+    test('reidratação mantém quantidade local quando remoto diverge', () {
+      final local = Produto(
+        nome: 'Anel',
+        custoReal: 20,
+        frete: 0,
+        gastosFixos: 0,
+        gastosVariaveis: 0,
+        precoSugerido: 0,
+        precoFinal: 89.9,
+        quantidade: 3,
+        precoUnitario: 89.9,
+        categoria: 'Anel',
+        dataEntrada: DateTime(2026, 3, 8),
+        lojaId: _lojaId,
+        idFirebase: _docId,
+        slug: _docId,
+        variacoes: {
+          '20': {'rosa': 2},
+          '22': {'rosa': 1},
+        },
+        estoquePorTamanho: const {'20': 2, '22': 1},
+        tamanhos: const ['20', '22'],
+      );
+
+      final remoteCompleto = {
+        'variacoes': {
+          '20': {'rosa': 1},
+          '22': {'rosa': 1},
+        },
+        'estoquePorTamanho': {'20': 1, '22': 1},
+        'quantidade': 2,
+      };
+
+      final decision = ProdutoEstoqueGradeCanonicalGuard.resolveForRehydrate(
+        local: local,
+        remoteData: remoteCompleto,
+      );
+
+      expect(decision.aplicarGradeRemota, isFalse);
+      expect(decision.variacoes?['20']?['rosa'], 2);
+      expect(decision.estoquePorTamanho?['20'], 2);
+    });
   });
 
   group('sync estoque_produtos — grade canônica integrada', () {
@@ -390,6 +526,72 @@ void main() {
       final data = snap.data()!;
       expect(data.containsKey('variacoes'), isFalse);
       expect(data.containsKey('estoquePorTamanho'), isFalse);
+      await box.close();
+    });
+
+    test('sync persiste quantidade editada 20/rosa 2 no estoque_produtos', () async {
+      final firestore = FakeFirebaseFirestore();
+      ProdutosFirestoreService.debugFirestoreOverride = firestore;
+
+      await firestore
+          .collection('lojas')
+          .doc(_lojaId)
+          .collection('estoque_produtos')
+          .doc(_docId)
+          .set(_gradeRemotaCompleta());
+
+      final box = await Hive.openBox<Produto>('produtos_qty_edit');
+      final p = Produto(
+        nome: 'Anel Coração Meigo Rose',
+        custoReal: 20,
+        frete: 0,
+        gastosFixos: 0,
+        gastosVariaveis: 0,
+        precoSugerido: 0,
+        precoFinal: 89.9,
+        quantidade: 3,
+        precoUnitario: 89.9,
+        categoria: 'Anel',
+        dataEntrada: DateTime(2026, 3, 8),
+        descricao: 'Qty editada',
+        lojaId: _lojaId,
+        idFirebase: _docId,
+        slug: _docId,
+        tamanhos: const ['20', '22'],
+        variacoes: {
+          '20': {'rosa': 2},
+          '22': {'rosa': 1},
+        },
+        estoquePorTamanho: const {'20': 2, '22': 1},
+        updatedAt: DateTime(2026, 6, 8, 23, 0),
+        custoEditadoNoCadastro: true,
+        publicadoNoCatalogo: true,
+      );
+      await box.add(p);
+      final salvo = box.getAt(0)!;
+
+      final status = await ProdutosFirestoreService.syncProdutoComStatus(
+        salvo,
+        lojaId: _lojaId,
+        forcePushFromCadastro: true,
+        writeOrigin: 'produto_form.save',
+        enqueueOnFailure: false,
+      );
+      expect(status, ProdutoSyncRemotoStatus.confirmado);
+
+      final snap = await firestore
+          .collection('lojas')
+          .doc(_lojaId)
+          .collection('estoque_produtos')
+          .doc(_docId)
+          .get();
+      final data = snap.data()!;
+      expect((data['variacoes'] as Map)['20']?['rosa'], 2);
+      expect((data['variacoes'] as Map)['22']?['rosa'], 1);
+      expect((data['estoquePorTamanho'] as Map)['20'], 2);
+      expect((data['estoquePorTamanho'] as Map)['22'], 1);
+      expect(data['quantidade'], 3);
+      expect(data['custoReal'], 20);
       await box.close();
     });
 
