@@ -191,15 +191,69 @@ List<ProdutoFormGradeRow> produtoFormBuildGradeRowsFromTamanhosSomente(
   return rows;
 }
 
+bool _tamanhoAutorizadoParaSuplementoGrade({
+  required String tamanho,
+  required List<String> tamanhosProduto,
+  required Map<String, dynamic>? variacoesExtraTipo,
+}) {
+  if (tamanho.isEmpty) return false;
+  if (tamanhosProduto.contains(tamanho)) return true;
+  if (variacoesExtraTipo != null && variacoesExtraTipo.containsKey(tamanho)) {
+    return true;
+  }
+  return false;
+}
+
+List<ProdutoFormGradeRow> _suplementarLinhasDeEstoqueAusentes(
+  List<ProdutoFormGradeRow> rows,
+  Map<String, int> estoquePorTamanho, {
+  required List<String> tamanhosProduto,
+  Map<String, dynamic>? variacoesExtraTipo,
+}) {
+  if (estoquePorTamanho.isEmpty) return rows;
+  final tamanhosNasLinhas = rows
+      .map((r) => (r['tamanho'] ?? '').trim())
+      .where((t) => t.isNotEmpty)
+      .toSet();
+  final out = List<ProdutoFormGradeRow>.from(rows);
+  for (final row in produtoFormBuildGradeRowsFromEstoquePorTamanho(
+    estoquePorTamanho,
+  )) {
+    final t = (row['tamanho'] ?? '').trim();
+    if (t.isEmpty || tamanhosNasLinhas.contains(t)) continue;
+    if (!_tamanhoAutorizadoParaSuplementoGrade(
+      tamanho: t,
+      tamanhosProduto: tamanhosProduto,
+      variacoesExtraTipo: variacoesExtraTipo,
+    )) {
+      continue;
+    }
+    out.add(row);
+    tamanhosNasLinhas.add(t);
+  }
+  return out;
+}
+
 /// Prioridade: variacoes → estoquePorTamanho → tamanhos (sem inventar quantidade).
 ProdutoFormGradeHydration produtoFormHydrateGradeRows(Produto p) {
   if (p.variacoes != null && p.variacoes!.isNotEmpty) {
-    final rows = produtoFormBuildGradeRowsFromVariacoes(
+    var rows = produtoFormBuildGradeRowsFromVariacoes(
       Map<String, dynamic>.from(p.variacoes!),
       variacoesExtraTipo: p.variacoesExtraTipo == null
           ? null
           : Map<String, dynamic>.from(p.variacoesExtraTipo!),
     );
+    if (p.estoquePorTamanho.isNotEmpty &&
+        (p.tamanhos.isNotEmpty || p.variacoesExtraTipo != null)) {
+      rows = _suplementarLinhasDeEstoqueAusentes(
+        rows,
+        p.estoquePorTamanho,
+        tamanhosProduto: p.tamanhos,
+        variacoesExtraTipo: p.variacoesExtraTipo == null
+            ? null
+            : Map<String, dynamic>.from(p.variacoesExtraTipo!),
+      );
+    }
     return ProdutoFormGradeHydration(
       rows: rows.isEmpty ? [produtoFormEmptyGradeRow()] : rows,
       source: ProdutoFormGradeHydrationSource.variacoes,

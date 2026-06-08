@@ -13,6 +13,35 @@ import 'package:shared_preferences/shared_preferences.dart';
 const _lojaId = 'loja-grade-canonica';
 const _docId = 'anel-cora-o-meigo-rose-canon';
 
+Map<String, dynamic> _gradeRemotaAnelMeigoRoseSemCor() => {
+      'id': _docId,
+      'nome': 'Anel Coração Meigo Rose',
+      'descricao': 'Antiga',
+      'quantidade': 4,
+      'variacoes': {
+        '20': {'sem-cor': 1},
+        '22': {'sem-cor': 1},
+      },
+      'estoquePorTamanho': {'13': 1, '18': 1, '20': 1, '22': 1},
+      'tamanhos': ['13', '18', '20', '22'],
+      'variacoesExtraTipo': {
+        '13': {
+          'sem-cor': {'_sem_extra': 'Modelo'},
+        },
+        '18': {
+          'sem-cor': {'_sem_extra': 'Modelo'},
+        },
+        '20': {
+          'sem-cor': {'_sem_extra': 'Modelo'},
+        },
+        '22': {
+          'sem-cor': {'_sem_extra': 'Modelo'},
+        },
+      },
+      'custoReal': 20,
+      'updatedAt': Timestamp.fromDate(DateTime(2026, 6, 7, 15, 0)),
+    };
+
 Map<String, dynamic> _gradeRemotaCompleta() => {
       'id': _docId,
       'nome': 'Anel Coração Meigo Rose',
@@ -386,6 +415,122 @@ void main() {
       expect(completed.estoquePorTamanho['20'], 3);
       expect(completed.variacoes['20']?['rosa'], 2);
       expect(completed.variacoes['20']?['azul'], 1);
+    });
+
+    test('editar só 20/sem-cor 1→2 preserva 13/sem-cor e 18/sem-cor no push', () {
+      final remote = _gradeRemotaAnelMeigoRoseSemCor();
+      final completed = ProdutoEstoqueGradeCanonicalGuard.completeForEstoquePush(
+        lojaId: _lojaId,
+        produtoId: _docId,
+        variacoesPush: {
+          '20': {'sem-cor': 2},
+          '22': {'sem-cor': 1},
+        },
+        variacoesExtraPush: {},
+        estoquePorTamPush: const {},
+        tamanhosPush: const ['20', '22'],
+        quantidade: 3,
+        existingEstoqueData: remote,
+      );
+
+      expect(completed.variacoes['13']?['sem-cor'], 1);
+      expect(completed.variacoes['18']?['sem-cor'], 1);
+      expect(completed.variacoes['20']?['sem-cor'], 2);
+      expect(completed.variacoes['22']?['sem-cor'], 1);
+      expect(completed.estoquePorTamanho['13'], 1);
+      expect(completed.estoquePorTamanho['18'], 1);
+      expect(completed.estoquePorTamanho['20'], 2);
+      expect(completed.estoquePorTamanho['22'], 1);
+      expect(
+        ProdutoEstoqueGradeCanonicalGuard.quantidadeTotalFromVariacoes(
+          completed.variacoes,
+        ),
+        5,
+      );
+    });
+
+    test('reidratação pós-save com local parcial mescla remoto completo', () {
+      final local = Produto(
+        nome: 'Anel',
+        custoReal: 20,
+        frete: 0,
+        gastosFixos: 0,
+        gastosVariaveis: 0,
+        precoSugerido: 0,
+        precoFinal: 89.9,
+        quantidade: 3,
+        precoUnitario: 89.9,
+        categoria: 'Anel',
+        dataEntrada: DateTime(2026, 3, 8),
+        lojaId: _lojaId,
+        idFirebase: _docId,
+        slug: _docId,
+        variacoes: {
+          '20': {'sem-cor': 2},
+          '22': {'sem-cor': 1},
+        },
+        estoquePorTamanho: const {'20': 2, '22': 1},
+        tamanhos: const ['20', '22'],
+      );
+
+      final remoteCompleto = {
+        'variacoes': {
+          '13': {'sem-cor': 1},
+          '18': {'sem-cor': 1},
+          '20': {'sem-cor': 2},
+          '22': {'sem-cor': 1},
+        },
+        'estoquePorTamanho': {'13': 1, '18': 1, '20': 2, '22': 1},
+        'tamanhos': ['13', '18', '20', '22'],
+        'quantidade': 5,
+      };
+
+      final decision = ProdutoEstoqueGradeCanonicalGuard.resolveForRehydrate(
+        local: local,
+        remoteData: remoteCompleto,
+      );
+
+      expect(decision.aplicarGradeRemota, isFalse);
+      expect(decision.variacoes?['13']?['sem-cor'], 1);
+      expect(decision.variacoes?['18']?['sem-cor'], 1);
+      expect(decision.variacoes?['20']?['sem-cor'], 2);
+      expect(decision.variacoes?['22']?['sem-cor'], 1);
+      expect(decision.estoquePorTamanho?['13'], 1);
+      expect(decision.estoquePorTamanho?['18'], 1);
+      expect(decision.estoquePorTamanho?['20'], 2);
+      expect(decision.tamanhos, containsAll(['13', '18', '20', '22']));
+    });
+
+    test('hidratação UI suplementa tamanhos ausentes via estoquePorTamanho', () {
+      final p = Produto(
+        nome: 'Anel',
+        custoReal: 20,
+        frete: 0,
+        gastosFixos: 0,
+        gastosVariaveis: 0,
+        precoSugerido: 0,
+        precoFinal: 89.9,
+        quantidade: 5,
+        precoUnitario: 89.9,
+        categoria: 'Anel',
+        dataEntrada: DateTime(2026, 3, 8),
+        lojaId: _lojaId,
+        variacoes: {
+          '20': {'sem-cor': 2},
+          '22': {'sem-cor': 1},
+        },
+        estoquePorTamanho: const {'13': 1, '18': 1, '20': 2, '22': 1},
+        tamanhos: const ['13', '18', '20', '22'],
+      );
+
+      final hydration = produtoFormHydrateGradeRows(p);
+      final tamanhosNaUi = hydration.rows
+          .map((r) => r['tamanho'] ?? '')
+          .where((t) => t.isNotEmpty)
+          .toSet();
+
+      expect(hydration.source, ProdutoFormGradeHydrationSource.variacoes);
+      expect(tamanhosNaUi, containsAll(['13', '18', '20', '22']));
     });
 
     test('reidratação mantém quantidade local quando remoto diverge', () {
