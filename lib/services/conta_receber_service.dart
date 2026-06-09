@@ -1,5 +1,6 @@
 // Baixa parcial/total de contas a receber com validação e histórico.
 
+import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
 import '../core/hive_box_names.dart';
@@ -31,10 +32,57 @@ class ContaReceberService {
     if (loja.isEmpty) {
       throw ArgumentError('lojaId vazio ao abrir contas a receber.');
     }
+    if (!Hive.isAdapterRegistered(29)) {
+      throw StateError(
+        'ContaReceberAdapter (typeId 29) não registrado. Reinicie o app.',
+      );
+    }
     final name = HiveBoxNames.contasReceber(loja);
-    return Hive.isBoxOpen(name)
-        ? Hive.box<ContaReceber>(name)
-        : await Hive.openBox<ContaReceber>(name);
+
+    if (Hive.isBoxOpen(name)) {
+      try {
+        return Hive.box<ContaReceber>(name);
+      } catch (e, st) {
+        debugPrint(
+          '[CONTA_RECEBER_HIVE_FAIL] box=$name aberta com tipo incorreto '
+          'type=${e.runtimeType} err=$e',
+        );
+        debugPrint('$st');
+        try {
+          await Hive.box(name).close();
+        } catch (_) {}
+      }
+    }
+
+    try {
+      return await Hive.openBox<ContaReceber>(name);
+    } catch (e, st) {
+      debugPrint(
+        '[CONTA_RECEBER_HIVE_FAIL] open box=$name type=${e.runtimeType} err=$e',
+      );
+      debugPrint('$st');
+      if (kIsWeb) {
+        await _repairBoxWeb(name);
+        return Hive.openBox<ContaReceber>(name);
+      }
+      rethrow;
+    }
+  }
+
+  /// Repara box corrompida no IndexedDB (mesmo padrão de Vendas/Clientes no Web).
+  static Future<void> _repairBoxWeb(String boxName) async {
+    if (!kIsWeb) return;
+    try {
+      if (Hive.isBoxOpen(boxName)) {
+        await Hive.box(boxName).close();
+      }
+      await Hive.deleteBoxFromDisk(boxName);
+      debugPrint('[CONTA_RECEBER] repair web ok box=$boxName');
+    } catch (e) {
+      debugPrint(
+        '[CONTA_RECEBER_HIVE_FAIL] repair web falhou box=$boxName type=${e.runtimeType} err=$e',
+      );
+    }
   }
 
   /// Conta pertence à loja (trim + legado sem lojaId na box por loja).

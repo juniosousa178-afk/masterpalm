@@ -206,6 +206,57 @@ class VendasService {
     return vendaIdEstavel.trim();
   }
 
+  static String _mensagemErroContaReceberSegura(Object e) {
+    if (e is ArgumentError) {
+      final msg = e.message?.toString().trim() ?? '';
+      if (msg.isNotEmpty) return msg;
+    }
+    if (e is HiveError) {
+      final msg = e.message.trim();
+      if (msg.isNotEmpty) return msg;
+    }
+    if (e is StateError) {
+      final msg = e.message.trim();
+      if (msg.isNotEmpty) return msg;
+    }
+    final raw = e.toString().trim();
+    if (raw.isNotEmpty && !raw.startsWith('Instance of')) return raw;
+    return 'erro ${e.runtimeType}';
+  }
+
+  static void _logContaReceberFiado({
+    required String tag,
+    required String lojaId,
+    String? clienteId,
+    String? clienteNome,
+    double? totalVenda,
+    double? valorPago,
+    double? valorFiado,
+    String? formaPagamento,
+    int? parcelas,
+    DateTime? vencimento,
+    int? vendaKey,
+    String? vendaIdFirebase,
+    Object? erro,
+    StackTrace? stack,
+  }) {
+    debugPrint(
+      '[$tag] lojaId=$lojaId '
+      'clienteId=${clienteId ?? '-'} '
+      'clienteNome=${clienteNome ?? '-'} '
+      'totalVenda=${totalVenda != null ? _fmt2(totalVenda) : '-'} '
+      'valorPago=${valorPago != null ? _fmt2(valorPago) : '-'} '
+      'valorFiado=${valorFiado != null ? _fmt2(valorFiado) : '-'} '
+      'formaPagamento=${formaPagamento ?? '-'} '
+      'parcelas=${parcelas ?? '-'} '
+      'vencimento=${vencimento?.toIso8601String() ?? '-'} '
+      'vendaKey=${vendaKey ?? '-'} '
+      'vendaIdFirebase=${vendaIdFirebase ?? '-'}'
+      '${erro != null ? ' erro=$erro' : ''}',
+    );
+    if (stack != null) debugPrint('$stack');
+  }
+
   static Future<void> _persistirContasReceberNaBox({
     required Box<ContaReceber> crBox,
     required List<ContaReceber> contas,
@@ -225,7 +276,7 @@ class VendasService {
       }
     }
     debugPrint(
-      '[VENDAS-SERVICE] contas_receber criadas qtd=${contas.length} lojaId=$lojaId '
+      '[CONTA_RECEBER_CREATE_OK] [VENDAS-SERVICE] contas_receber criadas qtd=${contas.length} lojaId=$lojaId '
       'vendaKey=${_vendaKeyParaContaReceber(vendaHiveKey)} '
       'vendaIdFirebase=$vendaIdVinculo box=${crBox.name} total=${crBox.length}',
     );
@@ -1575,6 +1626,20 @@ class VendasService {
         );
       }
       try {
+        _logContaReceberFiado(
+          tag: 'CONTA_RECEBER_CREATE_START',
+          lojaId: lojaEfetiva,
+          clienteId: cliente.key?.toString() ?? cliente.idFirebase,
+          clienteNome: cliente.nome,
+          totalVenda: total,
+          valorPago: totalPagoAgora,
+          valorFiado: saldoFiado,
+          formaPagamento: formasPagamentoTexto,
+          parcelas: quantidadeParcelasFiado,
+          vencimento: vencimento,
+          vendaKey: vendaHiveKey,
+          vendaIdFirebase: vendaIdVinculo,
+        );
         final crBox = await ContaReceberService.openBoxLoja(lojaEfetiva);
         final qtdParcelas = safeInt(
           quantidadeParcelasFiado.clamp(1, 48),
@@ -1613,11 +1678,33 @@ class VendasService {
           vendaIdVinculo: vendaIdVinculo,
           vendaHiveKey: vendaHiveKey,
         );
-      } catch (e) {
-        debugPrint('⚠️ [VENDAS-SERVICE] Erro ao criar conta a receber (type=${e.runtimeType})');
-        onSyncError?.call(
-          'Não foi possível gerar a conta a receber. A venda fiada não foi registrada.',
+      } catch (e, st) {
+        final detalheErro = _mensagemErroContaReceberSegura(e);
+        _logContaReceberFiado(
+          tag: 'VENDA_FIADA_CONTA_RECEBER_FAIL',
+          lojaId: lojaEfetiva,
+          clienteId: cliente.key?.toString() ?? cliente.idFirebase,
+          clienteNome: cliente.nome,
+          totalVenda: total,
+          valorPago: totalPagoAgora,
+          valorFiado: saldoFiado,
+          formaPagamento: formasPagamentoTexto,
+          parcelas: quantidadeParcelasFiado,
+          vencimento: vencimento,
+          vendaKey: vendaHiveKey,
+          vendaIdFirebase: vendaIdVinculo,
+          erro: e,
+          stack: st,
         );
+        debugPrint(
+          '⚠️ [VENDAS-SERVICE] Erro ao criar conta a receber '
+          '(type=${e.runtimeType}) detalhe=$detalheErro',
+        );
+        final msgUsuario = detalheErro.contains('conta a receber') ||
+                detalheErro.contains('ContaReceber')
+            ? detalheErro
+            : 'Não foi possível gerar a conta a receber. $detalheErro';
+        onSyncError?.call(msgUsuario);
         try {
           await devolverEstoqueParaVendaRemovida(
             venda: venda,
@@ -1640,9 +1727,7 @@ class VendasService {
             rethrow;
           }
         }
-        throw ArgumentError(
-          'Não foi possível gerar a conta a receber. A venda fiada não foi registrada.',
-        );
+        throw ArgumentError(msgUsuario);
       }
     }
 
