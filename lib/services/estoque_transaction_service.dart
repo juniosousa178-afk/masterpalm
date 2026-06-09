@@ -319,20 +319,14 @@ class EstoqueTransactionService {
             _estoquePorTamanhoAgregadoDeVariacoes(novasVariacoes);
       }
 
-      final updateData = <String, dynamic>{
-        'quantidade': novaQuantidadeTotal,
-        'updatedAt': FieldValue.serverTimestamp(),
-      };
-      if (novasVariacoes != null) {
-        updateData['variacoes'] =
-            ProdutoVariacaoExtra.sanitizeVariacoesMapForFirestore(
-          Map<String, dynamic>.from(novasVariacoes),
-        );
-        updateData['estoquePorTamanho'] = estoquePorTamanhoParaVariacao!;
-      }
-      if (novoEstoquePorTamanho != null) {
-        updateData['estoquePorTamanho'] = novoEstoquePorTamanho;
-      }
+      final updateData = buildEstoqueUpdateDataComDeletes(
+        novaQuantidadeTotal: novaQuantidadeTotal,
+        variacoesAnteriores: variacoes,
+        variacoesNovas: novasVariacoes,
+        estoquePorTamanhoAnterior: estoquePorTamanho,
+        estoquePorTamanhoNovo:
+            estoquePorTamanhoParaVariacao ?? novoEstoquePorTamanho,
+      );
 
       transaction.update(produtoRef, updateData);
 
@@ -408,6 +402,80 @@ class EstoqueTransactionService {
       );
     }
     return {};
+  }
+
+  /// Firestore faz merge em mapas aninhados — chaves omitidas permanecem.
+  /// Após baixa/devolução, remove explicitamente tamanhos/cores zerados.
+  @visibleForTesting
+  static Map<String, dynamic> buildEstoqueUpdateDataComDeletes({
+    required int novaQuantidadeTotal,
+    Map<String, dynamic>? variacoesAnteriores,
+    Map<String, dynamic>? variacoesNovas,
+    Map<String, int>? estoquePorTamanhoAnterior,
+    Map<String, int>? estoquePorTamanhoNovo,
+  }) {
+    final updateData = <String, dynamic>{
+      'quantidade': novaQuantidadeTotal,
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+
+    if (variacoesNovas != null) {
+      final sanitized = ProdutoVariacaoExtra.sanitizeVariacoesMapForFirestore(
+        Map<String, dynamic>.from(variacoesNovas),
+      );
+      updateData['variacoes'] = sanitized;
+      _adicionarDeletesMapaVariacoes(
+        updateData,
+        variacoesAnteriores ?? const {},
+        sanitized,
+      );
+    }
+
+    if (estoquePorTamanhoNovo != null) {
+      updateData['estoquePorTamanho'] = estoquePorTamanhoNovo;
+      _adicionarDeletesEstoquePorTamanho(
+        updateData,
+        estoquePorTamanhoAnterior ?? const {},
+        estoquePorTamanhoNovo,
+      );
+    }
+
+    return updateData;
+  }
+
+  static void _adicionarDeletesMapaVariacoes(
+    Map<String, dynamic> updateData,
+    Map<String, dynamic> anterior,
+    Map<String, dynamic> novo,
+  ) {
+    for (final tam in anterior.keys) {
+      final tamStr = tam.toString();
+      if (!novo.containsKey(tam)) {
+        updateData['variacoes.$tamStr'] = FieldValue.delete();
+        continue;
+      }
+      final am = anterior[tam];
+      final nm = novo[tam];
+      if (am is! Map || nm is! Map) continue;
+      for (final cor in am.keys) {
+        final corStr = cor.toString();
+        if (!nm.containsKey(cor)) {
+          updateData['variacoes.$tamStr.$corStr'] = FieldValue.delete();
+        }
+      }
+    }
+  }
+
+  static void _adicionarDeletesEstoquePorTamanho(
+    Map<String, dynamic> updateData,
+    Map<String, int> anterior,
+    Map<String, int> novo,
+  ) {
+    for (final k in anterior.keys) {
+      if (!novo.containsKey(k)) {
+        updateData['estoquePorTamanho.$k'] = FieldValue.delete();
+      }
+    }
   }
 
   /// Resolve produtoId/slug/nome para DocumentReference (Transaction.get não aceita Query).
@@ -955,20 +1023,14 @@ class EstoqueTransactionService {
               _estoquePorTamanhoAgregadoDeVariacoes(novasVariacoes);
         }
 
-        final updateData = <String, dynamic>{
-          'quantidade': novaQuantidadeTotal,
-          'updatedAt': FieldValue.serverTimestamp(),
-        };
-        if (novasVariacoes != null) {
-          updateData['variacoes'] =
-              ProdutoVariacaoExtra.sanitizeVariacoesMapForFirestore(
-            Map<String, dynamic>.from(novasVariacoes),
-          );
-          updateData['estoquePorTamanho'] = estoquePorTamanhoParaVariacao!;
-        }
-        if (novoEstoquePorTamanho != null) {
-          updateData['estoquePorTamanho'] = novoEstoquePorTamanho;
-        }
+        final updateData = buildEstoqueUpdateDataComDeletes(
+          novaQuantidadeTotal: novaQuantidadeTotal,
+          variacoesAnteriores: variacoes,
+          variacoesNovas: novasVariacoes,
+          estoquePorTamanhoAnterior: estoquePorTamanho,
+          estoquePorTamanhoNovo:
+              estoquePorTamanhoParaVariacao ?? novoEstoquePorTamanho,
+        );
 
         final estoqueRef = _db
             .collection('lojas')
@@ -1192,20 +1254,14 @@ class EstoqueTransactionService {
               _estoquePorTamanhoAgregadoDeVariacoes(novasVariacoes);
         }
 
-        final updateData = <String, dynamic>{
-          'quantidade': novaQuantidadeTotal,
-          'updatedAt': FieldValue.serverTimestamp(),
-        };
-        if (novasVariacoes != null) {
-          updateData['variacoes'] =
-              ProdutoVariacaoExtra.sanitizeVariacoesMapForFirestore(
-            Map<String, dynamic>.from(novasVariacoes),
-          );
-          updateData['estoquePorTamanho'] = estoquePorTamanhoParaVariacao!;
-        }
-        if (novoEstoquePorTamanho != null) {
-          updateData['estoquePorTamanho'] = novoEstoquePorTamanho;
-        }
+        final updateData = buildEstoqueUpdateDataComDeletes(
+          novaQuantidadeTotal: novaQuantidadeTotal,
+          variacoesAnteriores: variacoes,
+          variacoesNovas: novasVariacoes,
+          estoquePorTamanhoAnterior: estoquePorTamanho,
+          estoquePorTamanhoNovo:
+              estoquePorTamanhoParaVariacao ?? novoEstoquePorTamanho,
+        );
 
         final estoqueRef = _db.collection('lojas').doc(lojaId).collection(FSPaths.estoqueProdutosCol).doc(docId);
         final slugVal = (data['slug'] ?? '').toString().trim();
