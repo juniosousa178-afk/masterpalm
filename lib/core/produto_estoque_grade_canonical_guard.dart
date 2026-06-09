@@ -210,6 +210,8 @@ class ProdutoEstoqueGradeCanonicalGuard {
   }
 
   /// [push] vence em células sobrepostas; chaves só em [base] permanecem.
+  /// Quando [push] traz um tamanho, o mapa interno é autoritativo (zeros/remoções
+  /// explícitas na UI não são repostos por células antigas do baseline).
   @visibleForTesting
   static Map<String, dynamic> mesclarVariacoesComPrioridadePush({
     required Map<String, dynamic> base,
@@ -223,17 +225,11 @@ class ProdutoEstoqueGradeCanonicalGuard {
         if (bk != null) out[tam] = _cloneVariacaoCelula(bk);
         continue;
       }
-      if (bk == null || bk is! Map) {
-        out[tam] = _cloneVariacaoCelula(pk);
+      if (pk is Map) {
+        out[tam] = Map<String, dynamic>.from(pk);
         continue;
       }
-      if (pk is! Map) {
-        out[tam] = pk;
-        continue;
-      }
-      final inner = Map<String, dynamic>.from(bk);
-      inner.addAll(Map<String, dynamic>.from(pk));
-      out[tam] = inner;
+      out[tam] = pk;
     }
     return out;
   }
