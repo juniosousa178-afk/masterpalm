@@ -292,7 +292,11 @@ class EstoqueService {
       }
 
       // === ENTRADA (devolução de venda, compra, ajuste+) — não usa transação ===
-      if (produto.usaVariacoes && (tam.isNotEmpty || corTrim.isNotEmpty)) {
+      final entradaComGradeInformada =
+          _isOperacaoEntrada(operacao) && (tam.isNotEmpty || corTrim.isNotEmpty);
+      if ((produto.usaVariacoes || entradaComGradeInformada) &&
+          (tam.isNotEmpty || corTrim.isNotEmpty)) {
+        produto.variacoes ??= <String, dynamic>{};
         final tamKey = tam.isEmpty ? '' : tam;
         final corKey = corTrim.isEmpty ? 'sem-cor' : corTrim;
         estoqueAntes = produto.obterEstoqueVariacao(tamKey, corKey, extraTrim);

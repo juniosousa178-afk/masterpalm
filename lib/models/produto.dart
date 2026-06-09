@@ -707,7 +707,7 @@ class Produto extends HiveObject {
   void devolverEstoqueVariacao(String tamanho, String cor, int qtd,
       [String variacaoExtra = '']) {
     if (qtd <= 0) return;
-    if (!usaVariacoes) return;
+    variacoes ??= <String, dynamic>{};
 
     final tam = tamanho.trim();
     final corKey = _resolverCorKeyParaTamanho(
