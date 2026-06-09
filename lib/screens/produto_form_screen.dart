@@ -328,38 +328,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           ? p.percentualDescontoPix.toStringAsFixed(1)
           : '0';
 
-      // 🔹 Preenche grade (variacoes → estoquePorTamanho → tamanhos; alinhado à lista)
-      final hydration = produtoFormHydrateGradeRows(p);
-      if (hydration.source == ProdutoFormGradeHydrationSource.variacoes) {
-        debugPrint('\n🔍 [DEBUG CARREGAR] Carregando variações persistidas:');
-        debugPrint('  p.variacoes = ${p.variacoes}');
-        _gradeVariacoes = List<Map<String, String>>.from(hydration.rows);
-        debugPrint('  Total de linhas carregadas: ${_gradeVariacoes.length}');
-        _logDiagnosticoVariacoes(
-          evento: 'carregar',
-          productId: p.idFirebase.isNotEmpty ? p.idFirebase : p.slug,
-          variacoes: Map<String, dynamic>.from(p.variacoes!),
-        );
-      } else if (hydration.source ==
-              ProdutoFormGradeHydrationSource.estoquePorTamanho ||
-          hydration.source == ProdutoFormGradeHydrationSource.tamanhosSomente) {
-        _gradeVariacoes = List<Map<String, String>>.from(hydration.rows);
-        _legadoEstoqueSemVariacoesCadastradas = true;
-        _gradeHidratadaDeLegado = true;
-        debugPrint(
-          '[VARIACAO_HYDRATE] grade reidratada de legado '
-          '(source=${hydration.source.name}, linhas=${_gradeVariacoes.length})',
-        );
-      } else {
-        _legadoEstoqueSemVariacoesCadastradas =
-            p.estoquePorTamanho.isNotEmpty || p.tamanhos.isNotEmpty;
-        debugPrint(
-          '[VARIACAO_GUARD] edição: sem grade hidratável; legado=$_legadoEstoqueSemVariacoesCadastradas',
-        );
-      }
-      if (_gradeVariacoes.isEmpty) {
-        _gradeVariacoes.add(produtoFormEmptyGradeRow());
-      }
+      _carregarGradeUiFromProduto(p);
 
       // 🔹 Preenche campos de promoção
       _emPromocao = p.emPromocao;
@@ -385,10 +354,65 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           );
         }
       }
-      _initTombSessaoBaseline(p);
-      _gradeBaseline = ProdutoFormGradeBaseline.capture(p);
+    } else {
+      _initVariacaoControllers();
+    }
+  }
+
+  void _carregarGradeUiFromProduto(Produto p) {
+    final hydration = produtoFormHydrateGradeRows(p);
+    _legadoEstoqueSemVariacoesCadastradas = false;
+    _gradeHidratadaDeLegado = false;
+    if (hydration.source == ProdutoFormGradeHydrationSource.variacoes) {
+      debugPrint('\n🔍 [DEBUG CARREGAR] Carregando variações persistidas:');
+      debugPrint('  p.variacoes = ${p.variacoes}');
+      _gradeVariacoes = List<Map<String, String>>.from(hydration.rows);
+      debugPrint('  Total de linhas carregadas: ${_gradeVariacoes.length}');
+      if (p.variacoes != null && p.variacoes!.isNotEmpty) {
+        _logDiagnosticoVariacoes(
+          evento: 'carregar',
+          productId: p.idFirebase.isNotEmpty ? p.idFirebase : p.slug,
+          variacoes: Map<String, dynamic>.from(p.variacoes!),
+        );
+      }
+    } else if (hydration.source ==
+            ProdutoFormGradeHydrationSource.estoquePorTamanho ||
+        hydration.source == ProdutoFormGradeHydrationSource.tamanhosSomente) {
+      _gradeVariacoes = List<Map<String, String>>.from(hydration.rows);
+      _legadoEstoqueSemVariacoesCadastradas = true;
+      _gradeHidratadaDeLegado = true;
+      debugPrint(
+        '[VARIACAO_HYDRATE] grade reidratada de legado '
+        '(source=${hydration.source.name}, linhas=${_gradeVariacoes.length})',
+      );
+    } else {
+      _gradeVariacoes = List<Map<String, String>>.from(hydration.rows);
+      _legadoEstoqueSemVariacoesCadastradas =
+          p.estoquePorTamanho.isNotEmpty || p.tamanhos.isNotEmpty;
+      debugPrint(
+        '[VARIACAO_GUARD] edição: sem grade hidratável; legado=$_legadoEstoqueSemVariacoesCadastradas',
+      );
+    }
+    if (_gradeVariacoes.isEmpty) {
+      _gradeVariacoes.add(produtoFormEmptyGradeRow());
     }
     _initVariacaoControllers();
+    _initTombSessaoBaseline(p);
+    _gradeBaseline = ProdutoFormGradeBaseline.capture(p);
+  }
+
+  Future<void> _refreshGradeRemotaAoAbrirFormSeNecessario() async {
+    final p = widget.produto;
+    final id = lojaId;
+    if (p == null || id == null || id.trim().isEmpty) return;
+    final atualizado =
+        await ProdutosFirestoreService.refreshGradeFromEstoqueRemotoAoAbrirForm(
+      produto: p,
+      lojaId: id,
+    );
+    if (!atualizado || !mounted) return;
+    _carregarGradeUiFromProduto(p);
+    setState(() {});
   }
 
   /// Evita que save com grade vazia na UI apague variações existentes sem remoção parcial explícita.
@@ -746,6 +770,10 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         _nome.addListener(_verificarProdutoExistente);
         _categoria.addListener(_verificarProdutoExistente);
         WidgetsBinding.instance.addPostFrameCallback((_) => _verificarProdutoExistente());
+      }
+
+      if (widget.produto != null) {
+        await _refreshGradeRemotaAoAbrirFormSeNecessario();
       }
     } catch (e) {
       debugPrint('❌ Erro ao inicializar ProdutoForm (type=${e.runtimeType})');

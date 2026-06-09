@@ -978,6 +978,125 @@ class ProdutosFirestoreService {
     );
   }
 
+  static void _applyGradeRehydrateDecisionToProduto({
+    required Produto produto,
+    required Map<String, dynamic> remoteData,
+    required ProdutoEstoqueGradeRehydrateResult gradeDecision,
+  }) {
+    if (gradeDecision.aplicarGradeRemota) {
+      _applyRemoteGradeToProdutoForRehydrate(
+        produto: produto,
+        existingData: remoteData,
+      );
+      return;
+    }
+    if (gradeDecision.variacoes == null ||
+        gradeDecision.estoquePorTamanho == null) {
+      return;
+    }
+    produto.variacoes = gradeDecision.variacoes!.isNotEmpty
+        ? Map<String, dynamic>.from(gradeDecision.variacoes!)
+        : null;
+    produto.variacoesExtraTipo = gradeDecision.variacoesExtraTipo;
+    produto.estoquePorTamanho =
+        Map<String, int>.from(gradeDecision.estoquePorTamanho!);
+    if (gradeDecision.tamanhos != null &&
+        gradeDecision.tamanhos!.isNotEmpty) {
+      produto.tamanhos = List<String>.from(gradeDecision.tamanhos!);
+    }
+    if (gradeDecision.precoPorTamanho != null) {
+      produto.precoPorTamanho = gradeDecision.precoPorTamanho;
+    }
+  }
+
+  @visibleForTesting
+  static bool deveAtualizarGradeRemotaAoAbrirForm({
+    required Produto local,
+    required Map<String, dynamic> remoteData,
+  }) {
+    final remoteV = remoteData['variacoes'];
+    final remoteE = remoteData['estoquePorTamanho'];
+    if (remoteV is! Map || remoteV.isEmpty) return false;
+    if (remoteE is! Map || remoteE.isEmpty) return false;
+
+    final localRaw = local.variacoes;
+    if (localRaw == null || localRaw.isEmpty) {
+      return true;
+    }
+    final localV = Map<String, dynamic>.from(localRaw);
+    final remoteMap = Map<String, dynamic>.from(remoteV);
+    final localTam = localV.keys.map((k) => k.toString()).toSet();
+    final remoteTam = remoteMap.keys.map((k) => k.toString()).toSet();
+    if (localTam.every(remoteTam.contains) && localTam.length < remoteTam.length) {
+      return true;
+    }
+    return remoteTam.length > localTam.length &&
+        localTam.every(remoteTam.contains);
+  }
+
+  /// Ao abrir o formulário: se Hive tem grade parcial e remoto tem mais tamanhos,
+  /// mescla a grade canônica antes de montar os controllers.
+  static Future<bool> refreshGradeFromEstoqueRemotoAoAbrirForm({
+    required Produto produto,
+    required String lojaId,
+  }) async {
+    final storeId = lojaId.trim();
+    final produtoId = produto.idFirebase.trim().isNotEmpty
+        ? produto.idFirebase.trim()
+        : produto.slug.trim();
+    if (storeId.isEmpty || produtoId.isEmpty) return false;
+
+    try {
+      final snap = await _db
+          .collection('lojas')
+          .doc(storeId)
+          .collection(FSPaths.estoqueProdutosCol)
+          .doc(produtoId)
+          .get();
+      if (!snap.exists) return false;
+      final data = Map<String, dynamic>.from(snap.data() ?? {});
+      if (!deveAtualizarGradeRemotaAoAbrirForm(local: produto, remoteData: data)) {
+        return false;
+      }
+
+      final baseline = ProdutoFormGradeBaseline.capture(produto);
+      final gradeDecision =
+          ProdutoEstoqueGradeCanonicalGuard.resolveForRehydrate(
+        local: produto,
+        remoteData: data,
+        baseline: baseline,
+      );
+
+      ProdutoRemoteSyncGuard.applyingRemoteToHive = true;
+      try {
+        _applyGradeRehydrateDecisionToProduto(
+          produto: produto,
+          remoteData: data,
+          gradeDecision: gradeDecision,
+        );
+        produto.recalcularQuantidadeTotal();
+        await produto.save();
+      } finally {
+        ProdutoRemoteSyncGuard.applyingRemoteToHive = false;
+      }
+
+      logD(
+        '[FORM_OPEN_GRADE_REFRESH] grade alinhada ao abrir form '
+        'produtoId=$produtoId linhasTam='
+        '${produtoFormColetarTamanhosGradeAlvo(produto).length}',
+        tag: 'FORM_OPEN_GRADE_REFRESH',
+      );
+      return true;
+    } catch (e) {
+      logW(
+        '[FORM_OPEN_GRADE_REFRESH] falha produtoId=$produtoId '
+        '${e.runtimeType}',
+        tag: 'FORM_OPEN_GRADE_REFRESH',
+      );
+      return false;
+    }
+  }
+
   /// Após save confirmado em estoque_produtos, alinha Hive com o doc remoto canônico.
   static Future<ProdutoRehydratePosSaveResult>
       rehydrateProdutoConfirmadoFromEstoqueRemoto(
@@ -1070,25 +1189,17 @@ class ProdutosFirestoreService {
         remoteData: data,
         logContext: 'rehydrate_pos_save',
       );
-      final aplicarGradeRemota = gradeDecision?.aplicarGradeRemota ?? true;
-      if (aplicarGradeRemota) {
+      if (gradeDecision != null) {
+        _applyGradeRehydrateDecisionToProduto(
+          produto: produto,
+          remoteData: data,
+          gradeDecision: gradeDecision,
+        );
+      } else {
         _applyRemoteGradeToProdutoForRehydrate(
           produto: produto,
           existingData: data,
         );
-      } else if (gradeDecision?.variacoes != null &&
-          gradeDecision!.estoquePorTamanho != null) {
-        produto.variacoes = gradeDecision.variacoes!.isNotEmpty
-            ? Map<String, dynamic>.from(gradeDecision.variacoes!)
-            : null;
-        produto.variacoesExtraTipo = gradeDecision.variacoesExtraTipo;
-        produto.estoquePorTamanho =
-            Map<String, int>.from(gradeDecision.estoquePorTamanho!);
-        if (gradeDecision.tamanhos != null &&
-            gradeDecision.tamanhos!.isNotEmpty) {
-          produto.tamanhos = List<String>.from(gradeDecision.tamanhos!);
-        }
-        produto.precoPorTamanho = gradeDecision.precoPorTamanho;
       }
       final uAt = data['updatedAt'];
       if (uAt is Timestamp) {

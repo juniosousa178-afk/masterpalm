@@ -191,24 +191,59 @@ List<ProdutoFormGradeRow> produtoFormBuildGradeRowsFromTamanhosSomente(
   return rows;
 }
 
-bool _tamanhoAutorizadoParaSuplementoGrade({
-  required String tamanho,
-  required List<String> tamanhosProduto,
-  required Map<String, dynamic>? variacoesExtraTipo,
-}) {
-  if (tamanho.isEmpty) return false;
-  if (tamanhosProduto.contains(tamanho)) return true;
-  if (variacoesExtraTipo != null && variacoesExtraTipo.containsKey(tamanho)) {
-    return true;
+/// União de tamanhos conhecidos da grade (variacoes, estoque, tamanhos, extra).
+Set<String> produtoFormColetarTamanhosGradeAlvo(Produto p) {
+  final out = <String>{};
+  for (final t in p.tamanhos) {
+    final tt = t.trim();
+    if (tt.isNotEmpty) out.add(tt);
   }
-  return false;
+  if (p.variacoes != null) {
+    for (final k in p.variacoes!.keys) {
+      final tk = k.toString();
+      if (tk.isNotEmpty && tk != 'sem-tamanho') out.add(tk);
+    }
+  }
+  for (final k in p.estoquePorTamanho.keys) {
+    final parsed = produtoFormParseEstoquePorTamanhoKey(k.toString());
+    if (parsed.tamanho.isNotEmpty) out.add(parsed.tamanho);
+  }
+  if (p.variacoesExtraTipo != null) {
+    for (final k in p.variacoesExtraTipo!.keys) {
+      final tk = k.toString();
+      if (tk.isNotEmpty && tk != 'sem-tamanho') out.add(tk);
+    }
+  }
+  return out;
+}
+
+int? _quantidadeGradeCelula({
+  required Produto p,
+  required String tamanho,
+  String cor = 'sem-cor',
+}) {
+  final variacoes = p.variacoes;
+  if (variacoes != null) {
+    final mapaCores = variacoes[tamanho];
+    if (mapaCores is Map) {
+      final raw = mapaCores[cor] ?? mapaCores['sem-cor'];
+      if (raw != null) {
+        final q = ProdutoVariacaoExtra.somarCelula(raw);
+        if (q > 0) return q;
+      }
+    }
+  }
+  final estoque = p.estoquePorTamanho[tamanho];
+  if (estoque != null && estoque > 0) {
+    return ProdutoVariacaoExtra.valorFirestoreComoInt(estoque);
+  }
+  return null;
 }
 
 List<ProdutoFormGradeRow> _suplementarLinhasDeEstoqueAusentes(
   List<ProdutoFormGradeRow> rows,
   Map<String, int> estoquePorTamanho, {
-  required List<String> tamanhosProduto,
-  Map<String, dynamic>? variacoesExtraTipo,
+  required Set<String> tamanhosAlvo,
 }) {
   if (estoquePorTamanho.isEmpty) return rows;
   final tamanhosNasLinhas = rows
@@ -221,37 +256,99 @@ List<ProdutoFormGradeRow> _suplementarLinhasDeEstoqueAusentes(
   )) {
     final t = (row['tamanho'] ?? '').trim();
     if (t.isEmpty || tamanhosNasLinhas.contains(t)) continue;
-    if (!_tamanhoAutorizadoParaSuplementoGrade(
-      tamanho: t,
-      tamanhosProduto: tamanhosProduto,
-      variacoesExtraTipo: variacoesExtraTipo,
-    )) {
-      continue;
-    }
+    if (!tamanhosAlvo.contains(t)) continue;
     out.add(row);
     tamanhosNasLinhas.add(t);
   }
   return out;
 }
 
+List<ProdutoFormGradeRow> _suplementarLinhasDeTamanhosAusentes(
+  List<ProdutoFormGradeRow> rows,
+  Produto p, {
+  required Set<String> tamanhosAlvo,
+}) {
+  final tamanhosNasLinhas = rows
+      .map((r) => (r['tamanho'] ?? '').trim())
+      .where((t) => t.isNotEmpty)
+      .toSet();
+  final out = List<ProdutoFormGradeRow>.from(rows);
+  final sorted = tamanhosAlvo.toList()
+    ..sort((a, b) {
+      final na = int.tryParse(a);
+      final nb = int.tryParse(b);
+      if (na != null && nb != null) return na.compareTo(nb);
+      return a.compareTo(b);
+    });
+  for (final t in sorted) {
+    if (tamanhosNasLinhas.contains(t)) continue;
+    final qtd = _quantidadeGradeCelula(p: p, tamanho: t);
+    if (qtd == null || qtd <= 0) continue;
+    out.add({
+      'tamanho': produtoFormDisplayTamanhoGrade(t),
+      'cor': '',
+      'extraTipo': '',
+      'extraValor': '',
+      'qtd': qtd.toString(),
+      'custo': '',
+    });
+    tamanhosNasLinhas.add(t);
+  }
+  return out;
+}
+
+Set<String> _tamanhosListaExplicita(Produto p) {
+  return p.tamanhos
+      .map((t) => t.trim())
+      .where((t) => t.isNotEmpty)
+      .toSet();
+}
+
+Set<String> _tamanhosChavesEstoque(Produto p) {
+  final out = <String>{};
+  for (final k in p.estoquePorTamanho.keys) {
+    final parsed = produtoFormParseEstoquePorTamanhoKey(k.toString());
+    if (parsed.tamanho.isNotEmpty) out.add(parsed.tamanho);
+  }
+  return out;
+}
+
+bool _variacoesParcialRelativoAoEstoque(Produto p) {
+  if (p.variacoes == null || p.variacoes!.isEmpty) return false;
+  if (p.estoquePorTamanho.isEmpty) return false;
+  final variacaoKeys = p.variacoes!.keys
+      .map((k) => k.toString())
+      .where((k) => k.isNotEmpty && k != 'sem-tamanho')
+      .toSet();
+  if (variacaoKeys.isEmpty) return false;
+  final estoqueTamanhos = _tamanhosChavesEstoque(p);
+  if (estoqueTamanhos.length <= variacaoKeys.length) return false;
+  return variacaoKeys.every(estoqueTamanhos.contains);
+}
+
 /// Prioridade: variacoes → estoquePorTamanho → tamanhos (sem inventar quantidade).
 ProdutoFormGradeHydration produtoFormHydrateGradeRows(Produto p) {
-  if (p.variacoes != null && p.variacoes!.isNotEmpty) {
+  final temVariacoes = p.variacoes != null && p.variacoes!.isNotEmpty;
+
+  if (temVariacoes) {
     var rows = produtoFormBuildGradeRowsFromVariacoes(
       Map<String, dynamic>.from(p.variacoes!),
       variacoesExtraTipo: p.variacoesExtraTipo == null
           ? null
           : Map<String, dynamic>.from(p.variacoesExtraTipo!),
     );
-    if (p.estoquePorTamanho.isNotEmpty &&
-        (p.tamanhos.isNotEmpty || p.variacoesExtraTipo != null)) {
+    final tamanhosLista = _tamanhosListaExplicita(p);
+    if (tamanhosLista.isNotEmpty) {
+      rows = _suplementarLinhasDeTamanhosAusentes(
+        rows,
+        p,
+        tamanhosAlvo: tamanhosLista,
+      );
+    } else if (_variacoesParcialRelativoAoEstoque(p)) {
       rows = _suplementarLinhasDeEstoqueAusentes(
         rows,
         p.estoquePorTamanho,
-        tamanhosProduto: p.tamanhos,
-        variacoesExtraTipo: p.variacoesExtraTipo == null
-            ? null
-            : Map<String, dynamic>.from(p.variacoesExtraTipo!),
+        tamanhosAlvo: _tamanhosChavesEstoque(p),
       );
     }
     return ProdutoFormGradeHydration(
