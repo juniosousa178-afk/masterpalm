@@ -240,7 +240,9 @@ class EstoqueTransactionService {
             );
           }
         }
-        if (temEstoquePorTamanho && tam.isEmpty) {
+        if (_temEstoquePorTamanhoReal(estoquePorTamanho) &&
+            tam.isEmpty &&
+            !temVariacaoSoloCor) {
           throw Exception(
             'O produto "$produtoNome" possui estoque por tamanho. '
             'É obrigatório informar o TAMANHO na venda (ex.: P, M, G).',
@@ -481,9 +483,17 @@ class EstoqueTransactionService {
     return null;
   }
 
+  static bool _temEstoquePorTamanhoReal(Map<String, int> map) {
+    for (final e in map.entries) {
+      if (Produto.ehChaveTamanhoTecnicoLegado(e.key)) continue;
+      if (e.value > 0) return true;
+    }
+    return false;
+  }
+
   static bool _temVariacaoSoloTamanho(Map<String, dynamic> variacoes) {
     for (final e in variacoes.entries) {
-      if (e.key == 'sem-tamanho') continue;
+      if (Produto.ehChaveTamanhoTecnicoLegado(e.key.toString())) continue;
       if (e.value is Map && (e.value as Map).isNotEmpty) return true;
     }
     return false;
@@ -867,7 +877,9 @@ class EstoqueTransactionService {
             );
           }
         }
-        if (temEstoquePorTamanho && tamanho.isEmpty) {
+        if (_temEstoquePorTamanhoReal(estoquePorTamanho) &&
+            tamanho.isEmpty &&
+            !temVariacaoSoloCor) {
           throw Exception(
             'O produto "$produtoNome" possui estoque por tamanho. '
             'É obrigatório informar o TAMANHO na venda (ex.: P, M, G).',

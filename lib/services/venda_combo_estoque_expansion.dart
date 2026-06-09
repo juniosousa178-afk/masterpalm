@@ -271,7 +271,7 @@ class VendaComboEstoqueExpansion {
           'Clique em "Selecionar" e escolha tamanho e cor.',
         );
       }
-      if ((p.temVariacaoSoloTamanho || p.estoquePorTamanho.isNotEmpty) && it.tamanho.trim().isEmpty) {
+      if (p.exigeSelecaoTamanhoNaVenda && it.tamanho.trim().isEmpty) {
         throw Exception(
           'O produto "${it.produtoNome}" possui variação de tamanho. '
           'Clique em "Selecionar" e escolha o tamanho (ex.: P, M, G).',

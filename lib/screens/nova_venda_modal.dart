@@ -1398,8 +1398,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       await _mostrarErro('Informe tamanho e cor para o produto "$nome".');
       return false;
     }
-    if ((prod.temVariacaoSoloTamanho || prod.estoquePorTamanho.isNotEmpty) &&
-        tamanho.isEmpty) {
+    if (prod.exigeSelecaoTamanhoNaVenda && tamanho.isEmpty) {
       await _mostrarErro('Informe o tamanho para o produto "$nome".');
       return false;
     }

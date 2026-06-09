@@ -465,16 +465,63 @@ class Produto extends HiveObject {
   /// Verifica se o produto usa sistema de variações
   bool get usaVariacoes => variacoes != null && variacoes!.isNotEmpty;
 
+  /// Chaves de tamanho legado/técnico que não exigem seleção na venda.
+  static bool ehChaveTamanhoTecnicoLegado(String? raw) {
+    final t = (raw ?? '').trim();
+    if (t.isEmpty) return true;
+    var norm = t.toLowerCase().replaceAll(RegExp(r'\s+'), '');
+    norm = norm
+        .replaceAll('á', 'a')
+        .replaceAll('à', 'a')
+        .replaceAll('ã', 'a')
+        .replaceAll('é', 'e')
+        .replaceAll('ê', 'e')
+        .replaceAll('í', 'i')
+        .replaceAll('ó', 'o')
+        .replaceAll('ô', 'o')
+        .replaceAll('õ', 'o')
+        .replaceAll('ú', 'u')
+        .replaceAll('ç', 'c');
+    const tecnicos = {
+      'sem-tamanho',
+      'semtamanho',
+      'sem-cor',
+      'semcor',
+      'unico',
+      'unique',
+      'u',
+      'null',
+      'n/a',
+      'na',
+    };
+    return tecnicos.contains(norm);
+  }
+
+  /// [estoquePorTamanho] com ao menos um tamanho real (não stub/legado).
+  bool get temEstoquePorTamanhoComTamanhoReal {
+    for (final e in estoquePorTamanho.entries) {
+      if (ehChaveTamanhoTecnicoLegado(e.key)) continue;
+      if (e.value > 0) return true;
+    }
+    return false;
+  }
+
   /// Produto tem variação APENAS de tamanho (sem cor)
   bool get temVariacaoSoloTamanho {
-    if (!usaVariacoes) return estoquePorTamanho.isNotEmpty;
-    final keys = variacoes!.keys.where((k) => k != 'sem-tamanho').toList();
-    if (keys.isEmpty) return false;
-    for (final t in keys) {
-      final m = variacoes![t];
+    if (!usaVariacoes) return temEstoquePorTamanhoComTamanhoReal;
+    for (final k in variacoes!.keys) {
+      if (ehChaveTamanhoTecnicoLegado(k.toString())) continue;
+      final m = variacoes![k];
       if (m is Map && m.isNotEmpty) return true;
     }
     return false;
+  }
+
+  /// Exige seleção de tamanho na venda (cor-only e chaves legadas não contam).
+  bool get exigeSelecaoTamanhoNaVenda {
+    if (temVariacaoTamanhoECor) return true;
+    if (temVariacaoSoloCor) return false;
+    return temVariacaoSoloTamanho;
   }
 
   /// Produto tem variação APENAS de cor (sem tamanho)

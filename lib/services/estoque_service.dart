@@ -222,7 +222,9 @@ class EstoqueService {
       debugPrint('$tag $msg');
       return EstoqueResult.erro(msg);
     }
-    if (produto.estoquePorTamanho.isNotEmpty && tam.isEmpty) {
+    if (produto.temEstoquePorTamanhoComTamanhoReal &&
+        tam.isEmpty &&
+        !produto.temVariacaoSoloCor) {
       final msg = 'O produto "${produto.nome}" possui estoque por tamanho. É obrigatório informar o TAMANHO.';
       debugPrint('$tag $msg');
       return EstoqueResult.erro(msg);

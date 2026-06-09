@@ -5,7 +5,7 @@ import 'package:master_palm/services/venda_combo_estoque_expansion.dart';
 
 Produto _produtoComTamanhoSemSelecao() {
   return Produto(
-    nome: 'Conjunto Coração Cravejado - Pingente E Brinco',
+    nome: 'Anel Ajustável Fiado',
     custoReal: 20,
     frete: 0,
     gastosFixos: 0,
@@ -17,8 +17,11 @@ Produto _produtoComTamanhoSemSelecao() {
     categoria: 'Joias',
     dataEntrada: DateTime(2026, 6, 5),
     lojaId: 'nathy-pratas-e-folheados',
-    estoquePorTamanho: const {'Único': 5},
-    tamanhos: const ['Único'],
+    variacoes: {
+      'P': {'sem-cor': 2},
+      'M': {'sem-cor': 2},
+      'G': {'sem-cor': 1},
+    },
   );
 }
 
@@ -66,16 +69,11 @@ void main() {
 
     test('com tamanho selecionado passa na validação de expansão', () {
       final produto = _produtoComTamanhoSemSelecao();
-      produto.variacoes = {
-        'Único': {
-          'sem-cor': {'': 5},
-        },
-      };
       final item = VendaItem(
         produtoNome: produto.nome,
         quantidade: 1,
         precoUnitario: produto.precoFinal,
-        tamanho: 'Único',
+        tamanho: 'M',
         cor: '',
         lojaId: produto.lojaId,
       );
