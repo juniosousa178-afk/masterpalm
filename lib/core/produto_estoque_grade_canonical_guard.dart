@@ -100,7 +100,10 @@ class ProdutoEstoqueGradeCanonicalGuard {
     required Map<String, dynamic> variacoes,
     required Map<String, int> estoquePorTamanho,
   }) {
-    return variacoes.isNotEmpty && estoquePorTamanho.isNotEmpty;
+    // `variacoes` é fonte canônica; zeros explícitos são grade válida mesmo sem
+    // chaves positivas em `estoquePorTamanho` (removidas após zerar).
+    if (variacoes.isNotEmpty) return true;
+    return estoquePorTamanho.isNotEmpty;
   }
 
   @visibleForTesting
@@ -118,7 +121,8 @@ class ProdutoEstoqueGradeCanonicalGuard {
     )) {
       return false;
     }
-    return variacoes.isEmpty || estoquePorTamanho.isEmpty;
+    if (variacoes.isNotEmpty) return false;
+    return estoquePorTamanho.isEmpty;
   }
 
   @visibleForTesting
