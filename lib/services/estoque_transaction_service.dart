@@ -283,7 +283,9 @@ class EstoqueTransactionService {
         );
         novaQuantidadeTotal = _somarVariacoes(novasVariacoes);
       } else if (temEstoquePorTamanho && tam.isNotEmpty) {
-        disponivel = estoquePorTamanho[tam] ?? 0;
+        final tamResolvido =
+            _resolverChaveNoMapa(estoquePorTamanho, tam) ?? tam;
+        disponivel = estoquePorTamanho[tamResolvido] ?? 0;
 
         if (disponivel < quantidade) {
           throw Exception(
@@ -293,9 +295,9 @@ class EstoqueTransactionService {
         }
 
         novoEstoquePorTamanho = Map<String, int>.from(estoquePorTamanho);
-        novoEstoquePorTamanho[tam] = disponivel - quantidade;
-        if (novoEstoquePorTamanho[tam]! <= 0) {
-          novoEstoquePorTamanho.remove(tam);
+        novoEstoquePorTamanho[tamResolvido] = disponivel - quantidade;
+        if (novoEstoquePorTamanho[tamResolvido]! <= 0) {
+          novoEstoquePorTamanho.remove(tamResolvido);
         }
 
         novaQuantidadeTotal =
@@ -443,6 +445,25 @@ class EstoqueTransactionService {
     return updateData;
   }
 
+  /// Dot-notation quebra com chaves que contêm `.` (ex.: tamanho `45.5cm`).
+  /// Nesses casos confia no mapa completo já enviado em [variacoes]/[estoquePorTamanho].
+  static void _putFieldDelete(
+    Map<String, dynamic> updateData,
+    List<String> pathSegments,
+  ) {
+    if (pathSegments.isEmpty) return;
+    if (pathSegments.any((s) => s.contains('.'))) {
+      if (kDebugMode) {
+        debugPrint(
+          '[ESTOQUE_TX_DELETE_KEYS] skip delete granular (chave com ponto): '
+          '${pathSegments.join("/")}',
+        );
+      }
+      return;
+    }
+    updateData[pathSegments.join('.')] = FieldValue.delete();
+  }
+
   static void _adicionarDeletesMapaVariacoes(
     Map<String, dynamic> updateData,
     Map<String, dynamic> anterior,
@@ -450,17 +471,18 @@ class EstoqueTransactionService {
   ) {
     for (final tam in anterior.keys) {
       final tamStr = tam.toString();
-      if (!novo.containsKey(tam)) {
-        updateData['variacoes.$tamStr'] = FieldValue.delete();
+      if (!_mapaContemChaveCompativel(novo, tamStr)) {
+        _putFieldDelete(updateData, ['variacoes', tamStr]);
         continue;
       }
+      final tamNovo = _resolverChaveNoMapa(novo, tamStr) ?? tamStr;
       final am = anterior[tam];
-      final nm = novo[tam];
+      final nm = novo[tamNovo];
       if (am is! Map || nm is! Map) continue;
       for (final cor in am.keys) {
         final corStr = cor.toString();
-        if (!nm.containsKey(cor)) {
-          updateData['variacoes.$tamStr.$corStr'] = FieldValue.delete();
+        if (!_mapaContemChaveCompativel(nm, corStr)) {
+          _putFieldDelete(updateData, ['variacoes', tamStr, corStr]);
         }
       }
     }
@@ -472,10 +494,34 @@ class EstoqueTransactionService {
     Map<String, int> novo,
   ) {
     for (final k in anterior.keys) {
-      if (!novo.containsKey(k)) {
-        updateData['estoquePorTamanho.$k'] = FieldValue.delete();
+      final ks = k.toString();
+      if (!_mapaContemChaveCompativel(novo, ks)) {
+        _putFieldDelete(updateData, ['estoquePorTamanho', ks]);
       }
     }
+  }
+
+  /// Resolve chave de grade com tolerância (espaços/caixa), alinhado ao catálogo.
+  @visibleForTesting
+  static String? resolverChaveNoMapaParaTeste(
+    Map<dynamic, dynamic> map,
+    String informada,
+  ) {
+    final alvo = informada.trim();
+    if (alvo.isEmpty) return null;
+    if (map.containsKey(alvo)) return alvo;
+    for (final k in map.keys) {
+      final ks = k.toString();
+      if (ProdutoVariacaoExtra.keysMatch(ks, alvo)) return ks;
+    }
+    return null;
+  }
+
+  static String? _resolverChaveNoMapa(Map<dynamic, dynamic> map, String informada) =>
+      resolverChaveNoMapaParaTeste(map, informada);
+
+  static bool _mapaContemChaveCompativel(Map<dynamic, dynamic> map, String informada) {
+    return _resolverChaveNoMapa(map, informada) != null;
   }
 
   /// Resolve produtoId/slug/nome para DocumentReference (Transaction.get não aceita Query).
@@ -586,10 +632,13 @@ class EstoqueTransactionService {
     required String corInformada,
   }) {
     final cor = corInformada.trim();
-    if (cor.isNotEmpty) return cor;
+    final tamResolvido = _resolverChaveNoMapa(variacoes, tamanho) ?? tamanho;
+    final mapaCor = variacoes[tamResolvido];
+    if (mapaCor is! Map) return cor.isNotEmpty ? cor : 'sem-cor';
 
-    final mapaCor = variacoes[tamanho];
-    if (mapaCor is! Map) return 'sem-cor';
+    if (cor.isNotEmpty) {
+      return _resolverChaveNoMapa(mapaCor, cor) ?? cor;
+    }
 
     final coresValidas = mapaCor.keys
         .map((e) => e.toString().trim())
@@ -610,14 +659,17 @@ class EstoqueTransactionService {
     required String produtoNome,
     required String erroCtx,
   }) {
-    final mapaCor = variacoes[chaveTamanho];
+    final tamResolvido =
+        _resolverChaveNoMapa(variacoes, chaveTamanho) ?? chaveTamanho;
+    final mapaCor = variacoes[tamResolvido];
     if (mapaCor == null || mapaCor is! Map) {
       throw Exception(
         'Estoque insuficiente para "$produtoNome" $erroCtx. Disponível: 0, solicitado: $quantidade.',
       );
     }
     final mapa = Map<String, dynamic>.from(mapaCor);
-    final cell = mapa[corKey];
+    final corResolvida = _resolverChaveNoMapa(mapa, corKey) ?? corKey;
+    final cell = mapa[corResolvida];
     if (ProdutoVariacaoExtra.celulaTemExtrasNaoVazios(cell) &&
         extraTrim.isEmpty) {
       throw Exception(
@@ -634,15 +686,15 @@ class EstoqueTransactionService {
       );
     }
     if (r.newCell == ProdutoVariacaoExtra.removeCorCell) {
-      mapa.remove(corKey);
+      mapa.remove(corResolvida);
     } else {
-      mapa[corKey] = r.newCell;
+      mapa[corResolvida] = r.newCell;
     }
     final novasVariacoes = Map<String, dynamic>.from(variacoes);
     if (mapa.isEmpty) {
-      novasVariacoes.remove(chaveTamanho);
+      novasVariacoes.remove(tamResolvido);
     } else {
-      novasVariacoes[chaveTamanho] = mapa;
+      novasVariacoes[tamResolvido] = mapa;
     }
     return novasVariacoes;
   }
@@ -987,7 +1039,9 @@ class EstoqueTransactionService {
           );
           novaQuantidadeTotal = _somarVariacoes(novasVariacoes);
         } else if (temEstoquePorTamanho && tamanho.isNotEmpty) {
-          final disponivel = estoquePorTamanho[tamanho] ?? 0;
+          final tamResolvido =
+              _resolverChaveNoMapa(estoquePorTamanho, tamanho) ?? tamanho;
+          final disponivel = estoquePorTamanho[tamResolvido] ?? 0;
 
           if (disponivel < quantidade) {
             throw Exception(
@@ -997,9 +1051,9 @@ class EstoqueTransactionService {
           }
 
           novoEstoquePorTamanho = Map<String, int>.from(estoquePorTamanho);
-          novoEstoquePorTamanho[tamanho] = disponivel - quantidade;
-          if (novoEstoquePorTamanho[tamanho]! <= 0) {
-            novoEstoquePorTamanho.remove(tamanho);
+          novoEstoquePorTamanho[tamResolvido] = disponivel - quantidade;
+          if (novoEstoquePorTamanho[tamResolvido]! <= 0) {
+            novoEstoquePorTamanho.remove(tamResolvido);
           }
 
           novaQuantidadeTotal =

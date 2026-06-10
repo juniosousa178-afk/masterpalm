@@ -59,6 +59,10 @@ class PosPagamentoService {
   }) async {
     try {
       debugPrint(
+        '[CATALOGO_POS_PAGAMENTO_START] vendaId=$vendaId lojaId=$lojaId '
+        'valorTotal=$valorTotal itens=${items.length} formaPagamento=$formaPagamento',
+      );
+      debugPrint(
         '🎯 [PÓS-PAGAMENTO] Iniciando processamento para venda: $vendaId | lojaId=$lojaId | valorTotal=$valorTotal',
       );
 
@@ -88,11 +92,14 @@ class PosPagamentoService {
         );
       } else {
         debugPrint(
+          '[CATALOGO_POS_PAGAMENTO_BAIXA_START] vendaId=$vendaId lojaId=$lojaId itens=${items.length}',
+        );
+        debugPrint(
           '🔁 [ESTOQUE_BAIXA] Iniciando baixa transacional de estoque via pós-pagamento. lojaId=$lojaId, vendaId=$vendaId, itens=${items.length}',
         );
 
         // 1. Baixar estoque dos produtos (regra: baixa antes de marcar como pago)
-        await _baixarEstoque(lojaId, items);
+        await _baixarEstoque(lojaId, items, vendaId: vendaId);
 
         await baixaRef.set({
           'baixaAplicada': true,
@@ -184,6 +191,10 @@ class PosPagamentoService {
       return true;
     } catch (e, st) {
       debugPrint(
+        '[CATALOGO_POS_PAGAMENTO_FAIL] vendaId=$vendaId lojaId=$lojaId '
+        'erro=$e type=${e.runtimeType}',
+      );
+      debugPrint(
         '❌ [PÓS-PAGAMENTO] Erro ao processar (type=${e.runtimeType}) | lojaId=$lojaId | vendaId=$vendaId | $e',
       );
       debugPrint('$st');
@@ -242,7 +253,11 @@ class PosPagamentoService {
   /// Baixa o estoque dos produtos vendidos via transação Firestore (atômico).
   /// Usa a mesma expansão de combo que a nova venda ([VendaComboEstoqueExpansion]), incluindo
   /// [itensComboComSelecao] e [extraValor] por componente.
-  static Future<void> _baixarEstoque(String lojaId, List<Map<String, dynamic>> items) async {
+  static Future<void> _baixarEstoque(
+    String lojaId,
+    List<Map<String, dynamic>> items, {
+    String? vendaId,
+  }) async {
     final produtosBox = await Hive.openBox<Produto>(HiveBoxNames.produtos(lojaId));
 
     final docIdsParaHive = <String>{};
@@ -301,6 +316,15 @@ class PosPagamentoService {
       produtosEncontrados: produtosEncontrados,
     );
 
+    for (final tx in txItems) {
+      debugPrint(
+        '[CATALOGO_TX_ITEM] vendaId=$vendaId lojaId=$lojaId '
+        'produtoNome=${tx['nome']} productId=${tx['productId']} '
+        'tamanho=${tx['tamanho']} cor=${tx['cor']} '
+        'extra=${tx['extraValor'] ?? ''} quantidade=${tx['quantidade']}',
+      );
+    }
+
     if (txItems.isEmpty) {
       debugPrint(
         '⚠️ [ESTOQUE_BAIXA] Lista de transação vazia após expansão. lojaId=$lojaId',
@@ -311,10 +335,20 @@ class PosPagamentoService {
       );
     }
 
-    final txResults = await EstoqueTransactionService.baixarEstoqueTransactionBatch(
-      lojaId: lojaId,
-      itens: txItems,
-    );
+    List<EstoqueTransactionResult> txResults;
+    try {
+      txResults = await EstoqueTransactionService.baixarEstoqueTransactionBatch(
+        lojaId: lojaId,
+        itens: txItems,
+      );
+    } catch (e, st) {
+      debugPrint(
+        '[CATALOGO_POS_PAGAMENTO_BAIXA_FAIL] vendaId=$vendaId lojaId=$lojaId '
+        'erro=$e type=${e.runtimeType}',
+      );
+      debugPrint('$st');
+      rethrow;
+    }
 
     await EstoqueTransactionService.removerDoCatalogoSeEstoqueZerado(lojaId, txResults);
 
