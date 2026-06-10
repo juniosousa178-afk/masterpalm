@@ -86,8 +86,8 @@ Map<String, double> produtoFormBuildPrecoPorTamanhoFromControllers(
     final custoStr = (c['custo']?.text ?? '').trim();
     final qStr = (c['qtd']?.text ?? '').trim();
     if (qStr.isEmpty || (tamanho.isEmpty && cor.isEmpty)) continue;
-    final qtd = int.tryParse(qStr) ?? 0;
-    if (qtd <= 0) continue;
+    final qtd = int.tryParse(qStr);
+    if (qtd == null || qtd < 0) continue;
     final chaveTamanho = tamanho.isEmpty ? 'sem-tamanho' : tamanho;
     final corFinal = cor.isEmpty ? 'sem-cor' : cor;
     final ek = extraValor.isEmpty ? ProdutoVariacaoExtra.kSemExtraKey : extraValor;

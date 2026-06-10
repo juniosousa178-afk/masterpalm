@@ -448,8 +448,8 @@ bool produtoFormBaselineHadGrade(ProdutoFormGradeBaseline baseline) {
     final custoStr = (r['custo'] ?? '').trim();
     final qStr = (r['qtd'] ?? '').trim();
     if (qStr.isEmpty || (tamanho.isEmpty && cor.isEmpty)) continue;
-    final qtd = int.tryParse(qStr) ?? 0;
-    if (qtd <= 0) continue;
+    final qtd = int.tryParse(qStr);
+    if (qtd == null || qtd < 0) continue;
     final chaveTamanho = tamanho.isEmpty ? 'sem-tamanho' : tamanho;
     final corFinal = cor.isEmpty ? 'sem-cor' : cor;
     final ek =
