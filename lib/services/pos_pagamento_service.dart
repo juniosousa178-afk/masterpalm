@@ -32,6 +32,9 @@ import 'sorteio_numero_service.dart';
 class PosPagamentoService {
   static final PedidoRepository _pedidoRepository = PedidoRepository();
 
+  /// Última falha de [processarConfirmacaoPagamento] (para mensagem específica na UI).
+  static String? ultimaFalhaProcessamento;
+
   /// Processa todas as ações após confirmação de pagamento
   ///
   /// Este método deve ser chamado quando:
@@ -57,6 +60,7 @@ class PosPagamentoService {
     String? cupomRoletaCodigo,
     double? cupomRoletaDesconto,
   }) async {
+    ultimaFalhaProcessamento = null;
     try {
       debugPrint(
         '[CATALOGO_POS_PAGAMENTO_START] vendaId=$vendaId lojaId=$lojaId '
@@ -190,6 +194,7 @@ class PosPagamentoService {
       debugPrint('✅ [PÓS-PAGAMENTO] Processamento concluído com sucesso!');
       return true;
     } catch (e, st) {
+      ultimaFalhaProcessamento = e.toString();
       debugPrint(
         '[CATALOGO_POS_PAGAMENTO_FAIL] vendaId=$vendaId lojaId=$lojaId '
         'erro=$e type=${e.runtimeType}',
@@ -282,6 +287,7 @@ class PosPagamentoService {
         lojaId: lojaId,
         produtosBox: produtosBox,
         firebaseDocIds: docIdsParaHive,
+        forceRefreshFromRemoto: true,
       );
     }
 

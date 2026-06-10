@@ -2646,10 +2646,18 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
               'Pedido confirmado e venda registrada! Número da sorte enviado por email e WhatsApp.',
             );
           } else {
-            _showModernSnackBar(
-              'Pagamento confirmado, mas houve falha ao processar o pós-pagamento (baixa de estoque ou notificações). Tente novamente.',
-              isError: true,
-            );
+            final detalhe = PosPagamentoService.ultimaFalhaProcessamento ?? '';
+            final lower = detalhe.toLowerCase();
+            final msg = lower.contains('estoque insuficiente')
+                ? 'Pagamento confirmado, mas o estoque é insuficiente: $detalhe'
+                : lower.contains('informe o tamanho') ||
+                        lower.contains('variação de tamanho') ||
+                        lower.contains('tamanho e cor')
+                    ? 'Pagamento confirmado, mas falta tamanho/cor no pedido: $detalhe'
+                    : detalhe.isNotEmpty
+                        ? 'Pagamento confirmado, mas houve falha no pós-pagamento: $detalhe'
+                        : 'Pagamento confirmado, mas houve falha ao processar o pós-pagamento (baixa de estoque ou notificações). Tente novamente.';
+            _showModernSnackBar(msg, isError: true);
           }
         }
       } else {

@@ -266,22 +266,50 @@ class EstoqueTransactionService {
         );
         novaQuantidadeTotal = _somarVariacoes(novasVariacoes);
       } else if (usaVariacoes && tam.isNotEmpty) {
-        final chaveCor = _resolverCorKeyParaTamanho(
-          variacoes: variacoes,
-          tamanho: tam,
-          corInformada: corTrim,
-        );
-        novasVariacoes = _mapaAposDebitoVariacao(
-          variacoes: variacoes,
-          chaveTamanho: tam,
-          corKey: chaveCor,
-          extraTrim: extraTrim,
-          quantidade: quantidade,
-          produtoNome: produtoNome,
-          erroCtx:
-              'no tamanho $tam${corTrim.isEmpty ? '' : ' - cor $corTrim'}',
-        );
-        novaQuantidadeTotal = _somarVariacoes(novasVariacoes);
+        final tamResolvidoVar = _resolverChaveNoMapa(variacoes, tam);
+        final mapaTamVar = tamResolvidoVar != null
+            ? variacoes[tamResolvidoVar]
+            : null;
+        final celulaVarExiste = mapaTamVar is Map && mapaTamVar.isNotEmpty;
+
+        if (!celulaVarExiste && temEstoquePorTamanho) {
+          final tamResolvido =
+              _resolverChaveNoMapa(estoquePorTamanho, tam) ?? tam;
+          disponivel = estoquePorTamanho[tamResolvido] ?? 0;
+
+          if (disponivel < quantidade) {
+            throw Exception(
+              'Estoque insuficiente para "$produtoNome" no tamanho $tam. '
+              'Disponível: $disponivel, solicitado: $quantidade.',
+            );
+          }
+
+          novoEstoquePorTamanho = Map<String, int>.from(estoquePorTamanho);
+          novoEstoquePorTamanho[tamResolvido] = disponivel - quantidade;
+          if (novoEstoquePorTamanho[tamResolvido]! <= 0) {
+            novoEstoquePorTamanho.remove(tamResolvido);
+          }
+
+          novaQuantidadeTotal =
+              novoEstoquePorTamanho.values.fold(0, (a, b) => a + b);
+        } else {
+          final chaveCor = _resolverCorKeyParaTamanho(
+            variacoes: variacoes,
+            tamanho: tam,
+            corInformada: corTrim,
+          );
+          novasVariacoes = _mapaAposDebitoVariacao(
+            variacoes: variacoes,
+            chaveTamanho: tam,
+            corKey: chaveCor,
+            extraTrim: extraTrim,
+            quantidade: quantidade,
+            produtoNome: produtoNome,
+            erroCtx:
+                'no tamanho $tam${corTrim.isEmpty ? '' : ' - cor $corTrim'}',
+          );
+          novaQuantidadeTotal = _somarVariacoes(novasVariacoes);
+        }
       } else if (temEstoquePorTamanho && tam.isNotEmpty) {
         final tamResolvido =
             _resolverChaveNoMapa(estoquePorTamanho, tam) ?? tam;
@@ -1022,22 +1050,50 @@ class EstoqueTransactionService {
           );
           novaQuantidadeTotal = _somarVariacoes(novasVariacoes);
         } else if (usaVariacoes && tamanho.isNotEmpty) {
-          final chaveCor = _resolverCorKeyParaTamanho(
-            variacoes: variacoes,
-            tamanho: tamanho,
-            corInformada: cor,
-          );
-          novasVariacoes = _mapaAposDebitoVariacao(
-            variacoes: variacoes,
-            chaveTamanho: tamanho,
-            corKey: chaveCor,
-            extraTrim: extraTrim,
-            quantidade: quantidade,
-            produtoNome: produtoNome,
-            erroCtx:
-                'no tamanho $tamanho${cor.isEmpty ? '' : ' - cor $cor'}',
-          );
-          novaQuantidadeTotal = _somarVariacoes(novasVariacoes);
+          final tamResolvidoVar = _resolverChaveNoMapa(variacoes, tamanho);
+          final mapaTamVar = tamResolvidoVar != null
+              ? variacoes[tamResolvidoVar]
+              : null;
+          final celulaVarExiste = mapaTamVar is Map && mapaTamVar.isNotEmpty;
+
+          if (!celulaVarExiste && temEstoquePorTamanho) {
+            final tamResolvido =
+                _resolverChaveNoMapa(estoquePorTamanho, tamanho) ?? tamanho;
+            final disponivel = estoquePorTamanho[tamResolvido] ?? 0;
+
+            if (disponivel < quantidade) {
+              throw Exception(
+                'Estoque insuficiente para "$produtoNome" no tamanho $tamanho. '
+                'Disponível: $disponivel, solicitado: $quantidade.',
+              );
+            }
+
+            novoEstoquePorTamanho = Map<String, int>.from(estoquePorTamanho);
+            novoEstoquePorTamanho[tamResolvido] = disponivel - quantidade;
+            if (novoEstoquePorTamanho[tamResolvido]! <= 0) {
+              novoEstoquePorTamanho.remove(tamResolvido);
+            }
+
+            novaQuantidadeTotal =
+                novoEstoquePorTamanho.values.fold(0, (a, b) => a + b);
+          } else {
+            final chaveCor = _resolverCorKeyParaTamanho(
+              variacoes: variacoes,
+              tamanho: tamanho,
+              corInformada: cor,
+            );
+            novasVariacoes = _mapaAposDebitoVariacao(
+              variacoes: variacoes,
+              chaveTamanho: tamanho,
+              corKey: chaveCor,
+              extraTrim: extraTrim,
+              quantidade: quantidade,
+              produtoNome: produtoNome,
+              erroCtx:
+                  'no tamanho $tamanho${cor.isEmpty ? '' : ' - cor $cor'}',
+            );
+            novaQuantidadeTotal = _somarVariacoes(novasVariacoes);
+          }
         } else if (temEstoquePorTamanho && tamanho.isNotEmpty) {
           final tamResolvido =
               _resolverChaveNoMapa(estoquePorTamanho, tamanho) ?? tamanho;

@@ -640,6 +640,7 @@ class ProdutosFirestoreService {
     required String lojaId,
     required Box<Produto> produtosBox,
     required Iterable<String> firebaseDocIds,
+    bool forceRefreshFromRemoto = false,
   }) async {
     final lid = lojaId.trim();
     if (lid.isEmpty) return;
@@ -648,9 +649,12 @@ class ProdutosFirestoreService {
       final produtoId = raw.trim();
       if (produtoId.isEmpty) continue;
 
-      final already = produtosBox.values.any(
-        (p) => p.lojaId == lid && p.idFirebase == produtoId,
-      );
+      final already = !forceRefreshFromRemoto &&
+          produtosBox.values.any(
+            (p) =>
+                p.lojaId == lid &&
+                (p.idFirebase == produtoId || p.slug == produtoId),
+          );
       if (already) continue;
 
       try {
@@ -769,9 +773,40 @@ class ProdutosFirestoreService {
         );
 
         produto.recalcularQuantidadeTotal();
-        await produtosBox.add(produto);
-        logD(
-            '[ESTOQUE_HYDRATE] Produto $produtoId carregado do Firestore → Hive');
+
+        Produto? existente;
+        for (final key in produtosBox.keys) {
+          final p = produtosBox.get(key);
+          if (p == null || p.lojaId != lid) continue;
+          if (p.idFirebase == produtoId || p.slug == produtoId) {
+            existente = p;
+            break;
+          }
+        }
+
+        if (existente != null) {
+          existente
+            ..idFirebase = produto.idFirebase
+            ..nome = produto.nome
+            ..quantidade = produto.quantidade
+            ..tamanhos = produto.tamanhos
+            ..estoquePorTamanho = produto.estoquePorTamanho
+            ..variacoes = produto.variacoes
+            ..variacoesExtraTipo = produto.variacoesExtraTipo
+            ..precoPorTamanho = produto.precoPorTamanho
+            ..updatedAt = produto.updatedAt
+            ..slug = produto.slug;
+          existente.recalcularQuantidadeTotal();
+          await existente.save();
+          logD(
+            '[ESTOQUE_HYDRATE] Produto $produtoId atualizado do Firestore → Hive (refresh)',
+          );
+        } else {
+          await produtosBox.add(produto);
+          logD(
+            '[ESTOQUE_HYDRATE] Produto $produtoId carregado do Firestore → Hive',
+          );
+        }
       } catch (e, st) {
         logW(
           '[ESTOQUE_HYDRATE] Falha ao hidratar $produtoId (type=${e.runtimeType})',
