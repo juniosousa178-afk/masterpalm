@@ -921,6 +921,17 @@ service cloud.firestore {
         allow read, write: if belongsToStore(lojaId);
       }
 
+      // Idempotência do pós-pagamento do catálogo/WhatsApp.
+      // Usado pelo PosPagamentoService para evitar baixa duplicada de estoque.
+      match /estoque_baixa_pagamento/{vendaId} {
+        allow read: if belongsToStore(lojaId);
+
+        allow create, update: if belongsToStore(lojaId)
+          && request.resource.data.lojaId == lojaId;
+
+        allow delete: if isAdminOrSystem();
+      }
+
       // Pedidos pendentes: catalogo com combos (itens.itensComboComSelecao)
       match /pedidos_pendentes/{pedidoId} {
         allow read: if resource != null;
