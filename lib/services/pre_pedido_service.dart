@@ -22,6 +22,11 @@ import 'cliente_auth_helpers.dart';
 import 'pre_pedido_helpers.dart';
 import 'catalog_pre_pedido_compute.dart';
 import 'catalog_cart_item_snapshot.dart';
+import '../core/hive_box_names.dart';
+import '../models/produto.dart';
+import '../models/venda.dart';
+import 'vendas_service.dart';
+import 'package:hive/hive.dart';
 
 /// Serviço para gerenciar pré-pedidos do catálogo
 /// Pré-pedidos são enviados via WhatsApp e aguardam confirmação do vendedor
@@ -847,6 +852,38 @@ class PrePedidoService {
       final clienteData = prePedidoData?['cliente'] as Map?;
       final clienteNome =
           (clienteData)?['nome'] ?? 'Cliente';
+      final vendaIdPrePedido = (prePedidoData?['vendaId'] ?? '').toString().trim();
+
+      if (vendaIdPrePedido.isNotEmpty) {
+        try {
+          final vendasBox =
+              await Hive.openBox<Venda>(HiveBoxNames.vendas(lojaId));
+          final produtosBox =
+              await Hive.openBox<Produto>(HiveBoxNames.produtos(lojaId));
+          final key = int.tryParse(vendaIdPrePedido);
+          final venda = key != null ? vendasBox.get(key) : null;
+          if (venda != null) {
+            await VendasService.devolverEstoqueParaVendaRemovida(
+              venda: venda,
+              produtosBox: produtosBox,
+              lojaId: lojaId,
+              estornoOrigem: 'pre_pedido_cancelado',
+            );
+          } else {
+            logW(
+              '⚠️ [CANCELAR] vendaId=$vendaIdPrePedido não encontrada no Hive; '
+              'estorno de estoque ignorado',
+            );
+          }
+        } catch (e, st) {
+          logE(
+            '❌ [CANCELAR] Falha ao estornar estoque do pré-pedido (type=${e.runtimeType})',
+            error: e,
+            st: st,
+          );
+          rethrow;
+        }
+      }
 
       // Mantém um espelho público sanitizado mesmo quando o pré-pedido privado é removido.
       try {

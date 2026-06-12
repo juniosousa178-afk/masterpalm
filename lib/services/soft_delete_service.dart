@@ -537,6 +537,9 @@ class SoftDeleteService {
           final vid = (vendaParaRestaurar.idFirebase ?? '').trim().isNotEmpty
               ? vendaParaRestaurar.idFirebase!.trim()
               : 'hive_${vendaParaRestaurar.key}';
+          final marcadorId = EstoqueTransactionService.vendaIdMarcadorCatalogoFromKey(
+            vendaParaRestaurar.key,
+          );
           await VendasService.reaplicarBaixaEstoquePosUndoExclusaoVenda(
             venda: vendaParaRestaurar,
             produtosBox: produtosBoxUndo,
@@ -546,6 +549,16 @@ class SoftDeleteService {
             r.lojaId,
             vid,
           );
+          if (marcadorId != null && marcadorId.isNotEmpty) {
+            await EstoqueTransactionService.removerMarcadorDevolucaoVenda(
+              r.lojaId,
+              marcadorId,
+            );
+            await EstoqueTransactionService.limparEstornoAplicadoCatalogo(
+              r.lojaId,
+              marcadorId,
+            );
+          }
         } catch (e) {
           logW(
             '[SOFT-DELETE] undo venda: reaplicar baixa ou marcador falhou (type=${e.runtimeType})',

@@ -33,6 +33,11 @@ class VendasService {
   // ---------------------------
 
   static String _fmt2(double v) => v.toStringAsFixed(2);
+
+  static bool _vendaOrigemCatalogo(Venda venda) {
+    final o = (venda.origemVenda ?? '').trim().toLowerCase();
+    return o == 'catalogo_web' || o.startsWith('catalogo');
+  }
   static List<double> _parcelarValores(double total, int parcelas) {
     final qtd = parcelas.clamp(1, 48);
     final totalCentavos = (total * 100).round();
@@ -1110,6 +1115,7 @@ class VendasService {
     required String lojaId,
     required String vendaId,
     required List<Map<String, dynamic>> itens,
+    String estornoOrigemCatalogo = 'venda_delete',
   }) async {
     for (final m in itens) {
       debugPrint(
@@ -1120,6 +1126,7 @@ class VendasService {
       lojaId: lojaId,
       itens: itens,
       vendaIdParaIdempotencia: vendaId,
+      estornoOrigemCatalogo: estornoOrigemCatalogo,
     );
     final ids = results.map((r) => r.produtoId).join(',');
     debugPrint(
@@ -2137,47 +2144,82 @@ class VendasService {
     }
 
     // devolve estoque (transacional, idempotente)
-    final vendaId = (venda.idFirebase ?? '').trim().isNotEmpty
-        ? venda.idFirebase!.trim()
-        : 'hive_${venda.key}';
-    var devolucaoResults = <EstoqueTransactionResult>[];
-    final itensDevolucao = _resolverItensDevolucaoParaVenda(
-      venda: venda,
-      produtosBox: produtosBox,
-      lojaId: lojaId,
-      vendaIdLog: vendaId,
-    );
-    if (itensDevolucao.isNotEmpty) {
-      try {
-        final results = await _devolverEstoqueComLogsCombo(
-          lojaId: lojaId,
-          vendaId: vendaId,
-          itens: itensDevolucao,
-        );
-        devolucaoResults = results;
-        for (final r in results) {
-          await EstoqueTransactionService.atualizarHiveAposTransacao(
-            produtosBox: produtosBox,
-            lojaId: lojaId,
-            result: r,
-          );
-        }
-        if (results.isNotEmpty) {
-          debugPrint('✅ Estoque devolvido (transacional): ${results.length} itens');
-        }
-      } catch (e, st) {
-        debugPrint(
-          '[DESFAZER-VENDA] Falha na devolução de estoque — venda NÃO removida (Firestore/Hive intactos). Erro: $e',
-        );
-        Error.throwWithStackTrace(e, st);
-      }
-    } else if (venda.itens != null && venda.itens!.isNotEmpty) {
-      throw StateError(
-        'Não foi possível devolver o estoque desta venda. '
-        'Verifique se os produtos ainda existem no cadastro.',
+    final vendaIdMarcador =
+        EstoqueTransactionService.vendaIdMarcadorCatalogoFromKey(venda.key);
+    final marcador = vendaIdMarcador != null
+        ? await EstoqueTransactionService.lerMarcadorBaixaPagamento(
+            lojaId,
+            vendaIdMarcador,
+          )
+        : EstoqueBaixaPagamentoMarcador.ausente;
+    final skipEstornoCatalogo = (marcador.existe &&
+            (marcador.estornoAplicado || !marcador.baixaAplicada)) ||
+        (_vendaOrigemCatalogo(venda) && !marcador.existe);
+    if (marcador.existe && marcador.estornoAplicado) {
+      debugPrint(
+        '[DESFAZER-VENDA] estorno_ja_aplicado_remoto vendaIdMarcador=$vendaIdMarcador',
+      );
+    } else if (marcador.existe && !marcador.baixaAplicada) {
+      debugPrint(
+        '[DESFAZER-VENDA] sem_baixa_catalogo skip estorno vendaIdMarcador=$vendaIdMarcador',
       );
     }
 
+    var devolucaoResults = <EstoqueTransactionResult>[];
+    if (!skipEstornoCatalogo) {
+      final vendaIdFallback = (venda.idFirebase ?? '').trim().isNotEmpty
+          ? venda.idFirebase!.trim()
+          : 'hive_${venda.key}';
+      final vendaId =
+          await EstoqueTransactionService.resolverVendaIdIdempotenciaDevolucao(
+        lojaId: lojaId,
+        vendaIdMarcadorCatalogo: vendaIdMarcador,
+        vendaIdFallback: vendaIdFallback,
+      );
+      final itensDevolucao = _resolverItensDevolucaoParaVenda(
+        venda: venda,
+        produtosBox: produtosBox,
+        lojaId: lojaId,
+        vendaIdLog: vendaId,
+      );
+      if (itensDevolucao.isNotEmpty) {
+        try {
+          final results = await _devolverEstoqueComLogsCombo(
+            lojaId: lojaId,
+            vendaId: vendaId,
+            itens: itensDevolucao,
+            estornoOrigemCatalogo: 'desfazer_venda',
+          );
+          devolucaoResults = results;
+          for (final r in results) {
+            await EstoqueTransactionService.atualizarHiveAposTransacao(
+              produtosBox: produtosBox,
+              lojaId: lojaId,
+              result: r,
+            );
+          }
+          if (results.isNotEmpty) {
+            debugPrint(
+              '✅ Estoque devolvido (transacional): ${results.length} itens',
+            );
+          }
+        } catch (e, st) {
+          debugPrint(
+            '[DESFAZER-VENDA] Falha na devolução de estoque — venda NÃO removida (Firestore/Hive intactos). Erro: $e',
+          );
+          Error.throwWithStackTrace(e, st);
+        }
+      } else if (venda.itens != null && venda.itens!.isNotEmpty) {
+        throw StateError(
+          'Não foi possível devolver o estoque desta venda. '
+          'Verifique se os produtos ainda existem no cadastro.',
+        );
+      }
+    }
+
+    final vendaIdLog = (venda.idFirebase ?? '').trim().isNotEmpty
+        ? venda.idFirebase!.trim()
+        : 'hive_${venda.key}';
     var pisoResults = <EstoqueTransactionResult>[];
     try {
       pisoResults =
@@ -2196,7 +2238,7 @@ class VendasService {
           quantidade: q,
           motivo: 'Devolução (ajuste kit combo)',
           usuario: 'App',
-          vendaId: vendaId,
+          vendaId: vendaIdLog,
         ).catchError((_) {});
       }
     } catch (e) {
@@ -2262,11 +2304,48 @@ class VendasService {
     required Venda venda,
     required Box<Produto> produtosBox,
     required String lojaId,
+    String estornoOrigem = 'venda_delete',
   }) async {
-    final vendaId = (venda.idFirebase ?? '').trim().isNotEmpty
+    final vendaIdMarcador =
+        EstoqueTransactionService.vendaIdMarcadorCatalogoFromKey(venda.key);
+    final marcador = vendaIdMarcador != null
+        ? await EstoqueTransactionService.lerMarcadorBaixaPagamento(
+            lojaId,
+            vendaIdMarcador,
+          )
+        : EstoqueBaixaPagamentoMarcador.ausente;
+
+    if (marcador.existe && marcador.estornoAplicado) {
+      debugPrint(
+        '[VENDA_DELETE] estorno_ja_aplicado_remoto vendaIdMarcador=$vendaIdMarcador',
+      );
+      return;
+    }
+    if (marcador.existe && !marcador.baixaAplicada) {
+      debugPrint(
+        '[VENDA_DELETE] sem_baixa_catalogo skip estorno vendaIdMarcador=$vendaIdMarcador',
+      );
+      return;
+    }
+    if (_vendaOrigemCatalogo(venda) && !marcador.existe) {
+      debugPrint(
+        '[VENDA_DELETE] catalogo_sem_marcador skip estorno hiveKey=$vendaIdMarcador',
+      );
+      return;
+    }
+
+    final vendaIdFallback = (venda.idFirebase ?? '').trim().isNotEmpty
         ? venda.idFirebase!.trim()
         : 'hive_${venda.key}';
-    debugPrint('[VENDA_DELETE] devolucao_estoque_inicio vendaId=$vendaId');
+    final vendaId = await EstoqueTransactionService.resolverVendaIdIdempotenciaDevolucao(
+      lojaId: lojaId,
+      vendaIdMarcadorCatalogo: vendaIdMarcador,
+      vendaIdFallback: vendaIdFallback,
+    );
+    debugPrint(
+      '[VENDA_DELETE] devolucao_estoque_inicio vendaId=$vendaId '
+      'marcador=$vendaIdMarcador baixa=${marcador.baixaAplicada}',
+    );
 
     var devolucaoResultsExclusao = <EstoqueTransactionResult>[];
     final itensDevolucaoExclusao = _resolverItensDevolucaoParaVenda(
@@ -2281,6 +2360,7 @@ class VendasService {
           lojaId: lojaId,
           vendaId: vendaId,
           itens: itensDevolucaoExclusao,
+          estornoOrigemCatalogo: estornoOrigem,
         );
         devolucaoResultsExclusao = results;
         for (final r in results) {

@@ -19,6 +19,25 @@ import 'firestore_paths.dart';
 import 'catalog_cache_service.dart';
 import 'produto_exclusao_tombstone_service.dart';
 
+/// Estado do marcador `lojas/{lojaId}/estoque_baixa_pagamento/{vendaId}`.
+class EstoqueBaixaPagamentoMarcador {
+  final bool existe;
+  final bool baixaAplicada;
+  final bool estornoAplicado;
+
+  const EstoqueBaixaPagamentoMarcador({
+    required this.existe,
+    required this.baixaAplicada,
+    required this.estornoAplicado,
+  });
+
+  static const ausente = EstoqueBaixaPagamentoMarcador(
+    existe: false,
+    baixaAplicada: false,
+    estornoAplicado: false,
+  );
+}
+
 /// Resultado da baixa de estoque via transação
 class EstoqueTransactionResult {
   final String produtoId;
@@ -1211,11 +1230,116 @@ class EstoqueTransactionService {
     }
   }
 
-  /// Indica se a devolução já foi feita neste dispositivo (idempotência local).
+  /// Key Hive usada no pós-pagamento catálogo (`estoque_baixa_pagamento/{vendaId}`).
+  static String? vendaIdMarcadorCatalogoFromKey(dynamic hiveKey) {
+    if (hiveKey == null) return null;
+    final s = hiveKey.toString().trim();
+    return s.isEmpty ? null : s;
+  }
+
+  static DocumentReference<Map<String, dynamic>> _baixaPagamentoRef(
+    String lojaId,
+    String vendaIdMarcador,
+  ) {
+    return _db
+        .collection('lojas')
+        .doc(lojaId)
+        .collection('estoque_baixa_pagamento')
+        .doc(vendaIdMarcador);
+  }
+
+  static Future<EstoqueBaixaPagamentoMarcador> lerMarcadorBaixaPagamento(
+    String lojaId,
+    String vendaIdMarcador,
+  ) async {
+    final vid = vendaIdMarcador.trim();
+    if (vid.isEmpty) return EstoqueBaixaPagamentoMarcador.ausente;
+    try {
+      final snap = await _baixaPagamentoRef(lojaId, vid).get();
+      if (!snap.exists) return EstoqueBaixaPagamentoMarcador.ausente;
+      final data = snap.data() ?? {};
+      return EstoqueBaixaPagamentoMarcador(
+        existe: true,
+        baixaAplicada: data['baixaAplicada'] == true,
+        estornoAplicado: data['estornoAplicado'] == true,
+      );
+    } catch (e) {
+      debugPrint(
+        '[ESTOQUE-TX] Falha ao ler estoque_baixa_pagamento/$vid (type=${e.runtimeType})',
+      );
+      return EstoqueBaixaPagamentoMarcador.ausente;
+    }
+  }
+
+  static Future<void> marcarEstornoAplicadoCatalogo({
+    required String lojaId,
+    required String vendaIdMarcador,
+    String origem = 'venda_delete',
+  }) async {
+    final vid = vendaIdMarcador.trim();
+    if (vid.isEmpty) return;
+    try {
+      await _baixaPagamentoRef(lojaId, vid).set({
+        'estornoAplicado': true,
+        'estornoAplicadoAt': FieldValue.serverTimestamp(),
+        'estornoOrigem': origem,
+        'lojaId': lojaId,
+        'vendaId': vid,
+      }, SetOptions(merge: true));
+      debugPrint(
+        '[ESTOQUE-TX] estornoAplicado=true em estoque_baixa_pagamento/$vid',
+      );
+    } catch (e) {
+      debugPrint(
+        '[ESTOQUE-TX] Falha ao marcar estornoAplicado/$vid (type=${e.runtimeType})',
+      );
+      rethrow;
+    }
+  }
+
+  static Future<void> limparEstornoAplicadoCatalogo(
+    String lojaId,
+    String vendaIdMarcador,
+  ) async {
+    final vid = vendaIdMarcador.trim();
+    if (vid.isEmpty) return;
+    try {
+      await _baixaPagamentoRef(lojaId, vid).set({
+        'estornoAplicado': false,
+        'estornoAplicadoAt': FieldValue.delete(),
+        'estornoOrigem': FieldValue.delete(),
+      }, SetOptions(merge: true));
+      debugPrint(
+        '[ESTOQUE-TX] estornoAplicado limpo em estoque_baixa_pagamento/$vid',
+      );
+    } catch (e) {
+      debugPrint(
+        '[ESTOQUE-TX] Falha ao limpar estornoAplicado/$vid (type=${e.runtimeType})',
+      );
+    }
+  }
+
+  /// Resolve id de idempotência da devolução: prioriza key Hive do marcador catálogo.
+  static Future<String> resolverVendaIdIdempotenciaDevolucao({
+    required String lojaId,
+    required String? vendaIdMarcadorCatalogo,
+    required String vendaIdFallback,
+  }) async {
+    final marcadorId = (vendaIdMarcadorCatalogo ?? '').trim();
+    if (marcadorId.isNotEmpty) {
+      final marcador = await lerMarcadorBaixaPagamento(lojaId, marcadorId);
+      if (marcador.existe) return marcadorId;
+    }
+    return vendaIdFallback.trim();
+  }
+
+  /// Indica se a devolução já foi feita (remoto catálogo ou idempotência local).
   static Future<bool> devolucaoVendaJaAplicada(
     String lojaId,
     String vendaId,
   ) async {
+    final marcador = await lerMarcadorBaixaPagamento(lojaId, vendaId);
+    if (marcador.existe && marcador.estornoAplicado) return true;
     return _devolucaoLocalJaFeita(lojaId, vendaId);
   }
 
@@ -1241,11 +1365,22 @@ class EstoqueTransactionService {
     required String lojaId,
     required List<Map<String, dynamic>> itens,
     String? vendaIdParaIdempotencia,
+    String estornoOrigemCatalogo = 'venda_delete',
   }) async {
     if (itens.isEmpty) return [];
 
     final vidTrim = (vendaIdParaIdempotencia ?? '').trim();
     if (vidTrim.isNotEmpty) {
+      final marcadorRemoto = await lerMarcadorBaixaPagamento(lojaId, vidTrim);
+      if (marcadorRemoto.existe && marcadorRemoto.estornoAplicado) {
+        debugPrint(
+          '[ESTOQUE-TX] Devolução já aplicada (estornoAplicado remoto): vendaId=$vidTrim',
+        );
+        debugPrint(
+          '[COMBO-DEVOLUCAO-RESULT] vendaId=$vidTrim count=0 ids= motivo=estorno_remoto',
+        );
+        return [];
+      }
       if (await _devolucaoLocalJaFeita(lojaId, vidTrim)) {
         debugPrint(
           '[ESTOQUE-TX] Devolução já aplicada (idempotente local): vendaId=$vidTrim',
@@ -1422,6 +1557,21 @@ class EstoqueTransactionService {
       debugPrint(
         '[ESTOQUE-TX] Idempotência devolução gravada localmente vendaId=$vidTrim',
       );
+      final marcadorPos = await lerMarcadorBaixaPagamento(lojaId, vidTrim);
+      if (marcadorPos.existe && marcadorPos.baixaAplicada) {
+        try {
+          await marcarEstornoAplicadoCatalogo(
+            lojaId: lojaId,
+            vendaIdMarcador: vidTrim,
+            origem: estornoOrigemCatalogo,
+          );
+        } catch (e) {
+          debugPrint(
+            '[ESTOQUE-TX] Devolução OK mas falhou marcar estornoAplicado '
+            '(type=${e.runtimeType}) vendaId=$vidTrim',
+          );
+        }
+      }
     }
     return resultados;
   }
