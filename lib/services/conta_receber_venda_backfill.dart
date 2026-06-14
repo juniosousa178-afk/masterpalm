@@ -1,16 +1,17 @@
-// Backfill idempotente: vendas fiadas remotas → contas_receber no Firestore.
+// Backfill idempotente: vendas com saldo a receber → contas_receber no Firestore.
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
 import '../core/conta_receber_identity.dart';
 import '../core/conta_receber_venda_vinculo.dart';
 import '../core/hive_box_names.dart';
-import '../core/safe_cast.dart';
 import '../models/conta_receber.dart';
 import '../models/venda.dart';
 import 'conta_receber_firestore_service.dart';
 import 'conta_receber_service.dart';
+import 'firestore_paths.dart';
 
 class ContaReceberBackfillResultado {
   final int criadas;
@@ -36,70 +37,58 @@ abstract final class ContaReceberVendaBackfillService {
     return vl == loja || vl.isEmpty;
   }
 
-  static DateTime? _parseVencimentoFiado(Venda venda) {
-    final match = RegExp(
-      r'Vencimento:\s*(\d{2})/(\d{2})/(\d{4})',
-      caseSensitive: false,
-    ).firstMatch(venda.formasPagamento);
-    if (match == null) return null;
-    return DateTime(
-      int.parse(match.group(3)!),
-      int.parse(match.group(2)!),
-      int.parse(match.group(1)!),
-    );
+  static FirebaseFirestore _firestoreDb() {
+    // Mesmo Firestore dos upserts (incl. fake em testes via override interno).
+    // ignore: invalid_use_of_visible_for_testing_member
+    return ContaReceberFirestoreService.debugFirestoreOverride ??
+        FirebaseFirestore.instance;
   }
 
-  static bool vendaTemSaldoFiadoAberto(Venda venda) {
-    if (!venda.formasPagamento.toLowerCase().contains('fiado')) return false;
-    final pago = venda.pagamentoDinheiro + venda.pagamentoPix + venda.pagamentoCartao;
-    final saldo = calcularSaldoFiadoVenda(
-      total: venda.total,
-      totalPagoAgora: pago,
-    );
-    return saldo > 0.01;
+  static Future<FiadoVendaMetadata?> _buscarMetadadosFiadoVendaRemota({
+    required String lojaId,
+    required String vendaIdFirebase,
+  }) async {
+    final loja = lojaId.trim();
+    final idV = vendaIdFirebase.trim();
+    if (loja.isEmpty || idV.isEmpty) return null;
+    try {
+      final db = _firestoreDb();
+      final snap = await db
+          .collection('lojas')
+          .doc(loja)
+          .collection(FSPaths.estoqueVendasCol)
+          .doc(idV)
+          .get();
+      if (!snap.exists || snap.data() == null) return null;
+      final data = Map<String, dynamic>.from(snap.data()!);
+      final vencRaw = data['dataVencimentoFiado'];
+      if (vencRaw is Timestamp) {
+        data['dataVencimentoFiado'] = vencRaw.toDate().toIso8601String();
+      }
+      return parseFiadoMetadataFromFirestoreMap(data);
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Monta contas esperadas quando o dispositivo só tem a venda (ex.: pull mobile).
-  static List<ContaReceber> montarContasFromVendaFiada({
+  static Future<List<ContaReceber>> montarContasFromVendaFiada({
     required Venda venda,
     required String lojaId,
-  }) {
-    final loja = lojaId.trim();
-    if (loja.isEmpty || !vendaTemSaldoFiadoAberto(venda)) return [];
-
+  }) async {
     final vendaId = idVendaEstavelParaContaReceber(venda);
-    if (vendaId.isEmpty) return [];
-
-    final venc = _parseVencimentoFiado(venda) ??
-        venda.data.add(const Duration(days: 30));
-    final pago =
-        venda.pagamentoDinheiro + venda.pagamentoPix + venda.pagamentoCartao;
-    final saldo = calcularSaldoFiadoVenda(
-      total: venda.total,
-      totalPagoAgora: pago,
-    );
-    if (saldo <= 0.01) return [];
-
-    final vk = hiveKeyOrNull(venda.key);
-    final obs = venda.observacao.trim();
-
-    return [
-      ContaReceber(
-        lojaId: loja,
-        clienteNome: venda.clienteNome.trim().isEmpty
-            ? 'Cliente'
-            : venda.clienteNome.trim(),
-        valor: saldo,
-        valorOriginal: saldo,
-        dataVencimento: venc,
-        dataVenda: venda.data,
-        vendaKey: vk != null && vk >= 0 ? vk : -1,
+    FiadoVendaMetadata? metaRemota;
+    if (vendaId.isNotEmpty) {
+      metaRemota = await _buscarMetadadosFiadoVendaRemota(
+        lojaId: lojaId,
         vendaIdFirebase: vendaId,
-        observacao: obs.isEmpty ? 'Venda fiada' : obs,
-        parcelaNumero: 1,
-        parcelaTotal: 1,
-      ),
-    ];
+      );
+    }
+    return montarContasReceberFromVenda(
+      venda: venda,
+      lojaId: lojaId,
+      metaRemota: metaRemota,
+    );
   }
 
   static List<ContaReceber> _contasLocaisVinculadas({
@@ -107,7 +96,7 @@ abstract final class ContaReceberVendaBackfillService {
     required String lojaId,
     required Venda venda,
   }) {
-    final vk = hiveKeyOrNull(venda.key);
+    final vk = vendaHiveKeyOrNull(venda);
     final idV = idVendaEstavelParaContaReceber(venda);
     return contas
         .where(
@@ -146,7 +135,7 @@ abstract final class ContaReceberVendaBackfillService {
     return ok;
   }
 
-  /// Cria docs remotos ausentes a partir de vendas fiadas (Hive local / pull vendas).
+  /// Cria docs remotos ausentes a partir de vendas com saldo a receber.
   static Future<ContaReceberBackfillResultado> backfillFromVendasFiadas(
     String lojaId,
   ) async {
@@ -171,7 +160,7 @@ abstract final class ContaReceberVendaBackfillService {
             ignoradas++;
             continue;
           }
-          if (!vendaTemSaldoFiadoAberto(venda)) {
+          if (!vendaPossuiSaldoAReceber(venda)) {
             ignoradas++;
             continue;
           }
@@ -188,7 +177,7 @@ abstract final class ContaReceberVendaBackfillService {
           );
           final candidatas = locais.isNotEmpty
               ? locais
-              : montarContasFromVendaFiada(venda: venda, lojaId: loja);
+              : await montarContasFromVendaFiada(venda: venda, lojaId: loja);
 
           if (candidatas.isEmpty) {
             ignoradas++;

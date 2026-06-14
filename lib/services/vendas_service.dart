@@ -1548,7 +1548,12 @@ class VendasService {
       if (cartao > 0) "Pagamento Cartão: R\$ ${_fmt2(cartao)}",
     ];
     if (isFiado && saldoFiado > 0.01) {
-      linhasPagamento.add('Fiado - R\$ ${_fmt2(saldoFiado)}. $vencStr');
+      var fiadoLinha = 'Fiado - R\$ ${_fmt2(saldoFiado)}. $vencStr';
+      if (quantidadeParcelasFiado > 1) {
+        fiadoLinha +=
+            ' Parcelas fiado: $quantidadeParcelasFiado. Intervalo: $intervaloParcelasDias dias.';
+      }
+      linhasPagamento.add(fiadoLinha);
     } else if (isFiado && linhasPagamento.isEmpty) {
       linhasPagamento.add('Fiado - R\$ ${_fmt2(total)}. $vencStr');
     }
@@ -2062,7 +2067,12 @@ class VendasService {
       if (cartao > 0) "Pagamento Cartão: R\$ ${_fmt2(cartao)}",
     ];
     if (isFiado && saldoFiado > 0.01) {
-      linhasPagamento.add('Fiado - R\$ ${_fmt2(saldoFiado)}. $vencStr');
+      var fiadoLinha = 'Fiado - R\$ ${_fmt2(saldoFiado)}. $vencStr';
+      if (quantidadeParcelasFiado > 1) {
+        fiadoLinha +=
+            ' Parcelas fiado: $quantidadeParcelasFiado. Intervalo: $intervaloParcelasDias dias.';
+      }
+      linhasPagamento.add(fiadoLinha);
     } else if (isFiado && linhasPagamento.isEmpty) {
       linhasPagamento.add('Fiado - R\$ ${_fmt2(total)}. $vencStr');
     }

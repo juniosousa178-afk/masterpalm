@@ -3,6 +3,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:uuid/uuid.dart';
 
+import '../core/conta_receber_venda_vinculo.dart';
 import '../core/hive_box_names.dart';
 import '../core/venda_origem_custo.dart';
 import 'firestore_paths.dart';
@@ -257,6 +258,24 @@ class VendasFirestoreService {
           'statusVenda': venda.statusVenda!.trim(),
         'cancelada': venda.cancelada,
         'estornada': venda.estornada,
+
+        // Fiado / saldo a receber (backfill cross-device)
+        ...() {
+          final saldoFiado = valorAReceberDaVenda(venda);
+          if (saldoFiado <= 0.01) return <String, dynamic>{};
+          final meta =
+              parseFiadoMetadataFromFormasPagamento(venda.formasPagamento);
+          final extra = <String, dynamic>{'saldoFiado': saldoFiado};
+          if (meta.quantidadeParcelas > 1) {
+            extra['quantidadeParcelasFiado'] = meta.quantidadeParcelas;
+            extra['intervaloParcelasDias'] = meta.intervaloDias;
+          }
+          if (meta.dataVencimento != null) {
+            extra['dataVencimentoFiado'] =
+                Timestamp.fromDate(meta.dataVencimento!);
+          }
+          return extra;
+        }(),
 
         // Metadata
         'createdAt': FieldValue.serverTimestamp(),
