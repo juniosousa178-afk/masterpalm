@@ -9,6 +9,7 @@ import '../core/hive_box_names.dart';
 import '../models/conta_receber.dart';
 import 'conta_receber_firestore_service.dart';
 import 'conta_receber_recebimento_caixa_service.dart';
+import 'conta_receber_venda_backfill.dart';
 
 class ResultadoBaixaContaReceber {
   final bool sucesso;
@@ -169,9 +170,12 @@ class ContaReceberService {
     conta.recalcularStatus();
   }
 
-  /// Pull Firestore → Hive (+ publicação conservadora de legado local).
-  static Future<ContaReceberPullResultado> sincronizarRemoto(String lojaId) =>
-      ContaReceberFirestoreService.sincronizarRemoto(lojaId);
+  /// Pull Firestore → Hive (+ publicação conservadora + backfill vendas fiadas).
+  static Future<ContaReceberPullResultado> sincronizarRemoto(String lojaId) async {
+    await ContaReceberFirestoreService.publicarContasHivePendentes(lojaId);
+    await ContaReceberVendaBackfillService.backfillFromVendasFiadas(lojaId);
+    return ContaReceberFirestoreService.pullContasReceberRemotas(lojaId);
+  }
 
   /// Registra recebimento no caixa e persiste a conta (Hive + Firestore).
   static Future<ResultadoBaixaContaReceber> registrarBaixa({    required ContaReceber conta,

@@ -753,8 +753,6 @@ abstract final class ContaReceberFirestoreService {
   }
 
   /// Pull + migração conservadora (tela / full sync).
-  static Future<ContaReceberPullResultado> sincronizarRemoto(String lojaId) async {
-    await publicarContasHivePendentes(lojaId);
-    return pullContasReceberRemotas(lojaId);
-  }
+  static Future<ContaReceberPullResultado> sincronizarRemoto(String lojaId) =>
+      ContaReceberService.sincronizarRemoto(lojaId);
 }

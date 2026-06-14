@@ -19,7 +19,7 @@ import 'produtos_firestore_service.dart';
 import 'sync_queue_service.dart';
 import 'importar_vendas_firestore_service.dart';
 import 'financeiro_firestore_service.dart';
-import 'conta_receber_firestore_service.dart';
+import 'conta_receber_service.dart';
 import 'store_resolver_facade.dart';
 
 class FullSyncService {
@@ -84,19 +84,14 @@ class FullSyncService {
         );
       }
 
-      // 7. Contas a receber / fiado (Hive ↔ Firestore)
+      // 7. Contas a receber / fiado (Hive ↔ Firestore + backfill vendas fiadas)
       try {
-        final crMigr =
-            await ContaReceberFirestoreService.migrarLojaHiveParaFirestorePolicyA(
-                lojaId);
-        final crPull =
-            await ContaReceberFirestoreService.pullLojaFirestoreParaHive(lojaId);
-        result.contasReceberEnviadas = crMigr.enviados;
+        final crPull = await ContaReceberService.sincronizarRemoto(lojaId);
         result.contasReceberImportadas = crPull.importados;
         result.contasReceberAtualizadas = crPull.atualizados;
         logD(
-          '💳 [FULL-SYNC] Contas a receber: enviadas ${crMigr.enviados}, '
-          'importadas ${crPull.importados}, atualizadas ${crPull.atualizados}',
+          '💳 [FULL-SYNC] Contas a receber: importadas ${crPull.importados}, '
+          'atualizadas ${crPull.atualizados}, puladas ${crPull.pulados}',
         );
       } catch (e, st) {
         logE(

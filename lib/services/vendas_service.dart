@@ -11,6 +11,7 @@ import '../models/produto.dart';
 import '../models/venda.dart';
 import '../models/venda_item.dart';
 import '../models/conta_receber.dart';
+import '../core/conta_receber_venda_vinculo.dart' as crv;
 import '../core/safe_cast.dart';
 import '../core/strict_product_resolution.dart';
 import '../utils/text_utils.dart';
@@ -27,6 +28,7 @@ import 'venda_edicao_estoque_diff.dart';
 import 'venda_estoque_remoto_prep_service.dart';
 import 'conta_receber_service.dart';
 import 'conta_receber_firestore_service.dart';
+import 'conta_receber_venda_backfill.dart';
 
 class VendasService {
   // ---------------------------
@@ -84,9 +86,11 @@ class VendasService {
   static double calcularSaldoFiado({
     required double total,
     required double totalPagoAgora,
-  }) {
-    return (total - totalPagoAgora).clamp(0.0, double.infinity);
-  }
+  }) =>
+      crv.calcularSaldoFiadoVenda(
+        total: total,
+        totalPagoAgora: totalPagoAgora,
+      );
 
   /// Atualiza histórico do cliente sem abortar a venda (HiveList pode falhar no web).
   static void _adicionarVendaHistoricoClienteSeguro({
@@ -129,23 +133,21 @@ class VendasService {
   }
 
   /// ID estável da venda para vínculo financeiro (conta a receber, exclusão).
-  static String idVendaEstavelParaVinculo(Venda venda) {
-    return (venda.idFirebase ?? '').trim();
-  }
+  static String idVendaEstavelParaVinculo(Venda venda) =>
+      crv.idVendaEstavelParaContaReceber(venda);
 
-  static bool _contaReceberVinculadaAVenda({
+  static bool contaReceberVinculadaAVenda({
     required ContaReceber conta,
     required String lojaId,
     int? vendaKey,
     String? vendaIdFirebase,
-  }) {
-    if (conta.lojaId != lojaId.trim()) return false;
-    final vk = vendaKey;
-    if (vk != null && vk >= 0 && conta.vendaKey == vk) return true;
-    final idV = (vendaIdFirebase ?? '').trim();
-    if (idV.isEmpty) return false;
-    return conta.vendaIdFirebase.trim() == idV;
-  }
+  }) =>
+      crv.contaReceberVinculadaAVenda(
+        conta: conta,
+        lojaId: lojaId,
+        vendaKey: vendaKey,
+        vendaIdFirebase: vendaIdFirebase,
+      );
 
   /// Resolve chave Hive após [Box.add] — no Web o retorno/[HiveObject.key] pode falhar.
   static int? resolverVendaHiveKeyAposAdd({
@@ -326,7 +328,7 @@ class VendasService {
       for (final k in crBox.keys) {
         final c = crBox.get(k);
         if (c != null &&
-            _contaReceberVinculadaAVenda(
+            contaReceberVinculadaAVenda(
               conta: c,
               lojaId: loja,
               vendaKey: vk,
@@ -785,7 +787,7 @@ class VendasService {
       final crBox = await ContaReceberService.openBoxLoja(loja);
       var pagoContas = 0.0;
       for (final c in crBox.values) {
-        if (_contaReceberVinculadaAVenda(
+        if (contaReceberVinculadaAVenda(
           conta: c,
           lojaId: loja,
           vendaKey: vk,
@@ -972,7 +974,7 @@ class VendasService {
 
     final contasVinculadas = crBox.values
         .where(
-          (c) => _contaReceberVinculadaAVenda(
+          (c) => contaReceberVinculadaAVenda(
             conta: c,
             lojaId: lojaId,
             vendaKey: vk,
@@ -1785,6 +1787,23 @@ class VendasService {
       if (!ok) {
         debugPrint('⚠️ [VENDAS-SERVICE] Venda não sincronizada com Firestore (lojaId=$lojaEfetiva, key=${venda.key})');
         onSyncError?.call('Venda salva localmente, mas não sincronizou na nuvem. Verifique a conexão ou tente sincronizar novamente.');
+      } else if (isFiado && saldoFiado > 0.01) {
+        try {
+          final rep =
+              await ContaReceberVendaBackfillService.republicarContasVinculadasAVenda(
+            lojaId: lojaEfetiva,
+            venda: venda,
+          );
+          if (rep > 0) {
+            debugPrint(
+              '[VENDAS-SERVICE] contas_receber republicadas pós-sync qtd=$rep vendaId=$vendaIdVinculo',
+            );
+          }
+        } catch (e) {
+          debugPrint(
+            '⚠️ [VENDAS-SERVICE] Falha ao republicar contas fiado (type=${e.runtimeType})',
+          );
+        }
       }
     } catch (e) {
       debugPrint('⚠️ Erro inesperado ao sincronizar venda com Firestore (type=${e.runtimeType})');
@@ -2139,6 +2158,17 @@ class VendasService {
         onSyncError?.call(
           'Venda salva localmente, mas não sincronizou na nuvem. Verifique a conexão ou tente sincronizar novamente.',
         );
+      } else if (isFiado && saldoFiado > 0.01) {
+        try {
+          await ContaReceberVendaBackfillService.republicarContasVinculadasAVenda(
+            lojaId: lojaEfetiva,
+            venda: venda,
+          );
+        } catch (e) {
+          debugPrint(
+            '⚠️ [VENDAS-SERVICE] Falha ao republicar contas fiado (edição) (type=${e.runtimeType})',
+          );
+        }
       }
     } catch (e) {
       debugPrint('⚠️ Erro inesperado ao sincronizar venda com Firestore (type=${e.runtimeType})');
