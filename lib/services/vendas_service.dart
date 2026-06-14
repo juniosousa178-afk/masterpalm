@@ -2305,9 +2305,11 @@ class VendasService {
     required Box<Produto> produtosBox,
     required String lojaId,
     String estornoOrigem = 'venda_delete',
+    int? vendaHiveKeyMarcador,
   }) async {
-    final vendaIdMarcador =
-        EstoqueTransactionService.vendaIdMarcadorCatalogoFromKey(venda.key);
+    final vendaIdMarcador = vendaHiveKeyMarcador != null && vendaHiveKeyMarcador >= 0
+        ? vendaHiveKeyMarcador.toString()
+        : EstoqueTransactionService.vendaIdMarcadorCatalogoFromKey(venda.key);
     final marcador = vendaIdMarcador != null
         ? await EstoqueTransactionService.lerMarcadorBaixaPagamento(
             lojaId,
@@ -2509,31 +2511,54 @@ class VendasService {
     );
   }
 
-  /// Executa devolução de estoque e exclusão do Firestore.
-  /// Usado pelo SoftDeleteService quando a exclusão se torna definitiva após 5 s.
-  /// Não altera vendasBox nem clientesBox (venda já está na lixeira).
-  ///
-  /// Se a devolução de estoque (incl. ajuste piso combo) falhar, propaga erro:
-  /// a exclusão definitiva deve ser abortada pelo chamador — não apagar Firestore
-  /// com estoque inconsistente.
+  /// Executa limpeza remota após a janela de undo do soft delete.
+  /// A devolução de estoque já ocorre em [SoftDeleteService.scheduleVendaDelete]
+  /// (imediatamente ao excluir na tela Vendas). Repetir aqui estornava 2× porque a
+  /// venda na lixeira tem Hive key diferente da original e não enxerga o marcador
+  /// `estoque_baixa_pagamento/{hiveKeyOriginal}`.
   static Future<void> executarExclusaoPermanente({
     required Venda venda,
     required Box<Produto> produtosBox,
     required String lojaId,
+    int? vendaHiveKeyOriginal,
   }) async {
-    final vendaId = (venda.idFirebase ?? '').trim().isNotEmpty
-        ? venda.idFirebase!.trim()
-        : 'hive_${venda.key}';
-    if (!await EstoqueTransactionService.devolucaoVendaJaAplicada(lojaId, vendaId)) {
-      await devolverEstoqueParaVendaRemovida(
-        venda: venda,
-        produtosBox: produtosBox,
-        lojaId: lojaId,
-      );
+    final marcadorId = vendaHiveKeyOriginal != null && vendaHiveKeyOriginal >= 0
+        ? vendaHiveKeyOriginal.toString()
+        : EstoqueTransactionService.vendaIdMarcadorCatalogoFromKey(venda.key);
+    if (marcadorId != null) {
+      final marcador =
+          await EstoqueTransactionService.lerMarcadorBaixaPagamento(lojaId, marcadorId);
+      if (marcador.estornoAplicado ||
+          await EstoqueTransactionService.devolucaoVendaJaAplicada(lojaId, marcadorId)) {
+        debugPrint(
+          '[VENDA_DELETE] permanent_skip_estorno vendaIdMarcador=$marcadorId',
+        );
+      } else {
+        debugPrint(
+          '[VENDA_DELETE] permanent_estorno_fallback vendaIdMarcador=$marcadorId',
+        );
+        await devolverEstoqueParaVendaRemovida(
+          venda: venda,
+          produtosBox: produtosBox,
+          lojaId: lojaId,
+          vendaHiveKeyMarcador: vendaHiveKeyOriginal,
+        );
+      }
     } else {
-      debugPrint(
-        '[VENDA_DELETE] devolucao_ja_aplicada_skip_permanente vendaId=$vendaId',
-      );
+      final vendaId = (venda.idFirebase ?? '').trim().isNotEmpty
+          ? venda.idFirebase!.trim()
+          : 'hive_${venda.key}';
+      if (!await EstoqueTransactionService.devolucaoVendaJaAplicada(lojaId, vendaId)) {
+        await devolverEstoqueParaVendaRemovida(
+          venda: venda,
+          produtosBox: produtosBox,
+          lojaId: lojaId,
+        );
+      } else {
+        debugPrint(
+          '[VENDA_DELETE] permanent_skip_estorno vendaId=$vendaId',
+        );
+      }
     }
 
     if (venda.idFirebase != null && venda.idFirebase!.isNotEmpty) {

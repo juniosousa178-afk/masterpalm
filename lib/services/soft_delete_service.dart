@@ -306,6 +306,7 @@ class SoftDeleteService {
         venda: venda,
         produtosBox: produtosBox,
         lojaId: lojaId,
+        vendaHiveKeyMarcador: key,
       );
     } catch (e, st) {
       if (e is FirebaseException) {
@@ -536,10 +537,12 @@ class SoftDeleteService {
               await Hive.openBox<Produto>(HiveBoxNames.produtos(r.lojaId));
           final vid = (vendaParaRestaurar.idFirebase ?? '').trim().isNotEmpty
               ? vendaParaRestaurar.idFirebase!.trim()
-              : 'hive_${vendaParaRestaurar.key}';
-          final marcadorId = EstoqueTransactionService.vendaIdMarcadorCatalogoFromKey(
-            vendaParaRestaurar.key,
-          );
+              : 'hive_${r.hiveKey}';
+          final marcadorId = r.hiveKey >= 0
+              ? r.hiveKey.toString()
+              : EstoqueTransactionService.vendaIdMarcadorCatalogoFromKey(
+                  vendaParaRestaurar.key,
+                );
           await VendasService.reaplicarBaixaEstoquePosUndoExclusaoVenda(
             venda: vendaParaRestaurar,
             produtosBox: produtosBoxUndo,
@@ -708,6 +711,7 @@ class SoftDeleteService {
           venda: venda,
           produtosBox: produtosBox,
           lojaId: r.lojaId,
+          vendaHiveKeyOriginal: r.hiveKey,
         );
       }
       await trashBox.delete(r.trashKey);

@@ -635,6 +635,7 @@ class CatalogoVendaService {
         custoMercadoria: venda.custoProdutos,
         unidadesMercadoria: uMerc > 0 ? uMerc : venda.quantidade,
       );
+      venda.origemVenda = 'catalogo_web';
 
       // 6. Salvar venda no Hive
       final vendasBox = await Hive.openBox<Venda>(HiveBoxNames.vendas(lojaId));
