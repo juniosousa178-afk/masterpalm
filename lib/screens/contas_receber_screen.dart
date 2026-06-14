@@ -12,6 +12,7 @@ import '../models/cliente.dart';
 import '../models/conta_receber.dart';
 import '../services/conta_receber_recebimento_caixa_service.dart';
 import '../services/conta_receber_service.dart';
+import '../services/conta_receber_firestore_service.dart';
 import '../services/loja_id_service.dart';
 import '../services/notificacao_service.dart';
 import '../services/pagamentos_service.dart';
@@ -64,6 +65,7 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
     }
     try {
       _box = await ContaReceberService.openBoxLoja(_lojaId!);
+      await ContaReceberService.sincronizarRemoto(_lojaId!);
       await _carregarTemplateMensagem();
       await _verificarLembretesDoisDias();
     } catch (e) {
@@ -685,6 +687,11 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
       observacao: obsCtrl.text.trim(),
     );
     await _box.add(conta);
+    await conta.save();
+    await ContaReceberFirestoreService.upsertContaReceber(
+      conta,
+      lastWriteOrigin: 'manual',
+    );
     setState(() {});
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(

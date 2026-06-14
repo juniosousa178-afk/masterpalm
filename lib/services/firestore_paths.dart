@@ -17,6 +17,17 @@ class FSPaths {
   /// Exclusão definitiva (tombstone) p/ impedir ressurreição pós sync multi‑dispositivo.
   static const String exclusaoProdutoCol = 'exclusao_produto';
 
+  /// Contas a receber / fiado (sync Hive ↔ Firestore).
+  static const String contasReceberCol = 'contas_receber';
+
+  /// Path da coleção `lojas/{lojaId}/contas_receber`.
+  static String contasReceberColPath(String lojaId) =>
+      'lojas/$lojaId/$contasReceberCol';
+
+  /// Path do documento `lojas/{lojaId}/contas_receber/{contaId}`.
+  static String contaReceberDocPath(String lojaId, String contaId) =>
+      '${contasReceberColPath(lojaId)}/$contaId';
+
   /// Coleções de clientes (auth catálogo, cupons, perfil) — use com .collection(lojas).doc(lojaId).collection(...)
   /// FASE 4: clientes = FONTE PRINCIPAL; clientes_portal = espelho; clientes_catalogo = cupons/roleta; clientes_web = legado.
   static const String clientesCol = 'clientes';

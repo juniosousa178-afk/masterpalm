@@ -12,6 +12,8 @@ abstract final class ContaReceberStatus {
   static const pendente = 'pendente';
   static const parcial = 'parcial';
   static const paga = 'paga';
+  static const estornada = 'estornada';
+  static const cancelada = 'cancelada';
 }
 
 @HiveType(typeId: 29)
@@ -142,13 +144,31 @@ class ContaReceber extends HiveObject {
     required double valorRecebido,
     required DateTime data,
     required String formaPagamento,
+    String? baixaId,
+    String? referenciaFinanceira,
+    bool estornada = false,
   }) {
     final hist = historicoPagamentos();
-    hist.add({
+    final entry = <String, dynamic>{
       'valor': valorRecebido,
       'data': data.toIso8601String(),
       'forma': formaPagamento.trim(),
-    });
+      'estornada': estornada,
+    };
+    final bx = baixaId?.trim();
+    if (bx != null && bx.isNotEmpty) entry['baixaId'] = bx;
+    final ref = referenciaFinanceira?.trim();
+    if (ref != null && ref.isNotEmpty) entry['referenciaFinanceira'] = ref;
+    hist.add(entry);
     historicoPagamentosJson = jsonEncode(hist);
+  }
+
+  /// Atribui doc id Firestore (`idFirebase`) se ainda vazio.
+  void garantirDocIdFirestore(String docId) {
+    final id = docId.trim();
+    if (id.isEmpty) return;
+    if ((idFirebase ?? '').trim().isEmpty) {
+      idFirebase = id;
+    }
   }
 }

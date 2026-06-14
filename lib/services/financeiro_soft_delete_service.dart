@@ -12,10 +12,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
 import '../core/conta_pagar_lancamento_vinculo.dart';
+import '../core/conta_receber_lancamento_vinculo.dart';
 import '../core/logger.dart';
 import '../models/gasto_fixo_mensal.dart';
 import '../models/lancamento_financeiro.dart';
 import 'conta_pagar_financeiro_exclusao_service.dart';
+import 'conta_receber_financeiro_sync_service.dart';
 import 'controle_compras_fornecedor_firestore_service.dart';
 import 'controle_compras_fornecedor_service.dart';
 import 'financeiro_firestore_service.dart';
@@ -201,6 +203,13 @@ class FinanceiroSoftDeleteService {
     if (existing == null) return null;
 
     final cpId = contaPagarIdFromLancamento(existing);
+
+    if (lancamentoVinculadoAContaReceber(existing)) {
+      await ContaReceberFinanceiroSyncService.reverterBaixaPorLancamento(
+        lojaId: lid,
+        lancamento: existing,
+      );
+    }
 
     await FinanceiroFirestoreService.deleteLancamento(lojaId: lid, id: id);
     await box.delete(id);

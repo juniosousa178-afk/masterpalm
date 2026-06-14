@@ -26,6 +26,7 @@ import 'venda_custo_mercadoria.dart';
 import 'venda_edicao_estoque_diff.dart';
 import 'venda_estoque_remoto_prep_service.dart';
 import 'conta_receber_service.dart';
+import 'conta_receber_firestore_service.dart';
 
 class VendasService {
   // ---------------------------
@@ -279,6 +280,16 @@ class VendasService {
           '⚠️ [VENDAS-SERVICE] conta.save após add falhou (parcela ${i + 1}, type=${e.runtimeType})',
         );
       }
+      try {
+        await ContaReceberFirestoreService.upsertContaReceber(
+          conta,
+          lastWriteOrigin: 'venda_fiada',
+        );
+      } catch (e) {
+        debugPrint(
+          '⚠️ [VENDAS-SERVICE] conta Firestore upsert falhou (parcela ${i + 1}, type=${e.runtimeType})',
+        );
+      }
     }
     debugPrint(
       '[CONTA_RECEBER_CREATE_OK] [VENDAS-SERVICE] contas_receber criadas qtd=${contas.length} lojaId=$lojaId '
@@ -325,6 +336,16 @@ class VendasService {
         }
       }
       for (final k in keysToDelete) {
+        final c = crBox.get(k);
+        if (c != null) {
+          final docId = (c.idFirebase ?? '').trim();
+          if (docId.isNotEmpty) {
+            await ContaReceberFirestoreService.marcarCanceladaRemota(
+              lojaId: loja,
+              contaReceberDocId: docId,
+            );
+          }
+        }
         await crBox.delete(k);
       }
     } catch (e) {
@@ -367,20 +388,24 @@ class VendasService {
       totalPagoAgora: totalPago,
     );
     if (saldo <= 0.01) return;
-    await crBox.add(
-      ContaReceber(
-        lojaId: loja,
-        clienteNome: venda.clienteNome,
-        valor: saldo,
-        valorOriginal: saldo,
-        dataVencimento: venc,
-        dataVenda: venda.data,
-        vendaKey: _vendaKeyParaContaReceber(vk),
-        vendaIdFirebase: _vendaIdFirebaseParaContaReceber(idV),
-        observacao: venda.observacao.trim().isEmpty
-            ? 'Venda fiada'
-            : venda.observacao.trim(),
-      ),
+    final conta = ContaReceber(
+      lojaId: loja,
+      clienteNome: venda.clienteNome,
+      valor: saldo,
+      valorOriginal: saldo,
+      dataVencimento: venc,
+      dataVenda: venda.data,
+      vendaKey: _vendaKeyParaContaReceber(vk),
+      vendaIdFirebase: _vendaIdFirebaseParaContaReceber(idV),
+      observacao: venda.observacao.trim().isEmpty
+          ? 'Venda fiada'
+          : venda.observacao.trim(),
+    );
+    await crBox.add(conta);
+    await conta.save();
+    await ContaReceberFirestoreService.upsertContaReceber(
+      conta,
+      lastWriteOrigin: 'undo_venda',
     );
   }
 

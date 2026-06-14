@@ -2,12 +2,15 @@
 
 import 'dart:io';
 
+import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:master_palm/financeiro/financeiro_constants.dart';
 import 'package:master_palm/models/conta_receber.dart';
 import 'package:master_palm/models/lancamento_financeiro.dart';
 import 'package:master_palm/services/conta_receber_service.dart';
+import 'package:master_palm/services/conta_receber_firestore_service.dart';
+import 'package:master_palm/services/financeiro_firestore_service.dart';
 import 'package:master_palm/services/financeiro_hive_store.dart';
 
 void main() {
@@ -36,6 +39,10 @@ void main() {
   });
 
   setUp(() async {
+    ContaReceberFirestoreService.debugFirestoreOverride =
+        FakeFirebaseFirestore();
+    FinanceiroFirestoreService.debugFirestoreOverride =
+        FakeFirebaseFirestore();
     crBox = await Hive.openBox<ContaReceber>(
       'cr_parcial_${DateTime.now().microsecondsSinceEpoch}',
     );

@@ -14,6 +14,8 @@ import 'package:master_palm/models/venda.dart';
 import 'package:master_palm/models/venda_item.dart';
 import 'package:master_palm/models/lancamento_financeiro.dart';
 import 'package:master_palm/services/conta_receber_service.dart';
+import 'package:master_palm/services/conta_receber_firestore_service.dart';
+import 'package:master_palm/services/financeiro_firestore_service.dart';
 import 'package:master_palm/services/financeiro_hive_store.dart';
 import 'package:master_palm/services/estoque_transaction_service.dart';
 import 'package:master_palm/services/firestore_paths.dart';
@@ -148,6 +150,8 @@ void main() {
       EstoqueTransactionService.debugFirestoreOverride = firestore;
       ProdutosFirestoreService.debugFirestoreOverride = firestore;
       ProdutoExclusaoTombstoneService.debugFirestoreOverride = firestore;
+      ContaReceberFirestoreService.debugFirestoreOverride = firestore;
+      FinanceiroFirestoreService.debugFirestoreOverride = firestore;
 
       produtosBox = await Hive.openBox<Produto>(
         'prod_cr_${DateTime.now().microsecondsSinceEpoch}',
@@ -193,6 +197,8 @@ void main() {
       EstoqueTransactionService.debugFirestoreOverride = null;
       ProdutosFirestoreService.debugFirestoreOverride = null;
       ProdutoExclusaoTombstoneService.debugFirestoreOverride = null;
+      ContaReceberFirestoreService.debugFirestoreOverride = null;
+      FinanceiroFirestoreService.debugFirestoreOverride = null;
       try {
         await Hive.deleteBoxFromDisk(HiveBoxNames.contasReceber(lojaId));
       } catch (_) {}

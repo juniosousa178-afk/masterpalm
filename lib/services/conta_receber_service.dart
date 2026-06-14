@@ -3,8 +3,11 @@
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
+import '../core/conta_receber_identity.dart';
+import '../core/conta_receber_lancamento_vinculo.dart';
 import '../core/hive_box_names.dart';
 import '../models/conta_receber.dart';
+import 'conta_receber_firestore_service.dart';
 import 'conta_receber_recebimento_caixa_service.dart';
 
 class ResultadoBaixaContaReceber {
@@ -142,6 +145,8 @@ class ContaReceberService {
     required double valorRecebido,
     required String formaPagamento,
     required DateTime dataRecebimento,
+    String? baixaId,
+    String? referenciaFinanceira,
   }) {
     conta.normalizarCamposFinanceiros();
     validarValorBaixa(
@@ -158,13 +163,18 @@ class ContaReceberService {
       valorRecebido: valorRecebido,
       data: dataRecebimento,
       formaPagamento: formaPagamento,
+      baixaId: baixaId,
+      referenciaFinanceira: referenciaFinanceira,
     );
     conta.recalcularStatus();
   }
 
-  /// Registra recebimento no caixa e persiste a conta.
-  static Future<ResultadoBaixaContaReceber> registrarBaixa({
-    required ContaReceber conta,
+  /// Pull Firestore → Hive (+ publicação conservadora de legado local).
+  static Future<ContaReceberPullResultado> sincronizarRemoto(String lojaId) =>
+      ContaReceberFirestoreService.sincronizarRemoto(lojaId);
+
+  /// Registra recebimento no caixa e persiste a conta (Hive + Firestore).
+  static Future<ResultadoBaixaContaReceber> registrarBaixa({    required ContaReceber conta,
     required double valorRecebido,
     required String formaPagamento,
     required String lojaId,
@@ -172,11 +182,22 @@ class ContaReceberService {
     int parcelaNumero = 1,
     DateTime? dataRecebimento,
   }) async {
-    final saldoAntes = conta.saldoRestante;
+    final quando = dataRecebimento ?? DateTime.now();
+
+    await sincronizarRemoto(lojaId);
+
+    if (conta.saldoRestante <= 1e-9) {
+      return ResultadoBaixaContaReceber(
+        sucesso: false,
+        mensagemErro:
+            'Esta conta já foi recebida (sincronizado de outro dispositivo).',
+      );
+    }
+
     try {
       validarValorBaixa(
         valorRecebido: valorRecebido,
-        saldoRestante: saldoAntes,
+        saldoRestante: conta.saldoRestante,
       );
     } on ArgumentError catch (e) {
       return ResultadoBaixaContaReceber(
@@ -185,18 +206,66 @@ class ContaReceberService {
       );
     }
 
-    final quando = dataRecebimento ?? DateTime.now();
-    final docId = await ContaReceberRecebimentoCaixaService.registrarRecebimento(
+    final docId = resolveContaReceberDocId(conta);
+    conta.garantirDocIdFirestore(docId);
+    final publicado = await ContaReceberFirestoreService.publicarContaSeRemotoAusente(conta);
+    if (!publicado) {
+      return const ResultadoBaixaContaReceber(
+        sucesso: false,
+        mensagemErro:
+            'Não foi possível sincronizar a conta com o servidor. Tente novamente.',
+      );
+    }
+
+    final baixaId = baixaIdDeterministico(
+      contaReceberId: docId,
+      valor: valorRecebido,
+      dataRecebimento: quando,
+      formaPagamento: formaPagamento,
+    );
+
+    final remoto = await ContaReceberFirestoreService.registrarBaixaRemota(
+      lojaId: lojaId,
+      conta: conta,
+      valorRecebido: valorRecebido,
+      formaPagamento: formaPagamento,
+      dataRecebimento: quando,
+      referenciaFinanceira: referenciaExternaContaReceberFirestore(
+        contaReceberDocId: docId,
+        baixaId: baixaId,
+      ),
+    );
+    if (!remoto.sucesso) {
+      return ResultadoBaixaContaReceber(
+        sucesso: false,
+        mensagemErro: remoto.mensagemErro ??
+            'Não foi possível registrar a baixa no servidor.',
+      );
+    }
+
+    if (remoto.idempotente) {
+      await sincronizarRemoto(lojaId);
+      return ResultadoBaixaContaReceber(
+        sucesso: false,
+        mensagemErro:
+            'Esta baixa já foi registrada (sincronizado de outro dispositivo).',
+      );
+    }
+
+    final docIdFin = await ContaReceberRecebimentoCaixaService.registrarRecebimento(
       lojaId: lojaId,
       valor: valorRecebido,
       formaPagamento: formaPagamento,
       clienteNome: conta.clienteNome,
       observacaoConta: conta.observacao,
+      conta: conta,
       contaHiveKey: contaHiveKey,
       parcelaNumero: parcelaNumero,
       dataRecebimento: quando,
+      contaReceberDocId: docId,
+      baixaId: baixaId,
     );
-    if (docId == null) {
+    if (docIdFin == null) {
       return const ResultadoBaixaContaReceber(
         sucesso: false,
         mensagemErro: 'Não foi possível registrar o recebimento no caixa.',
@@ -208,9 +277,14 @@ class ContaReceberService {
       valorRecebido: valorRecebido,
       formaPagamento: formaPagamento,
       dataRecebimento: quando,
+      baixaId: baixaId,
+      referenciaFinanceira: docIdFin,
     );
     await conta.save();
-
+    await ContaReceberFirestoreService.upsertContaReceber(
+      conta,
+      lastWriteOrigin: 'baixa_local',
+    );
     final quitado = conta.pago;
     final saldo = conta.saldoRestante;
     final msg = quitado

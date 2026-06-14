@@ -9,6 +9,7 @@ import 'package:master_palm/models/compra_fornecedor.dart';
 import 'package:master_palm/models/compra_fornecedor_constants.dart';
 import 'package:master_palm/models/compra_fornecedor_item.dart';
 import 'package:master_palm/models/conta_pagar.dart';
+import 'package:master_palm/models/conta_receber.dart';
 import 'package:master_palm/models/lancamento_financeiro.dart';
 import 'package:master_palm/models/produto.dart';
 import 'package:master_palm/services/compra_fornecedor_firestore_service.dart';
@@ -386,11 +387,20 @@ void main() {
       );
       await finBox.clear();
 
+      final conta = ContaReceber(
+        lojaId: lojaId,
+        clienteNome: 'Cliente FS',
+        valor: 150,
+        dataVencimento: DateTime(2026, 4, 15),
+        dataVenda: DateTime(2026, 4, 15),
+      );
+
       final id1 = await ContaReceberRecebimentoCaixaService.registrarRecebimento(
         lojaId: lojaId,
         valor: 150,
         formaPagamento: 'pix',
         clienteNome: 'Cliente FS',
+        conta: conta,
         contaHiveKey: 42,
         parcelaNumero: 1,
         dataRecebimento: DateTime(2026, 4, 15),
@@ -402,6 +412,7 @@ void main() {
         valor: 150,
         formaPagamento: 'pix',
         clienteNome: 'Cliente FS',
+        conta: conta,
         contaHiveKey: 42,
         parcelaNumero: 1,
         dataRecebimento: DateTime(2026, 4, 15),

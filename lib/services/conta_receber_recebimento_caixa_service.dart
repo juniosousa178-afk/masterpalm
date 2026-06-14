@@ -3,8 +3,10 @@
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
+import '../core/conta_receber_identity.dart';
 import '../core/conta_receber_lancamento_vinculo.dart';
 import '../financeiro/financeiro_constants.dart';
+import '../models/conta_receber.dart';
 import '../models/lancamento_financeiro.dart';
 import 'financeiro_firestore_service.dart';
 import 'financeiro_hive_store.dart';
@@ -24,16 +26,19 @@ class ContaReceberRecebimentoCaixaService {
   }
 
   /// Grava [entrada_extra] paga na [dataRecebimento]. Retorna id do LF ou null se falhou.
-  /// Idempotente: mesmo recebimento (conta, parcela, valor, dia) não duplica.
+  /// Idempotente: mesmo recebimento (conta estável ou Hive key, parcela, valor, dia) não duplica.
   static Future<String?> registrarRecebimento({
     required String lojaId,
     required double valor,
     required String formaPagamento,
     required String clienteNome,
     String observacaoConta = '',
+    required ContaReceber conta,
     required int contaHiveKey,
     int parcelaNumero = 1,
     DateTime? dataRecebimento,
+    String? contaReceberDocId,
+    String? baixaId,
   }) async {
     final loja = lojaId.trim();
     if (loja.isEmpty || valor <= 1e-9) return null;
@@ -47,24 +52,24 @@ class ContaReceberRecebimentoCaixaService {
     final quando = dataRecebimento ?? DateTime.now();
     final parcela = parcelaNumero.clamp(1, 999);
 
-    String docId;
-    String ref;
-    if (contaHiveKey >= 0) {
-      docId = lancamentoFinanceiroDocIdParaContaReceber(
-        contaHiveKey: contaHiveKey,
-        parcelaNumero: parcela,
-        valor: valor,
-        dataRecebimento: quando,
-      );
-      ref = referenciaExternaContaReceber(
-        contaHiveKey: contaHiveKey,
-        parcelaNumero: parcela,
-        valor: valor,
-        dataRecebimento: quando,
-      );
-    } else {
+    final docIdConta = (contaReceberDocId ?? resolveContaReceberDocId(conta)).trim();
+    final bx = (baixaId ?? '').trim();
+
+    final ids = idsRecebimentoContaReceber(
+      conta: conta,
+      contaHiveKey: contaHiveKey,
+      parcelaNumero: parcela,
+      valor: valor,
+      dataRecebimento: quando,
+      contaReceberDocId: docIdConta.isNotEmpty ? docIdConta : null,
+      baixaId: bx.isNotEmpty ? bx : null,
+    );
+    var docId = ids.docId;
+    var ref = ids.ref;
+
+    if (docId == 'mp_cr_invalido' || ref.isEmpty) {
       debugPrint(
-        '[CR-CAIXA] contaHiveKey inválido — recebimento sem idempotência forte.',
+        '[CR-CAIXA] Conta sem id estável nem Hive key — recebimento sem idempotência forte.',
       );
       final ms = DateTime.now().millisecondsSinceEpoch;
       docId = 'mp_cr_orfao_$ms';
@@ -81,10 +86,28 @@ class ContaReceberRecebimentoCaixaService {
 
     for (final l in box.values) {
       if (l.lojaId != loja) continue;
-      if (l.referenciaExterna.trim() == ref &&
+      if (ref.isNotEmpty &&
+          l.referenciaExterna.trim() == ref &&
           l.status == FinanceiroStatusLancamento.pago) {
         debugPrint('[CR-CAIXA] Ref $ref já recebida — idempotente.');
         return l.id;
+      }
+      // Cross-device: mesmo recebimento estável com docId legado diferente.
+      if (contaReceberStableId(conta).isNotEmpty) {
+        final parsed = recebimentoRefFromLancamento(l);
+        final alvo = parseReferenciaExternaContaReceber(ref);
+        if (parsed != null &&
+            alvo != null &&
+            parsed.isStable &&
+            alvo.isStable &&
+            parsed.stableId == alvo.stableId &&
+            parsed.parcelaNumero == alvo.parcelaNumero &&
+            parsed.centavos == alvo.centavos &&
+            parsed.dia == alvo.dia &&
+            l.status == FinanceiroStatusLancamento.pago) {
+          debugPrint('[CR-CAIXA] Recebimento estável já existe id=${l.id} — idempotente.');
+          return l.id;
+        }
       }
     }
 

@@ -11,6 +11,7 @@ import 'package:master_palm/models/compra_fornecedor.dart';
 import 'package:master_palm/models/compra_fornecedor_constants.dart';
 import 'package:master_palm/models/conta_pagar.dart';
 import 'package:master_palm/models/conta_pagar_constants.dart';
+import 'package:master_palm/models/conta_receber.dart';
 import 'package:master_palm/models/lancamento_financeiro.dart';
 import 'package:master_palm/services/conta_pagar_hive_store.dart';
 import 'package:master_palm/services/conta_receber_recebimento_caixa_service.dart';
@@ -191,12 +192,20 @@ void main() {
     const hiveKey = 42;
     const valor = 150.0;
     final data = DateTime(2026, 5, 10);
+    final conta = ContaReceber(
+      lojaId: lojaId,
+      clienteNome: 'Cliente Teste',
+      valor: valor,
+      dataVencimento: data,
+      dataVenda: data,
+    );
 
     final id1 = await ContaReceberRecebimentoCaixaService.registrarRecebimento(
       lojaId: lojaId,
       valor: valor,
       formaPagamento: 'Pix',
       clienteNome: 'Cliente Teste',
+      conta: conta,
       contaHiveKey: hiveKey,
       parcelaNumero: 1,
       dataRecebimento: data,
@@ -208,6 +217,7 @@ void main() {
       valor: valor,
       formaPagamento: 'Pix',
       clienteNome: 'Cliente Teste',
+      conta: conta,
       contaHiveKey: hiveKey,
       parcelaNumero: 1,
       dataRecebimento: data,
@@ -256,6 +266,13 @@ void main() {
       valor: 80,
       formaPagamento: 'Dinheiro',
       clienteNome: 'C',
+      conta: ContaReceber(
+        lojaId: lojaId,
+        clienteNome: 'C',
+        valor: 80,
+        dataVencimento: DateTime(2026, 4, 15),
+        dataVenda: DateTime(2026, 4, 15),
+      ),
       contaHiveKey: 7,
       dataRecebimento: DateTime(2026, 4, 15),
     );

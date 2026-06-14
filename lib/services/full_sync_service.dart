@@ -19,6 +19,7 @@ import 'produtos_firestore_service.dart';
 import 'sync_queue_service.dart';
 import 'importar_vendas_firestore_service.dart';
 import 'financeiro_firestore_service.dart';
+import 'conta_receber_firestore_service.dart';
 import 'store_resolver_facade.dart';
 
 class FullSyncService {
@@ -78,6 +79,28 @@ class FullSyncService {
       } catch (e, st) {
         logE(
           '⚠️ [FULL-SYNC] Módulo financeiro (type=${e.runtimeType})',
+          error: e,
+          st: st,
+        );
+      }
+
+      // 7. Contas a receber / fiado (Hive ↔ Firestore)
+      try {
+        final crMigr =
+            await ContaReceberFirestoreService.migrarLojaHiveParaFirestorePolicyA(
+                lojaId);
+        final crPull =
+            await ContaReceberFirestoreService.pullLojaFirestoreParaHive(lojaId);
+        result.contasReceberEnviadas = crMigr.enviados;
+        result.contasReceberImportadas = crPull.importados;
+        result.contasReceberAtualizadas = crPull.atualizados;
+        logD(
+          '💳 [FULL-SYNC] Contas a receber: enviadas ${crMigr.enviados}, '
+          'importadas ${crPull.importados}, atualizadas ${crPull.atualizados}',
+        );
+      } catch (e, st) {
+        logE(
+          '⚠️ [FULL-SYNC] Contas a receber (type=${e.runtimeType})',
           error: e,
           st: st,
         );
@@ -570,13 +593,18 @@ class SyncResult {
   /// Firestore → Hive (só chaves que ainda não existiam localmente).
   int financeiroLancamentosImportados = 0;
   int financeiroGastosFixosImportados = 0;
+  int contasReceberEnviadas = 0;
+  int contasReceberImportadas = 0;
+  int contasReceberAtualizadas = 0;
 
   @override
   String toString() {
     if (sucesso) {
       return 'Sincronização OK: $produtosSincronizados produtos, $clientesSincronizados clientes, '
           '$vendasSincronizadas vendas; financeiro enviados $financeiroLancamentosEnviados+$financeiroGastosFixosEnviados, '
-          'importados $financeiroLancamentosImportados+$financeiroGastosFixosImportados';
+          'importados $financeiroLancamentosImportados+$financeiroGastosFixosImportados; '
+          'contas receber enviadas $contasReceberEnviadas, importadas $contasReceberImportadas, '
+          'atualizadas $contasReceberAtualizadas';
     }
     return 'Erro: $erro';
   }
