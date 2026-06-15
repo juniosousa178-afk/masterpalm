@@ -135,6 +135,24 @@ abstract final class ContaReceberVendaBackfillService {
     return ok;
   }
 
+  static Future<void> _salvarContaBackfillNoHive({
+    required Box<ContaReceber> crBox,
+    required String lojaId,
+    required ContaReceber conta,
+  }) async {
+    normalizarContaReceberId(conta);
+    final docId = resolveContaReceberDocId(conta);
+    if (docId.isEmpty) return;
+    for (final c in crBox.values) {
+      if (!ContaReceberService.contaPertenceALoja(c, lojaId)) continue;
+      if (resolveContaReceberDocId(c) == docId) return;
+    }
+    await crBox.add(conta);
+    try {
+      await conta.save();
+    } catch (_) {}
+  }
+
   /// Cria docs remotos ausentes a partir de vendas com saldo a receber.
   static Future<ContaReceberBackfillResultado> backfillFromVendasFiadas(
     String lojaId,
@@ -207,6 +225,11 @@ abstract final class ContaReceberVendaBackfillService {
             );
             if (ok) {
               criadas++;
+              await _salvarContaBackfillNoHive(
+                crBox: crBox,
+                lojaId: loja,
+                conta: conta,
+              );
             } else {
               erros++;
             }

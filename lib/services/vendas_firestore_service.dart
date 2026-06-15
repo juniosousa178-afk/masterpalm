@@ -90,6 +90,53 @@ class VendasFirestoreService {
     );
   }
 
+  /// Atualiza pagamentos/total da venda local quando o remoto mudou (ex.: fiado misto).
+  static Future<bool> mesclarPagamentosRemotoNaVendaHive({
+    required Venda local,
+    required Map<String, dynamic> data,
+    required String lojaId,
+  }) async {
+    var changed = false;
+    void setDouble(void Function(double) set, double value) {
+      if (value.isNaN) return;
+      set(value);
+      changed = true;
+    }
+
+    final din = (data['pagamentoDinheiro'] as num?)?.toDouble();
+    final pix = (data['pagamentoPix'] as num?)?.toDouble();
+    final cart = (data['pagamentoCartao'] as num?)?.toDouble();
+    final total = (data['total'] as num?)?.toDouble();
+    final formas = (data['formasPagamento'] ?? '').toString();
+
+    if (din != null && (local.pagamentoDinheiro - din).abs() > 0.009) {
+      setDouble((v) => local.pagamentoDinheiro = v, din);
+    }
+    if (pix != null && (local.pagamentoPix - pix).abs() > 0.009) {
+      setDouble((v) => local.pagamentoPix = v, pix);
+    }
+    if (cart != null && (local.pagamentoCartao - cart).abs() > 0.009) {
+      setDouble((v) => local.pagamentoCartao = v, cart);
+    }
+    if (total != null && (local.total - total).abs() > 0.009) {
+      setDouble((v) => local.total = v, total);
+    }
+    if (formas.trim().isNotEmpty && local.formasPagamento.trim() != formas.trim()) {
+      local.formasPagamento = formas;
+      changed = true;
+    }
+    if (local.lojaId == null || local.lojaId!.trim().isEmpty) {
+      local.lojaId = lojaId;
+      changed = true;
+    }
+    if (changed) {
+      try {
+        await local.save();
+      } catch (_) {}
+    }
+    return changed;
+  }
+
   /// Evita duplicar no Hive a mesma venda MP (paymentId + pedido).
   static bool localVendaJaExisteParaDocFirestore(
     Box<Venda> vendasBox,
@@ -404,8 +451,16 @@ class VendasFirestoreService {
           final isUuid = vendaId.contains('-') && vendaId.length >= 36;
           final isMpDoc = isMpCanonicalVendaDocId(vendaId);
           if (isUuid || isMpDoc) {
-            final existe = vendasBox.values.any((v) => v.idFirebase == vendaId);
-            if (existe) {
+            final existente = vendasBox.values.cast<Venda?>().firstWhere(
+                  (v) => v!.idFirebase == vendaId,
+                  orElse: () => null,
+                );
+            if (existente != null) {
+              await mesclarPagamentosRemotoNaVendaHive(
+                local: existente,
+                data: data,
+                lojaId: lojaId,
+              );
               logD('[SYNC-VENDAS] ⏭️ venda $vendaId já no Hive (idFirebase), pulando');
               continue;
             }

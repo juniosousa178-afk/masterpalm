@@ -174,7 +174,14 @@ class ContaReceberService {
   static Future<ContaReceberPullResultado> sincronizarRemoto(String lojaId) async {
     await ContaReceberFirestoreService.publicarContasHivePendentes(lojaId);
     await ContaReceberVendaBackfillService.backfillFromVendasFiadas(lojaId);
-    return ContaReceberFirestoreService.pullContasReceberRemotas(lojaId);
+    var pull = await ContaReceberFirestoreService.pullContasReceberRemotas(lojaId);
+    for (var tentativa = 0;
+        pull.ignoradoJaEmExecucao && tentativa < 8;
+        tentativa++) {
+      await Future.delayed(const Duration(milliseconds: 150));
+      pull = await ContaReceberFirestoreService.pullContasReceberRemotas(lojaId);
+    }
+    return pull;
   }
 
   /// Registra recebimento no caixa e persiste a conta (Hive + Firestore).

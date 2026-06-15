@@ -11,6 +11,7 @@ import '../models/produto.dart';
 import '../models/venda.dart';
 import '../models/venda_item.dart';
 import '../models/conta_receber.dart';
+import '../core/conta_receber_identity.dart';
 import '../core/conta_receber_venda_vinculo.dart' as crv;
 import '../core/safe_cast.dart';
 import '../core/strict_product_resolution.dart';
@@ -272,6 +273,7 @@ class VendasService {
     required String vendaIdVinculo,
     required int? vendaHiveKey,
   }) async {
+    var falhasFirestore = 0;
     for (var i = 0; i < contas.length; i++) {
       final conta = contas[i];
       await crBox.add(conta);
@@ -282,16 +284,25 @@ class VendasService {
           '⚠️ [VENDAS-SERVICE] conta.save após add falhou (parcela ${i + 1}, type=${e.runtimeType})',
         );
       }
-      try {
-        await ContaReceberFirestoreService.upsertContaReceber(
-          conta,
-          lastWriteOrigin: 'venda_fiada',
-        );
-      } catch (e) {
+      normalizarContaReceberId(conta);
+      final docId = resolveContaReceberDocId(conta);
+      final publicado = await ContaReceberFirestoreService.upsertContaReceber(
+        conta,
+        lastWriteOrigin: 'venda_fiada',
+      );
+      if (!publicado) {
+        falhasFirestore++;
         debugPrint(
-          '⚠️ [VENDAS-SERVICE] conta Firestore upsert falhou (parcela ${i + 1}, type=${e.runtimeType})',
+          '⚠️ [VENDAS-SERVICE] conta Firestore upsert FALHOU parcela ${i + 1} '
+          'docId=$docId lojaId=$lojaId',
         );
       }
+    }
+    if (falhasFirestore > 0) {
+      debugPrint(
+        '⚠️ [VENDAS-SERVICE] $falhasFirestore conta(s) não publicadas no Firestore '
+        '(permanecem só no Hive local até sincronizarRemoto/republicar)',
+      );
     }
     debugPrint(
       '[CONTA_RECEBER_CREATE_OK] [VENDAS-SERVICE] contas_receber criadas qtd=${contas.length} lojaId=$lojaId '

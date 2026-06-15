@@ -131,6 +131,11 @@ class ImportarVendasFirestoreService {
                 await existentePorId.save();
                 logD('🔧 [IMPORT-VENDAS] Venda $vendaId: lojaId corrigido (legado)');
               }
+              await VendasFirestoreService.mesclarPagamentosRemotoNaVendaHive(
+                local: existentePorId,
+                data: data,
+                lojaId: lojaId,
+              );
               logD('⏭️ [IMPORT-VENDAS] Venda $vendaId já existe (idFirebase), pulando');
               continue;
             }
