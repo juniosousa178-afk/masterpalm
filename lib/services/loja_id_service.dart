@@ -4,11 +4,12 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
+import '../core/loja_ativa_resolver.dart';
 import '../core/loja_id_adapter.dart';
 import '../core/logger.dart';
 import '../services/public_store_link_helper.dart';
-import '../services/store_resolver_facade.dart';
 import 'store_context.dart';
+import 'store_resolver_service.dart';
 
 /// Fonte única de resolução de `lojaId` para telas/serviços.
 /// No **Web**, o `AppStartRouter` aplica `WebStoreContextPolicyResult` (core) antes da Home;
@@ -69,15 +70,15 @@ class LojaIdService extends ChangeNotifier {
   // ============================================================
   static Future<String?> get() async {
     try {
-      logD('[LOJAID] origem=LojaIdService.get antes StoreResolverFacade.resolveForAdminApp');
-      final id = await StoreResolverFacade.resolveForAdminApp();
-      logD('[LOJAID] origem=LojaIdService.get depois StoreResolverFacade.resolveForAdminApp valor=${id ?? "null"}');
+      logD('[LOJAID] origem=LojaIdService.get antes LojaAtivaResolver.resolve');
+      final id = await LojaAtivaResolver.resolve(origem: 'LojaIdService.get');
+      logD('[LOJAID] origem=LojaIdService.get depois LojaAtivaResolver.resolve valor=${id ?? "null"}');
       final trimmed = id?.trim() ?? '';
       if (trimmed.isNotEmpty) return trimmed;
-      logW('[LOJAID] origem=LojaIdService.get retorno null motivo=StoreResolver retornou vazio');
+      logW('[LOJAID] origem=LojaIdService.get retorno null motivo=LojaAtivaResolver retornou vazio');
     } catch (e) {
       debugPrint(
-        '[LOJAID] origem=LojaIdService.get erro StoreResolverFacade.resolveForAdminApp type=${e.runtimeType}',
+        '[LOJAID] origem=LojaIdService.get erro LojaAtivaResolver.resolve type=${e.runtimeType}',
       );
     }
 
@@ -166,25 +167,25 @@ class LojaIdService extends ChangeNotifier {
     // store_id de outro usuário (contaminação entre juniosousa178 e trindadejunio70).
 
     try {
-      logD('[LOJAID] origem=LojaIdService.getWithTimeout antes StoreResolverFacade.resolveForAdminApp tentativa=1');
-      final id = await StoreResolverFacade.resolveForAdminApp()
+      logD('[LOJAID] origem=LojaIdService.getWithTimeout antes LojaAtivaResolver.resolve tentativa=1');
+      final id = await LojaAtivaResolver.resolve(origem: 'LojaIdService.getWithTimeout')
           .timeout(effectiveTimeout, onTimeout: () => null);
-      logD('[LOJAID] origem=LojaIdService.getWithTimeout depois StoreResolverFacade.resolveForAdminApp tentativa=1 valor=${id ?? "null"}');
+      logD('[LOJAID] origem=LojaIdService.getWithTimeout depois LojaAtivaResolver.resolve tentativa=1 valor=${id ?? "null"}');
       final trimmed = id?.trim() ?? '';
       if (trimmed.isNotEmpty && isValidForPublicLink(trimmed)) {
-        logD('[LOJA_ID] resolve_success fonte=StoreResolver tentativa=1');
+        logD('[LOJA_ID] resolve_success fonte=LojaAtivaResolver tentativa=1');
         return trimmed;
       }
       // Retry quando retorna null/vazio (ex: Auth ainda não pronto no Web ao voltar)
       logD('[STORE-RESOLVE] Primeira tentativa retornou vazio, aguardando 2s para retry...');
       await Future<void>.delayed(const Duration(seconds: 2));
-      logD('[LOJAID] origem=LojaIdService.getWithTimeout antes StoreResolverFacade.resolveForAdminApp tentativa=2');
-      final idRetry = await StoreResolverFacade.resolveForAdminApp()
+      logD('[LOJAID] origem=LojaIdService.getWithTimeout antes LojaAtivaResolver.resolve tentativa=2');
+      final idRetry = await LojaAtivaResolver.resolve(origem: 'LojaIdService.getWithTimeout-retry')
           .timeout(effectiveTimeout, onTimeout: () => null);
-      logD('[LOJAID] origem=LojaIdService.getWithTimeout depois StoreResolverFacade.resolveForAdminApp tentativa=2 valor=${idRetry ?? "null"}');
+      logD('[LOJAID] origem=LojaIdService.getWithTimeout depois LojaAtivaResolver.resolve tentativa=2 valor=${idRetry ?? "null"}');
       final trimmedRetry = idRetry?.trim() ?? '';
       if (trimmedRetry.isNotEmpty && isValidForPublicLink(trimmedRetry)) {
-        logD('[LOJA_ID] resolve_success fonte=StoreResolver tentativa=2');
+        logD('[LOJA_ID] resolve_success fonte=LojaAtivaResolver tentativa=2');
         return trimmedRetry;
       }
     } on TimeoutException {
@@ -192,12 +193,14 @@ class LojaIdService extends ChangeNotifier {
       // Retry: no Web o Auth pode ter ficado pronto após o timeout
       try {
         logD('[LOJA_ID] resolve_start tentativa=timeout-retry');
-        final id = await StoreResolverFacade.resolveForAdminApp()
+        final id = await LojaAtivaResolver.resolve(
+              origem: 'LojaIdService.getWithTimeout-timeout-retry',
+            )
             .timeout(retryTimeout, onTimeout: () => null);
         logD('[LOJA_ID] resolve_after_timeout valor=${id != null && id.isNotEmpty ? "ok" : "null"}');
         final trimmed = id?.trim() ?? '';
         if (trimmed.isNotEmpty && isValidForPublicLink(trimmed)) {
-          logD('[LOJA_ID] resolve_success fonte=StoreResolver tentativa=timeout-retry');
+          logD('[LOJA_ID] resolve_success fonte=LojaAtivaResolver tentativa=timeout-retry');
           return trimmed;
         }
       } catch (e, st) {
@@ -232,11 +235,13 @@ class LojaIdService extends ChangeNotifier {
               .where((u) => u != null && !u.isAnonymous)
               .first
               .timeout(const Duration(seconds: 5), onTimeout: () => null);
-          final id = await StoreResolverFacade.resolveForAdminApp()
+          final id = await LojaAtivaResolver.resolve(
+                origem: 'LojaIdService.getWithTimeout-auth-stream',
+              )
               .timeout(const Duration(seconds: 10), onTimeout: () => null);
           final trimmed = id?.trim() ?? '';
           if (trimmed.isNotEmpty && isValidForPublicLink(trimmed)) {
-            logD('[LOJA_ID] resolve_success fonte=StoreResolver_apos_auth_stream');
+            logD('[LOJA_ID] resolve_success fonte=LojaAtivaResolver_apos_auth_stream');
             return trimmed;
           }
         } catch (e, st) {
@@ -350,11 +355,11 @@ class LojaIdService extends ChangeNotifier {
   }
 
   static Future<String> ensureOrThrow() async {
-    final id = await get();
-    if (id == null || id.trim().isEmpty) {
-      throw StateError('Nenhuma loja ativa encontrada (store_id).');
+    try {
+      return await LojaAtivaResolver.requireActive(origem: 'LojaIdService.ensureOrThrow');
+    } on StateError catch (e) {
+      throw StateError(e.message);
     }
-    return id.trim();
   }
 
   static Future<String> ensure() => ensureOrThrow();
@@ -368,6 +373,9 @@ class LojaIdService extends ChangeNotifier {
 
   // 1) StoreContext (fonte viva)
   await StoreContext.set(id);
+
+  // 2) cache operacional alinhado
+  await StoreResolverService.set(id);
 
   // 2) sessao
   final Box sessao = Hive.isBoxOpen('sessao')

@@ -478,6 +478,10 @@ abstract final class ContaReceberFirestoreService {
     final loja = conta.lojaId.trim();
     if (loja.isEmpty) return false;
     final docId = resolveContaReceberDocId(conta);
+    debugPrint(
+      '[CR-FS][UPSERT-INICIO] path=lojas/$loja/contas_receber/$docId '
+      'origem=$lastWriteOrigin',
+    );
     try {
       final data = mapContaReceber(
         conta,

@@ -15,6 +15,7 @@ import 'package:hive/hive.dart';
 import '../catalog/catalog_layout_config.dart';
 import '../core/loja_id_adapter.dart';
 import '../core/logger.dart';
+import '../utils/role_utils.dart';
 import 'public_store_link_helper.dart';
 
 class StoreResolverService {
@@ -36,16 +37,65 @@ class StoreResolverService {
   static bool _isPlaceholder(String? s) =>
       s != null && _placeholdersInvalidos.contains(s.trim().toLowerCase());
 
-  /// Resolve a loja FIXA do usuário
-  /// ⚠️ NUNCA muda - um usuário = uma loja para sempre
-  /// ✅ PADRONIZADO: Prioridade de resolução:
-  ///    1) Auth (aguarda até 5s no Web se currentUser ainda null)
-  ///    2) Cache local
-  ///    3) Firestore users/{uid}.store_id
-  ///    4) Firestore usuarios/{email}.store_id
-  ///    5) Hive sessao/config (offline, mesmo usuário)
-  ///    6) Slug baseado no email
+  /// Resolve a loja do **dono** (owner store) — Firestore users/usuarios ou slug.
+  /// Para operações (vendas/fiado), prefira [LojaAtivaResolver.resolve] (sessão primeiro).
+  static Future<String?> resolveOwnerStore() async {
+    return _resolveOwnerStoreInternal(persistToSession: true);
+  }
+
+  /// Compat: delega a [resolveOwnerStore] após tentar sessão operacional alinhada.
   static Future<String?> resolve() async {
+    final sessionFirst = await _readValidatedSessionStoreId();
+    if (sessionFirst != null && sessionFirst.isNotEmpty) {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      _cache = sessionFirst;
+      _cachedUid = uid;
+      logD('[STORE_RESOLVE] source=session_active lojaId=$sessionFirst');
+      return sessionFirst;
+    }
+    return resolveOwnerStore();
+  }
+
+  /// Lê loja operacional da sessão (mesmo usuário Auth + store_id válido).
+  static Future<String?> _readValidatedSessionStoreId() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return null;
+    final authEmail = (user.email ?? '').trim().toLowerCase();
+    if (authEmail.isEmpty) return null;
+    try {
+      final sessao = await _openBox('sessao');
+      final cfg = await _openBox('config');
+      final principalEmail = (sessao.get('usuario_logado_email') ?? '')
+          .toString()
+          .trim()
+          .toLowerCase();
+      final principalLegacy = (sessao.get('usuario_logado') ?? '')
+          .toString()
+          .trim()
+          .toLowerCase();
+      final principal =
+          principalEmail.isNotEmpty ? principalEmail : principalLegacy;
+      if (principal.isEmpty || principal != authEmail) return null;
+
+      for (final raw in [
+        normalizeFromBox(sessao),
+        normalizeFromBox(cfg),
+        (cfg.get('last_loja_id') ?? '').toString().trim(),
+      ]) {
+        final t = (raw ?? '').trim();
+        if (t.isEmpty || _isPlaceholder(t)) continue;
+        if (!isValidForPublicLink(t)) continue;
+        return t;
+      }
+    } catch (e) {
+      logW('[STORE_RESOLVE] session read falhou (type=${e.runtimeType})');
+    }
+    return null;
+  }
+
+  static Future<String?> _resolveOwnerStoreInternal({
+    required bool persistToSession,
+  }) async {
     logD('[STORE_RESOLVE] origem=StoreResolverService.resolve inicio');
     final user0 = FirebaseAuth.instance.currentUser;
     logD('[STORE_RESOLVE] auth uid=${user0?.uid ?? "null"} email=${user0?.email ?? "null"}');
@@ -113,11 +163,30 @@ class StoreResolverService {
           .timeout(const Duration(seconds: 5));
 
       if (userDoc.exists) {
-        final storeId = normalizeFromMap(userDoc.data());
-        if (storeId != null && storeId.isNotEmpty && !_isPlaceholder(storeId)) {
-          lojaFixa = storeId;
-          resolvedSource = 'users_doc';
-          logD('[STORE_RESOLVE] source=users_doc lojaId=$lojaFixa');
+        final data = userDoc.data();
+        final email = FirebaseAuth.instance.currentUser?.email;
+        if (RoleUtils.isRootEmail(email) && data != null) {
+          for (final field in [
+            'active_store_id',
+            'admin_store_id',
+            'operating_store_id',
+          ]) {
+            final op = (data[field] ?? '').toString().trim();
+            if (op.isNotEmpty && !_isPlaceholder(op)) {
+              lojaFixa = op;
+              resolvedSource = 'users_$field';
+              logD('[STORE_RESOLVE] source=$resolvedSource lojaId=$lojaFixa');
+              break;
+            }
+          }
+        }
+        if (lojaFixa == null) {
+          final storeId = normalizeFromMap(data);
+          if (storeId != null && storeId.isNotEmpty && !_isPlaceholder(storeId)) {
+            lojaFixa = storeId;
+            resolvedSource = 'users_doc';
+            logD('[STORE_RESOLVE] source=users_doc lojaId=$lojaFixa');
+          }
         }
       }
     } catch (e, st) {
@@ -207,11 +276,23 @@ class StoreResolverService {
       logE('[STORE_RESOLVE] ensureLojaExists falhou (type=${e.runtimeType})', error: e, st: st);
     });
 
-    // Persistir e cachear (persistência não deve bloquear retorno no Web)
-    try {
-      await _persist(lojaFixa);
-    } catch (e, st) {
-      logE('[STORE_RESOLVE] Erro ao persistir (Hive); lojaId=$lojaFixa (type=${e.runtimeType})', error: e, st: st);
+    // Persistir owner store só quando não há sessão operacional diferente
+    if (persistToSession) {
+      final sessionActive = await _readValidatedSessionStoreId();
+      if (sessionActive == null || sessionActive.isEmpty) {
+        try {
+          await _persist(lojaFixa);
+        } catch (e, st) {
+          logE('[STORE_RESOLVE] Erro ao persistir (Hive); lojaId=$lojaFixa (type=${e.runtimeType})', error: e, st: st);
+        }
+      } else if (sessionActive != lojaFixa) {
+        logD(
+          '[STORE_RESOLVE] owner=$lojaFixa não sobrescreve sessão operacional=$sessionActive',
+        );
+        _cache = sessionActive;
+        _cachedUid = currentUid;
+        return sessionActive;
+      }
     }
     _cache = lojaFixa;
     _cachedUid = currentUid;
@@ -343,17 +424,19 @@ class StoreResolverService {
   // 🔒 SET - BLOQUEADO (LOJA É IMUTÁVEL)
   // ================================================================
 
-  /// ⚠️ BLOQUEADO - A loja é FIXA por usuário e não pode ser alterada
-  /// Esta função agora apenas loga um aviso e ignora a tentativa
+  /// Define a loja **operacional** ativa (sessão Hive + cache).
+  /// Não altera users/{uid}.store_id (loja do dono).
   static Future<void> set(String storeId) async {
+    final id = storeId.trim();
+    if (id.isEmpty || _isPlaceholder(id)) {
+      logW('[STORE-RESOLVER] set ignorado: storeId inválido ($storeId)');
+      return;
+    }
     final currentUid = FirebaseAuth.instance.currentUser?.uid;
-    logD('🚫 [STORE-RESOLVER] Tentativa de SET bloqueada!');
-    logD('   Tentou definir: $storeId');
-    logD('   UID atual: $currentUid');
-    logD('   ⚠️ A loja é FIXA por usuário e não pode ser alterada!');
-
-    // Apenas resolver a loja correta
-    await resolve();
+    logD('[STORE-RESOLVER] set loja operacional=$id uid=$currentUid');
+    await _persist(id);
+    _cache = id;
+    _cachedUid = currentUid;
   }
 
   // ================================================================

@@ -127,8 +127,20 @@ class AdminWebSessionHydrator {
       return;
     }
 
+    // Não sobrescrever loja operacional já gravada na sessão (ex.: root em loja Nathy).
+    if (sidBefore.isNotEmpty &&
+        isValidForPublicLink(sidBefore) &&
+        cachedPrincipal == email &&
+        sidBefore != lojaId) {
+      logD(
+        '[STORE_BOOTSTRAP] mantendo sessão operacional=$sidBefore (resolve sugeriu $lojaId)',
+      );
+      lojaId = sidBefore;
+    }
+
     try {
       await LojaIdService.set(lojaId);
+      await StoreResolverService.set(lojaId);
     } catch (e) {
       logW('[STORE_BOOTSTRAP] LojaIdService.set falhou (type=${e.runtimeType})');
     }

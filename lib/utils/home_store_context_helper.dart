@@ -6,10 +6,10 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hive/hive.dart';
 
+import '../core/loja_ativa_resolver.dart';
 import '../core/logger.dart';
 import '../core/loja_id_adapter.dart';
 import '../services/public_store_link_helper.dart';
-import '../services/store_resolver_facade.dart';
 
 /// Resultado do contexto de loja para a Home/atalhos.
 /// [lojaIdInterno] = identificador para Hive, Firestore, Motor, Campanhas, Painel (admin).
@@ -28,15 +28,15 @@ class HomeStoreContext {
 }
 
 /// Resolve contexto da loja ativa para a Home (leitura apenas).
-/// Ordem: 1) StoreResolverFacade (Firestore users/usuarios), 2) Hive sessao (fallback offline).
+/// Ordem: 1) LojaAtivaResolver (sessão operacional), 2) Hive sessao (fallback offline).
 Future<HomeStoreContext> resolveHomeStoreContext() async {
   String lojaIdInterno = '';
   try {
-    final id = await StoreResolverFacade.resolveForAdminApp();
+    final id = await LojaAtivaResolver.resolve(origem: 'resolveHomeStoreContext');
     final trimmed = (id ?? '').trim();
     if (isValidForPublicLink(trimmed)) {
       lojaIdInterno = trimmed;
-      logD('[CATALOGO-CONTEXT] resolveHomeStoreContext: StoreResolver → $lojaIdInterno');
+      logD('[CATALOGO-CONTEXT] resolveHomeStoreContext: LojaAtivaResolver → $lojaIdInterno');
     }
   } catch (_) {}
 

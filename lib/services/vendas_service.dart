@@ -13,6 +13,8 @@ import '../models/venda_item.dart';
 import '../models/conta_receber.dart';
 import '../core/conta_receber_identity.dart';
 import '../core/conta_receber_venda_vinculo.dart' as crv;
+import '../core/loja_ativa_resolver.dart';
+import '../core/logger.dart';
 import '../core/safe_cast.dart';
 import '../core/strict_product_resolution.dart';
 import '../utils/text_utils.dart';
@@ -1324,10 +1326,18 @@ class VendasService {
       throw Exception('Nenhum item informado.');
     }
 
-    if (lojaId == null || lojaId.trim().isEmpty) {
-      throw ArgumentError('lojaId é obrigatório para registrar venda multi-loja');
+    final lojaEfetiva = await LojaAtivaResolver.requireActive(
+      origem: 'VendasService.registrarVendaMulti',
+    );
+    if (lojaId != null &&
+        lojaId.trim().isNotEmpty &&
+        lojaId.trim() != lojaEfetiva) {
+      logW(
+        '[VENDAS-SERVICE][LOJA] param=${lojaId.trim()} ignorado; '
+        'usando loja ativa=$lojaEfetiva',
+      );
     }
-    final String lojaEfetiva = lojaId.trim();
+    logD('[VENDAS-SERVICE][LOJA] lojaId=$lojaEfetiva');
 
     validarParametrosVendaFiada(
       isFiado: isFiado,

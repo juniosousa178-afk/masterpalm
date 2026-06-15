@@ -2,6 +2,7 @@
 // Ponto único de entrada para resolução de loja (facade).
 // Delega para StoreResolverService e StoreResolverUnified sem alterar ordem/cache/validações.
 
+import '../core/loja_ativa_resolver.dart';
 import '../core/logger.dart';
 import 'store_resolver_service.dart';
 import 'store_resolver_unified.dart';
@@ -13,12 +14,12 @@ export 'store_resolver_unified.dart' show StoreResolveResult;
 class StoreResolverFacade {
   StoreResolverFacade._();
 
-  /// Resolve a loja do usuário para o app admin/dashboard.
-  /// Delega a [StoreResolverService.resolve()] (Auth → users/{uid} → usuarios/{email} → Hive → slug).
+  /// Resolve a loja operacional para o app admin/dashboard.
+  /// Prioridade: sessão Hive alinhada → owner store (Firestore).
   static Future<String?> resolveForAdminApp() async {
-    logD('[STORE_RESOLVE] origem=StoreResolverFacade.resolveForAdminApp antes StoreResolverService.resolve');
-    final id = await StoreResolverService.resolve();
-    logD('[STORE_RESOLVE] origem=StoreResolverFacade.resolveForAdminApp depois StoreResolverService.resolve valor=${id ?? "null"}');
+    logD('[STORE_RESOLVE] origem=StoreResolverFacade.resolveForAdminApp antes LojaAtivaResolver.resolve');
+    final id = await LojaAtivaResolver.resolve(origem: 'StoreResolverFacade.resolveForAdminApp');
+    logD('[STORE_RESOLVE] origem=StoreResolverFacade.resolveForAdminApp depois LojaAtivaResolver.resolve valor=${id ?? "null"}');
     return id;
   }
 
