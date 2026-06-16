@@ -3,6 +3,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
+import '../core/conta_receber_dedup.dart';
 import '../core/conta_receber_identity.dart';
 import '../core/conta_receber_lancamento_vinculo.dart';
 import '../core/hive_box_names.dart';
@@ -106,6 +107,7 @@ class ContaReceberService {
   }) {
     final hoje = DateTime.now();
     var list = contas.where((c) => contaPertenceALoja(c, lojaId)).toList();
+    list = deduplicarContasReceber(list);
     list.sort((a, b) => b.dataVencimento.compareTo(a.dataVencimento));
     switch (filtro) {
       case 'pendentes':
@@ -172,15 +174,55 @@ class ContaReceberService {
 
   /// Pull Firestore → Hive (+ publicação conservadora + backfill vendas fiadas).
   static Future<ContaReceberPullResultado> sincronizarRemoto(String lojaId) async {
-    await ContaReceberFirestoreService.publicarContasHivePendentes(lojaId);
-    await ContaReceberVendaBackfillService.backfillFromVendasFiadas(lojaId);
-    var pull = await ContaReceberFirestoreService.pullContasReceberRemotas(lojaId);
+    final loja = lojaId.trim();
+    debugPrint('[CR-SYNC][INICIO] lojaId=$loja');
+
+    Box<ContaReceber>? boxAntes;
+    try {
+      boxAntes = await openBoxLoja(loja);
+      final total = boxAntes.length;
+      final maio = boxAntes.values.where((c) {
+        final v = c.dataVencimento;
+        return v.year == 2026 && v.month == 5;
+      }).length;
+      debugPrint('[CR-SYNC][HIVE-COUNT] total=$total maio=$maio');
+    } catch (_) {}
+
+    final pub =
+        await ContaReceberFirestoreService.publicarContasHivePendentes(loja);
+    debugPrint(
+      '[CR-SYNC][PUBLICAR-PENDENTES] enviados=${pub.enviados} pulados=${pub.pulados}',
+    );
+
+    final backfill =
+        await ContaReceberVendaBackfillService.backfillFromVendasFiadas(loja);
+    debugPrint(
+      '[CR-BACKFILL][RESUMO] criadas=${backfill.criadas} existiam=${backfill.jaExistiam} '
+      'ignoradas=${backfill.ignoradas}',
+    );
+
+    var pull = await ContaReceberFirestoreService.pullContasReceberRemotas(loja);
+    debugPrint(
+      '[CR-PULL][REMOTE-COUNT] importados=${pull.importados} atualizados=${pull.atualizados} '
+      'pulados=${pull.pulados}',
+    );
     for (var tentativa = 0;
         pull.ignoradoJaEmExecucao && tentativa < 8;
         tentativa++) {
       await Future.delayed(const Duration(milliseconds: 150));
-      pull = await ContaReceberFirestoreService.pullContasReceberRemotas(lojaId);
+      pull = await ContaReceberFirestoreService.pullContasReceberRemotas(loja);
     }
+
+    if (boxAntes != null && boxAntes.isOpen) {
+      final deduped = deduplicarContasReceber(boxAntes.values.toList());
+      if (deduped.length < boxAntes.length) {
+        debugPrint(
+          '[CR-SYNC][DUP-DETECTADO] hiveAntes=${boxAntes.length} '
+          'aposDedupeSemantico=${deduped.length}',
+        );
+      }
+    }
+
     return pull;
   }
 

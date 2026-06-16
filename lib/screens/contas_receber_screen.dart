@@ -66,6 +66,20 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
     try {
       _box = await ContaReceberService.openBoxLoja(_lojaId!);
       await ContaReceberService.sincronizarRemoto(_lojaId!);
+      final todas = ContaReceberService.listar(
+        contas: _box.values,
+        lojaId: _lojaId!,
+        filtro: 'todas',
+      );
+      final pendentes = ContaReceberService.listar(
+        contas: _box.values,
+        lojaId: _lojaId!,
+        filtro: 'pendentes',
+      );
+      debugPrint(
+        '[CR-SCREEN][LISTA] hiveTotal=${_box.length} dedupeTodas=${todas.length} '
+        'exibidasPendentes=${pendentes.length} filtro=$_filtro',
+      );
       await _carregarTemplateMensagem();
       await _verificarLembretesDoisDias();
     } catch (e) {

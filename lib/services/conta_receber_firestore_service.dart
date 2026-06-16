@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
+import '../core/conta_receber_dedup.dart';
 import '../core/conta_receber_identity.dart';
 import '../core/conta_receber_lancamento_vinculo.dart';
 import '../models/conta_receber.dart';
@@ -271,6 +272,16 @@ abstract final class ContaReceberFirestoreService {
         if (contaReceberStableId(c) == stable) return c;
       }
     }
+    final remotoParse = contaFromFirestore(docId, data, lojaId);
+    if (remotoParse != null) {
+      final chaveRemota = contaReceberChaveSemantica(remotoParse);
+      if (chaveRemota.isNotEmpty) {
+        for (final c in box.values) {
+          if (!ContaReceberService.contaPertenceALoja(c, lojaId)) continue;
+          if (contaReceberChaveSemantica(c) == chaveRemota) return c;
+        }
+      }
+    }
     for (final c in box.values) {
       if (!ContaReceberService.contaPertenceALoja(c, lojaId)) continue;
       if (resolveContaReceberDocId(c) == docId) return c;
@@ -421,15 +432,45 @@ abstract final class ContaReceberFirestoreService {
     var env = 0, pul = 0, err = 0;
     try {
       final box = await ContaReceberService.openBoxLoja(loja);
+      final chavesRemotasFraca = <String>{};
+      try {
+        final qs = await _db
+            .collection('lojas')
+            .doc(loja)
+            .collection(FSPaths.contasReceberCol)
+            .get();
+        for (final doc in qs.docs) {
+          final data = doc.data();
+          if (_fsBool(data['cancelada']) || data['deletedAt'] != null) continue;
+          final parsed = contaFromFirestore(doc.id, data, loja);
+          if (parsed == null) continue;
+          final fraca = contaReceberChaveFraca(parsed);
+          if (fraca.isNotEmpty) chavesRemotasFraca.add(fraca);
+        }
+      } catch (_) {}
+
       for (final c in box.values) {
         if (!ContaReceberService.contaPertenceALoja(c, loja)) continue;
-        if (!contaReceberDocIdDeterministico(c)) {
+        if (!contaReceberElegivelParaPublicarHive(c)) {
+          if (contaReceberInativaParaSync(c)) {
+            debugPrint(
+              '[CR-SYNC][PUBLICAR-SKIP-INATIVA] id=${resolveContaReceberDocId(c)}',
+            );
+          }
           pul++;
           continue;
         }
         normalizarContaReceberId(c);
         final docId = resolveContaReceberDocId(c);
         if (docId.isEmpty) {
+          pul++;
+          continue;
+        }
+        final fracaLocal = contaReceberChaveFraca(c);
+        if (fracaLocal.isNotEmpty && chavesRemotasFraca.contains(fracaLocal)) {
+          debugPrint(
+            '[CR-SYNC][PUBLICAR-SKIP-REMOTO] chave=$fracaLocal id=$docId',
+          );
           pul++;
           continue;
         }
@@ -455,6 +496,7 @@ abstract final class ContaReceberFirestoreService {
               await c.save();
             } catch (_) {}
           }
+          if (fracaLocal.isNotEmpty) chavesRemotasFraca.add(fracaLocal);
           env++;
         } catch (e) {
           err++;

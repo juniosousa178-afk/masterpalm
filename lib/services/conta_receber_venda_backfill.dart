@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
+import '../core/conta_receber_dedup.dart';
 import '../core/conta_receber_identity.dart';
 import '../core/conta_receber_venda_vinculo.dart';
 import '../core/hive_box_names.dart';
@@ -141,11 +142,12 @@ abstract final class ContaReceberVendaBackfillService {
     required ContaReceber conta,
   }) async {
     normalizarContaReceberId(conta);
-    final docId = resolveContaReceberDocId(conta);
-    if (docId.isEmpty) return;
-    for (final c in crBox.values) {
-      if (!ContaReceberService.contaPertenceALoja(c, lojaId)) continue;
-      if (resolveContaReceberDocId(c) == docId) return;
+    if (hiveJaTemContaSemantica(
+      contas: crBox.values,
+      lojaId: lojaId,
+      candidata: conta,
+    )) {
+      return;
     }
     await crBox.add(conta);
     try {
@@ -210,6 +212,18 @@ abstract final class ContaReceberVendaBackfillService {
               continue;
             }
 
+            if (hiveJaTemContaSemantica(
+              contas: crBox.values,
+              lojaId: loja,
+              candidata: conta,
+            )) {
+              debugPrint(
+                '[CR-BACKFILL][SKIP-JA-EXISTE] vendaId=$idV parcela=${conta.parcelaNumero}',
+              );
+              existiam++;
+              continue;
+            }
+
             final remoto = await ContaReceberFirestoreService.buscarContaReceberRemota(
               lojaId: loja,
               contaReceberId: docId,
@@ -218,6 +232,31 @@ abstract final class ContaReceberVendaBackfillService {
               existiam++;
               continue;
             }
+
+            // Legado no remoto com mesma chave semântica (ex.: cr_legacy_* vs cr_{vendaId}_pN)
+            final chave = contaReceberChaveSemantica(conta);
+            if (chave.isNotEmpty && chave.startsWith('v:')) {
+              final legacyId = legacyContaReceberDocId(conta);
+              if (legacyId.isNotEmpty && legacyId != docId) {
+                final remotoLegacy =
+                    await ContaReceberFirestoreService.buscarContaReceberRemota(
+                  lojaId: loja,
+                  contaReceberId: legacyId,
+                );
+                if (remotoLegacy != null) {
+                  debugPrint(
+                    '[CR-BACKFILL][SKIP-LEGADO-REMOTO] vendaId=$idV parcela=${conta.parcelaNumero}',
+                  );
+                  existiam++;
+                  continue;
+                }
+              }
+            }
+
+            debugPrint(
+              '[CR-BACKFILL][VENDA] vendaId=$idV data=${venda.data.toIso8601String()} '
+              'cliente=${venda.clienteNome}',
+            );
 
             final ok = await ContaReceberFirestoreService.upsertContaReceber(
               conta,
