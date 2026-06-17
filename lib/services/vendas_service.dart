@@ -336,37 +336,18 @@ class VendasService {
   }) async {
     final loja = lojaId.trim();
     if (loja.isEmpty) return;
-    final vk = vendaKey;
     final idV = (vendaIdFirebase ?? '').trim();
-    if ((vk == null || vk < 0) && idV.isEmpty) return;
+    debugPrint(
+      '[VENDAS-DELETE][INICIO] vendaId=$idV lojaId=$loja vendaKey=$vendaKey',
+    );
     try {
-      final crBox = await ContaReceberService.openBoxLoja(loja);
-      final keysToDelete = <dynamic>[];
-      for (final k in crBox.keys) {
-        final c = crBox.get(k);
-        if (c != null &&
-            contaReceberVinculadaAVenda(
-              conta: c,
-              lojaId: loja,
-              vendaKey: vk,
-              vendaIdFirebase: idV,
-            )) {
-          keysToDelete.add(k);
-        }
-      }
-      for (final k in keysToDelete) {
-        final c = crBox.get(k);
-        if (c != null) {
-          final docId = (c.idFirebase ?? '').trim();
-          if (docId.isNotEmpty) {
-            await ContaReceberFirestoreService.marcarCanceladaRemota(
-              lojaId: loja,
-              contaReceberDocId: docId,
-            );
-          }
-        }
-        await crBox.delete(k);
-      }
+      await ContaReceberService.cancelarContasReceberDaVenda(
+        lojaId: loja,
+        vendaKey: vendaKey,
+        vendaIdFirebase: idV.isEmpty ? null : idV,
+        motivo: 'venda_excluida',
+      );
+      debugPrint('[VENDAS-DELETE][OK] vendaId=$idV');
     } catch (e) {
       debugPrint(
         '[VENDAS-SERVICE] removerContasReceberVinculadasAVenda: $e',

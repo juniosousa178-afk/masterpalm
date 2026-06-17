@@ -6,6 +6,7 @@ import 'package:hive/hive.dart';
 import '../core/conta_receber_dedup.dart';
 import '../core/conta_receber_identity.dart';
 import '../core/conta_receber_lancamento_vinculo.dart';
+import '../core/conta_receber_venda_vinculo.dart';
 import '../core/hive_box_names.dart';
 import '../models/conta_receber.dart';
 import 'conta_receber_firestore_service.dart';
@@ -107,6 +108,12 @@ class ContaReceberService {
   }) {
     final hoje = DateTime.now();
     var list = contas.where((c) => contaPertenceALoja(c, lojaId)).toList();
+    list = list
+        .where(
+          (c) =>
+              c.status.trim().toLowerCase() != ContaReceberStatus.cancelada,
+        )
+        .toList();
     list = deduplicarContasReceber(list);
     list.sort((a, b) => b.dataVencimento.compareTo(a.dataVencimento));
     switch (filtro) {
@@ -128,6 +135,68 @@ class ContaReceberService {
         break;
     }
     return list;
+  }
+
+  /// Cancela contas vinculadas à venda no Firestore e remove do Hive local (idempotente).
+  static Future<int> cancelarContasReceberDaVenda({
+    required String lojaId,
+    int? vendaKey,
+    String? vendaIdFirebase,
+    String motivo = 'venda_excluida',
+  }) async {
+    final loja = lojaId.trim();
+    final idV = (vendaIdFirebase ?? '').trim();
+    final vk = vendaKey;
+    if (loja.isEmpty) return 0;
+    if (idV.isEmpty && (vk == null || vk < 0)) return 0;
+
+    debugPrint(
+      '[CR-CANCEL][INICIO] vendaId=$idV lojaId=$loja vendaKey=$vk',
+    );
+
+    if (idV.isNotEmpty) {
+      await ContaReceberFirestoreService.cancelarContasReceberDaVenda(
+        lojaId: loja,
+        vendaIdFirebase: idV,
+        motivo: motivo,
+      );
+    }
+
+    final crBox = await openBoxLoja(loja);
+    final keysToDelete = <dynamic>[];
+    final idsLocais = <String>[];
+    for (final k in crBox.keys) {
+      final c = crBox.get(k);
+      if (c == null) continue;
+      if (!contaReceberVinculadaAVenda(
+        conta: c,
+        lojaId: loja,
+        vendaKey: vk,
+        vendaIdFirebase: idV,
+      )) {
+        continue;
+      }
+      final docId = resolveContaReceberDocId(c);
+      if (docId.isNotEmpty && idV.isNotEmpty) {
+        await ContaReceberFirestoreService.marcarCanceladaRemota(
+          lojaId: loja,
+          contaReceberDocId: docId,
+          motivo: motivo,
+        );
+      }
+      idsLocais.add(docId.isNotEmpty ? docId : 'hive:$k');
+      keysToDelete.add(k);
+    }
+
+    debugPrint('[CR-CANCEL][LOCAL] ids=$idsLocais');
+    for (final k in keysToDelete) {
+      await crBox.delete(k);
+    }
+
+    debugPrint(
+      '[CR-CANCEL][OK] vendaId=$idV removidas_local=${keysToDelete.length}',
+    );
+    return keysToDelete.length;
   }
 
   static void validarValorBaixa({

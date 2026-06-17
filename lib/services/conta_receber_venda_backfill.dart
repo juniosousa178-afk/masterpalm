@@ -47,6 +47,28 @@ abstract final class ContaReceberVendaBackfillService {
         FirebaseFirestore.instance;
   }
 
+  static Future<bool> _vendaAtivaNoFirestore({
+    required String lojaId,
+    required String vendaIdFirebase,
+  }) async {
+    final loja = lojaId.trim();
+    final idV = vendaIdFirebase.trim();
+    if (loja.isEmpty || idV.isEmpty) return false;
+    try {
+      final db = _firestoreDb();
+      final snap = await db
+          .collection('lojas')
+          .doc(loja)
+          .collection(FSPaths.estoqueVendasCol)
+          .doc(idV)
+          .get();
+      if (!snap.exists || snap.data() == null) return false;
+      return snap.data()!['deletedAt'] == null;
+    } catch (_) {
+      return true;
+    }
+  }
+
   static Future<FiadoVendaMetadata?> _buscarMetadadosFiadoVendaRemota({
     required String lojaId,
     required String vendaIdFirebase,
@@ -192,6 +214,18 @@ abstract final class ContaReceberVendaBackfillService {
             continue;
           }
 
+          final vendaAtiva = await _vendaAtivaNoFirestore(
+            lojaId: loja,
+            vendaIdFirebase: idV,
+          );
+          if (!vendaAtiva) {
+            debugPrint(
+              '[CR-BACKFILL][SKIP-VENDA-EXCLUIDA] vendaId=$idV',
+            );
+            ignoradas++;
+            continue;
+          }
+
           final locais = _contasLocaisVinculadas(
             contas: crBox.values,
             lojaId: loja,
@@ -231,6 +265,15 @@ abstract final class ContaReceberVendaBackfillService {
               contaReceberId: docId,
             );
             if (remoto != null) {
+              if (ContaReceberFirestoreService.isDocRemotoCancelado(remoto)) {
+                await ContaReceberFirestoreService.aplicarTombstoneRemotoNoHive(
+                  lojaId: loja,
+                  docId: docId,
+                  data: remoto,
+                );
+                existiam++;
+                continue;
+              }
               final importou =
                   await ContaReceberFirestoreService.importarContaRemotaParaHive(
                 lojaId: loja,
@@ -256,6 +299,17 @@ abstract final class ContaReceberVendaBackfillService {
                   debugPrint(
                     '[CR-BACKFILL][SKIP-LEGADO-REMOTO] vendaId=$idV parcela=${conta.parcelaNumero}',
                   );
+                  if (ContaReceberFirestoreService.isDocRemotoCancelado(
+                    remotoLegacy,
+                  )) {
+                    await ContaReceberFirestoreService.aplicarTombstoneRemotoNoHive(
+                      lojaId: loja,
+                      docId: legacyId,
+                      data: remotoLegacy,
+                    );
+                    existiam++;
+                    continue;
+                  }
                   final importou =
                       await ContaReceberFirestoreService.importarContaRemotaParaHive(
                     lojaId: loja,

@@ -289,6 +289,47 @@ abstract final class ContaReceberFirestoreService {
     return null;
   }
 
+  static bool _docRemotoCancelado(Map<String, dynamic> data) =>
+      _fsBool(data['cancelada']) || data['deletedAt'] != null;
+
+  static bool isDocRemotoCancelado(Map<String, dynamic> data) =>
+      _docRemotoCancelado(data);
+
+  /// Remove ou inativa conta local quando o remoto veio cancelado/deletado.
+  static Future<bool> aplicarTombstoneRemotoNoHive({
+    required String lojaId,
+    required String docId,
+    required Map<String, dynamic> data,
+  }) async {
+    final loja = lojaId.trim();
+    final id = docId.trim();
+    if (loja.isEmpty || id.isEmpty) return false;
+    try {
+      final box = await ContaReceberService.openBoxLoja(loja);
+      final local = _findLocalByDocOrStable(box, loja, id, data);
+      if (local == null) {
+        debugPrint(
+          '[CR-PULL][TOMBSTONE] id=$id deletedAt=${data['deletedAt']} local=ausente',
+        );
+        return false;
+      }
+      final hiveKey = local.key;
+      await local.delete();
+      if (hiveKey != null) {
+        try {
+          await box.delete(hiveKey);
+        } catch (_) {}
+      }
+      debugPrint(
+        '[CR-PULL][TOMBSTONE] id=$id deletedAt=${data['deletedAt']} local=removido',
+      );
+      return true;
+    } catch (e) {
+      debugPrint('[CR-PULL][TOMBSTONE] id=$id erro=${e.runtimeType}');
+      return false;
+    }
+  }
+
   static Future<void> _applyRemoteToLocal({
     required Box<ContaReceber> box,
     required ContaReceber remoto,
@@ -358,8 +399,16 @@ abstract final class ContaReceberFirestoreService {
             pul++;
             continue;
           }
-          if (_fsBool(data['cancelada']) || data['deletedAt'] != null) {
-            pul++;
+          if (_docRemotoCancelado(data)) {
+            if (await aplicarTombstoneRemotoNoHive(
+              lojaId: loja,
+              docId: doc.id,
+              data: data,
+            )) {
+              att++;
+            } else {
+              pul++;
+            }
             continue;
           }
           final remoto = contaFromFirestore(doc.id, data, loja);
@@ -441,7 +490,7 @@ abstract final class ContaReceberFirestoreService {
             .get();
         for (final doc in qs.docs) {
           final data = doc.data();
-          if (_fsBool(data['cancelada']) || data['deletedAt'] != null) continue;
+          if (_docRemotoCancelado(data)) continue;
           final parsed = contaFromFirestore(doc.id, data, loja);
           if (parsed == null) continue;
           final fraca = contaReceberChaveFraca(parsed);
@@ -478,6 +527,16 @@ abstract final class ContaReceberFirestoreService {
           final ref = _ref(loja, docId);
           final snap = await ref.get();
           if (snap.exists) {
+            final remotoData = snap.data() ?? {};
+            if (_docRemotoCancelado(remotoData)) {
+              await aplicarTombstoneRemotoNoHive(
+                lojaId: loja,
+                docId: docId,
+                data: remotoData,
+              );
+              pul++;
+              continue;
+            }
             c.garantirDocIdFirestore(docId);
             if (c.isInBox) {
               try {
@@ -854,24 +913,107 @@ abstract final class ContaReceberFirestoreService {
     }
   }
 
-  static Future<void> marcarCanceladaRemota({
+  static Future<bool> marcarCanceladaRemota({
     required String lojaId,
     required String contaReceberDocId,
+    String motivo = 'venda_excluida',
   }) async {
     final loja = lojaId.trim();
     final id = contaReceberDocId.trim();
-    if (loja.isEmpty || id.isEmpty) return;
+    if (loja.isEmpty || id.isEmpty) return false;
+    debugPrint(
+      '[CR-CANCEL][FS-INICIO] path=lojas/$loja/contas_receber/$id motivo=$motivo',
+    );
     try {
       await _ref(loja, id).set({
         'cancelada': true,
         'deletedAt': FieldValue.serverTimestamp(),
         'status': ContaReceberStatus.cancelada,
+        'saldoAtual': 0,
+        'valor': 0,
+        'pago': false,
+        'motivoCancelamento': motivo,
         'lastWriteOrigin': 'cancel',
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
+      debugPrint('[CR-CANCEL][FS-OK] id=$id');
+      return true;
+    } on FirebaseException catch (e) {
+      debugPrint(
+        '[CR-CANCEL][FS-ERRO] id=$id code=${e.code} message=${e.message}',
+      );
+      return false;
     } catch (e) {
-      debugPrint('[CR-FS] cancel remoto (type=${e.runtimeType})');
+      debugPrint(
+        '[CR-CANCEL][FS-ERRO] id=$id type=${e.runtimeType} message=$e',
+      );
+      return false;
     }
+  }
+
+  /// Cancela no Firestore todas as contas vinculadas a uma venda (idempotente).
+  static Future<int> cancelarContasReceberDaVenda({
+    required String lojaId,
+    required String vendaIdFirebase,
+    String motivo = 'venda_excluida',
+  }) async {
+    final loja = lojaId.trim();
+    final idV = vendaIdFirebase.trim();
+    if (loja.isEmpty || idV.isEmpty) return 0;
+
+    final cancelados = <String>{};
+
+    try {
+      final qs = await _db
+          .collection('lojas')
+          .doc(loja)
+          .collection(FSPaths.contasReceberCol)
+          .where('vendaIdFirebase', isEqualTo: idV)
+          .get();
+      for (final doc in qs.docs) {
+        final data = doc.data();
+        if (_docRemotoCancelado(data)) {
+          cancelados.add(doc.id);
+          continue;
+        }
+        if (await marcarCanceladaRemota(
+          lojaId: loja,
+          contaReceberDocId: doc.id,
+          motivo: motivo,
+        )) {
+          cancelados.add(doc.id);
+        }
+      }
+    } catch (e) {
+      debugPrint(
+        '[CR-CANCEL] query vendaId=$idV (type=${e.runtimeType})',
+      );
+    }
+
+    final idSan = idV.replaceAll('/', '_').replaceAll(':', '_');
+    for (var p = 1; p <= 24; p++) {
+      final docId = 'cr_${idSan}_p$p';
+      if (cancelados.contains(docId)) continue;
+      try {
+        final snap = await _ref(loja, docId).get();
+        if (!snap.exists) continue;
+        final data = snap.data() ?? {};
+        if (_docRemotoCancelado(data)) {
+          cancelados.add(docId);
+          continue;
+        }
+        if (_fsString(data['vendaIdFirebase']).trim() != idV) continue;
+        if (await marcarCanceladaRemota(
+          lojaId: loja,
+          contaReceberDocId: docId,
+          motivo: motivo,
+        )) {
+          cancelados.add(docId);
+        }
+      } catch (_) {}
+    }
+
+    return cancelados.length;
   }
 
   /// Pull + migração conservadora (tela / full sync).
