@@ -172,7 +172,7 @@ class ContaReceberService {
     conta.recalcularStatus();
   }
 
-  /// Pull Firestore → Hive (+ publicação conservadora + backfill vendas fiadas).
+  /// Firestore como fonte remota: pull → backfill → publish conservador → pull final.
   static Future<ContaReceberPullResultado> sincronizarRemoto(String lojaId) async {
     final loja = lojaId.trim();
     debugPrint('[CR-SYNC][INICIO] lojaId=$loja');
@@ -188,30 +188,38 @@ class ContaReceberService {
       debugPrint('[CR-SYNC][HIVE-COUNT] total=$total maio=$maio');
     } catch (_) {}
 
-    final pub =
-        await ContaReceberFirestoreService.publicarContasHivePendentes(loja);
+    var pull = await _pullComRetry(loja);
+    var totalImp = pull.importados;
+    var totalAtt = pull.atualizados;
+    var totalPul = pull.pulados;
+    var totalErr = pull.erros;
     debugPrint(
-      '[CR-SYNC][PUBLICAR-PENDENTES] enviados=${pub.enviados} pulados=${pub.pulados}',
+      '[CR-PULL][REMOTE-COUNT] fase=pull_inicial importados=${pull.importados} '
+      'atualizados=${pull.atualizados} pulados=${pull.pulados}',
     );
 
     final backfill =
         await ContaReceberVendaBackfillService.backfillFromVendasFiadas(loja);
     debugPrint(
       '[CR-BACKFILL][RESUMO] criadas=${backfill.criadas} existiam=${backfill.jaExistiam} '
-      'ignoradas=${backfill.ignoradas}',
+      'ignoradas=${backfill.ignoradas} importadas_hive=${backfill.importadasHive}',
     );
 
-    var pull = await ContaReceberFirestoreService.pullContasReceberRemotas(loja);
+    final pub =
+        await ContaReceberFirestoreService.publicarContasHivePendentes(loja);
     debugPrint(
-      '[CR-PULL][REMOTE-COUNT] importados=${pull.importados} atualizados=${pull.atualizados} '
-      'pulados=${pull.pulados}',
+      '[CR-SYNC][PUBLICAR-PENDENTES] enviados=${pub.enviados} pulados=${pub.pulados}',
     );
-    for (var tentativa = 0;
-        pull.ignoradoJaEmExecucao && tentativa < 8;
-        tentativa++) {
-      await Future.delayed(const Duration(milliseconds: 150));
-      pull = await ContaReceberFirestoreService.pullContasReceberRemotas(loja);
-    }
+
+    pull = await _pullComRetry(loja);
+    totalImp += pull.importados;
+    totalAtt += pull.atualizados;
+    totalPul += pull.pulados;
+    totalErr += pull.erros;
+    debugPrint(
+      '[CR-PULL][REMOTE-COUNT] fase=pull_final importados=${pull.importados} '
+      'atualizados=${pull.atualizados} pulados=${pull.pulados}',
+    );
 
     if (boxAntes != null && boxAntes.isOpen) {
       final deduped = deduplicarContasReceber(boxAntes.values.toList());
@@ -223,6 +231,22 @@ class ContaReceberService {
       }
     }
 
+    return ContaReceberPullResultado(
+      importados: totalImp,
+      atualizados: totalAtt,
+      pulados: totalPul,
+      erros: totalErr,
+    );
+  }
+
+  static Future<ContaReceberPullResultado> _pullComRetry(String loja) async {
+    var pull = await ContaReceberFirestoreService.pullContasReceberRemotas(loja);
+    for (var tentativa = 0;
+        pull.ignoradoJaEmExecucao && tentativa < 8;
+        tentativa++) {
+      await Future.delayed(const Duration(milliseconds: 150));
+      pull = await ContaReceberFirestoreService.pullContasReceberRemotas(loja);
+    }
     return pull;
   }
 

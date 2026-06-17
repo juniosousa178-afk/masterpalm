@@ -516,30 +516,106 @@ abstract final class ContaReceberFirestoreService {
   static Future<bool> upsertContaReceber(
     ContaReceber conta, {
     String lastWriteOrigin = 'app',
+    int maxTentativas = 3,
   }) async {
     final loja = conta.lojaId.trim();
-    if (loja.isEmpty) return false;
+    if (loja.isEmpty) {
+      debugPrint('[CR-FS][UPSERT-ERRO] lojaId vazio origem=$lastWriteOrigin');
+      return false;
+    }
+    normalizarContaReceberId(conta);
     final docId = resolveContaReceberDocId(conta);
+    if (docId.isEmpty) {
+      debugPrint(
+        '[CR-FS][UPSERT-ERRO] docId vazio lojaId=$loja origem=$lastWriteOrigin',
+      );
+      return false;
+    }
     debugPrint(
       '[CR-FS][UPSERT-INICIO] path=lojas/$loja/contas_receber/$docId '
       'origem=$lastWriteOrigin',
     );
-    try {
-      final data = mapContaReceber(
-        conta,
-        docId: docId,
-        lastWriteOrigin: lastWriteOrigin,
-      );
-      await _ref(loja, docId).set(data, SetOptions(merge: true));
-      conta.garantirDocIdFirestore(docId);
-      if (conta.isInBox) {
-        try {
-          await conta.save();
-        } catch (_) {}
+
+    Object? ultimoErro;
+    for (var tentativa = 1; tentativa <= maxTentativas; tentativa++) {
+      try {
+        final data = mapContaReceber(
+          conta,
+          docId: docId,
+          lastWriteOrigin: lastWriteOrigin,
+        );
+        await _ref(loja, docId).set(data, SetOptions(merge: true));
+        conta.garantirDocIdFirestore(docId);
+        if (conta.isInBox) {
+          try {
+            await conta.save();
+          } catch (_) {}
+        }
+        debugPrint(
+          '[CR-FS][UPSERT-OK] id=$docId origem=$lastWriteOrigin '
+          'tentativa=$tentativa',
+        );
+        return true;
+      } on FirebaseException catch (e) {
+        ultimoErro = e;
+        debugPrint(
+          '[CR-FS][UPSERT-ERRO] id=$docId code=${e.code} message=${e.message} '
+          'tentativa=$tentativa/$maxTentativas',
+        );
+      } catch (e) {
+        ultimoErro = e;
+        debugPrint(
+          '[CR-FS][UPSERT-ERRO] id=$docId type=${e.runtimeType} message=$e '
+          'tentativa=$tentativa/$maxTentativas',
+        );
       }
+      if (tentativa < maxTentativas) {
+        await Future<void>.delayed(Duration(milliseconds: 350 * tentativa));
+      }
+    }
+    debugPrint(
+      '[CR-FS][UPSERT-ERRO] id=$docId falha_final origem=$lastWriteOrigin '
+      'erro=$ultimoErro',
+    );
+    return false;
+  }
+
+  /// Garante cache Hive quando o doc já existe no Firestore (backfill/pull).
+  static Future<bool> importarContaRemotaParaHive({
+    required String lojaId,
+    required String docId,
+    required Map<String, dynamic> data,
+  }) async {
+    final loja = lojaId.trim();
+    final id = docId.trim();
+    if (loja.isEmpty || id.isEmpty) return false;
+    if (_fsBool(data['cancelada']) || data['deletedAt'] != null) return false;
+
+    final remoto = contaFromFirestore(id, data, loja);
+    if (remoto == null) return false;
+
+    try {
+      final box = await ContaReceberService.openBoxLoja(loja);
+      final local = _findLocalByDocOrStable(box, loja, id, data);
+      if (local != null) {
+        await _applyRemoteToLocal(box: box, remoto: remoto, local: local);
+        debugPrint('[CR-PULL][MERGE] remoteId=$id localId=${local.idFirebase}');
+        return true;
+      }
+      if (hiveJaTemContaSemantica(
+        contas: box.values,
+        lojaId: loja,
+        candidata: remoto,
+      )) {
+        return false;
+      }
+      await _applyRemoteToLocal(box: box, remoto: remoto, local: null);
+      debugPrint('[CR-PULL][MERGE] remoteId=$id localId=novo');
       return true;
     } catch (e) {
-      debugPrint('[CR-FS] Upsert $docId (type=${e.runtimeType})');
+      debugPrint(
+        '[CR-FS] importarContaRemota $id (type=${e.runtimeType})',
+      );
       return false;
     }
   }

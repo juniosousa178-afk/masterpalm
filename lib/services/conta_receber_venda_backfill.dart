@@ -19,12 +19,14 @@ class ContaReceberBackfillResultado {
   final int jaExistiam;
   final int ignoradas;
   final int erros;
+  final int importadasHive;
 
   const ContaReceberBackfillResultado({
     this.criadas = 0,
     this.jaExistiam = 0,
     this.ignoradas = 0,
     this.erros = 0,
+    this.importadasHive = 0,
   });
 }
 
@@ -162,7 +164,7 @@ abstract final class ContaReceberVendaBackfillService {
     final loja = lojaId.trim();
     if (loja.isEmpty) return const ContaReceberBackfillResultado();
 
-    var criadas = 0, existiam = 0, ignoradas = 0, erros = 0;
+    var criadas = 0, existiam = 0, ignoradas = 0, erros = 0, importadasHive = 0;
 
     try {
       Box<Venda> vendasBox;
@@ -229,6 +231,13 @@ abstract final class ContaReceberVendaBackfillService {
               contaReceberId: docId,
             );
             if (remoto != null) {
+              final importou =
+                  await ContaReceberFirestoreService.importarContaRemotaParaHive(
+                lojaId: loja,
+                docId: docId,
+                data: remoto,
+              );
+              if (importou) importadasHive++;
               existiam++;
               continue;
             }
@@ -247,6 +256,13 @@ abstract final class ContaReceberVendaBackfillService {
                   debugPrint(
                     '[CR-BACKFILL][SKIP-LEGADO-REMOTO] vendaId=$idV parcela=${conta.parcelaNumero}',
                   );
+                  final importou =
+                      await ContaReceberFirestoreService.importarContaRemotaParaHive(
+                    lojaId: loja,
+                    docId: legacyId,
+                    data: remotoLegacy,
+                  );
+                  if (importou) importadasHive++;
                   existiam++;
                   continue;
                 }
@@ -295,6 +311,7 @@ abstract final class ContaReceberVendaBackfillService {
       jaExistiam: existiam,
       ignoradas: ignoradas,
       erros: erros,
+      importadasHive: importadasHive,
     );
   }
 }

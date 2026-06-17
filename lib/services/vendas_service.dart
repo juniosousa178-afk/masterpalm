@@ -303,7 +303,11 @@ class VendasService {
     if (falhasFirestore > 0) {
       debugPrint(
         '⚠️ [VENDAS-SERVICE] $falhasFirestore conta(s) não publicadas no Firestore '
-        '(permanecem só no Hive local até sincronizarRemoto/republicar)',
+        'lojaId=$lojaId vendaIdFirebase=$vendaIdVinculo',
+      );
+      throw StateError(
+        'Não foi possível publicar $falhasFirestore parcela(s) no servidor. '
+        'Verifique a conexão e tente novamente.',
       );
     }
     debugPrint(
