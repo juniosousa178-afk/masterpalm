@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 
 import '../core/conta_receber_identity.dart';
 import '../core/conta_receber_lancamento_vinculo.dart';
+import '../core/financeiro_lancamento_legacy_resolver.dart';
 import '../core/safe_cast.dart';
 import '../financeiro/financeiro_constants.dart';
 import '../models/conta_receber.dart';
@@ -67,6 +68,31 @@ abstract final class ContaReceberFinanceiroSyncService {
       if (dt != null && _mesmoDia(dt, data)) return true;
     }
     return false;
+  }
+
+  static ContaReceber? resolverContaLocal({
+    required Iterable<ContaReceber> contas,
+    required String lojaId,
+    required ContaReceberRecebimentoRefParsed ref,
+  }) =>
+      _resolverConta(contas: contas, lojaId: lojaId, ref: ref);
+
+  /// Resolve conta para estorno (referência estruturada ou heurística legada).
+  static ContaReceber? resolverContaParaEstorno({
+    required Iterable<ContaReceber> contas,
+    required String lojaId,
+    required LancamentoFinanceiro lancamento,
+  }) {
+    final ref = recebimentoRefFromLancamento(lancamento);
+    if (ref != null) {
+      final porRef = _resolverConta(contas: contas, lojaId: lojaId, ref: ref);
+      if (porRef != null) return porRef;
+    }
+    return FinanceiroLancamentoLegacyResolver.resolverContaHeuristica(
+      contas: contas,
+      lojaId: lojaId,
+      l: lancamento,
+    );
   }
 
   static ContaReceber? _resolverConta({
@@ -206,39 +232,42 @@ abstract final class ContaReceberFinanceiroSyncService {
   static Future<ContaReceberEstornoResultado> reverterBaixaPorLancamento({
     required String lojaId,
     required LancamentoFinanceiro lancamento,
+    bool permitirResolucaoLegada = false,
   }) async {
     final loja = lojaId.trim();
-    if (loja.isEmpty || !lancamentoVinculadoAContaReceber(lancamento)) {
+    final pareceCr = lancamentoVinculadoAContaReceber(lancamento) ||
+        (permitirResolucaoLegada &&
+            FinanceiroLancamentoLegacyResolver.pareceBaixaContaReceber(
+              lancamento,
+            ));
+    if (loja.isEmpty || !pareceCr) {
       return const ContaReceberEstornoResultado(
         sucesso: false,
         mensagem: 'Lançamento não vinculado a conta a receber.',
       );
     }
 
-    final ref = recebimentoRefFromLancamento(lancamento);
-    if (ref == null) {
-      return const ContaReceberEstornoResultado(
-        sucesso: false,
-        mensagem: 'Referência do recebimento não reconhecida.',
-      );
-    }
-
     final crBox = await ContaReceberService.openBoxLoja(loja);
-    final conta = _resolverConta(
+    final conta = resolverContaParaEstorno(
       contas: crBox.values,
       lojaId: loja,
-      ref: ref,
+      lancamento: lancamento,
     );
+
+    var ref = recebimentoRefFromLancamento(lancamento);
     if (conta == null) {
-      return const ContaReceberEstornoResultado(
-        sucesso: true,
+      return ContaReceberEstornoResultado(
+        sucesso: false,
+        mensagem: permitirResolucaoLegada
+            ? FinanceiroLancamentoLegacyResolver.msgEstornoLegadoSemVinculo
+            : 'Conta local não encontrada.',
         contaAtualizada: false,
-        mensagem: 'Conta local não encontrada; lançamento será removido.',
       );
     }
 
-    final quando =
-        _dataFromRefDia(ref.dia, lancamento) ?? lancamento.dataLancamento;
+    final quando = ref != null
+        ? (_dataFromRefDia(ref.dia, lancamento) ?? lancamento.dataLancamento)
+        : (lancamento.dataPagamento ?? lancamento.dataLancamento);
     if (!_historicoContemRecebimento(
       conta: conta,
       valor: lancamento.valor,
@@ -280,7 +309,7 @@ abstract final class ContaReceberFinanceiroSyncService {
 
     final docId = (conta.idFirebase ?? '').trim();
     if (docId.isNotEmpty) {
-      var bx = ref.baixaId.trim();
+      var bx = ref?.baixaId.trim() ?? '';
       if (bx.isEmpty) {
         bx = baixaIdDeterministico(
           contaReceberId: docId,

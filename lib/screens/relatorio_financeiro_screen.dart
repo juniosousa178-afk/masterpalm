@@ -10,14 +10,21 @@ import 'package:printing/printing.dart';
 
 import '../core/hive_box_names.dart';
 import '../models/venda.dart';
+import '../models/conta_receber.dart';
 import '../models/fechamento_mensal.dart';
 import '../models/lancamento_financeiro.dart';
+import '../financeiro/financeiro_constants.dart';
+import '../financeiro/lancamento_financeiro_origem_ui.dart';
 import '../services/fechamento_service.dart';
+import '../services/financeiro_firestore_service.dart';
 import '../services/financeiro_hive_store.dart';
+import '../services/financeiro_lancamento_exclusao_service.dart';
+import '../services/conta_receber_service.dart';
 import '../services/financeiro_service.dart';
 import '../services/loja_id_service.dart';
 import '../services/vendas_firestore_service.dart';
 import '../core/venda_metrics_filter.dart';
+import '../core/financeiro_lancamento_legacy_resolver.dart';
 import '../core/financeiro_relatorio_taxas.dart';
 
 class RelatorioFinanceiroScreen extends StatefulWidget {
@@ -59,6 +66,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
   String _ordenacaoFech = 'recente'; // recente | antigo | valor_maior | valor_menor
   DateTime? _periodoInicio;
   DateTime? _periodoFim;
+  String _motivoAcaoLancamento = '';
+  List<ContaReceber> _contasReceberCache = [];
 
   /// Mesmas regras que Relatórios Financeiros + Metas e fechamento mensal.
   RelatorioTaxasConfig _taxasRelatorio = RelatorioTaxasConfig.defaults;
@@ -135,9 +144,30 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
     _lancamentosFinanceiroBox =
         await FinanceiroHiveStore.openLancamentosBox(lojaId);
 
+    try {
+      final crBox = await ContaReceberService.openBoxLoja(lojaId);
+      _contasReceberCache = crBox.values.toList();
+    } catch (e) {
+      debugPrint(
+        '[FIN-UI] CR cache indisponível (type=${e.runtimeType})',
+      );
+      _contasReceberCache = [];
+    }
+
     _ultimoErroSync = null;
     final connectivity = await Connectivity().checkConnectivity();
     _isOffline = connectivity.length == 1 && connectivity.first == ConnectivityResult.none;
+
+    if (!_isOffline) {
+      try {
+        await FinanceiroFirestoreService.pullLojaFirestoreParaHiveFase2d(lojaId);
+        await FinanceiroFirestoreService.sincronizarTombstonesLancamentos(lojaId);
+      } catch (e) {
+        debugPrint(
+          '[FINANCEIRO_READ] Pull lançamentos (type=${e.runtimeType}) | lojaId=$lojaId',
+        );
+      }
+    }
 
     if (!_isOffline) {
       try {
@@ -958,7 +988,335 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
               )
             : _buildEmptyPeriodCard('Nenhuma venda este ano', _successColor),
 
+        const SizedBox(height: 24),
+        _buildLancamentosFinanceirosSection(),
+
         SizedBox(height: MediaQuery.of(context).padding.bottom + 16),
+      ],
+    );
+  }
+
+  List<LancamentoFinanceiro> _lancamentosMesAtualOrdenados() {
+    final box = _lancamentosFinanceiroBox;
+    if (box == null || lojaId.isEmpty) return [];
+    final list = FinanceiroLancamentoExclusaoService.lancamentosRelatorioMesAtual(
+      box: box,
+      lojaId: lojaId,
+      referencia: hoje,
+    )..sort(
+        (a, b) => b.dataEfetivaPagamentoOuLancamento
+            .compareTo(a.dataEfetivaPagamentoOuLancamento),
+      );
+    return list;
+  }
+
+  Future<void> _recarregarLancamentosFinanceiros() async {
+    _lancamentosFinanceiroBox =
+        await FinanceiroHiveStore.openLancamentosBox(lojaId);
+    try {
+      final crBox = await ContaReceberService.openBoxLoja(lojaId);
+      _contasReceberCache = crBox.values.toList();
+    } catch (_) {}
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _confirmarAcaoLancamento(LancamentoFinanceiro l) async {
+    debugPrint(
+      '[FIN-UI][ACAO-CLICK] id=${l.id} key=${l.key} origem=${l.origem} '
+      'ref=${l.referenciaExterna} desc=${l.descricao}',
+    );
+
+    Iterable<ContaReceber> contasCr = _contasReceberCache;
+    if (contasCr.isEmpty) {
+      try {
+        final crBox = await ContaReceberService.openBoxLoja(lojaId);
+        contasCr = crBox.values;
+        _contasReceberCache = crBox.values.toList();
+      } catch (_) {}
+    }
+
+    final info = FinanceiroLancamentoExclusaoService.infoLegado(
+      l,
+      contas: contasCr,
+      lojaId: lojaId,
+    );
+    final ehBaixaCr = info.ehBaixaCr;
+    final chipOrigem = chipOrigemAutomaticaLancamento(l);
+
+    String titulo;
+    String corpo;
+    if (ehBaixaCr && !info.vinculoCrSeguro) {
+      titulo = 'Estorno não disponível';
+      corpo =
+          'Este lançamento antigo não possui vínculo seguro com a parcela.\n'
+          'Não foi possível estornar automaticamente este lançamento antigo '
+          'porque o vínculo com a parcela não foi encontrado com segurança.';
+    } else if (ehBaixaCr && info.legado) {
+      titulo = 'Estornar baixa antiga?';
+      corpo =
+          'Deseja estornar esta baixa antiga?\n'
+          'A parcela vinculada será reaberta com o saldo atualizado.';
+    } else if (ehBaixaCr) {
+      titulo = 'Estornar baixa?';
+      corpo =
+          'Deseja estornar esta baixa?\n'
+          'O lançamento financeiro será estornado e a parcela em Contas a Receber voltará a ficar em aberto com o saldo atualizado.';
+    } else if (info.legado) {
+      titulo = 'Excluir lançamento antigo?';
+      corpo =
+          'Deseja excluir este lançamento financeiro antigo?\n'
+          'Ele será removido da listagem por exclusão segura, sem afetar vendas, estoque ou contas a receber.';
+    } else {
+      titulo = 'Excluir lançamento?';
+      corpo =
+          'Deseja excluir este lançamento financeiro?\n'
+          'Essa ação removerá o lançamento dos relatórios, mas manterá o registro interno de auditoria.';
+    }
+
+    if (ehBaixaCr && !info.vinculoCrSeguro) {
+      debugPrint('[FIN-UI][RESULTADO] bloqueado id=${l.id}');
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(titulo),
+          content: Text(corpo),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Entendi'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    final df = DateFormat('dd/MM/yyyy');
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(titulo),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(corpo),
+              const SizedBox(height: 12),
+              Text('Data: ${df.format(l.dataEfetivaPagamentoOuLancamento)}'),
+              Text('Descrição: ${l.descricao.isEmpty ? '(sem descrição)' : l.descricao}'),
+              Text('Valor: R\$ ${_fmt(l.valor)}'),
+              if (l.formaPagamento.trim().isNotEmpty)
+                Text('Forma: ${l.formaPagamento}'),
+              if (chipOrigem != null) Text('Origem: $chipOrigem'),
+              const SizedBox(height: 12),
+              TextField(
+                key: ValueKey('motivo_${l.id}_${l.key}'),
+                onChanged: (v) => _motivoAcaoLancamento = v,
+                decoration: InputDecoration(
+                  labelText: ehBaixaCr ? 'Motivo do estorno (opcional)' : 'Motivo (opcional)',
+                  border: const OutlineInputBorder(),
+                ),
+                maxLines: 2,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: ehBaixaCr ? _warningColor : _errorColor,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(ehBaixaCr ? 'Estornar baixa' : 'Excluir'),
+          ),
+        ],
+      ),
+    );
+
+    if (ok != true || !mounted) return;
+
+    debugPrint(
+      '[FIN-UI][CONFIRMOU] id=${l.id} key=${l.key} baixaCr=$ehBaixaCr',
+    );
+
+    final motivo = _motivoAcaoLancamento.trim();
+    _motivoAcaoLancamento = '';
+
+    if (!mounted) return;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Processando...'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    FinanceiroLancamentoExclusaoResultado resultado;
+    try {
+      resultado = ehBaixaCr
+          ? await FinanceiroLancamentoExclusaoService.estornarBaixaContaReceber(
+              lojaId: lojaId,
+              lancamento: l,
+              motivoEstorno: motivo,
+            )
+          : await FinanceiroLancamentoExclusaoService.excluirLancamentoManual(
+              lojaId: lojaId,
+              lancamento: l,
+              motivoExclusao: motivo,
+            );
+    } catch (e, st) {
+      debugPrint('[FIN-UI][RESULTADO] exceção id=${l.id} $e\n$st');
+      resultado = FinanceiroLancamentoExclusaoResultado(
+        sucesso: false,
+        mensagemErro: 'Erro inesperado: $e',
+      );
+    }
+
+    debugPrint(
+      '[FIN-UI][RESULTADO] id=${l.id} sucesso=${resultado.sucesso} '
+      'bloqueado=${resultado.bloqueado} legado=${resultado.legado} '
+      'erro=${resultado.mensagemErro}',
+    );
+
+    await _recarregarLancamentosFinanceiros();
+    final restantes = _lancamentosMesAtualOrdenados().length;
+    debugPrint('[FIN-UI][REFRESH-LISTA] itens=$restantes');
+
+    if (!mounted) return;
+    Navigator.of(context, rootNavigator: true).pop();
+
+    String mensagem;
+    var isError = !resultado.sucesso;
+    if (resultado.sucesso) {
+      mensagem = ehBaixaCr
+          ? 'Baixa estornada. A parcela foi reaberta.'
+          : (resultado.apenasLocal
+              ? 'Lançamento excluído localmente.'
+              : 'Lançamento excluído dos relatórios.');
+      isError = false;
+    } else if (resultado.bloqueado) {
+      mensagem = resultado.mensagemErro ??
+          FinanceiroLancamentoLegacyResolver.msgEstornoLegadoSemVinculo;
+      isError = true;
+    } else {
+      mensagem = resultado.mensagemErro ?? 'Não foi possível concluir a operação.';
+    }
+    _showModernSnackBar(mensagem, isError: isError);
+  }
+
+  Widget _buildLancamentosFinanceirosSection() {
+    final lancamentos = _lancamentosMesAtualOrdenados();
+    final df = DateFormat('dd/MM/yyyy');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionTitle(
+          Icons.receipt_long,
+          'Lançamentos financeiros',
+          subtitle:
+              '${DateFormat('MMMM yyyy', 'pt_BR').format(hoje)} · toque no ícone para excluir ou estornar',
+        ),
+        const SizedBox(height: 12),
+        if (lancamentos.isEmpty)
+          _buildEmptyPeriodCard(
+            'Nenhum lançamento manual ou de baixa neste mês',
+            _primaryColor,
+          )
+        else
+          ...lancamentos.map((l) {
+            final info = FinanceiroLancamentoExclusaoService.infoLegado(
+              l,
+              contas: _contasReceberCache,
+              lojaId: lojaId,
+            );
+            final ehBaixaCr = info.ehBaixaCr;
+            final chipOrigem = chipOrigemAutomaticaLancamento(l);
+            final bloqueado = ehBaixaCr && !info.vinculoCrSeguro;
+            return Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: ListTile(
+                title: Text(
+                  l.descricao.isEmpty ? '(sem descrição)' : l.descricao,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (chipOrigem != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Chip(
+                          label: Text(chipOrigem, style: const TextStyle(fontSize: 10)),
+                          visualDensity: VisualDensity.compact,
+                          padding: EdgeInsets.zero,
+                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ),
+                    Text(
+                      '${FinanceiroTipoLancamento.legivel(l.tipo)} · ${df.format(l.dataEfetivaPagamentoOuLancamento)}',
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                    ),
+                  ],
+                ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'R\$ ${_fmt(l.valor)}',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(width: 4),
+                    IconButton(
+                      tooltip: bloqueado
+                          ? 'Vínculo com parcela não encontrado'
+                          : (ehBaixaCr ? 'Estornar baixa' : 'Excluir'),
+                      icon: Icon(
+                        bloqueado
+                            ? Icons.block
+                            : (ehBaixaCr ? Icons.undo : Icons.delete_outline),
+                        color: bloqueado
+                            ? Colors.grey
+                            : (ehBaixaCr ? _warningColor : _errorColor),
+                      ),
+                      onPressed: () => _confirmarAcaoLancamento(l),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }),
       ],
     );
   }

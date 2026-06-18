@@ -189,13 +189,16 @@ class ContaReceberRecebimentoRefParsed {
 
 ContaReceberRecebimentoRefParsed? parseReferenciaExternaContaReceber(String ref) {
   final r = ref.trim();
-  if (r.startsWith('mp_cr2_') && r.contains('__bx_')) {
-    final sep = r.indexOf('__bx_');
+  if (r.startsWith('mp_cr2_') && r.contains('__')) {
+    final sep = r.indexOf('__');
     if (sep > 'mp_cr2_'.length) {
-      return ContaReceberRecebimentoRefParsed(
-        contaReceberDocId: r.substring('mp_cr2_'.length, sep),
-        baixaId: r.substring(sep + 2),
-      );
+      final bx = r.substring(sep + 2);
+      if (bx.startsWith('bx_')) {
+        return ContaReceberRecebimentoRefParsed(
+          contaReceberDocId: r.substring('mp_cr2_'.length, sep),
+          baixaId: bx,
+        );
+      }
     }
   }
   if (r.startsWith('cr_receb2:')) {
@@ -234,7 +237,16 @@ ContaReceberRecebimentoRefParsed? parseReferenciaExternaContaReceber(String ref)
 bool lancamentoVinculadoAContaReceber(LancamentoFinanceiro l) {
   if (l.origem == FinanceiroOrigemLancamento.contaReceberFiado) return true;
   final ref = l.referenciaExterna.trim();
-  return ref.startsWith('cr_receb:') || ref.startsWith('cr_receb2:');
+  if (ref.startsWith('cr_receb:') && !ref.startsWith('cr_receb:orfao')) {
+    return true;
+  }
+  if (ref.startsWith('cr_receb2:')) return true;
+  if (ref.startsWith('mp_cr2_') || ref.startsWith('mp_cr_')) {
+    return !ref.contains('orfao') && !ref.contains('invalido');
+  }
+  return lancamentoIdContaReceber(l.id) &&
+      !l.id.contains('orfao') &&
+      !l.id.contains('invalido');
 }
 
 bool lancamentoIdContaReceber(String id) {
@@ -249,7 +261,7 @@ ContaReceberRecebimentoRefParsed? recebimentoRefFromLancamento(
   if (parsed != null) return parsed;
 
   final id = l.id.trim();
-  if (id.startsWith('mp_cr2_') && id.contains('__bx_')) {
+  if (id.startsWith('mp_cr2_') && id.contains('__')) {
     final parsed = parseReferenciaExternaContaReceber(id);
     if (parsed != null && parsed.isFirestoreDocBaixa) return parsed;
   }

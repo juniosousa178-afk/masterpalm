@@ -17,7 +17,7 @@ import '../core/logger.dart';
 import '../models/gasto_fixo_mensal.dart';
 import '../models/lancamento_financeiro.dart';
 import 'conta_pagar_financeiro_exclusao_service.dart';
-import 'conta_receber_financeiro_sync_service.dart';
+import 'financeiro_lancamento_exclusao_service.dart';
 import 'controle_compras_fornecedor_firestore_service.dart';
 import 'controle_compras_fornecedor_service.dart';
 import 'financeiro_firestore_service.dart';
@@ -205,14 +205,24 @@ class FinanceiroSoftDeleteService {
     final cpId = contaPagarIdFromLancamento(existing);
 
     if (lancamentoVinculadoAContaReceber(existing)) {
-      await ContaReceberFinanceiroSyncService.reverterBaixaPorLancamento(
+      final r = await FinanceiroLancamentoExclusaoService.estornarBaixaContaReceber(
         lojaId: lid,
         lancamento: existing,
       );
+      if (!r.sucesso) {
+        if (r.mensagemErro != null) {
+          logW('[FIN-SOFT-DEL] Estorno CR falhou: ${r.mensagemErro}');
+        }
+        return null;
+      }
+    } else {
+      await FinanceiroFirestoreService.deleteLancamento(lojaId: lid, id: id);
+      await box.delete(id);
     }
 
-    await FinanceiroFirestoreService.deleteLancamento(lojaId: lid, id: id);
-    await box.delete(id);
+    if (box.containsKey(id)) {
+      await box.delete(id);
+    }
 
     if (cpId != null) {
       await ContaPagarFinanceiroExclusaoService.cancelarContaPagarPorId(

@@ -274,10 +274,25 @@ class FinanceiroFirestoreService {
 
   /// Grava ou atualiza lançamento (merge). Hive já deve estar persistido.
   /// Retorna `true` se o remoto foi gravado com sucesso.
+  static bool _lancamentoRemotoExcluidoOuEstornado(Map<String, dynamic> data) {
+    if (data['deletedAt'] != null) return true;
+    if (_fsBool(data['estornado'], false)) return true;
+    final st = _fsString(data['status']);
+    return st == 'excluido' || st == 'estornado';
+  }
+
   static Future<bool> upsertLancamento(LancamentoFinanceiro l) async {
     try {
       final data = _mapLancamento(l);
       data['updatedAt'] = FieldValue.serverTimestamp();
+      data['deletedAt'] = FieldValue.delete();
+      data['estornado'] = false;
+      data['deletedBy'] = FieldValue.delete();
+      data['motivoExclusao'] = FieldValue.delete();
+      data['estornadoEm'] = FieldValue.delete();
+      data['estornadoPor'] = FieldValue.delete();
+      data['motivoEstorno'] = FieldValue.delete();
+      data['valorEstornado'] = FieldValue.delete();
       await _refLancamento(l.lojaId, l.id).set(
         data,
         SetOptions(merge: true),
@@ -294,22 +309,120 @@ class FinanceiroFirestoreService {
     }
   }
 
-  /// Remove documento remoto (espelha exclusão local). Hard delete — sem soft delete no Firestore.
-  /// Retorna `true` se o remoto foi removido com sucesso.
+  /// Soft delete manual com auditoria (mantém documento para rastreio cross-device).
+  static Future<bool> softDeleteLancamentoManual({
+    required String lojaId,
+    required String id,
+    String deletedBy = '',
+    String motivoExclusao = '',
+    String origem = '',
+    String referenciaExterna = '',
+  }) async {
+    try {
+      await _refLancamento(lojaId, id).set(
+        {
+          'deletedAt': FieldValue.serverTimestamp(),
+          'deletedBy': deletedBy,
+          'motivoExclusao': motivoExclusao,
+          'origem': origem,
+          'referenciaExterna': referenciaExterna,
+          'status': 'excluido',
+          'estornado': false,
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+      debugPrint('[FINANCEIRO-FS] Lancamento $id soft-delete manual (loja=$lojaId)');
+      return true;
+    } catch (e) {
+      debugPrint(
+        '[FINANCEIRO-FS] Erro soft-delete manual (type=${e.runtimeType})',
+      );
+      return false;
+    }
+  }
+
+  /// Soft delete por estorno de baixa de Conta a Receber.
+  static Future<bool> softDeleteLancamentoEstorno({
+    required String lojaId,
+    required String id,
+    String estornadoPor = '',
+    String motivoEstorno = '',
+    String origem = '',
+    String referenciaExterna = '',
+    String contaReceberId = '',
+    String vendaIdFirebase = '',
+    double valorEstornado = 0,
+  }) async {
+    try {
+      await _refLancamento(lojaId, id).set(
+        {
+          'deletedAt': FieldValue.serverTimestamp(),
+          'estornado': true,
+          'estornadoEm': FieldValue.serverTimestamp(),
+          'estornadoPor': estornadoPor,
+          'motivoEstorno': motivoEstorno,
+          'origem': origem,
+          'referenciaExterna': referenciaExterna,
+          'contaReceberId': contaReceberId,
+          'vendaIdFirebase': vendaIdFirebase,
+          'valorEstornado': valorEstornado,
+          'status': 'estornado',
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+      debugPrint('[FINANCEIRO-FS] Lancamento $id estornado (loja=$lojaId)');
+      return true;
+    } catch (e) {
+      debugPrint(
+        '[FINANCEIRO-FS] Erro soft-delete estorno (type=${e.runtimeType})',
+      );
+      return false;
+    }
+  }
+
+  /// Remove documento remoto — preferir [softDeleteLancamentoManual] / estorno.
   static Future<bool> deleteLancamento({
     required String lojaId,
     required String id,
   }) async {
+    return softDeleteLancamentoManual(lojaId: lojaId, id: id);
+  }
+
+  /// Aplica tombstones remotos no Hive (estorno/exclusão em outro dispositivo).
+  static Future<int> sincronizarTombstonesLancamentos(String lojaId) async {
+    final id = lojaId.trim();
+    if (id.isEmpty) return 0;
+    var removidos = 0;
     try {
-      await _refLancamento(lojaId, id).delete();
-      debugPrint('[FINANCEIRO-FS] Lancamento $id delete ok (loja=$lojaId)');
-      return true;
+      final lBox = await FinanceiroHiveStore.openLancamentosBox(id);
+      if (lBox == null) return 0;
+      final qs = await _db
+          .collection('lojas')
+          .doc(id)
+          .collection('lancamentos_financeiros')
+          .where('lojaId', isEqualTo: id)
+          .get();
+      for (final doc in qs.docs) {
+        final data = doc.data();
+        if (!_lancamentoRemotoExcluidoOuEstornado(data)) continue;
+        if (lBox.containsKey(doc.id)) {
+          await lBox.delete(doc.id);
+          removidos++;
+        }
+      }
+      if (removidos > 0) {
+        debugPrint(
+          '[FINANCEIRO-FS] Tombstones aplicados loja=$id removidos=$removidos',
+        );
+      }
     } catch (e) {
       debugPrint(
-        '[FINANCEIRO-FS] Erro delete lancamento (type=${e.runtimeType})',
+        '[FINANCEIRO-FS] Erro tombstones lancamentos (type=${e.runtimeType})',
       );
-      return false;
     }
+    return removidos;
   }
 
   static Future<void> upsertGastoFixo(GastoFixoMensal g) async {
@@ -373,11 +486,18 @@ class FinanceiroFirestoreService {
               .get();
           for (final doc in qs.docs) {
             try {
+              final data = doc.data();
+              if (_lancamentoRemotoExcluidoOuEstornado(data)) {
+                if (lBox.containsKey(doc.id)) {
+                  await lBox.delete(doc.id);
+                  li++;
+                }
+                continue;
+              }
               if (lBox.containsKey(doc.id)) {
                 lp++;
                 continue;
               }
-              final data = doc.data();
               final model = _lancamentoFromFirestore(doc.id, data, id);
               if (model == null) {
                 lx++;
