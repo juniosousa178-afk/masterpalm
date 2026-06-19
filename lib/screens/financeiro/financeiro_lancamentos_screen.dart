@@ -5,14 +5,17 @@ import 'package:hive/hive.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../core/financeiro_lancamento_acao.dart';
+import '../../core/financeiro_lancamento_legacy_resolver.dart';
 import '../../financeiro/financeiro_constants.dart';
+import '../../financeiro/lancamento_financeiro_origem_ui.dart';
+import '../../models/conta_receber.dart';
 import '../../models/lancamento_financeiro.dart';
+import '../../services/conta_receber_service.dart';
+import '../../services/financeiro_anti_duplicidade_service.dart';
 import '../../services/financeiro_firestore_service.dart';
 import '../../services/financeiro_hive_store.dart';
-import '../../core/conta_pagar_lancamento_vinculo.dart';
-import '../../financeiro/lancamento_financeiro_origem_ui.dart';
-import '../../services/financeiro_anti_duplicidade_service.dart';
-import '../../services/financeiro_soft_delete_service.dart';
+import '../../services/financeiro_lancamento_exclusao_service.dart';
 import '../../utils/moeda_input_formatter.dart';
 
 class FinanceiroLancamentosScreen extends StatefulWidget {
@@ -20,11 +23,14 @@ class FinanceiroLancamentosScreen extends StatefulWidget {
     super.key,
     required this.lojaId,
     this.lancamentoIdInicial,
+    this.lancamentoInicial,
   });
 
   final String lojaId;
   /// Abre o formulário deste lançamento após carregar (ex.: vindo da gestão financeira).
   final String? lancamentoIdInicial;
+  /// Referência direta (suporta id vazio / chave Hive numérica).
+  final LancamentoFinanceiro? lancamentoInicial;
 
   @override
   State<FinanceiroLancamentosScreen> createState() =>
@@ -34,8 +40,11 @@ class FinanceiroLancamentosScreen extends StatefulWidget {
 class _FinanceiroLancamentosScreenState
     extends State<FinanceiroLancamentosScreen> {
   static const Color _primary = Color(0xFF6366F1);
+  static const Color _warning = Color(0xFFF59E0B);
+  static const Color _error = Color(0xFFEF4444);
 
   Box<LancamentoFinanceiro>? _box;
+  List<ContaReceber> _contasReceberCache = [];
   bool _loading = true;
   String? _erro;
   String? _pendenteAbrirId;
@@ -61,16 +70,39 @@ class _FinanceiroLancamentosScreenState
       if (_box == null) {
         throw Exception('Não foi possível abrir os lançamentos (armazenamento).');
       }
+      try {
+        final crBox = await ContaReceberService.openBoxLoja(widget.lojaId);
+        _contasReceberCache = crBox.values.toList();
+      } catch (_) {
+        _contasReceberCache = [];
+      }
       if (mounted) {
         setState(() => _loading = false);
-        final id = _pendenteAbrirId;
-        if (id != null) {
-          _pendenteAbrirId = null;
-          final existente = _box!.get(id);
-          if (existente != null) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) _abrirFormulario(existente: existente);
-            });
+        final inicial = widget.lancamentoInicial;
+        if (inicial != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _abrirFormulario(existente: inicial);
+          });
+        } else {
+          final id = _pendenteAbrirId;
+          if (id != null) {
+            _pendenteAbrirId = null;
+            LancamentoFinanceiro? existente = _box!.get(id);
+            existente ??= FinanceiroLancamentoLegacyResolver.buscarNoHive(
+              _box!.values,
+              LancamentoFinanceiro(
+                id: id,
+                lojaId: widget.lojaId,
+                descricao: '',
+                valor: 0,
+                dataLancamento: DateTime.now(),
+              ),
+            );
+            if (existente != null) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) _abrirFormulario(existente: existente);
+              });
+            }
           }
         }
       }
@@ -95,9 +127,187 @@ class _FinanceiroLancamentosScreenState
     return list;
   }
 
+  FinanceiroLancamentoAcaoInfo _acao(LancamentoFinanceiro l) =>
+      FinanceiroLancamentoExclusaoService.acaoParaUi(
+        l,
+        contas: _contasReceberCache,
+        lojaId: widget.lojaId,
+      );
+
+  bool _ehCrSemVinculoSeguro(FinanceiroLancamentoAcaoInfo acao) =>
+      acao.ehBaixaCr &&
+      (acao.podeExcluirSomenteFinanceiro || acao.bloqueadoEstorno);
+
+  Future<void> _onAcaoLancamentoClick(LancamentoFinanceiro l) async {
+    debugPrint('[FIN-GESTAO][ACAO-CLICK] id=${l.id} key=${l.key}');
+    final acao = _acao(l);
+    debugPrint(
+      '[FIN-GESTAO][RESOLVEU-ACAO] id=${l.id} financeiroOnly=${acao.podeExcluirSomenteFinanceiro} '
+      'estornar=${acao.podeEstornar} bloqueadoEstorno=${acao.bloqueadoEstorno}',
+    );
+    if (_ehCrSemVinculoSeguro(acao)) {
+      debugPrint('[FIN-GESTAO][CR-SEM-VINCULO] id=${l.id}');
+      await _excluirSomenteFinanceiro(l);
+      return;
+    }
+    if (acao.podeEstornar) {
+      await _estornarBaixa(l);
+      return;
+    }
+    if (acao.podeExcluir) {
+      await _excluir(l);
+      return;
+    }
+    if (acao.podeEditar) {
+      await _abrirFormulario(existente: l);
+      return;
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          acao.motivoBloqueio ??
+              FinanceiroLancamentoAcaoResolver.msgVinculoProcesso,
+        ),
+        backgroundColor: _error,
+      ),
+    );
+  }
+
+  Widget _tileLancamentoLista(LancamentoFinanceiro l) {
+    final acao = _acao(l);
+    final df = DateFormat('dd/MM/yyyy');
+    final chipOrigem = chipOrigemAutomaticaLancamento(l);
+    final crSemVinculo = _ehCrSemVinculoSeguro(acao);
+    final IconData acaoIcon;
+    final Color acaoColor;
+    if (crSemVinculo) {
+      acaoIcon = Icons.delete_outline;
+      acaoColor = _error;
+    } else if (acao.mostrarEstornar) {
+      acaoIcon = Icons.undo;
+      acaoColor = _warning;
+    } else if (acao.mostrarExcluir) {
+      acaoIcon = Icons.delete_outline;
+      acaoColor = _error;
+    } else {
+      acaoIcon = Icons.more_horiz;
+      acaoColor = Colors.grey;
+    }
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 4, 6),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const CircleAvatar(
+                  radius: 18,
+                  backgroundColor: Color(0x206366F1),
+                  child: Icon(Icons.receipt_long, size: 18, color: _primary),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        l.descricao.isEmpty ? '(sem descrição)' : l.descricao,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                      if (chipOrigem != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            chipOrigem,
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.indigo.shade700,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${FinanceiroTipoLancamento.legivel(l.tipo)} · '
+                        '${FinanceiroStatusLancamento.legivel(l.status)} · '
+                        '${df.format(l.dataEfetivaPagamentoOuLancamento)}',
+                        style: const TextStyle(fontSize: 11, height: 1.25),
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _moeda.format(l.valor),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+                if (acao.mostrarEditar)
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                    icon: const Icon(Icons.edit_outlined, size: 20),
+                    onPressed: () => _abrirFormulario(existente: l),
+                  ),
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                  icon: Icon(acaoIcon, size: 20, color: acaoColor),
+                  onPressed: () => _onAcaoLancamentoClick(l),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _abrirFormulario({LancamentoFinanceiro? existente}) async {
     final box = _box;
     if (box == null) return;
+    if (existente != null) {
+      final acao = _acao(existente);
+      if (_ehCrSemVinculoSeguro(acao)) {
+        await _excluirSomenteFinanceiro(existente);
+        return;
+      }
+      if (!acao.podeEditar) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              acao.motivoBloqueio ??
+                  FinanceiroLancamentoAcaoResolver.msgVinculoProcesso,
+            ),
+            backgroundColor: _error,
+          ),
+        );
+        return;
+      }
+    }
     final salvo = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -116,18 +326,40 @@ class _FinanceiroLancamentosScreenState
   }
 
   Future<void> _excluir(LancamentoFinanceiro l) async {
-    final vinculoCp = lancamentoVinculadoAContaPagar(l);
+    debugPrint('[FIN-GESTAO][EXCLUIR-CLICK] id=${l.id} key=${l.key}');
+    final acao = FinanceiroLancamentoExclusaoService.acaoParaUi(
+      l,
+      contas: _contasReceberCache,
+      lojaId: widget.lojaId,
+    );
+    if (acao.ehBaixaCr && !_ehCrSemVinculoSeguro(acao)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Use Estornar baixa para lançamentos de Contas a Receber.'),
+          backgroundColor: _error,
+        ),
+      );
+      return;
+    }
+    if (!acao.podeExcluir) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            acao.motivoBloqueio ??
+                FinanceiroLancamentoAcaoResolver.msgVinculoProcesso,
+          ),
+          backgroundColor: _error,
+        ),
+      );
+      return;
+    }
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Excluir lançamento?'),
-        content: Text(
-          vinculoCp
-              ? 'Este lançamento veio de uma Conta a Pagar. Ao excluir, a parcela '
-                  'vinculada também será removida das Contas a Pagar.\n\n'
-                  '${l.descricao}'
-              : l.descricao,
-        ),
+        content: Text(l.descricao),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -140,41 +372,136 @@ class _FinanceiroLancamentosScreenState
         ],
       ),
     );
-    if (ok == true && _box != null) {
-      final lojaId = widget.lojaId;
-      final undoId = await FinanceiroSoftDeleteService.scheduleLancamentoDelete(
-        l: l,
-        box: _box!,
-        lojaId: lojaId,
-      );
+    if (ok != true || !mounted) return;
+    final r = await FinanceiroLancamentoExclusaoService.excluirLancamentoManual(
+      lojaId: widget.lojaId,
+      lancamento: l,
+    );
+    debugPrint('[FIN-GESTAO][RESULTADO] excluir sucesso=${r.sucesso}');
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          r.sucesso
+              ? 'Lançamento excluído.'
+              : (r.mensagemErro ?? 'Não foi possível excluir.'),
+        ),
+        backgroundColor: r.sucesso ? Colors.green : _error,
+      ),
+    );
+  }
+
+  Future<void> _excluirSomenteFinanceiro(LancamentoFinanceiro l) async {
+    debugPrint(
+      '[FIN-GESTAO][EXCLUIR-CLICK] financeiro-only id=${l.id} key=${l.key}',
+    );
+    final acao = _acao(l);
+    if (!_ehCrSemVinculoSeguro(acao)) {
       if (!mounted) return;
-      setState(() {});
-      if (undoId != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Lançamento excluído. Desfazer?'),
-            duration: const Duration(seconds: 30),
-            behavior: SnackBarBehavior.floating,
-            action: SnackBarAction(
-              label: 'Desfazer',
-              onPressed: () async {
-                final okUndo = await FinanceiroSoftDeleteService.undo(undoId);
-                if (!mounted) return;
-                setState(() {});
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      okUndo ? 'Lançamento restaurado.' : 'Não foi possível desfazer.',
-                    ),
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
-              },
-            ),
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            acao.motivoBloqueio ??
+                FinanceiroLancamentoExclusaoService.msgEstornoSemVinculoComOpcaoExclusao,
           ),
-        );
-      }
+          backgroundColor: _error,
+        ),
+      );
+      return;
     }
+    debugPrint('[FIN-GESTAO][EXCLUIR-SOMENTE-FINANCEIRO-MODAL] id=${l.id}');
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Estorno não disponível'),
+        content: Text(
+          FinanceiroLancamentoExclusaoService.msgModalExcluirSomenteFinanceiroCr,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Excluir lançamento'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    debugPrint('[FIN-GESTAO][EXCLUIR-SOMENTE-FINANCEIRO-CONFIRMOU] id=${l.id}');
+    final r =
+        await FinanceiroLancamentoExclusaoService.excluirSomenteLancamentoFinanceiroLegado(
+      lojaId: widget.lojaId,
+      lancamento: l,
+    );
+    debugPrint('[FIN-GESTAO][RESULTADO] financeiro-only sucesso=${r.sucesso}');
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          r.sucesso
+              ? FinanceiroLancamentoExclusaoService.msgSucessoExcluirSomenteFinanceiro
+              : (r.mensagemErro ?? 'Não foi possível excluir.'),
+        ),
+        backgroundColor: r.sucesso ? Colors.green : _error,
+      ),
+    );
+  }
+
+  Future<void> _estornarBaixa(LancamentoFinanceiro l) async {
+    debugPrint('[FIN-GESTAO][ESTORNAR-CLICK] id=${l.id} key=${l.key}');
+    final acao = FinanceiroLancamentoExclusaoService.acaoParaUi(
+      l,
+      contas: _contasReceberCache,
+      lojaId: widget.lojaId,
+    );
+    if (acao.bloqueadoEstorno || !acao.podeEstornar) {
+      await _excluirSomenteFinanceiro(l);
+      return;
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Estornar baixa?'),
+        content: Text(l.descricao),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Estornar baixa'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final r = await FinanceiroLancamentoExclusaoService.estornarBaixaContaReceber(
+      lojaId: widget.lojaId,
+      lancamento: l,
+    );
+    debugPrint('[FIN-GESTAO][RESULTADO] estorno sucesso=${r.sucesso}');
+    if (!r.sucesso && (r.bloqueado || acao.ehBaixaCr)) {
+      await _excluirSomenteFinanceiro(l);
+      return;
+    }
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          r.sucesso
+              ? 'Baixa estornada.'
+              : (r.mensagemErro ?? 'Não foi possível estornar.'),
+        ),
+        backgroundColor: r.sucesso ? Colors.green : _error,
+      ),
+    );
   }
 
   @override
@@ -217,63 +544,7 @@ class _FinanceiroLancamentosScreenState
                       : ListView.builder(
                           padding: const EdgeInsets.fromLTRB(12, 12, 12, 88),
                           itemCount: _listaOrdenada.length,
-                          itemBuilder: (_, i) {
-                            final l = _listaOrdenada[i];
-                            final df = DateFormat('dd/MM/yyyy');
-                            final chipOrigem = chipOrigemAutomaticaLancamento(l);
-                            return Card(
-                              margin: const EdgeInsets.only(bottom: 8),
-                              child: ListTile(
-                                title: Text(
-                                  l.descricao.isEmpty
-                                      ? '(sem descrição)'
-                                      : l.descricao,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                subtitle: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    if (chipOrigem != null) ...[
-                                      Padding(
-                                        padding: const EdgeInsets.only(bottom: 4),
-                                        child: Chip(
-                                          label: Text(
-                                            chipOrigem,
-                                            style: const TextStyle(fontSize: 10),
-                                          ),
-                                          visualDensity: VisualDensity.compact,
-                                          padding: EdgeInsets.zero,
-                                          materialTapTargetSize:
-                                              MaterialTapTargetSize.shrinkWrap,
-                                          backgroundColor:
-                                              Colors.indigo.shade50,
-                                          side: BorderSide(
-                                            color: Colors.indigo.shade100,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                    Text(
-                                      '${FinanceiroTipoLancamento.legivel(l.tipo)} · ${l.status}\n'
-                                      '${df.format(l.dataEfetivaPagamentoOuLancamento)}'
-                                      '${l.referenciaExterna.trim().isNotEmpty ? '\nRef: ${l.referenciaExterna.trim()}' : ''}',
-                                      style: const TextStyle(fontSize: 12),
-                                    ),
-                                  ],
-                                ),
-                                isThreeLine: true,
-                                trailing: Text(
-                                  _moeda.format(l.valor),
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                onTap: () => _abrirFormulario(existente: l),
-                                onLongPress: () => _excluir(l),
-                              ),
-                            );
-                          },
+                          itemBuilder: (_, i) => _tileLancamentoLista(_listaOrdenada[i]),
                         ),
                 ),
     );

@@ -65,6 +65,53 @@ abstract class FinanceiroTipoLancamento {
 abstract class FinanceiroStatusLancamento {
   static const String pago = 'pago';
   static const String pendente = 'pendente';
+  /// Legado/local — equivalente operacional a [pago] para exclusão/estorno.
+  static const String finalizado = 'finalizado';
+
+  static const _bloqueados = {'cancelado', 'excluido', 'estornado'};
+
+  /// Lançamento quitado no caixa (pago, finalizado legado, etc.).
+  static bool statusLiquidado(String status) {
+    final s = status.trim().toLowerCase();
+    if (s.isEmpty || s == pago) return true;
+    if (s == pendente) return false;
+    if (_bloqueados.contains(s)) return false;
+    return true;
+  }
+
+  static bool statusEhFinalizadoLegado(String status) {
+    final s = status.trim().toLowerCase();
+    return s == finalizado ||
+        s == 'concluido' ||
+        s == 'concluído' ||
+        s == 'baixado' ||
+        s == 'quitado';
+  }
+
+  static String legivel(String status) {
+    final s = status.trim().toLowerCase();
+    switch (s) {
+      case pago:
+        return 'Pago';
+      case pendente:
+        return 'Pendente';
+      case finalizado:
+        return 'Finalizado';
+      case 'concluido':
+      case 'concluído':
+        return 'Concluído';
+      case 'baixado':
+        return 'Baixado';
+      case 'quitado':
+        return 'Quitado';
+      case 'excluido':
+        return 'Excluído';
+      case 'estornado':
+        return 'Estornado';
+      default:
+        return status.trim().isEmpty ? 'Pago' : status.trim();
+    }
+  }
 }
 
 /// Origem do registro.

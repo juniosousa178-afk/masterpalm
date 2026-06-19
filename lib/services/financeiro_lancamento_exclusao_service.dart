@@ -6,6 +6,7 @@ import 'package:hive/hive.dart';
 import '../core/conta_pagar_lancamento_vinculo.dart';
 import '../core/conta_receber_identity.dart';
 import '../core/conta_receber_lancamento_vinculo.dart';
+import '../core/financeiro_lancamento_acao.dart';
 import '../core/financeiro_lancamento_legacy_resolver.dart';
 import '../financeiro/financeiro_constants.dart';
 import '../models/conta_receber.dart';
@@ -41,13 +42,39 @@ abstract final class FinanceiroLancamentoExclusaoService {
   FinanceiroLancamentoExclusaoService._();
 
   static const _msgSemVinculo =
-      'Não foi possível estornar automaticamente porque o vínculo com a parcela não foi encontrado.';
+      'Não foi possível estornar automaticamente porque o vínculo com a parcela não foi encontrado com segurança.';
+
+  static const msgEstornoSemVinculoComOpcaoExclusao =
+      'Não foi possível estornar automaticamente porque o vínculo com a parcela não foi encontrado com segurança.\n'
+      'Você pode excluir somente o lançamento financeiro, se deseja apenas remover este registro dos relatórios.';
+
+  static const msgModalExcluirSomenteFinanceiroCr =
+      'Este lançamento antigo foi gerado por Conta a Receber, mas não possui vínculo seguro com a parcela.\n\n'
+      'Você pode excluir somente o lançamento financeiro. Essa ação removerá o valor dos relatórios financeiros, '
+      'mas não vai reabrir a parcela em Contas a Receber.\n\n'
+      'Deseja continuar?';
+
+  static const msgModalGestaoExcluirSomenteFinanceiroCr = msgModalExcluirSomenteFinanceiroCr;
+
+  static const msgSucessoExcluirSomenteFinanceiro =
+      'Lançamento financeiro excluído com segurança. A parcela em Contas a Receber não foi alterada.';
 
   static bool lancamentoExcluivelNaUi(LancamentoFinanceiro l) {
-    if (l.status != FinanceiroStatusLancamento.pago) return false;
+    if (!FinanceiroStatusLancamento.statusLiquidado(l.status)) return false;
     if (lancamentoVinculadoAContaPagar(l)) return false;
     return true;
   }
+
+  static FinanceiroLancamentoAcaoInfo acaoParaUi(
+    LancamentoFinanceiro l, {
+    Iterable<ContaReceber> contas = const [],
+    String lojaId = '',
+  }) =>
+      FinanceiroLancamentoAcaoResolver.resolver(
+        l,
+        contas: contas,
+        lojaId: lojaId,
+      );
 
   static bool lancamentoEhBaixaContaReceber(LancamentoFinanceiro l) =>
       FinanceiroLancamentoLegacyResolver.pareceBaixaContaReceber(l);
@@ -237,12 +264,124 @@ abstract final class FinanceiroLancamentoExclusaoService {
           ? (fsOk
               ? '[FIN-DELETE][LEGACY-OK] id=${existente.id}'
               : '[FIN-DELETE][LEGACY-OK] id=${existente.id} (local)')
-          : '[FIN-DELETE][OK] id=${existente.id}',
+          : FinanceiroStatusLancamento.statusEhFinalizadoLegado(existente.status)
+              ? '[FIN-DELETE][FINALIZADO-OK] id=${existente.id}'
+              : '[FIN-DELETE][OK] id=${existente.id}',
     );
     return FinanceiroLancamentoExclusaoResultado(
       sucesso: true,
       legado: legado,
       apenasLocal: !fsOk,
+    );
+  }
+
+  /// Remove apenas o lançamento financeiro de baixa CR antiga sem vínculo seguro.
+  /// Não reabre parcela, não altera venda/estoque/MP.
+  static Future<FinanceiroLancamentoExclusaoResultado>
+      excluirSomenteLancamentoFinanceiroLegado({
+    required String lojaId,
+    required LancamentoFinanceiro lancamento,
+    String motivoExclusao = '',
+  }) async {
+    debugPrint(
+      '[FIN-DELETE][FINANCEIRO-ONLY-INICIO] id=${lancamento.id} '
+      'key=${lancamento.key} loja=$lojaId',
+    );
+
+    final lid = lojaId.trim();
+    if (lid.isEmpty) {
+      return const FinanceiroLancamentoExclusaoResultado(
+        sucesso: false,
+        mensagemErro: 'Loja inválida.',
+      );
+    }
+
+    if (!lancamentoEhBaixaContaReceber(lancamento)) {
+      return const FinanceiroLancamentoExclusaoResultado(
+        sucesso: false,
+        mensagemErro: 'Lançamento não é uma baixa de Contas a Receber.',
+      );
+    }
+
+    final contasCr = await _contasReceberLoja(lid);
+    final info = FinanceiroLancamentoLegacyResolver.classificar(
+      lancamento,
+      contas: contasCr,
+      lojaId: lid,
+    );
+
+    if (info.vinculoCrSeguro) {
+      return const FinanceiroLancamentoExclusaoResultado(
+        sucesso: false,
+        mensagemErro: 'Este lançamento possui vínculo seguro. Use Estornar baixa.',
+      );
+    }
+
+    final finBox = await FinanceiroHiveStore.openLancamentosBox(lid);
+    if (finBox == null) {
+      return const FinanceiroLancamentoExclusaoResultado(
+        sucesso: false,
+        mensagemErro: 'Armazenamento financeiro indisponível.',
+      );
+    }
+
+    final existente = _buscarNoHive(finBox, lancamento);
+    if (existente == null) {
+      if (!_aindaNoHive(finBox, lancamento)) {
+        debugPrint(
+          '[FIN-DELETE][FINANCEIRO-ONLY-OK] idempotente id=${lancamento.id}',
+        );
+        return FinanceiroLancamentoExclusaoResultado(
+          sucesso: true,
+          idempotente: true,
+          legado: info.legado,
+        );
+      }
+      return const FinanceiroLancamentoExclusaoResultado(
+        sucesso: false,
+        mensagemErro: 'Não foi possível localizar o lançamento para exclusão.',
+      );
+    }
+
+    final usuario = await _usuarioAtual();
+    final motivo = motivoExclusao.trim().isEmpty
+        ? 'exclusao_somente_financeiro_cr_sem_vinculo'
+        : motivoExclusao.trim();
+    final idFs = existente.id.trim();
+    var fsOk = false;
+    if (idFs.isNotEmpty) {
+      fsOk = await FinanceiroFirestoreService.softDeleteLancamentoManual(
+        lojaId: lid,
+        id: idFs,
+        deletedBy: usuario,
+        motivoExclusao: motivo,
+        origem: existente.origem,
+        referenciaExterna: existente.referenciaExterna,
+      );
+      if (fsOk) {
+        debugPrint('[FIN-DELETE][FINANCEIRO-ONLY-FS-OK] id=$idFs');
+      } else {
+        debugPrint('[FIN-DELETE][FINANCEIRO-ONLY-FS-ERRO] id=$idFs');
+      }
+    } else {
+      debugPrint(
+        '[FIN-DELETE][FINANCEIRO-ONLY-LOCAL] id vazio key=${existente.key}',
+      );
+    }
+
+    final removido = await _removerDoHive(finBox, existente);
+    if (!removido) {
+      return const FinanceiroLancamentoExclusaoResultado(
+        sucesso: false,
+        mensagemErro: 'Não foi possível remover o lançamento localmente.',
+      );
+    }
+
+    debugPrint('[FIN-DELETE][FINANCEIRO-ONLY-OK] id=${existente.id}');
+    return FinanceiroLancamentoExclusaoResultado(
+      sucesso: true,
+      legado: info.legado,
+      apenasLocal: idFs.isEmpty || !fsOk,
     );
   }
 
@@ -278,7 +417,11 @@ abstract final class FinanceiroLancamentoExclusaoService {
     );
 
     if (!info.vinculoCrSeguro) {
-      debugPrint('[FIN-ESTORNO-BAIXA][LEGACY-BLOQUEADO] id=${lancamento.id}');
+      debugPrint(
+        FinanceiroStatusLancamento.statusEhFinalizadoLegado(lancamento.status)
+            ? '[FIN-ESTORNO-BAIXA][FINALIZADO-BLOQUEADO] id=${lancamento.id}'
+            : '[FIN-ESTORNO-BAIXA][LEGACY-BLOQUEADO] id=${lancamento.id}',
+      );
       return FinanceiroLancamentoExclusaoResultado(
         sucesso: false,
         bloqueado: true,
@@ -415,7 +558,9 @@ abstract final class FinanceiroLancamentoExclusaoService {
     debugPrint(
       info.legado
           ? '[FIN-ESTORNO-BAIXA][LEGACY-OK] id=${existente.id}'
-          : '[FIN-ESTORNO-BAIXA][OK] id=${existente.id}',
+          : FinanceiroStatusLancamento.statusEhFinalizadoLegado(existente.status)
+              ? '[FIN-ESTORNO-BAIXA][FINALIZADO-OK] id=${existente.id}'
+              : '[FIN-ESTORNO-BAIXA][OK] id=${existente.id}',
     );
     return FinanceiroLancamentoExclusaoResultado(
       sucesso: true,

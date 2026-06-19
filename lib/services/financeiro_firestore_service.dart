@@ -309,6 +309,33 @@ class FinanceiroFirestoreService {
     }
   }
 
+  static Future<bool> editarLancamentoManual({
+    required LancamentoFinanceiro l,
+    String editadoPor = '',
+    String motivoEdicao = '',
+    Map<String, dynamic> dadosAnteriores = const {},
+  }) async {
+    try {
+      final data = _mapLancamento(l);
+      data['updatedAt'] = FieldValue.serverTimestamp();
+      data['editadoEm'] = FieldValue.serverTimestamp();
+      data['editadoPor'] = editadoPor;
+      data['motivoEdicao'] = motivoEdicao;
+      data['dadosAnteriores'] = dadosAnteriores;
+      await _refLancamento(l.lojaId, l.id).set(
+        data,
+        SetOptions(merge: true),
+      );
+      debugPrint('[FINANCEIRO-FS] Lancamento ${l.id} editado (loja=${l.lojaId})');
+      return true;
+    } catch (e) {
+      debugPrint(
+        '[FINANCEIRO-FS] Erro editar lancamento (type=${e.runtimeType})',
+      );
+      return false;
+    }
+  }
+
   /// Soft delete manual com auditoria (mantém documento para rastreio cross-device).
   static Future<bool> softDeleteLancamentoManual({
     required String lojaId,

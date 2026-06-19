@@ -83,7 +83,7 @@ class FinanceiroService {
     DateTime inicio,
     DateTime fim,
   ) {
-    if (l.status != FinanceiroStatusLancamento.pago) return false;
+    if (!FinanceiroStatusLancamento.statusLiquidado(l.status)) return false;
     final d = l.dataEfetivaPagamentoOuLancamento;
     if (d.isBefore(inicio)) return false;
     if (d.isAfter(fim)) return false;

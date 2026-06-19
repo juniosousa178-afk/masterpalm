@@ -12,12 +12,15 @@ import '../../financeiro/lancamento_financeiro_origem_ui.dart';
 import '../../services/conta_receber_service.dart';
 import '../../services/conta_pagar_hive_store.dart';
 import '../../services/conta_pagar_service.dart';
+import '../../models/conta_receber.dart';
 import '../../models/lancamento_financeiro.dart';
 import '../../models/venda.dart';
 import '../../services/fechamento_service.dart';
 import '../../services/financeiro_firestore_service.dart';
 import '../../services/financeiro_hive_store.dart';
 import '../../services/financeiro_pdf_service.dart';
+import '../../core/financeiro_lancamento_acao.dart';
+import '../../services/financeiro_lancamento_exclusao_service.dart';
 import '../../services/financeiro_service.dart';
 import '../../services/financeiro_ui_prefs_service.dart';
 import '../../services/gasto_fixo_lancamento_service.dart';
@@ -49,6 +52,8 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
   static const Color _warning = Color(0xFFF59E0B);
   static const Color _muted = Color(0xFF64748B);
 
+  static const Color _error = Color(0xFFEF4444);
+
   late DateTime _mesSelecionado;
 
   bool _prefsCarregadasDoDisco = false;
@@ -79,6 +84,7 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
   double _totalContasReceberPendentes = 0;
   ResumoContasPagar _resumoContasPagar = const ResumoContasPagar();
   String _nomeLojaExibicao = '';
+  List<ContaReceber> _contasReceberCache = [];
 
   /// Última migração F2C (Hive→Firestore) — informativo; não bloqueia reexecução.
   FinanceiroMigracaoF2cRegistroLeitura? _ultimaMigrF2c;
@@ -215,8 +221,10 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
       } catch (_) {}
 
       var totalCr = 0.0;
+      var crCache = <ContaReceber>[];
       try {
         final crBox = await ContaReceberService.openBoxLoja(id);
+        crCache = crBox.values.toList();
         for (final c in ContaReceberService.listar(
           contas: crBox.values,
           lojaId: id,
@@ -263,6 +271,7 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
             _nomeLojaExibicao = nomeLojaUi;
           }
           _totalContasReceberPendentes = totalCr;
+          _contasReceberCache = crCache;
           _resumoContasPagar = resumoCp;
           _loading = false;
         });
@@ -544,7 +553,13 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
       } else {
         if (!_entraListaPorPagamento(l)) return false;
       }
-      if (_filtroStatus != null && l.status != _filtroStatus) return false;
+      if (_filtroStatus != null) {
+        if (_filtroStatus == FinanceiroStatusLancamento.pago) {
+          if (!FinanceiroStatusLancamento.statusLiquidado(l.status)) return false;
+        } else if (l.status != _filtroStatus) {
+          return false;
+        }
+      }
       if (!_passaFiltroTipo(l)) return false;
       return true;
     }).toList();
@@ -605,48 +620,156 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
     final border = comp ? Colors.indigo.shade100 : Colors.teal.shade100;
     final icon = comp ? Icons.account_tree_outlined : Icons.payments_outlined;
     final iconColor = comp ? Colors.indigo.shade800 : Colors.teal.shade800;
+    final titulo = comp
+        ? 'Lista por competência — visão gerencial'
+        : 'Lista por pagamento — alinhada aos KPIs';
+    final subtitulo =
+        comp ? 'Não altera os KPIs do topo' : 'Mesmo recorte dos indicadores oficiais';
+    final textos = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          titulo,
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 12,
+            height: 1.25,
+            color: Colors.grey.shade900,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          subtitulo,
+          style: TextStyle(
+            fontSize: 10,
+            height: 1.2,
+            color: Colors.grey.shade700,
+          ),
+        ),
+      ],
+    );
     return Material(
       color: bg,
       borderRadius: BorderRadius.circular(8),
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: border),
         ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, size: 18, color: iconColor),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            if (constraints.maxWidth < 360) {
+              return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    comp
-                        ? 'Lista por competência — visão gerencial'
-                        : 'Lista por pagamento — alinhada aos KPIs',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 12,
-                      color: Colors.grey.shade900,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    comp
-                        ? 'Não altera os KPIs do topo'
-                        : 'Mesmo recorte dos indicadores oficiais',
-                    style: TextStyle(fontSize: 10, color: Colors.grey.shade700),
-                  ),
+                  Icon(icon, size: 18, color: iconColor),
+                  const SizedBox(height: 6),
+                  textos,
                 ],
-              ),
-            ),
-          ],
+              );
+            }
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(icon, size: 18, color: iconColor),
+                const SizedBox(width: 8),
+                Expanded(child: textos),
+              ],
+            );
+          },
         ),
       ),
+    );
+  }
+
+  InputDecoration _decorationFiltroLista(String label) {
+    return InputDecoration(
+      labelText: label,
+      border: const OutlineInputBorder(),
+      isDense: true,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+    );
+  }
+
+  Widget _dropdownFiltroStatus() {
+    return DropdownButtonFormField<String?>(
+      value: _filtroStatus,
+      isExpanded: true,
+      decoration: _decorationFiltroLista('Status'),
+      items: const [
+        DropdownMenuItem(value: null, child: Text('Todos')),
+        DropdownMenuItem(
+          value: FinanceiroStatusLancamento.pago,
+          child: Text('Pago'),
+        ),
+        DropdownMenuItem(
+          value: FinanceiroStatusLancamento.pendente,
+          child: Text('Pendente'),
+        ),
+      ],
+      onChanged: (v) {
+        setState(() => _filtroStatus = v);
+        _persistirUiPrefs();
+      },
+    );
+  }
+
+  Widget _dropdownFiltroTipo() {
+    return DropdownButtonFormField<String?>(
+      isExpanded: true,
+      value: _filtroTipoGrupo,
+      decoration: _decorationFiltroLista('Tipo / visão'),
+      items: [
+        const DropdownMenuItem<String?>(
+          value: null,
+          child: Text('Todos'),
+        ),
+        const DropdownMenuItem<String?>(
+          value: FinanceiroUiPrefsService.filtroGrupoEquipe,
+          child: Text('Equipe / pró-labore'),
+        ),
+        ...FinanceiroTipoLancamento.todos.map(
+          (t) => DropdownMenuItem<String?>(
+            value: t,
+            child: Text(
+              FinanceiroTipoLancamento.legivel(t),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ),
+      ],
+      onChanged: (v) {
+        setState(() => _filtroTipoGrupo = v);
+        _persistirUiPrefs();
+      },
+    );
+  }
+
+  Widget _barraFiltrosDropdowns() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final empilhar = constraints.maxWidth < 480;
+        if (empilhar) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _dropdownFiltroStatus(),
+              const SizedBox(height: 8),
+              _dropdownFiltroTipo(),
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: _dropdownFiltroStatus()),
+            const SizedBox(width: 8),
+            Expanded(flex: 2, child: _dropdownFiltroTipo()),
+          ],
+        );
+      },
     );
   }
 
@@ -658,9 +781,10 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
         side: BorderSide(color: Colors.grey.shade200),
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(8, 10, 8, 10),
+        padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Text(
               'Lista de lançamentos',
@@ -672,10 +796,11 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
             ),
             const SizedBox(height: 6),
             Wrap(
-              spacing: 8,
+              spacing: 6,
               runSpacing: 4,
               children: [
                 ChoiceChip(
+                  visualDensity: VisualDensity.compact,
                   label: const Text('Por pagamento'),
                   selected: !_visaoListaPorCompetencia,
                   onSelected: (_) {
@@ -684,6 +809,7 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
                   },
                 ),
                 ChoiceChip(
+                  visualDensity: VisualDensity.compact,
                   label: const Text('Por competência'),
                   selected: _visaoListaPorCompetencia,
                   onSelected: (_) {
@@ -694,72 +820,10 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
               ],
             ),
             Padding(
-              padding: const EdgeInsets.only(top: 8, bottom: 8),
+              padding: const EdgeInsets.only(top: 6, bottom: 6),
               child: _bannerListaVisao(),
             ),
-            Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonFormField<String?>(
-                    value: _filtroStatus,
-                    decoration: const InputDecoration(
-                      labelText: 'Status',
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                    items: const [
-                      DropdownMenuItem(value: null, child: Text('Todos')),
-                      DropdownMenuItem(
-                          value: FinanceiroStatusLancamento.pago,
-                          child: Text('Pago')),
-                      DropdownMenuItem(
-                          value: FinanceiroStatusLancamento.pendente,
-                          child: Text('Pendente')),
-                    ],
-                    onChanged: (v) {
-                      setState(() => _filtroStatus = v);
-                      _persistirUiPrefs();
-                    },
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  flex: 2,
-                  child: DropdownButtonFormField<String?>(
-                    isExpanded: true,
-                    value: _filtroTipoGrupo,
-                    decoration: const InputDecoration(
-                      labelText: 'Tipo / visão',
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                    items: [
-                      const DropdownMenuItem<String?>(
-                        value: null,
-                        child: Text('Todos'),
-                      ),
-                      const DropdownMenuItem<String?>(
-                        value: FinanceiroUiPrefsService.filtroGrupoEquipe,
-                        child: Text('Equipe / pró-labore'),
-                      ),
-                      ...FinanceiroTipoLancamento.todos.map(
-                        (t) => DropdownMenuItem<String?>(
-                          value: t,
-                          child: Text(
-                            FinanceiroTipoLancamento.legivel(t),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ),
-                    ],
-                    onChanged: (v) {
-                      setState(() => _filtroTipoGrupo = v);
-                      _persistirUiPrefs();
-                    },
-                  ),
-                ),
-              ],
-            ),
+            _barraFiltrosDropdowns(),
           ],
         ),
       ),
@@ -1936,59 +2000,350 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
     );
   }
 
+  void _snack(String msg, {bool erro = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: erro ? _error : _success,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  FinanceiroLancamentoAcaoInfo _acao(LancamentoFinanceiro l) =>
+      FinanceiroLancamentoExclusaoService.acaoParaUi(
+        l,
+        contas: _contasReceberCache,
+        lojaId: _lojaId,
+      );
+
+  Future<void> _editarLancamento(LancamentoFinanceiro l) async {
+    final acao = _acao(l);
+    debugPrint('[FIN-GESTAO][EDITAR-CLICK] id=${l.id} key=${l.key}');
+    if (_ehCrSemVinculoSeguro(acao)) {
+      await _confirmarExcluirSomenteFinanceiro(l);
+      return;
+    }
+    if (!acao.podeEditar) {
+      _snack(
+        acao.motivoBloqueio ?? FinanceiroLancamentoAcaoResolver.msgVinculoProcesso,
+        erro: true,
+      );
+      return;
+    }
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FinanceiroLancamentosScreen(
+          lojaId: _lojaId,
+          lancamentoInicial: l,
+        ),
+      ),
+    );
+    if (mounted) await _load();
+  }
+
+  Future<void> _confirmarExcluirLancamento(LancamentoFinanceiro l) async {
+    debugPrint('[FIN-GESTAO][EXCLUIR-CLICK] id=${l.id} key=${l.key}');
+    final acao = _acao(l);
+    if (acao.ehBaixaCr) {
+      _snack('Este lançamento veio de Contas a Receber. Use Estornar baixa.', erro: true);
+      return;
+    }
+    if (!acao.podeExcluir) {
+      _snack(
+        acao.motivoBloqueio ?? FinanceiroLancamentoAcaoResolver.msgVinculoProcesso,
+        erro: true,
+      );
+      return;
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Excluir lançamento?'),
+        content: Text(
+          'Deseja excluir "${l.descricao.isEmpty ? '(sem descrição)' : l.descricao}"?\n'
+          'Status: ${FinanceiroStatusLancamento.legivel(l.status)}',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: _error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Excluir'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final r = await FinanceiroLancamentoExclusaoService.excluirLancamentoManual(
+      lojaId: _lojaId,
+      lancamento: l,
+    );
+    debugPrint('[FIN-GESTAO][RESULTADO] excluir sucesso=${r.sucesso}');
+    await _load();
+    if (!mounted) return;
+    _snack(
+      r.sucesso
+          ? 'Lançamento excluído.'
+          : (r.mensagemErro ?? 'Não foi possível excluir.'),
+      erro: !r.sucesso,
+    );
+  }
+
+  bool _ehCrSemVinculoSeguro(FinanceiroLancamentoAcaoInfo acao) =>
+      acao.ehBaixaCr &&
+      (acao.podeExcluirSomenteFinanceiro || acao.bloqueadoEstorno);
+
+  Future<void> _onAcaoLancamentoClick(LancamentoFinanceiro l) async {
+    debugPrint('[FIN-GESTAO][ACAO-CLICK] id=${l.id} key=${l.key}');
+    final acao = _acao(l);
+    debugPrint(
+      '[FIN-GESTAO][RESOLVEU-ACAO] id=${l.id} editar=${acao.podeEditar} '
+      'excluir=${acao.podeExcluir} estornar=${acao.podeEstornar} '
+      'financeiroOnly=${acao.podeExcluirSomenteFinanceiro} '
+      'bloqueadoEstorno=${acao.bloqueadoEstorno} baixaCr=${acao.ehBaixaCr}',
+    );
+    if (_ehCrSemVinculoSeguro(acao)) {
+      debugPrint('[FIN-GESTAO][CR-SEM-VINCULO] id=${l.id}');
+      await _confirmarExcluirSomenteFinanceiro(l);
+      return;
+    }
+    if (acao.podeEstornar) {
+      await _confirmarEstornarBaixa(l);
+      return;
+    }
+    if (acao.podeExcluir) {
+      await _confirmarExcluirLancamento(l);
+      return;
+    }
+    if (acao.podeEditar) {
+      await _editarLancamento(l);
+      return;
+    }
+    _snack(
+      acao.motivoBloqueio ?? FinanceiroLancamentoAcaoResolver.msgVinculoProcesso,
+      erro: true,
+    );
+  }
+
+  Future<void> _confirmarExcluirSomenteFinanceiro(LancamentoFinanceiro l) async {
+    debugPrint(
+      '[FIN-GESTAO][EXCLUIR-CLICK] financeiro-only id=${l.id} key=${l.key}',
+    );
+    final acao = _acao(l);
+    if (!_ehCrSemVinculoSeguro(acao)) {
+      _snack(
+        acao.motivoBloqueio ??
+            FinanceiroLancamentoExclusaoService.msgEstornoSemVinculoComOpcaoExclusao,
+        erro: true,
+      );
+      return;
+    }
+    debugPrint('[FIN-GESTAO][EXCLUIR-SOMENTE-FINANCEIRO-MODAL] id=${l.id}');
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Estorno não disponível'),
+        content: Text(
+          FinanceiroLancamentoExclusaoService.msgModalExcluirSomenteFinanceiroCr,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: _error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Excluir lançamento'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    debugPrint('[FIN-GESTAO][EXCLUIR-SOMENTE-FINANCEIRO-CONFIRMOU] id=${l.id}');
+    final r =
+        await FinanceiroLancamentoExclusaoService.excluirSomenteLancamentoFinanceiroLegado(
+      lojaId: _lojaId,
+      lancamento: l,
+    );
+    debugPrint('[FIN-GESTAO][RESULTADO] financeiro-only sucesso=${r.sucesso}');
+    await _load();
+    if (!mounted) return;
+    debugPrint('[FIN-GESTAO][REFRESH-LISTA] itens=${_lancamentosFiltrados.length}');
+    _snack(
+      r.sucesso
+          ? FinanceiroLancamentoExclusaoService.msgSucessoExcluirSomenteFinanceiro
+          : (r.mensagemErro ?? 'Não foi possível excluir.'),
+      erro: !r.sucesso,
+    );
+  }
+
+  Future<void> _confirmarEstornarBaixa(LancamentoFinanceiro l) async {
+    debugPrint('[FIN-GESTAO][ESTORNAR-CLICK] id=${l.id} key=${l.key}');
+    final acao = _acao(l);
+    if (acao.bloqueadoEstorno || (acao.ehBaixaCr && !acao.podeEstornar)) {
+      await _confirmarExcluirSomenteFinanceiro(l);
+      return;
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Estornar baixa?'),
+        content: Text(
+          'Deseja estornar esta baixa?\n'
+          '${l.descricao.isEmpty ? '(sem descrição)' : l.descricao}\n'
+          'A parcela vinculada será reaberta.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: _warning),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Estornar baixa'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final r = await FinanceiroLancamentoExclusaoService.estornarBaixaContaReceber(
+      lojaId: _lojaId,
+      lancamento: l,
+    );
+    debugPrint('[FIN-GESTAO][RESULTADO] estorno sucesso=${r.sucesso}');
+    if (!r.sucesso && (r.bloqueado || acao.ehBaixaCr)) {
+      await _confirmarExcluirSomenteFinanceiro(l);
+      return;
+    }
+    await _load();
+    if (!mounted) return;
+    debugPrint('[FIN-GESTAO][REFRESH-LISTA] itens=${_lancamentosFiltrados.length}');
+    _snack(
+      r.sucesso
+          ? 'Baixa estornada. A parcela foi reaberta.'
+          : (r.mensagemErro ?? 'Não foi possível estornar.'),
+      erro: !r.sucesso,
+    );
+  }
+
   Widget _tileLancamento(LancamentoFinanceiro l) {
+    final acao = _acao(l);
     final chipOrigem = chipOrigemAutomaticaLancamento(l);
+    final crSemVinculo = _ehCrSemVinculoSeguro(acao);
+    final IconData acaoIcon;
+    final Color acaoColor;
+    final String acaoTooltip;
+    if (crSemVinculo) {
+      acaoIcon = Icons.delete_outline;
+      acaoColor = _error;
+      acaoTooltip = 'Excluir somente lançamento';
+    } else if (acao.mostrarEstornar) {
+      acaoIcon = Icons.undo;
+      acaoColor = _warning;
+      acaoTooltip = 'Estornar baixa';
+    } else if (acao.mostrarExcluir) {
+      acaoIcon = Icons.delete_outline;
+      acaoColor = _error;
+      acaoTooltip = 'Excluir';
+    } else {
+      acaoIcon = Icons.more_horiz;
+      acaoColor = Colors.grey.shade600;
+      acaoTooltip = 'Ações';
+    }
+
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        onTap: () async {
-          await Navigator.push<void>(
-            context,
-            MaterialPageRoute(
-              builder: (_) => FinanceiroLancamentosScreen(
-                lojaId: _lojaId,
-                lancamentoIdInicial: l.id,
-              ),
-            ),
-          );
-          if (mounted) _load();
-        },
-        leading: CircleAvatar(
-          backgroundColor: _primary.withOpacity(0.12),
-          child: const Icon(Icons.receipt_long,
-              color: Color(0xFF6366F1), size: 20),
-        ),
-        title: Text(
-          l.descricao.isEmpty ? '(sem descrição)' : l.descricao,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        subtitle: Column(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 4, 6),
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (chipOrigem != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Chip(
-                  label: Text(chipOrigem, style: const TextStyle(fontSize: 10)),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                CircleAvatar(
+                  radius: 18,
+                  backgroundColor: _primary.withOpacity(0.12),
+                  child: const Icon(Icons.receipt_long,
+                      color: Color(0xFF6366F1), size: 18),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        l.descricao.isEmpty ? '(sem descrição)' : l.descricao,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                      if (chipOrigem != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            chipOrigem,
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.indigo.shade700,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${FinanceiroTipoLancamento.legivel(l.tipo)} · '
+                        '${FinanceiroStatusLancamento.legivel(l.status)} · '
+                        '${LancamentoFinanceiroCompetenciaUi.subtituloCompetenciaPagamento(l, _fmtMesAnoPt)}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey.shade600,
+                          height: 1.25,
+                        ),
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _moeda.format(l.valor),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+                if (acao.mostrarEditar)
+                  IconButton(
+                    tooltip: 'Editar',
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                    icon: const Icon(Icons.edit_outlined, size: 20, color: _primary),
+                    onPressed: () => _editarLancamento(l),
+                  ),
+                IconButton(
+                  tooltip: acaoTooltip,
                   visualDensity: VisualDensity.compact,
                   padding: EdgeInsets.zero,
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  backgroundColor: Colors.indigo.shade50,
-                  side: BorderSide(color: Colors.indigo.shade100),
+                  constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                  icon: Icon(acaoIcon, size: 20, color: acaoColor),
+                  onPressed: () => _onAcaoLancamentoClick(l),
                 ),
-              ),
-            Text(
-              '${FinanceiroTipoLancamento.legivel(l.tipo)}\n'
-              '${LancamentoFinanceiroCompetenciaUi.subtituloCompetenciaPagamento(l, _fmtMesAnoPt)}',
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              ],
             ),
           ],
-        ),
-        isThreeLine: chipOrigem != null,
-        trailing: Text(
-          _moeda.format(l.valor),
-          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
       ),
     );

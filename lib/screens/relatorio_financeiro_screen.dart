@@ -1045,12 +1045,10 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
 
     String titulo;
     String corpo;
-    if (ehBaixaCr && !info.vinculoCrSeguro) {
+    final semVinculoCr = ehBaixaCr && !info.vinculoCrSeguro;
+    if (semVinculoCr) {
       titulo = 'Estorno não disponível';
-      corpo =
-          'Este lançamento antigo não possui vínculo seguro com a parcela.\n'
-          'Não foi possível estornar automaticamente este lançamento antigo '
-          'porque o vínculo com a parcela não foi encontrado com segurança.';
+      corpo = FinanceiroLancamentoExclusaoService.msgModalExcluirSomenteFinanceiroCr;
     } else if (ehBaixaCr && info.legado) {
       titulo = 'Estornar baixa antiga?';
       corpo =
@@ -1073,21 +1071,74 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
           'Essa ação removerá o lançamento dos relatórios, mas manterá o registro interno de auditoria.';
     }
 
-    if (ehBaixaCr && !info.vinculoCrSeguro) {
-      debugPrint('[FIN-UI][RESULTADO] bloqueado id=${l.id}');
+    if (semVinculoCr) {
       if (!mounted) return;
-      await showDialog<void>(
+      final okExcluir = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
           title: Text(titulo),
-          content: Text(corpo),
+          content: SingleChildScrollView(child: Text(corpo)),
           actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar'),
+            ),
             FilledButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Entendi'),
+              style: FilledButton.styleFrom(backgroundColor: _errorColor),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Excluir somente lançamento'),
             ),
           ],
         ),
+      );
+      if (okExcluir != true || !mounted) return;
+
+      debugPrint('[FIN-UI][CONFIRMOU] id=${l.id} financeiro-only');
+
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => const Center(
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Processando...'),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+
+      FinanceiroLancamentoExclusaoResultado resultado;
+      try {
+        resultado =
+            await FinanceiroLancamentoExclusaoService
+                .excluirSomenteLancamentoFinanceiroLegado(
+          lojaId: lojaId,
+          lancamento: l,
+        );
+      } catch (e, st) {
+        debugPrint('[FIN-UI][RESULTADO] exceção id=${l.id} $e\n$st');
+        resultado = FinanceiroLancamentoExclusaoResultado(
+          sucesso: false,
+          mensagemErro: 'Erro inesperado: $e',
+        );
+      }
+
+      await _recarregarLancamentosFinanceiros();
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      _showModernSnackBar(
+        resultado.sucesso
+            ? FinanceiroLancamentoExclusaoService.msgSucessoExcluirSomenteFinanceiro
+            : (resultado.mensagemErro ?? 'Não foi possível excluir.'),
+        isError: !resultado.sucesso,
       );
       return;
     }
@@ -1252,6 +1303,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
             final ehBaixaCr = info.ehBaixaCr;
             final chipOrigem = chipOrigemAutomaticaLancamento(l);
             final bloqueado = ehBaixaCr && !info.vinculoCrSeguro;
+            final excluirSomenteFinanceiro = bloqueado;
             return Container(
               margin: const EdgeInsets.only(bottom: 8),
               decoration: BoxDecoration(
@@ -1299,15 +1351,15 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
                     ),
                     const SizedBox(width: 4),
                     IconButton(
-                      tooltip: bloqueado
-                          ? 'Vínculo com parcela não encontrado'
+                      tooltip: excluirSomenteFinanceiro
+                          ? 'Excluir somente lançamento'
                           : (ehBaixaCr ? 'Estornar baixa' : 'Excluir'),
                       icon: Icon(
-                        bloqueado
-                            ? Icons.block
+                        excluirSomenteFinanceiro
+                            ? Icons.delete_outline
                             : (ehBaixaCr ? Icons.undo : Icons.delete_outline),
-                        color: bloqueado
-                            ? Colors.grey
+                        color: excluirSomenteFinanceiro
+                            ? _errorColor
                             : (ehBaixaCr ? _warningColor : _errorColor),
                       ),
                       onPressed: () => _confirmarAcaoLancamento(l),
