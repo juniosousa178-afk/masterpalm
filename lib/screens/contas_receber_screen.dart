@@ -6,10 +6,12 @@ import 'package:hive/hive.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../core/conta_receber_recuperada_manual.dart';
 import '../core/hive_box_names.dart';
 import '../core/safe_cast.dart';
 import '../models/cliente.dart';
 import '../models/conta_receber.dart';
+import '../services/conta_receber_exclusao_service.dart';
 import '../services/conta_receber_recebimento_caixa_service.dart';
 import '../services/conta_receber_service.dart';
 import '../services/conta_receber_firestore_service.dart';
@@ -108,6 +110,86 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
 
   Future<void> _marcarPago(ContaReceber c) async {
     await _abrirDialogRecebimento(c);
+  }
+
+  Future<void> _excluirContaRecuperada(ContaReceber c) async {
+    if (_lojaId == null || _lojaId!.isEmpty) return;
+
+    debugPrint(
+      '[CR-DELETE][CLICK] tela=contas_receber cliente=${c.clienteNome}',
+    );
+
+    final diag = await ContaReceberExclusaoService.diagnosticar(
+      lojaId: _lojaId!,
+      conta: c,
+    );
+    if (!diag.podeExcluir) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            diag.motivoBloqueio ?? 'Não foi possível excluir esta conta.',
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Excluir conta a receber?'),
+        content: const Text(
+          'Esta conta parece ter sido criada por recuperação/manualmente.\n\n'
+          'A exclusão remove este registro de Contas a Receber, mas não altera '
+          'venda, estoque ou Mercado Pago.\n\n'
+          'Deseja continuar?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Excluir conta'),
+          ),
+        ],
+      ),
+    );
+    if (confirmar != true || !mounted) return;
+
+    final resultado =
+        await ContaReceberExclusaoService.excluirContaReceberManualOuRecuperada(
+      lojaId: _lojaId!,
+      conta: c,
+    );
+
+    if (!mounted) return;
+    if (resultado.sucesso) {
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            resultado.mensagemSucesso ??
+                'Conta a receber excluída com segurança.',
+          ),
+          backgroundColor: _successColor,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            resultado.mensagemErro ?? 'Erro ao excluir conta a receber.',
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   void _mostrarExplicacaoFiadoECaixa() {
@@ -848,8 +930,14 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(_currency.format(c.valor), style: TextStyle(fontWeight: FontWeight.bold, color: c.pago ? Colors.grey : _primaryColor)),
+                              if (contaReceberMostrarAcaoExcluir(c)) ...[
+                                IconButton(
+                                  icon: Icon(Icons.delete_outline, color: Colors.red.shade400),
+                                  onPressed: () => _excluirContaRecuperada(c),
+                                  tooltip: 'Excluir conta',
+                                ),
+                              ],
                               if (!c.pago) ...[
-                                const SizedBox(width: 8),
                                 IconButton(
                                   icon: const Icon(Icons.chat_outlined),
                                   onPressed: () => _cobrarNoWhatsApp(c),
