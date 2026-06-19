@@ -137,15 +137,22 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
     }
 
     if (!mounted) return;
+    final usarModalRecuperada = contaReceberUsarModalRecuperada(c);
     final confirmar = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Excluir conta a receber?'),
-        content: const Text(
-          'Esta conta parece ter sido criada por recuperação/manualmente.\n\n'
-          'A exclusão remove este registro de Contas a Receber, mas não altera '
-          'venda, estoque ou Mercado Pago.\n\n'
-          'Deseja continuar?',
+        title: Text(
+          usarModalRecuperada
+              ? ContaReceberExclusaoService.tituloModalRecuperada
+              : 'Excluir conta a receber?',
+        ),
+        content: Text(
+          usarModalRecuperada
+              ? ContaReceberExclusaoService.corpoModalRecuperada
+              : 'Esta conta parece ter sido criada por recuperação/manualmente.\n\n'
+                  'A exclusão remove este registro de Contas a Receber, mas não altera '
+                  'venda, estoque ou Mercado Pago.\n\n'
+                  'Deseja continuar?',
         ),
         actions: [
           TextButton(

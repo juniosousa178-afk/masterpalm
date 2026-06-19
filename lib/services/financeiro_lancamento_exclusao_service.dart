@@ -45,13 +45,15 @@ abstract final class FinanceiroLancamentoExclusaoService {
       'Não foi possível estornar automaticamente porque o vínculo com a parcela não foi encontrado com segurança.';
 
   static const msgEstornoSemVinculoComOpcaoExclusao =
-      'Não foi possível estornar automaticamente porque o vínculo com a parcela não foi encontrado com segurança.\n'
-      'Você pode excluir somente o lançamento financeiro, se deseja apenas remover este registro dos relatórios.';
+      'Não foi possível estornar automaticamente porque o vínculo com a parcela não foi encontrado com segurança.\n\n'
+      'Para excluir a conta recuperada, acesse Contas a Receber e use a lixeira da própria conta.\n\n'
+      'Se desejar remover apenas o lançamento dos relatórios financeiros, use a opção de excluir somente o lançamento financeiro.';
 
   static const msgModalExcluirSomenteFinanceiroCr =
-      'Este lançamento antigo foi gerado por Conta a Receber, mas não possui vínculo seguro com a parcela.\n\n'
-      'Você pode excluir somente o lançamento financeiro. Essa ação removerá o valor dos relatórios financeiros, '
-      'mas não vai reabrir a parcela em Contas a Receber.\n\n'
+      'Não foi possível estornar automaticamente porque o vínculo com a parcela não foi encontrado com segurança.\n\n'
+      'Para excluir a conta recuperada, acesse Contas a Receber e use a lixeira da própria conta.\n\n'
+      'Se desejar remover apenas o lançamento financeiro dos relatórios, confirme abaixo. '
+      'Essa ação não altera a parcela em Contas a Receber.\n\n'
       'Deseja continuar?';
 
   static const msgModalGestaoExcluirSomenteFinanceiroCr = msgModalExcluirSomenteFinanceiroCr;
