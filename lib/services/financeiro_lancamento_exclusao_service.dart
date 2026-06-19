@@ -7,6 +7,7 @@ import '../core/conta_pagar_lancamento_vinculo.dart';
 import '../core/conta_receber_identity.dart';
 import '../core/conta_receber_lancamento_vinculo.dart';
 import '../core/financeiro_lancamento_acao.dart';
+import '../core/financeiro_lancamento_duplicidade_resolver.dart';
 import '../core/financeiro_lancamento_legacy_resolver.dart';
 import '../financeiro/financeiro_constants.dart';
 import '../models/conta_receber.dart';
@@ -61,6 +62,16 @@ abstract final class FinanceiroLancamentoExclusaoService {
   static const msgSucessoExcluirSomenteFinanceiro =
       'Lançamento financeiro excluído com segurança. A parcela em Contas a Receber não foi alterada.';
 
+  static const msgModalExcluirDuplicadoBaixaCr =
+      'Excluir lançamento duplicado?\n\n'
+      'Este lançamento parece ser uma duplicidade de uma baixa de Conta a Receber.\n\n'
+      'A exclusão removerá apenas este lançamento da Gestão Financeira e dos relatórios. '
+      'A parcela em Contas a Receber continuará baixada e não será reaberta.\n\n'
+      'Deseja continuar?';
+
+  static const msgSucessoExcluirDuplicado =
+      'Lançamento financeiro duplicado excluído com segurança.';
+
   static bool lancamentoExcluivelNaUi(LancamentoFinanceiro l) {
     if (!FinanceiroStatusLancamento.statusLiquidado(l.status)) return false;
     if (lancamentoVinculadoAContaPagar(l)) return false;
@@ -71,11 +82,13 @@ abstract final class FinanceiroLancamentoExclusaoService {
     LancamentoFinanceiro l, {
     Iterable<ContaReceber> contas = const [],
     String lojaId = '',
+    Iterable<LancamentoFinanceiro> lancamentosLoja = const [],
   }) =>
       FinanceiroLancamentoAcaoResolver.resolver(
         l,
         contas: contas,
         lojaId: lojaId,
+        lancamentosLoja: lancamentosLoja,
       );
 
   static bool lancamentoEhBaixaContaReceber(LancamentoFinanceiro l) =>
@@ -383,6 +396,130 @@ abstract final class FinanceiroLancamentoExclusaoService {
     return FinanceiroLancamentoExclusaoResultado(
       sucesso: true,
       legado: info.legado,
+      apenasLocal: idFs.isEmpty || !fsOk,
+    );
+  }
+
+  /// Remove somente o lançamento financeiro duplicado de uma baixa CR.
+  /// Mantém o lançamento equivalente e não reabre a parcela.
+  static Future<FinanceiroLancamentoExclusaoResultado>
+      excluirLancamentoFinanceiroDuplicadoDeBaixa({
+    required String lojaId,
+    required LancamentoFinanceiro lancamento,
+    Iterable<LancamentoFinanceiro>? lancamentosLoja,
+    String motivoExclusao = '',
+  }) async {
+    debugPrint(
+      '[FIN-DUP][EXCLUIR-INICIO] id=${lancamento.id} key=${lancamento.key} '
+      'loja=$lojaId',
+    );
+
+    final lid = lojaId.trim();
+    if (lid.isEmpty) {
+      return const FinanceiroLancamentoExclusaoResultado(
+        sucesso: false,
+        mensagemErro: 'Loja inválida.',
+      );
+    }
+
+    if (!lancamentoEhBaixaContaReceber(lancamento)) {
+      return const FinanceiroLancamentoExclusaoResultado(
+        sucesso: false,
+        mensagemErro: 'Lançamento não é uma baixa de Contas a Receber.',
+      );
+    }
+
+    final finBox = await FinanceiroHiveStore.openLancamentosBox(lid);
+    if (finBox == null) {
+      return const FinanceiroLancamentoExclusaoResultado(
+        sucesso: false,
+        mensagemErro: 'Armazenamento financeiro indisponível.',
+      );
+    }
+
+    final todos = lancamentosLoja ?? finBox.values;
+    final contasCr = await _contasReceberLoja(lid);
+    final diag = FinanceiroLancamentoDuplicidadeResolver.diagnosticar(
+      alvo: lancamento,
+      lancamentos: todos,
+      contas: contasCr,
+      lojaId: lid,
+    );
+
+    if (!diag.podeExcluirDuplicado) {
+      return FinanceiroLancamentoExclusaoResultado(
+        sucesso: false,
+        mensagemErro: diag.motivoBloqueio ??
+            'Não foi possível confirmar duplicidade com segurança.',
+      );
+    }
+
+    final manter = diag.lancamentoAManter;
+    if (manter == null) {
+      return const FinanceiroLancamentoExclusaoResultado(
+        sucesso: false,
+        mensagemErro: 'Lançamento equivalente a manter não encontrado.',
+      );
+    }
+
+    debugPrint(
+      '[FIN-DUP][MANTER-LANCAMENTO] id=${manter.id} key=${manter.key}',
+    );
+
+    final existente = _buscarNoHive(finBox, lancamento);
+    if (existente == null) {
+      if (!_aindaNoHive(finBox, lancamento)) {
+        debugPrint('[FIN-DUP][OK] idempotente id=${lancamento.id}');
+        return const FinanceiroLancamentoExclusaoResultado(
+          sucesso: true,
+          idempotente: true,
+        );
+      }
+      return const FinanceiroLancamentoExclusaoResultado(
+        sucesso: false,
+        mensagemErro: 'Não foi possível localizar o lançamento para exclusão.',
+      );
+    }
+
+    debugPrint(
+      '[FIN-DUP][EXCLUIR-LANCAMENTO] id=${existente.id} key=${existente.key}',
+    );
+
+    final usuario = await _usuarioAtual();
+    final motivo = motivoExclusao.trim().isEmpty
+        ? 'exclusao_lancamento_duplicado_baixa_cr'
+        : motivoExclusao.trim();
+    final idFs = existente.id.trim();
+    var fsOk = false;
+    if (idFs.isNotEmpty) {
+      fsOk = await FinanceiroFirestoreService.softDeleteLancamentoManual(
+        lojaId: lid,
+        id: idFs,
+        deletedBy: usuario,
+        motivoExclusao: motivo,
+        origem: existente.origem,
+        referenciaExterna: existente.referenciaExterna,
+      );
+      if (fsOk) {
+        debugPrint('[FIN-DUP][FS-OK] id=$idFs');
+        debugPrint('[FIN-DUP][TOMBSTONE-OK] id=$idFs');
+      } else {
+        debugPrint('[FIN-DUP][FS-ERRO] id=$idFs');
+      }
+    }
+
+    final removido = await _removerDoHive(finBox, existente);
+    if (!removido) {
+      return const FinanceiroLancamentoExclusaoResultado(
+        sucesso: false,
+        mensagemErro: 'Não foi possível remover o lançamento localmente.',
+      );
+    }
+
+    debugPrint('[FIN-DUP][LOCAL-OK] id=${existente.id}');
+    debugPrint('[FIN-DUP][OK] id=${existente.id}');
+    return FinanceiroLancamentoExclusaoResultado(
+      sucesso: true,
       apenasLocal: idFs.isEmpty || !fsOk,
     );
   }

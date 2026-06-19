@@ -5,6 +5,7 @@ import 'package:hive/hive.dart';
 
 import '../core/conta_receber_identity.dart';
 import '../core/conta_receber_lancamento_vinculo.dart';
+import '../core/financeiro_lancamento_duplicidade_resolver.dart';
 import '../financeiro/financeiro_constants.dart';
 import '../models/conta_receber.dart';
 import '../models/lancamento_financeiro.dart';
@@ -144,6 +145,20 @@ class ContaReceberRecebimentoCaixaService {
       usuarioNome: usuarioNome,
       referenciaExterna: ref,
     );
+
+    final dupExistente = FinanceiroLancamentoDuplicidadeResolver
+        .encontrarDuplicataExistente(
+      candidato: l,
+      lancamentos: box.values,
+      lojaId: loja,
+    );
+    if (dupExistente != null && dupExistente.id.trim() != docId) {
+      debugPrint(
+        '[FIN-DUP][ANTI-DUP-BAIXA-CR] mantém id=${dupExistente.id} '
+        'ignorando docId=$docId ref=$ref',
+      );
+      return dupExistente.id;
+    }
 
     await box.put(docId, l);
     try {

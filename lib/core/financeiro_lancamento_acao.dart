@@ -6,6 +6,7 @@ import '../financeiro/financeiro_constants.dart';
 import '../models/conta_receber.dart';
 import '../models/lancamento_financeiro.dart';
 import 'conta_pagar_lancamento_vinculo.dart';
+import 'financeiro_lancamento_duplicidade_resolver.dart';
 import 'financeiro_lancamento_legacy_resolver.dart';
 
 enum FinanceiroLancamentoAcaoTipo {
@@ -23,9 +24,11 @@ class FinanceiroLancamentoAcaoInfo {
     required this.ehBaixaCr,
     required this.ehManual,
     this.podeExcluirSomenteFinanceiro = false,
+    this.podeExcluirDuplicadoBaixaCr = false,
     this.bloqueadoEstorno = false,
     this.bloqueadoGeral = false,
     this.motivoBloqueio,
+    this.lancamentoEquivalenteId,
     this.legado = const FinanceiroLancamentoLegadoInfo(
       tipo: FinanceiroLancamentoLegadoTipo.manual,
     ),
@@ -35,16 +38,21 @@ class FinanceiroLancamentoAcaoInfo {
   final bool podeExcluir;
   final bool podeEstornar;
   final bool podeExcluirSomenteFinanceiro;
+  final bool podeExcluirDuplicadoBaixaCr;
   final bool ehBaixaCr;
   final bool ehManual;
   final bool bloqueadoEstorno;
   final bool bloqueadoGeral;
   final String? motivoBloqueio;
+  final String? lancamentoEquivalenteId;
   final FinanceiroLancamentoLegadoInfo legado;
 
-  bool get mostrarEstornar => ehBaixaCr && podeEstornar;
+  bool get mostrarEstornar =>
+      ehBaixaCr && podeEstornar && !podeExcluirDuplicadoBaixaCr;
   bool get mostrarExcluirSomenteFinanceiro =>
       ehBaixaCr && podeExcluirSomenteFinanceiro;
+  bool get mostrarExcluirDuplicado =>
+      ehBaixaCr && podeExcluirDuplicadoBaixaCr;
   bool get mostrarExcluir => podeExcluir && !ehBaixaCr;
   bool get mostrarEditar => podeEditar;
 }
@@ -69,10 +77,40 @@ abstract final class FinanceiroLancamentoAcaoResolver {
     return false;
   }
 
+  static FinanceiroLancamentoAcaoInfo _aplicarDuplicidade(
+    FinanceiroLancamentoAcaoInfo base,
+    LancamentoFinanceiro l, {
+    Iterable<LancamentoFinanceiro> lancamentosLoja = const [],
+    Iterable<ContaReceber> contas = const [],
+    String lojaId = '',
+  }) {
+    if (!base.ehBaixaCr || lancamentosLoja.isEmpty) return base;
+
+    final diag = FinanceiroLancamentoDuplicidadeResolver.diagnosticar(
+      alvo: l,
+      lancamentos: lancamentosLoja,
+      contas: contas,
+      lojaId: lojaId,
+    );
+    if (!diag.podeExcluirDuplicado) return base;
+
+    return FinanceiroLancamentoAcaoInfo(
+      podeEditar: false,
+      podeExcluir: false,
+      podeEstornar: false,
+      podeExcluirDuplicadoBaixaCr: true,
+      ehBaixaCr: true,
+      ehManual: false,
+      lancamentoEquivalenteId: diag.lancamentoAManter?.id,
+      legado: base.legado,
+    );
+  }
+
   static FinanceiroLancamentoAcaoInfo resolver(
     LancamentoFinanceiro l, {
     Iterable<ContaReceber> contas = const [],
     String lojaId = '',
+    Iterable<LancamentoFinanceiro> lancamentosLoja = const [],
   }) {
     final legado = FinanceiroLancamentoLegacyResolver.classificar(
       l,
@@ -117,27 +155,39 @@ abstract final class FinanceiroLancamentoAcaoResolver {
     if (legado.ehBaixaCr) {
       if (legado.vinculoCrSeguro) {
         debugPrint('[FIN-FINALIZADO][CR-ESTORNO-PERMITIDO] id=${l.id}');
-        return FinanceiroLancamentoAcaoInfo(
-          podeEditar: false,
-          podeExcluir: false,
-          podeEstornar: true,
-          ehBaixaCr: true,
-          ehManual: false,
-          legado: legado,
+        return _aplicarDuplicidade(
+          FinanceiroLancamentoAcaoInfo(
+            podeEditar: false,
+            podeExcluir: false,
+            podeEstornar: true,
+            ehBaixaCr: true,
+            ehManual: false,
+            legado: legado,
+          ),
+          l,
+          lancamentosLoja: lancamentosLoja,
+          contas: contas,
+          lojaId: lojaId,
         );
       }
       debugPrint('[FIN-FINALIZADO][BLOQUEADO] cr-sem-vinculo id=${l.id}');
-      return FinanceiroLancamentoAcaoInfo(
-        podeEditar: false,
-        podeExcluir: false,
-        podeExcluirSomenteFinanceiro: true,
-        podeEstornar: false,
-        ehBaixaCr: true,
-        ehManual: false,
-        bloqueadoEstorno: true,
-        motivoBloqueio: legado.motivoBloqueioEstorno ??
-            FinanceiroLancamentoLegacyResolver.msgEstornoLegadoSemVinculo,
-        legado: legado,
+      return _aplicarDuplicidade(
+        FinanceiroLancamentoAcaoInfo(
+          podeEditar: false,
+          podeExcluir: false,
+          podeExcluirSomenteFinanceiro: true,
+          podeEstornar: false,
+          ehBaixaCr: true,
+          ehManual: false,
+          bloqueadoEstorno: true,
+          motivoBloqueio: legado.motivoBloqueioEstorno ??
+              FinanceiroLancamentoLegacyResolver.msgEstornoLegadoSemVinculo,
+          legado: legado,
+        ),
+        l,
+        lancamentosLoja: lancamentosLoja,
+        contas: contas,
+        lojaId: lojaId,
       );
     }
 

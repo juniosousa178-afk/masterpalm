@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
 import '../financeiro/financeiro_constants.dart';
+import '../core/financeiro_lancamento_duplicidade_resolver.dart';
 import '../models/gasto_fixo_mensal.dart';
 import '../models/lancamento_financeiro.dart';
 import 'financeiro_hive_store.dart';
@@ -528,6 +529,20 @@ class FinanceiroFirestoreService {
               final model = _lancamentoFromFirestore(doc.id, data, id);
               if (model == null) {
                 lx++;
+                continue;
+              }
+              final dupLocal =
+                  FinanceiroLancamentoDuplicidadeResolver.encontrarDuplicataExistente(
+                candidato: model,
+                lancamentos: lBox.values,
+                lojaId: id,
+              );
+              if (dupLocal != null && dupLocal.id.trim() != model.id.trim()) {
+                lp++;
+                debugPrint(
+                  '[FIN-DUP][ANTI-DUP-BAIXA-CR] pull skip doc=${doc.id} '
+                  'mantém local=${dupLocal.id}',
+                );
                 continue;
               }
               await lBox.put(doc.id, model);

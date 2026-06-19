@@ -1035,6 +1035,87 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
       } catch (_) {}
     }
 
+    final acao = FinanceiroLancamentoExclusaoService.acaoParaUi(
+      l,
+      contas: contasCr,
+      lojaId: lojaId,
+      lancamentosLoja: _lancamentosFinanceiroBox?.values ?? const [],
+    );
+
+    if (acao.mostrarExcluirDuplicado) {
+      if (!mounted) return;
+      final okDup = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Excluir lançamento duplicado?'),
+          content: SingleChildScrollView(
+            child: Text(
+              FinanceiroLancamentoExclusaoService.msgModalExcluirDuplicadoBaixaCr,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: _errorColor),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Excluir duplicado'),
+            ),
+          ],
+        ),
+      );
+      if (okDup != true || !mounted) return;
+
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => const Center(
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Processando...'),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+
+      FinanceiroLancamentoExclusaoResultado resultado;
+      try {
+        resultado = await FinanceiroLancamentoExclusaoService
+            .excluirLancamentoFinanceiroDuplicadoDeBaixa(
+          lojaId: lojaId,
+          lancamento: l,
+          lancamentosLoja: _lancamentosFinanceiroBox?.values,
+        );
+      } catch (e, st) {
+        debugPrint('[FIN-UI][RESULTADO] exceção dup id=${l.id} $e\n$st');
+        resultado = FinanceiroLancamentoExclusaoResultado(
+          sucesso: false,
+          mensagemErro: 'Erro inesperado: $e',
+        );
+      }
+
+      await _recarregarLancamentosFinanceiros();
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      _showModernSnackBar(
+        resultado.sucesso
+            ? FinanceiroLancamentoExclusaoService.msgSucessoExcluirDuplicado
+            : (resultado.mensagemErro ?? 'Não foi possível excluir.'),
+        isError: !resultado.sucesso,
+      );
+      return;
+    }
+
     final info = FinanceiroLancamentoExclusaoService.infoLegado(
       l,
       contas: contasCr,
@@ -1295,15 +1376,16 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
           )
         else
           ...lancamentos.map((l) {
-            final info = FinanceiroLancamentoExclusaoService.infoLegado(
+            final acao = FinanceiroLancamentoExclusaoService.acaoParaUi(
               l,
               contas: _contasReceberCache,
               lojaId: lojaId,
+              lancamentosLoja: _lancamentosFinanceiroBox?.values ?? const [],
             );
-            final ehBaixaCr = info.ehBaixaCr;
+            final ehBaixaCr = acao.ehBaixaCr;
             final chipOrigem = chipOrigemAutomaticaLancamento(l);
-            final bloqueado = ehBaixaCr && !info.vinculoCrSeguro;
-            final excluirSomenteFinanceiro = bloqueado;
+            final excluirDuplicado = acao.mostrarExcluirDuplicado;
+            final excluirSomenteFinanceiro = acao.mostrarExcluirSomenteFinanceiro;
             return Container(
               margin: const EdgeInsets.only(bottom: 8),
               decoration: BoxDecoration(
@@ -1351,14 +1433,18 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
                     ),
                     const SizedBox(width: 4),
                     IconButton(
-                      tooltip: excluirSomenteFinanceiro
-                          ? 'Excluir somente lançamento'
-                          : (ehBaixaCr ? 'Estornar baixa' : 'Excluir'),
+                      tooltip: excluirDuplicado
+                          ? 'Excluir lançamento duplicado'
+                          : (excluirSomenteFinanceiro
+                              ? 'Excluir somente lançamento'
+                              : (ehBaixaCr ? 'Estornar baixa' : 'Excluir')),
                       icon: Icon(
-                        excluirSomenteFinanceiro
-                            ? Icons.delete_outline
-                            : (ehBaixaCr ? Icons.undo : Icons.delete_outline),
-                        color: excluirSomenteFinanceiro
+                        excluirDuplicado
+                            ? Icons.copy_all_outlined
+                            : (excluirSomenteFinanceiro
+                                ? Icons.delete_outline
+                                : (ehBaixaCr ? Icons.undo : Icons.delete_outline)),
+                        color: excluirDuplicado || excluirSomenteFinanceiro
                             ? _errorColor
                             : (ehBaixaCr ? _warningColor : _errorColor),
                       ),
