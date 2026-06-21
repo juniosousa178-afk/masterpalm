@@ -275,11 +275,179 @@ class FinanceiroFirestoreService {
 
   /// Grava ou atualiza lançamento (merge). Hive já deve estar persistido.
   /// Retorna `true` se o remoto foi gravado com sucesso.
+  @visibleForTesting
+  static bool lancamentoRemotoExcluidoOuEstornadoVisivel(
+    Map<String, dynamic> data,
+  ) =>
+      _lancamentoRemotoExcluidoOuEstornado(data);
+
+  static String _deletedAtTipo(dynamic v) {
+    if (v == null) return 'null';
+    if (v is Timestamp) return 'Timestamp';
+    if (v is DateTime) return 'DateTime';
+    if (v is String) return 'String';
+    return v.runtimeType.toString();
+  }
+
+  static bool _deletedAtPreenchido(dynamic v) {
+    if (v == null) return false;
+    if (v is Timestamp) return true;
+    if (v is DateTime) return true;
+    if (v is String) return v.trim().isNotEmpty;
+    return true;
+  }
+
   static bool _lancamentoRemotoExcluidoOuEstornado(Map<String, dynamic> data) {
-    if (data['deletedAt'] != null) return true;
+    if (_deletedAtPreenchido(data['deletedAt'])) return true;
     if (_fsBool(data['estornado'], false)) return true;
-    final st = _fsString(data['status']);
+    final st = _fsString(data['status']).trim().toLowerCase();
     return st == 'excluido' || st == 'estornado';
+  }
+
+  /// Identidade técnica: documentId (chave Hive ou [LancamentoFinanceiro.id]) e
+  /// [referenciaExterna] exata. Nunca usa nome, valor, competência ou descrição.
+  @visibleForTesting
+  static dynamic localizarChaveHiveParaTombstoneRemoto({
+    required Box<LancamentoFinanceiro> box,
+    required String documentId,
+    required String referenciaExternaRemota,
+    required String lojaId,
+  }) {
+    final docId = documentId.trim();
+    final refRemota = referenciaExternaRemota.trim();
+    final lid = lojaId.trim();
+    if (lid.isEmpty) return null;
+
+    if (docId.isNotEmpty && box.containsKey(docId)) {
+      final porChave = box.get(docId);
+      if (porChave != null && porChave.lojaId.trim() == lid) {
+        return docId;
+      }
+    }
+
+    final porId = <dynamic>[];
+    final porRef = <dynamic>[];
+    for (final key in box.keys) {
+      final l = box.get(key);
+      if (l == null || l.lojaId.trim() != lid) continue;
+      if (docId.isNotEmpty && l.id.trim() == docId) {
+        porId.add(key);
+      }
+      if (refRemota.isNotEmpty && l.referenciaExterna.trim() == refRemota) {
+        porRef.add(key);
+      }
+    }
+
+    if (porId.length == 1) return porId.first;
+    if (porId.length > 1) return null;
+
+    if (porRef.length == 1) return porRef.first;
+    return null;
+  }
+
+  @visibleForTesting
+  static List<Map<String, dynamic>> candidatosLocaisTombstoneParaTest({
+    required Box<LancamentoFinanceiro> box,
+    required String documentId,
+    required String referenciaExternaRemota,
+    required String lojaId,
+  }) =>
+      _candidatosLocaisTombstone(
+        box: box,
+        documentId: documentId,
+        referenciaExternaRemota: referenciaExternaRemota,
+        lojaId: lojaId,
+      );
+
+  static List<Map<String, dynamic>> _candidatosLocaisTombstone({
+    required Box<LancamentoFinanceiro> box,
+    required String documentId,
+    required String referenciaExternaRemota,
+    required String lojaId,
+  }) {
+    final docId = documentId.trim();
+    final refRemota = referenciaExternaRemota.trim();
+    final lid = lojaId.trim();
+    final out = <Map<String, dynamic>>[];
+    for (final key in box.keys) {
+      final l = box.get(key);
+      if (l == null || l.lojaId.trim() != lid) continue;
+      final idLocal = l.id.trim();
+      final refLocal = l.referenciaExterna.trim();
+      if (docId.isNotEmpty &&
+          (key.toString() == docId || idLocal == docId)) {
+        out.add({
+          'hiveKey': key,
+          'idFirebase': idLocal,
+          'referenciaExterna': refLocal,
+          'match': 'documentId',
+        });
+      } else if (refRemota.isNotEmpty && refLocal == refRemota) {
+        out.add({
+          'hiveKey': key,
+          'idFirebase': idLocal,
+          'referenciaExterna': refLocal,
+          'match': 'referenciaExterna',
+        });
+      }
+    }
+    return out;
+  }
+
+  static Future<bool> _aplicarTombstoneRemotoDoc({
+    required Box<LancamentoFinanceiro> lBox,
+    required String lojaId,
+    required String docId,
+    required Map<String, dynamic> data,
+  }) async {
+    if (!_lancamentoRemotoExcluidoOuEstornado(data)) return false;
+
+    final refRemota = _fsString(data['referenciaExterna']);
+    final status = _fsString(data['status']);
+    debugPrint(
+      '[FIN-SYNC][TOMBSTONE-REMOTE-ENCONTRADO] '
+      'documentId=$docId '
+      'referenciaExterna=$refRemota '
+      'status=$status '
+      'deletedAtTipo=${_deletedAtTipo(data['deletedAt'])}',
+    );
+
+    final candidatos = _candidatosLocaisTombstone(
+      box: lBox,
+      documentId: docId,
+      referenciaExternaRemota: refRemota,
+      lojaId: lojaId,
+    );
+    debugPrint(
+      '[FIN-SYNC][TOMBSTONE-LOCAL-BUSCA] '
+      'idFirebase=$docId '
+      'referenciaExterna=$refRemota '
+      'candidatos=${candidatos.map((c) => '${c['hiveKey']}:${c['match']}').join('|')}',
+    );
+
+    final chave = localizarChaveHiveParaTombstoneRemoto(
+      box: lBox,
+      documentId: docId,
+      referenciaExternaRemota: refRemota,
+      lojaId: lojaId,
+    );
+    if (chave == null) {
+      debugPrint(
+        '[FIN-SYNC][TOMBSTONE-LOCAL-NAO-ENCONTRADO] '
+        'documentId=$docId referenciaExterna=$refRemota',
+      );
+      return false;
+    }
+
+    final local = lBox.get(chave);
+    debugPrint(
+      '[FIN-SYNC][TOMBSTONE-LOCAL-REMOVER] '
+      'hiveKey=$chave '
+      'documentId=$docId '
+      'referenciaExterna=${local?.referenciaExterna ?? ''}',
+    );
+    await lBox.delete(chave);
+    return true;
   }
 
   static Future<bool> upsertLancamento(LancamentoFinanceiro l) async {
@@ -434,15 +602,18 @@ class FinanceiroFirestoreService {
           .get();
       for (final doc in qs.docs) {
         final data = doc.data();
-        if (!_lancamentoRemotoExcluidoOuEstornado(data)) continue;
-        if (lBox.containsKey(doc.id)) {
-          await lBox.delete(doc.id);
+        if (await _aplicarTombstoneRemotoDoc(
+          lBox: lBox,
+          lojaId: id,
+          docId: doc.id,
+          data: data,
+        )) {
           removidos++;
         }
       }
       if (removidos > 0) {
         debugPrint(
-          '[FINANCEIRO-FS] Tombstones aplicados loja=$id removidos=$removidos',
+          '[FIN-SYNC][TOMBSTONE-APLICADO] loja=$id removidos=$removidos',
         );
       }
     } catch (e) {
@@ -516,8 +687,12 @@ class FinanceiroFirestoreService {
             try {
               final data = doc.data();
               if (_lancamentoRemotoExcluidoOuEstornado(data)) {
-                if (lBox.containsKey(doc.id)) {
-                  await lBox.delete(doc.id);
+                if (await _aplicarTombstoneRemotoDoc(
+                  lBox: lBox,
+                  lojaId: id,
+                  docId: doc.id,
+                  data: data,
+                )) {
                   li++;
                 }
                 continue;

@@ -181,6 +181,22 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
           '[FINANCEIRO_UI] openLancamentosBox retornou null (lojaId=$id). '
           'Resumo do módulo ficará zerado; lançamentos podem existir no disco.',
         );
+      } else {
+        try {
+          final removidos =
+              await FinanceiroFirestoreService.sincronizarTombstonesLancamentos(
+            id,
+          );
+          if (removidos > 0) {
+            debugPrint(
+              '[FIN-GESTAO][REFRESH-APOS-TOMBSTONE] removidos=$removidos lojaId=$id',
+            );
+          }
+        } catch (e) {
+          debugPrint(
+            '[FIN-GESTAO][TOMBSTONE-ERRO] type=${e.runtimeType} lojaId=$id',
+          );
+        }
       }
 
       final y = _mesSelecionado.year;
@@ -349,6 +365,9 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
     try {
       resultado =
           await FinanceiroFirestoreService.pullLojaFirestoreParaHiveFase2d(
+        _lojaId,
+      );
+      await FinanceiroFirestoreService.sincronizarTombstonesLancamentos(
         _lojaId,
       );
     } catch (e) {

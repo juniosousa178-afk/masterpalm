@@ -67,6 +67,8 @@ class FullSyncService {
         final pull =
             await FinanceiroFirestoreService.pullLojaFirestoreParaHiveFase2d(
                 lojaId);
+        await FinanceiroFirestoreService.sincronizarTombstonesLancamentos(
+            lojaId);
         result.financeiroLancamentosEnviados = mig.lancamentosEnviados;
         result.financeiroGastosFixosEnviados = mig.gastosEnviados;
         result.financeiroLancamentosImportados = pull.lancamentosImportados;
