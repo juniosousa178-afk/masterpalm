@@ -1440,7 +1440,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen>
                               : (ehBaixaCr ? 'Estornar baixa' : 'Excluir')),
                       icon: Icon(
                         excluirDuplicado
-                            ? Icons.copy_all_outlined
+                            ? Icons.delete_outline
                             : (excluirSomenteFinanceiro
                                 ? Icons.delete_outline
                                 : (ehBaixaCr ? Icons.undo : Icons.delete_outline)),

@@ -64,10 +64,9 @@ abstract final class FinanceiroLancamentoExclusaoService {
 
   static const msgModalExcluirDuplicadoBaixaCr =
       'Excluir lançamento duplicado?\n\n'
-      'Este lançamento parece ser uma duplicidade de uma baixa de Conta a Receber.\n\n'
+      'Este lançamento foi identificado como uma duplicidade de baixa de Conta a Receber.\n\n'
       'A exclusão removerá apenas este lançamento da Gestão Financeira e dos relatórios. '
-      'A parcela em Contas a Receber continuará baixada e não será reaberta.\n\n'
-      'Deseja continuar?';
+      'A parcela continuará baixada.';
 
   static const msgSucessoExcluirDuplicado =
       'Lançamento financeiro duplicado excluído com segurança.';

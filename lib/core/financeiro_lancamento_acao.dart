@@ -84,11 +84,16 @@ abstract final class FinanceiroLancamentoAcaoResolver {
     Iterable<ContaReceber> contas = const [],
     String lojaId = '',
   }) {
-    if (!base.ehBaixaCr || lancamentosLoja.isEmpty) return base;
+    if (!base.ehBaixaCr) return base;
+
+    final pool = FinanceiroLancamentoDuplicidadeResolver.lancamentosAtivosParaBusca(
+      lancamentosLoja,
+    );
+    if (pool.isEmpty) return base;
 
     final diag = FinanceiroLancamentoDuplicidadeResolver.diagnosticar(
       alvo: l,
-      lancamentos: lancamentosLoja,
+      lancamentos: pool,
       contas: contas,
       lojaId: lojaId,
     );

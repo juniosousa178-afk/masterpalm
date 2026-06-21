@@ -2290,14 +2290,14 @@ class _FinanceiroScreenState extends State<FinanceiroScreen> {
     final IconData acaoIcon;
     final Color acaoColor;
     final String acaoTooltip;
-    if (crSemVinculo) {
+    if (acao.mostrarExcluirDuplicado) {
+      acaoIcon = Icons.delete_outline;
+      acaoColor = _error;
+      acaoTooltip = 'Excluir lançamento duplicado';
+    } else if (crSemVinculo) {
       acaoIcon = Icons.delete_outline;
       acaoColor = _error;
       acaoTooltip = 'Excluir somente lançamento';
-    } else if (acao.mostrarExcluirDuplicado) {
-      acaoIcon = Icons.copy_all_outlined;
-      acaoColor = _error;
-      acaoTooltip = 'Excluir lançamento duplicado';
     } else if (acao.mostrarEstornar) {
       acaoIcon = Icons.undo;
       acaoColor = _warning;

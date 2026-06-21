@@ -52,6 +52,118 @@ abstract final class FinanceiroLancamentoDuplicidadeResolver {
   static DateTime _dataBaixa(LancamentoFinanceiro l) =>
       l.dataPagamento ?? l.dataLancamento;
 
+  static String _diaFromDate(DateTime d) =>
+      '${d.year}${d.month.toString().padLeft(2, '0')}${d.day.toString().padLeft(2, '0')}';
+
+  static int _centavosFromLancamento(LancamentoFinanceiro l) =>
+      (l.valor.abs() * 100).round();
+
+  static int _centavosEfetivos(
+    ContaReceberRecebimentoRefParsed ref,
+    LancamentoFinanceiro l,
+  ) =>
+      ref.centavos > 0 ? ref.centavos : _centavosFromLancamento(l);
+
+  static String _diaEfetivo(
+    ContaReceberRecebimentoRefParsed ref,
+    LancamentoFinanceiro l,
+  ) => ref.dia.isNotEmpty ? ref.dia : _diaFromDate(_dataBaixa(l));
+
+  static int _parcelaEfetiva(
+    ContaReceberRecebimentoRefParsed ref,
+    ContaReceber conta,
+  ) =>
+      ref.parcelaNumero > 0 ? ref.parcelaNumero : conta.parcelaNumero;
+
+  static bool _ativoParaBuscaDuplicidade(LancamentoFinanceiro l) {
+    final s = l.status.trim().toLowerCase();
+    if (s == 'excluido' || s == 'estornado' || s == 'cancelado') return false;
+    return FinanceiroStatusLancamento.statusLiquidado(l.status);
+  }
+
+  static Iterable<LancamentoFinanceiro> lancamentosAtivosParaBusca(
+    Iterable<LancamentoFinanceiro> lancamentos,
+  ) =>
+      lancamentos.where(_ativoParaBuscaDuplicidade);
+
+  static bool _stableCompativelComDocId(String stableId, String docId) {
+    final stable = stableId.trim();
+    final doc = docId.trim();
+    if (stable.isEmpty || doc.isEmpty) return false;
+    if (stable == doc) return true;
+    if (stable.startsWith('${doc}_p')) return true;
+    final vendPart = stable.replaceAll(RegExp(r'_p\d+$'), '');
+    return vendPart.isNotEmpty && vendPart == doc;
+  }
+
+  static bool _refsApontamMesmaContaSemantica(
+    ContaReceberRecebimentoRefParsed a,
+    ContaReceberRecebimentoRefParsed b,
+  ) {
+    if (a.isFirestoreDocBaixa && b.isStable) {
+      return _stableCompativelComDocId(b.stableId, a.contaReceberDocId);
+    }
+    if (b.isFirestoreDocBaixa && a.isStable) {
+      return _stableCompativelComDocId(a.stableId, b.contaReceberDocId);
+    }
+    if (a.isStable && b.isStable) return a.stableId == b.stableId;
+    if (a.hiveKey != null && b.hiveKey != null) return a.hiveKey == b.hiveKey;
+    return false;
+  }
+
+  static bool _mesmaBaixaCrossScheme({
+    required ContaReceberRecebimentoRefParsed refA,
+    required ContaReceberRecebimentoRefParsed refB,
+    required LancamentoFinanceiro lancA,
+    required LancamentoFinanceiro lancB,
+    required Iterable<ContaReceber> contas,
+    required String lojaId,
+  }) {
+    if (_refsMesmaBaixaSemantica(refA, refB)) return true;
+
+    final contaA = _resolverConta(contas: contas, lojaId: lojaId, ref: refA);
+    final contaB = _resolverConta(contas: contas, lojaId: lojaId, ref: refB);
+    final mesmaConta = _mesmaConta(contaA, contaB) && contaA != null;
+    final mesmaContaSemantica = mesmaConta ||
+        (contaA == null &&
+            contaB == null &&
+            _refsApontamMesmaContaSemantica(refA, refB));
+    if (!mesmaContaSemantica) return false;
+
+    final conta = contaA ?? contaB;
+    final parcelaA = conta != null
+        ? _parcelaEfetiva(refA, conta)
+        : refA.parcelaNumero;
+    final parcelaB = conta != null
+        ? _parcelaEfetiva(refB, conta)
+        : refB.parcelaNumero;
+    if (parcelaA != parcelaB) return false;
+
+    if (_centavosEfetivos(refA, lancA) != _centavosEfetivos(refB, lancB)) {
+      return false;
+    }
+
+    final diaA = _diaEfetivo(refA, lancA);
+    final diaB = _diaEfetivo(refB, lancB);
+    if (diaA.isNotEmpty &&
+        diaB.isNotEmpty &&
+        diaA != diaB &&
+        !_mesmoDia(_dataBaixa(lancA), _dataBaixa(lancB))) {
+      return false;
+    }
+
+    if (!valoresParecidos(lancA.valor, lancB.valor)) return false;
+    if (!_mesmoDia(_dataBaixa(lancA), _dataBaixa(lancB))) return false;
+
+    final esquemaDiferente = (refA.isFirestoreDocBaixa != refB.isFirestoreDocBaixa) ||
+        (refA.isStable != refB.isStable) ||
+        (refA.hiveKey != refB.hiveKey) ||
+        (refA.stableId.isNotEmpty &&
+            refB.stableId.isNotEmpty &&
+            refA.stableId != refB.stableId);
+    return esquemaDiferente;
+  }
+
   static String _norm(String s) =>
       s.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
 
@@ -115,41 +227,57 @@ abstract final class FinanceiroLancamentoDuplicidadeResolver {
   }
 
   static FinanceiroDuplicidadeConfianca _confiancaEntre(
-    LancamentoFinanceiro a,
-    LancamentoFinanceiro b, {
+    LancamentoFinanceiro lancA,
+    LancamentoFinanceiro lancB, {
     required Iterable<ContaReceber> contas,
     required String lojaId,
   }) {
-    final refA = recebimentoRefFromLancamento(a);
-    final refB = recebimentoRefFromLancamento(b);
+    final refA = recebimentoRefFromLancamento(lancA);
+    final refB = recebimentoRefFromLancamento(lancB);
 
     if (refA != null && refB != null) {
       if (_refsMesmaBaixaSemantica(refA, refB)) {
         return FinanceiroDuplicidadeConfianca.segura;
       }
+      if (_mesmaBaixaCrossScheme(
+        refA: refA,
+        refB: refB,
+        lancA: lancA,
+        lancB: lancB,
+        contas: contas,
+        lojaId: lojaId,
+      )) {
+        return FinanceiroDuplicidadeConfianca.segura;
+      }
       final contaA = _resolverConta(contas: contas, lojaId: lojaId, ref: refA);
       final contaB = _resolverConta(contas: contas, lojaId: lojaId, ref: refB);
       if (_mesmaConta(contaA, contaB) &&
-          refA.parcelaNumero == refB.parcelaNumero &&
-          refA.centavos == refB.centavos &&
-          refA.dia == refB.dia &&
-          refA.dia.isNotEmpty) {
+          contaA != null &&
+          _parcelaEfetiva(refA, contaA) == _parcelaEfetiva(refB, contaB!) &&
+          _centavosEfetivos(refA, lancA) == _centavosEfetivos(refB, lancB) &&
+          _diaEfetivo(refA, lancA) == _diaEfetivo(refB, lancB)) {
         return FinanceiroDuplicidadeConfianca.segura;
       }
     }
 
-    if (_camposExatamenteIguais(a, b)) {
+    if (_camposExatamenteIguais(lancA, lancB) &&
+        refA != null &&
+        refB != null &&
+        (refA.isFirestoreDocBaixa ||
+            refA.isStable ||
+            refB.isFirestoreDocBaixa ||
+            refB.isStable)) {
       return FinanceiroDuplicidadeConfianca.exata;
     }
 
-    final clienteA = _clienteNome(a);
-    final clienteB = _clienteNome(b);
+    final clienteA = _clienteNome(lancA);
+    final clienteB = _clienteNome(lancB);
     if (clienteA != null &&
         clienteB != null &&
         _norm(clienteA) == _norm(clienteB) &&
-        valoresParecidos(a.valor, b.valor) &&
-        _mesmoDia(_dataBaixa(a), _dataBaixa(b)) &&
-        _norm(a.formaPagamento) == _norm(b.formaPagamento)) {
+        valoresParecidos(lancA.valor, lancB.valor) &&
+        _mesmoDia(_dataBaixa(lancA), _dataBaixa(lancB)) &&
+        _norm(lancA.formaPagamento) == _norm(lancB.formaPagamento)) {
       return FinanceiroDuplicidadeConfianca.duvida;
     }
 
@@ -219,8 +347,13 @@ abstract final class FinanceiroLancamentoDuplicidadeResolver {
   }) {
     if (!_ehBaixaCrLiquidada(alvo)) return const [];
     final out = <LancamentoFinanceiro>[];
-    for (final l in lancamentos) {
+    for (final l in lancamentosAtivosParaBusca(lancamentos)) {
       if (l.id.trim() == alvo.id.trim() && l.key == alvo.key) continue;
+      if (alvo.lojaId.trim().isNotEmpty &&
+          l.lojaId.trim().isNotEmpty &&
+          alvo.lojaId.trim() != l.lojaId.trim()) {
+        continue;
+      }
       if (!_ehBaixaCrLiquidada(l)) continue;
       if (saoMesmaBaixaContaReceber(
         alvo,
@@ -263,27 +396,65 @@ abstract final class FinanceiroLancamentoDuplicidadeResolver {
     return conta.valorPago >= alvo.valor - 0.02;
   }
 
+  static void _logCardResolver({
+    required LancamentoFinanceiro alvo,
+    required ContaReceberRecebimentoRefParsed? ref,
+    required List<LancamentoFinanceiro> candidatos,
+    required FinanceiroLancamentoDuplicidadeDiagnostico? resultado,
+  }) {
+    final motivos = <String>[];
+    if (candidatos.isEmpty) {
+      motivos.add('sem-candidatos-ativos-na-hive');
+    }
+    if (resultado?.motivoBloqueio != null) {
+      motivos.add(resultado!.motivoBloqueio!);
+    }
+    debugPrint(
+      '[FIN-DUP][CARD-RESOLVER] '
+      'lancamentoId=${alvo.id} '
+      'hiveKey=${alvo.key} '
+      'referenciaExterna=${alvo.referenciaExterna} '
+      'origem=${alvo.origem} '
+      'contaReceberId=${ref?.contaReceberDocId ?? ref?.stableId ?? ref?.hiveKey ?? ''} '
+      'parcela=${ref?.parcelaNumero ?? ''} '
+      'valorCentavos=${ref != null && ref.centavos > 0 ? ref.centavos : _centavosFromLancamento(alvo)} '
+      'dataBaixa=${_diaEfetivo(ref ?? const ContaReceberRecebimentoRefParsed(), alvo)} '
+      'candidatosEncontrados=${candidatos.length} '
+      'motivosDeExclusao=${motivos.join('|')} '
+      'decisao=${resultado?.podeExcluirDuplicado == true ? 'excluir-duplicado' : (resultado?.motivoBloqueio ?? 'sem-duplicata')}',
+    );
+  }
+
   static FinanceiroLancamentoDuplicidadeDiagnostico diagnosticar({
     required LancamentoFinanceiro alvo,
     required Iterable<LancamentoFinanceiro> lancamentos,
     Iterable<ContaReceber> contas = const [],
     String lojaId = '',
   }) {
+    final refAlvoDiag = recebimentoRefFromLancamento(alvo);
     debugPrint(
       '[FIN-DUP][DIAGNOSTICO] id=${alvo.id} key=${alvo.key} '
       'valor=${alvo.valor} ref=${alvo.referenciaExterna}',
     );
 
+    final pool = lancamentosAtivosParaBusca(lancamentos);
     final candidatos = encontrarCandidatos(
       alvo: alvo,
-      lancamentos: lancamentos,
+      lancamentos: pool,
       contas: contas,
       lojaId: lojaId,
     );
 
     if (candidatos.isEmpty) {
       debugPrint('[FIN-DUP][DECISAO] sem-duplicata id=${alvo.id}');
-      return FinanceiroLancamentoDuplicidadeDiagnostico(alvo: alvo);
+      final vazio = FinanceiroLancamentoDuplicidadeDiagnostico(alvo: alvo);
+      _logCardResolver(
+        alvo: alvo,
+        ref: refAlvoDiag,
+        candidatos: candidatos,
+        resultado: vazio,
+      );
+      return vazio;
     }
 
     debugPrint(
@@ -353,7 +524,7 @@ abstract final class FinanceiroLancamentoDuplicidadeResolver {
       'manter=${manter.id} conf=$confianca parcelaOk=$parcelaOk',
     );
 
-    return FinanceiroLancamentoDuplicidadeDiagnostico(
+    final resultado = FinanceiroLancamentoDuplicidadeDiagnostico(
       alvo: alvo,
       candidatos: candidatos,
       lancamentoAManter: manter,
@@ -363,5 +534,12 @@ abstract final class FinanceiroLancamentoDuplicidadeResolver {
       mesmaContaReceber: mesmaCr,
       parcelaBaixadaCorretamente: parcelaOk,
     );
+    _logCardResolver(
+      alvo: alvo,
+      ref: refAlvo,
+      candidatos: candidatos,
+      resultado: resultado,
+    );
+    return resultado;
   }
 }

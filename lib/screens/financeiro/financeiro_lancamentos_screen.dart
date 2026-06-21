@@ -132,6 +132,7 @@ class _FinanceiroLancamentosScreenState
         l,
         contas: _contasReceberCache,
         lojaId: widget.lojaId,
+        lancamentosLoja: _box?.values ?? const [],
       );
 
   bool _ehCrSemVinculoSeguro(FinanceiroLancamentoAcaoInfo acao) =>
@@ -145,6 +146,11 @@ class _FinanceiroLancamentosScreenState
       '[FIN-GESTAO][RESOLVEU-ACAO] id=${l.id} financeiroOnly=${acao.podeExcluirSomenteFinanceiro} '
       'estornar=${acao.podeEstornar} bloqueadoEstorno=${acao.bloqueadoEstorno}',
     );
+    if (acao.mostrarExcluirDuplicado) {
+      debugPrint('[FIN-GESTAO][CR-DUPLICADO] id=${l.id}');
+      await _confirmarExcluirDuplicado(l);
+      return;
+    }
     if (_ehCrSemVinculoSeguro(acao)) {
       debugPrint('[FIN-GESTAO][CR-SEM-VINCULO] id=${l.id}');
       await _excluirSomenteFinanceiro(l);
@@ -181,7 +187,10 @@ class _FinanceiroLancamentosScreenState
     final crSemVinculo = _ehCrSemVinculoSeguro(acao);
     final IconData acaoIcon;
     final Color acaoColor;
-    if (crSemVinculo) {
+    if (acao.mostrarExcluirDuplicado) {
+      acaoIcon = Icons.delete_outline;
+      acaoColor = _error;
+    } else if (crSemVinculo) {
       acaoIcon = Icons.delete_outline;
       acaoColor = _error;
     } else if (acao.mostrarEstornar) {
@@ -452,12 +461,71 @@ class _FinanceiroLancamentosScreenState
     );
   }
 
+  Future<void> _confirmarExcluirDuplicado(LancamentoFinanceiro l) async {
+    debugPrint('[FIN-GESTAO][EXCLUIR-DUP-CLICK] id=${l.id} key=${l.key}');
+    final acao = _acao(l);
+    if (!acao.mostrarExcluirDuplicado) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            acao.motivoBloqueio ??
+                'Não foi possível confirmar duplicidade com segurança.',
+          ),
+          backgroundColor: _error,
+        ),
+      );
+      return;
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Excluir lançamento duplicado?'),
+        content: Text(
+          FinanceiroLancamentoExclusaoService.msgModalExcluirDuplicadoBaixaCr,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: _error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Excluir duplicado'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final r =
+        await FinanceiroLancamentoExclusaoService
+            .excluirLancamentoFinanceiroDuplicadoDeBaixa(
+      lojaId: widget.lojaId,
+      lancamento: l,
+      lancamentosLoja: _box?.values,
+    );
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          r.sucesso
+              ? FinanceiroLancamentoExclusaoService.msgSucessoExcluirDuplicado
+              : (r.mensagemErro ?? 'Não foi possível excluir.'),
+        ),
+        backgroundColor: r.sucesso ? Colors.green : _error,
+      ),
+    );
+  }
+
   Future<void> _estornarBaixa(LancamentoFinanceiro l) async {
     debugPrint('[FIN-GESTAO][ESTORNAR-CLICK] id=${l.id} key=${l.key}');
     final acao = FinanceiroLancamentoExclusaoService.acaoParaUi(
       l,
       contas: _contasReceberCache,
       lojaId: widget.lojaId,
+      lancamentosLoja: _box?.values ?? const [],
     );
     if (acao.bloqueadoEstorno || !acao.podeEstornar) {
       await _excluirSomenteFinanceiro(l);
