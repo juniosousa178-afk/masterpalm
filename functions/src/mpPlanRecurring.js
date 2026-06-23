@@ -16,6 +16,14 @@ export function isRecurringPlanBillingEnabled() {
   return v === "1" || v === "true" || v === "yes";
 }
 
+/** Mascara IDs externos sensíveis em logs (preapproval, etc.). */
+export function maskProviderSubscriptionIdForLog(id) {
+  const s = String(id || "").trim();
+  if (!s) return "—";
+  if (s.length <= 8) return `${s.slice(0, 2)}***`;
+  return `${s.slice(0, 4)}…${s.slice(-4)}`;
+}
+
 async function fetchWithTimeout(url, opts = {}, timeoutMs = 20000) {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
@@ -747,32 +755,85 @@ export async function runCreatePlanSubscription({
 }
 
 export async function runCancelPlanSubscription({ db, request, token }) {
-  if (!isRecurringPlanBillingEnabled()) {
-    throw new HttpsError("failed-precondition", "RECURRING_PLAN_BILLING_DISABLED");
+  console.log(
+    JSON.stringify({
+      tag: "[PLAN-CANCEL][INICIO]",
+      uid: request.auth?.uid || null,
+    }),
+  );
+
+  if (!request.auth?.uid) {
+    console.log(JSON.stringify({ tag: "[PLAN-CANCEL][ERRO]", reason: "unauthenticated" }));
+    throw new HttpsError("unauthenticated", "Faça login.");
   }
-  if (!request.auth?.uid) throw new HttpsError("unauthenticated", "Faça login.");
   const uid = request.auth.uid;
+
+  if (!isRecurringPlanBillingEnabled()) {
+    console.log(
+      JSON.stringify({
+        tag: "[PLAN-CANCEL][BILLING-DESABILITADO-MAS-CANCELAMENTO-PERMITIDO]",
+        uid,
+      }),
+    );
+  }
+
   const ref = db.collection("users").doc(uid);
   const snap = await ref.get();
-  if (!snap.exists) throw new HttpsError("failed-precondition", "Perfil não encontrado.");
+  if (!snap.exists) {
+    console.log(JSON.stringify({ tag: "[PLAN-CANCEL][ERRO]", uid, reason: "profile_not_found" }));
+    throw new HttpsError("failed-precondition", "Perfil não encontrado.");
+  }
   const d = snap.data() || {};
+
+  console.log(JSON.stringify({ tag: "[PLAN-CANCEL][AUTORIZACAO-OK]", uid }));
+
   if (d.manualOverride?.enabled === true) {
     throw new HttpsError("failed-precondition", "Plano com override manual.");
   }
   const subId = String(d.providerSubscriptionId || "").trim();
   if (!subId) {
-    throw new HttpsError("failed-precondition", "Nenhuma assinatura recorrente Mercado Pago ativa.");
+    console.log(JSON.stringify({ tag: "[PLAN-CANCEL][SEM-ASSINATURA]", uid }));
+    throw new HttpsError("failed-precondition", "ASSINATURA_RECORRENTE_NAO_ENCONTRADA");
+  }
+
+  const subIdLog = maskProviderSubscriptionIdForLog(subId);
+  console.log(
+    JSON.stringify({
+      tag: "[PLAN-CANCEL][ASSINATURA-ENCONTRADA]",
+      uid,
+      providerSubscriptionId: subIdLog,
+    }),
+  );
+
+  if (d.cancelAtPeriodEnd === true) {
+    console.log(
+      JSON.stringify({
+        tag: "[PLAN-CANCEL][JÁ-CANCELADA]",
+        uid,
+        providerSubscriptionId: subIdLog,
+      }),
+    );
+    return { ok: true, cancelAtPeriodEnd: true, alreadyCancelled: true };
   }
 
   try {
     await mpPutPreapproval(token, subId, { status: "paused" });
+    console.log(
+      JSON.stringify({
+        tag: "[PLAN-CANCEL][PROVEDOR-OK]",
+        uid,
+        providerSubscriptionId: subIdLog,
+      }),
+    );
   } catch (e) {
     console.warn(
       JSON.stringify({
+        tag: "[PLAN-CANCEL][ERRO]",
+        phase: "mp_pause",
         evt: "plan_v2_cancel_mp_pause_failed",
         uid,
-        providerSubscriptionId: subId,
-        err: String(e?.message || e),
+        providerSubscriptionId: subIdLog,
+        err: String(e?.message || e).slice(0, 200),
       }),
     );
   }
@@ -790,10 +851,11 @@ export async function runCancelPlanSubscription({ db, request, token }) {
 
   console.log(
     JSON.stringify({
+      tag: "[PLAN-CANCEL][FIM]",
       evt: "plan_v2_cancel_subscription",
       uid,
       planId: String(d.currentPlanId || ""),
-      providerSubscriptionId: subId,
+      providerSubscriptionId: subIdLog,
       billingVersion: d.billingVersion ?? 2,
       cancelAtPeriodEnd: true,
       decision: "firestore_ok",

@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart'
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hive/hive.dart';
 import 'package:intl/intl.dart';
+import '../core/plan_renewal_messages.dart';
 import '../services/planos_service.dart';
 import '../services/checkout_service.dart';
 import '../services/remote_config_service.dart';
@@ -121,6 +122,9 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
 
   /// Retorna mensagem de erro amigável
   String _mensagemErroAmigavel(Object e) {
+    final renewalMsg = planRenewalErrorMessage(e);
+    if (renewalMsg != null) return renewalMsg;
+
     final s = e.toString().toLowerCase();
     if (s.contains('token') || s.contains('configurado')) {
       return 'Mercado Pago não está configurado. Peça ao administrador para configurar.';
@@ -152,6 +156,10 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
     final full = e.toString();
     if (full.startsWith('Exception: ')) {
       final inner = full.substring('Exception: '.length).trim();
+      if (isInternalPlanRenewalErrorCode(inner)) {
+        return planRenewalErrorMessage(e) ??
+            'Ocorreu um erro. Tente novamente ou entre em contato com o suporte.';
+      }
       if (inner.length >= 8 &&
           inner.length <= 200 &&
           !inner.contains('stacktrace') &&
@@ -861,9 +869,12 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Text(
-            'Renovação cancelada. O acesso continua até o fim do período já pago.',
+            formatPlanRenewalCancelSuccess(
+              planLabel: _traduzirPlanId(p.planId),
+              periodEnd: p.currentPeriodEnd!,
+            ),
           ),
         ),
       );
