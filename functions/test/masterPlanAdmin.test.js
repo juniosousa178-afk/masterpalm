@@ -25,21 +25,26 @@ function authRequest(email, uid = "caller_uid") {
   };
 }
 
-function makeMockDb({ users = {}, subscriptions = {} } = {}) {
+function makeMockDb({ users = {}, subscriptions = {}, courtesy = {} } = {}) {
   const writes = [];
 
   function docRef(path) {
     const parts = path.split("/");
     const isSub = parts.length === 4;
     const uid = parts[1];
+    const subName = isSub ? parts[2] : null;
     const subId = isSub ? parts[3] : null;
 
     return {
       path,
       async get() {
-        if (isSub) {
+        if (isSub && subName === "subscriptions") {
           const sub = subscriptions[uid]?.[subId];
           return { exists: !!sub, data: () => sub, id: subId };
+        }
+        if (isSub && subName === "manualCourtesyGrant") {
+          const cg = courtesy[uid];
+          return { exists: !!cg, data: () => cg, id: subId };
         }
         const u = users[uid];
         return { exists: !!u, data: () => u, id: uid };
@@ -48,32 +53,41 @@ function makeMockDb({ users = {}, subscriptions = {} } = {}) {
         writes.push({ op: "set", path, data, opts });
       },
       collection(name) {
-        assert.equal(name, "subscriptions");
-        const subMap = subscriptions[uid] || {};
-        const docs = Object.entries(subMap).map(([id, data]) => ({
-          id,
-          data: () => data,
-        }));
-        return {
-          orderBy(field, dir) {
-            return {
-              limit(n) {
-                return {
-                  async get() {
-                    return { docs: docs.slice(0, n) };
-                  },
-                };
-              },
-            };
-          },
-          limit(n) {
-            return {
-              async get() {
-                return { docs: docs.slice(0, n) };
-              },
-            };
-          },
-        };
+        if (name === "subscriptions") {
+          const subMap = subscriptions[uid] || {};
+          const docs = Object.entries(subMap).map(([id, data]) => ({
+            id,
+            data: () => data,
+          }));
+          return {
+            orderBy(field, dir) {
+              return {
+                limit(n) {
+                  return {
+                    async get() {
+                      return { docs: docs.slice(0, n) };
+                    },
+                  };
+                },
+              };
+            },
+            limit(n) {
+              return {
+                async get() {
+                  return { docs: docs.slice(0, n) };
+                },
+              };
+            },
+          };
+        }
+        if (name === "manualCourtesyGrant") {
+          return {
+            doc(grantId) {
+              return docRef(`${path}/manualCourtesyGrant/${grantId}`);
+            },
+          };
+        }
+        throw new Error(`unexpected collection ${name}`);
       },
     };
   }
@@ -128,16 +142,38 @@ function makeMockDb({ users = {}, subscriptions = {} } = {}) {
           };
         },
         where(field, op, value) {
-          const filtered = ids.filter((id) => {
-            const u = users[id];
-            if (field === "cancelAtPeriodEnd") return u.cancelAtPeriodEnd === value;
-            if (field === "currentPlanId") return u.currentPlanId === value;
-            if (field === "manualOverride.enabled") {
-              return u.manualOverride?.enabled === value;
-            }
-            return false;
-          });
+          let filtered = ids;
+          if (field === "email" && op === "==") {
+            filtered = ids.filter(
+              (id) => String(users[id]?.email || "").toLowerCase() === value,
+            );
+          } else {
+            filtered = ids.filter((id) => {
+              const u = users[id];
+              if (field === "cancelAtPeriodEnd") return u.cancelAtPeriodEnd === value;
+              if (field === "currentPlanId") return u.currentPlanId === value;
+              if (field === "manualOverride.enabled") {
+                return u.manualOverride?.enabled === value;
+              }
+              return false;
+            });
+          }
           return {
+            limit(n) {
+              return {
+                async get() {
+                  const picked = filtered.slice(0, n);
+                  return {
+                    docs: picked.map((id) => ({
+                      id,
+                      data: () => users[id],
+                    })),
+                    empty: filtered.length === 0,
+                    size: picked.length,
+                  };
+                },
+              };
+            },
             count() {
               return {
                 async get() {
@@ -149,6 +185,28 @@ function makeMockDb({ users = {}, subscriptions = {} } = {}) {
         },
       };
       return colApi;
+    },
+    collectionGroup(name) {
+      if (name === "manualCourtesyGrant") {
+        const active = Object.values(courtesy).filter((c) => c?.active === true).length;
+        return {
+          where(field, op, value) {
+            assert.equal(field, "active");
+            assert.equal(op, "==");
+            assert.equal(value, true);
+            return {
+              count() {
+                return {
+                  async get() {
+                    return { data: () => ({ count: active }) };
+                  },
+                };
+              },
+            };
+          },
+        };
+      }
+      throw new Error(`unexpected collectionGroup ${name}`);
     },
   };
 
@@ -328,6 +386,94 @@ describe("runMasterGetUserPlanDetails", () => {
     const serialized = JSON.stringify(r);
     assert.ok(!serialized.includes(longId));
     assert.equal(db.writes.length, 0);
+  });
+
+  it("14. busca por targetUid funciona", async () => {
+    const db = makeMockDb({
+      users: {
+        t_uid: {
+          email: "target@test.com",
+          currentPlanId: "free_limited",
+        },
+      },
+    });
+    const r = await runMasterGetUserPlanDetails({
+      db,
+      request: {
+        ...authRequest(MASTER_PLAN_ADMIN_EMAIL),
+        data: { targetUid: "t_uid" },
+      },
+    });
+    assert.equal(r.user.uid, "t_uid");
+  });
+
+  it("15. busca por targetEmail exato funciona", async () => {
+    const db = makeMockDb({
+      users: {
+        t_uid: {
+          email: "Cliente@Loja.COM",
+          currentPlanId: "free_limited",
+        },
+      },
+    });
+    const r = await runMasterGetUserPlanDetails({
+      db,
+      request: {
+        ...authRequest(MASTER_PLAN_ADMIN_EMAIL),
+        data: { targetEmail: "cliente@loja.com" },
+      },
+    });
+    assert.equal(r.user.uid, "t_uid");
+  });
+
+  it("16. busca com targetUid e targetEmail juntos é rejeitada", async () => {
+    const db = makeMockDb({ users: { t_uid: { email: "a@test.com" } } });
+    await assert.rejects(
+      () =>
+        runMasterGetUserPlanDetails({
+          db,
+          request: {
+            ...authRequest(MASTER_PLAN_ADMIN_EMAIL),
+            data: { targetUid: "t_uid", targetEmail: "a@test.com" },
+          },
+        }),
+      (e) => e instanceof HttpsError && e.code === "invalid-argument",
+    );
+  });
+
+  it("17. busca sem targetUid e sem targetEmail é rejeitada", async () => {
+    const db = makeMockDb({ users: {} });
+    await assert.rejects(
+      () =>
+        runMasterGetUserPlanDetails({
+          db,
+          request: authRequest(MASTER_PLAN_ADMIN_EMAIL),
+        }),
+      (e) => e instanceof HttpsError && e.code === "invalid-argument",
+    );
+  });
+
+  it("18. busca por e-mail duplicado retorna failed-precondition", async () => {
+    const db = makeMockDb({
+      users: {
+        u1: { email: "dup@test.com", currentPlanId: "free_limited" },
+        u2: { email: "dup@test.com", currentPlanId: "free_limited" },
+      },
+    });
+    await assert.rejects(
+      () =>
+        runMasterGetUserPlanDetails({
+          db,
+          request: {
+            ...authRequest(MASTER_PLAN_ADMIN_EMAIL),
+            data: { targetEmail: "dup@test.com" },
+          },
+        }),
+      (e) =>
+        e instanceof HttpsError &&
+        e.code === "failed-precondition" &&
+        e.message.includes("mais de um cadastro"),
+    );
   });
 });
 

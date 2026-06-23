@@ -112,7 +112,7 @@ service cloud.firestore {
     // -------- Planos / assinatura: cliente não escala para plano pago nem override manual --------
     function userPlanManualTamperAttempt() {
       return request.resource.data.diff(resource.data).affectedKeys()
-        .hasAny(['manualOverride', 'manual_grant']);
+        .hasAny(['manualOverride', 'manual_grant', 'manualCourtesyGrant']);
     }
 
     function stringPlanLower(s) {
@@ -487,6 +487,16 @@ service cloud.firestore {
           || isAdminOrSystem();
         allow write: if isAdminOrSystem();
       }
+
+      // Cortesia Mestre — somente Cloud Functions (Admin SDK)
+      match /manualCourtesyGrant/{grantId} {
+        allow read, write: if false;
+      }
+    }
+
+    // Auditoria administrativa de planos — somente backend
+    match /admin_plan_actions/{actionId} {
+      allow read, write: if false;
     }
 
     // Usuário é dono da loja (ownerUid)

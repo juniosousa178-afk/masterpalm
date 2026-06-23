@@ -122,6 +122,22 @@ abstract final class PlanMatrix {
     return PlanAccessTier.freeLimited;
   }
 
+  /// Tier a partir do planId canônico (ex.: acesso efetivo via cortesia).
+  static PlanAccessTier tierForPlanId(String? planId) {
+    final p = PlanosService.normalizePlanId(planId);
+    if (p == PlanId.lifetime) return PlanAccessTier.lifetime;
+    if (p == PlanId.proMonthly || p == PlanId.proYearly) {
+      return PlanAccessTier.pro;
+    }
+    if (p == PlanId.intermediateMonthly) return PlanAccessTier.intermediate;
+    if (p == PlanId.basicMonthly) return PlanAccessTier.basic;
+    if (p == PlanId.freeTrial30d || p == PlanId.freeTrial90d) {
+      return PlanAccessTier.trialFull;
+    }
+    if (p == PlanId.freeLimited) return PlanAccessTier.freeLimited;
+    return PlanAccessTier.freeLimited;
+  }
+
   /// Limites por plano canônico (Firestore). Trial pleno usa teto alto.
   static PlanLimitsRow limitsForPlanId(String? planId) {
     final p = PlanosService.normalizePlanId(planId);

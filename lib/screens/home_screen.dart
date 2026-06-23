@@ -2246,6 +2246,18 @@ class _HomeScreenState extends State<HomeScreen>
     // Master Config - apenas root (lista canônica RoleUtils; admin de loja não)
     if (RoleUtils.isRootEmail(_usuario)) {
       startSection('Master', color: _errorColor);
+      if (RoleUtils.isMasterPlanAdminEmail(_usuario)) {
+        currentChildren.add(
+          _buildMenuTile(
+            'Assinaturas e Acessos',
+            Icons.card_membership,
+            '/mestre/assinaturas',
+            color: _errorColor,
+            iconBgColor: _errorColor.withOpacity(0.1),
+            sidebarMode: sidebarMode,
+          ),
+        );
+      }
       currentChildren.add(
         _buildMenuTile(
           'Configurações Master',

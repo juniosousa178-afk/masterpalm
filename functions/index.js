@@ -90,6 +90,11 @@ import {
   runMasterGetPlanAccessSummary,
   runMasterGetUserPlanDetails,
   runMasterListUsersPlanAccess,
+  runMasterGrantCourtesyAccess,
+  runMasterUpdateCourtesyAccess,
+  runMasterRevokeCourtesyAccess,
+  runMasterListPlanAuditActions,
+  runGetMyPlanEffectiveAccess,
 } from "./src/masterPlanAdmin.js";
 import { writeOrderLojaIndex } from "./src/orderLojaIndex.js";
 import {
@@ -3557,6 +3562,81 @@ export const masterGetUserPlanDetails = onCall(
     } catch (e) {
       if (e instanceof HttpsError) throw e;
       console.error("[masterGetUserPlanDetails]", e);
+      throw new HttpsError("internal", String(e?.message || e));
+    }
+  },
+);
+
+/** Mestre: conceder cortesia de acesso (sem alterar billing). */
+export const masterGrantCourtesyAccess = onCall(
+  { region: "southamerica-east1", timeoutSeconds: 60, memory: "256MiB" },
+  async (request) => {
+    try {
+      await checkRateLimit("masterGrantCourtesyAccess", getCallableIdentifier(request));
+      return await runMasterGrantCourtesyAccess({ db, request });
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("[masterGrantCourtesyAccess]", e);
+      throw new HttpsError("internal", String(e?.message || e));
+    }
+  },
+);
+
+/** Mestre: estender cortesia temporária ativa. */
+export const masterUpdateCourtesyAccess = onCall(
+  { region: "southamerica-east1", timeoutSeconds: 60, memory: "256MiB" },
+  async (request) => {
+    try {
+      await checkRateLimit("masterUpdateCourtesyAccess", getCallableIdentifier(request));
+      return await runMasterUpdateCourtesyAccess({ db, request });
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("[masterUpdateCourtesyAccess]", e);
+      throw new HttpsError("internal", String(e?.message || e));
+    }
+  },
+);
+
+/** Mestre: revogar cortesia (soft revoke). */
+export const masterRevokeCourtesyAccess = onCall(
+  { region: "southamerica-east1", timeoutSeconds: 60, memory: "256MiB" },
+  async (request) => {
+    try {
+      await checkRateLimit("masterRevokeCourtesyAccess", getCallableIdentifier(request));
+      return await runMasterRevokeCourtesyAccess({ db, request });
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("[masterRevokeCourtesyAccess]", e);
+      throw new HttpsError("internal", String(e?.message || e));
+    }
+  },
+);
+
+/** Mestre: histórico administrativo de cortesias/planos. */
+export const masterListPlanAuditActions = onCall(
+  { region: "southamerica-east1", timeoutSeconds: 60, memory: "256MiB" },
+  async (request) => {
+    try {
+      await checkRateLimit("masterListPlanAuditActions", getCallableIdentifier(request));
+      return await runMasterListPlanAuditActions({ db, request });
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("[masterListPlanAuditActions]", e);
+      throw new HttpsError("internal", String(e?.message || e));
+    }
+  },
+);
+
+/** Usuário autenticado: acesso efetivo próprio (somente leitura). */
+export const getMyPlanEffectiveAccess = onCall(
+  { region: "southamerica-east1", timeoutSeconds: 30, memory: "256MiB" },
+  async (request) => {
+    try {
+      await checkRateLimit("getMyPlanEffectiveAccess", getCallableIdentifier(request));
+      return await runGetMyPlanEffectiveAccess({ db, request });
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("[getMyPlanEffectiveAccess]", e);
       throw new HttpsError("internal", String(e?.message || e));
     }
   },

@@ -5,6 +5,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 import '../utils/role_utils.dart';
+import '../core/master_plan_access_models.dart';
+import 'master_plan_admin_service.dart';
 
 class PlanId {
   static const String freeTrial30d = 'free_trial_30d';
@@ -306,6 +308,45 @@ class PlanSubscriptionSyncResult {
 
 class PlanosService {
   final _db = FirebaseFirestore.instance;
+  EffectivePlanAccessDto? _cachedEffectiveAccess;
+  DateTime? _cachedEffectiveAccessAt;
+
+  /// Acesso efetivo via Cloud Function — sem elevação local em falha.
+  Future<EffectivePlanAccessDto?> fetchMyEffectivePlanAccess({
+    bool forceRefresh = false,
+  }) async {
+    if (!forceRefresh &&
+        _cachedEffectiveAccess != null &&
+        _cachedEffectiveAccessAt != null &&
+        DateTime.now().difference(_cachedEffectiveAccessAt!) <
+            const Duration(minutes: 2)) {
+      return _cachedEffectiveAccess;
+    }
+    final dto = await MyPlanEffectiveAccessService().fetchMyEffectiveAccess();
+    _cachedEffectiveAccess = dto;
+    _cachedEffectiveAccessAt = DateTime.now();
+    return dto;
+  }
+
+  /// Plano usado em gates/menus — prioriza effectivePlanId do servidor.
+  Future<String?> effectivePlanIdForGates({
+    required String uid,
+    required String email,
+  }) async {
+    if (RoleUtils.isRootEmail(email)) return PlanId.lifetime;
+    final effective = await fetchMyEffectivePlanAccess();
+    final fromServer = effective?.effectivePlanId;
+    if (fromServer != null && fromServer.trim().isNotEmpty) {
+      return normalizePlanId(fromServer);
+    }
+    final contracted = await fetchCurrentPlan(uid: uid, email: email);
+    return contracted?.planId;
+  }
+
+  void clearEffectivePlanCache() {
+    _cachedEffectiveAccess = null;
+    _cachedEffectiveAccessAt = null;
+  }
 
   /// Regra única: admin pode usar o app (Home) sem ser redirecionado a Planos.
   /// Alinha Splash, Home e [LicenseManager] — não duplicar lógica em outro lugar.

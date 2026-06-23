@@ -103,6 +103,7 @@ import 'screens/fretes_cupons_screen.dart';
 import 'screens/admin_sync_screen.dart';
 import 'screens/admin_usuarios_screen.dart';
 import 'screens/master_login_screen.dart';
+import 'screens/mestre/master_plan_access_screen.dart';
 import 'screens/mp_oauth_callback_screen.dart';
 import 'screens/master_config_screen.dart';
 import 'screens/catalog_payment_support_screen.dart';
@@ -4345,6 +4346,7 @@ class MyApp extends StatelessWidget {
               '/plano': (_) => _authRoute(const PlanoScreen()),
               '/planos': (_) => _authRoute(const PlanosScreen()),
               '/admin_usuarios': (_) => const AdminUsuariosScreen(),
+              '/mestre/assinaturas': (_) => const MasterPlanAccessScreen(),
               '/master_login': (_) => const MasterLoginScreen(),
               '/master_config': (_) => const MasterConfigScreen(),
               '/catalog_payment_support': (ctx) => CatalogPaymentSupportScreen(

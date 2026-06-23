@@ -41,6 +41,30 @@ export function isKnownPlanId(planId) {
   return KNOWN_PLAN_IDS.has(n) || n === "pro_monthly" || n === "pro_yearly";
 }
 
+/** Planos que podem ser concedidos via cortesia Mestre. */
+export const GRANTABLE_COURTESY_PLAN_IDS = Object.freeze([
+  "basic_monthly",
+  "intermediate_monthly",
+  "pro_monthly",
+  "pro_yearly",
+  "lifetime",
+  "free_trial_30d",
+  "free_trial_90d",
+]);
+
+export function isGrantableCourtesyPlanId(planId) {
+  return GRANTABLE_COURTESY_PLAN_IDS.includes(normalizePlanId(planId));
+}
+
+/** Bloqueio administrativo grave — cortesia não ultrapassa. */
+export function isAdministrativeHardBlock(userData) {
+  const d = userData && typeof userData === "object" ? userData : {};
+  if (d.adminAccessBlocked === true) return true;
+  if (String(d.status || "").toLowerCase() === "blocked") return true;
+  const br = String(d.blocked_reason || "").trim();
+  return br.toLowerCase().startsWith("admin:");
+}
+
 /** @param {unknown} v */
 export function toDateAny(v) {
   if (v == null) return null;
@@ -276,7 +300,20 @@ export function resolveEffectivePlanAccess({
     blockedReason,
   };
 
-  // 1. Root lifetime
+  // 1. Bloqueio administrativo grave
+  if (isAdministrativeHardBlock(data)) {
+    return {
+      ...base,
+      effectivePlanId: "free_limited",
+      accessSource: "blocked",
+      effectiveStatus: "blocked",
+      daysRemaining: 0,
+      nextDowngradeAt: null,
+      courtesy: emptyCourtesy(),
+    };
+  }
+
+  // 2. Root lifetime
   if (isRootAccountEmail(em)) {
     return {
       ...base,
@@ -290,7 +327,7 @@ export function resolveEffectivePlanAccess({
     };
   }
 
-  // 2. Cortesia manual ativa (futuro manualCourtesyGrant — somente quando fornecida)
+  // 3. Cortesia manual ativa (manualCourtesyGrant — somente quando fornecida)
   if (courtesy.active) {
     return {
       ...base,
@@ -306,7 +343,7 @@ export function resolveEffectivePlanAccess({
     };
   }
 
-  // 3. manual_grant legado
+  // 4. manual_grant legado
   const mg = data.manual_grant;
   if (isManualGrantActive(mg, now)) {
     const mgp = manualGrantPlanId(mg, data);
@@ -325,7 +362,7 @@ export function resolveEffectivePlanAccess({
     }
   }
 
-  // 4. manualOverride legado
+  // 5. manualOverride legado
   const mo = data.manualOverride;
   const moPlan = manualOverridePlanId(mo);
   if (moPlan) {
@@ -347,7 +384,7 @@ export function resolveEffectivePlanAccess({
     };
   }
 
-  // 5–6. Assinatura paga ativa (inclui cancelAtPeriodEnd com período futuro)
+  // 6–7. Assinatura paga ativa (inclui cancelAtPeriodEnd com período futuro)
   if (isPaidPeriodActive(contractedPlanId, renewAt, now)) {
     const scheduled = cancelAtPeriodEnd === true;
     return {
@@ -380,7 +417,7 @@ export function resolveEffectivePlanAccess({
     };
   }
 
-  // 7. Trial ativo
+  // 8. Trial ativo
   if (trialActive) {
     return {
       ...base,
@@ -391,7 +428,7 @@ export function resolveEffectivePlanAccess({
     };
   }
 
-  // 8. free_limited
+  // 9. free_limited
   if (contractedPlanId === "free_limited") {
     return {
       ...base,

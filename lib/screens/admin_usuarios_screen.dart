@@ -532,6 +532,7 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
     return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
   }
 
+  /// Libera plano vitalício (legado). Novas cortesias: usar Mestre > Assinaturas e Acessos.
   Future<void> _liberarPlanoVitalicio(String email) async {
     final confirm = await showDialog<bool>(
       context: context,

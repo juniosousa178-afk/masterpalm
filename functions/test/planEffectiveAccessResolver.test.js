@@ -201,6 +201,44 @@ describe("resolveEffectivePlanAccess — precedência", () => {
     assert.equal(r.trial.active, true);
   });
 
+  it("9. courtesy permanente válida eleva plano", () => {
+    const r = resolveEffectivePlanAccess({
+      uid: "u_perm",
+      email: "cliente@test.com",
+      userData: baseUser({ currentPlanId: "free_limited" }),
+      courtesyGrant: {
+        active: true,
+        planId: "pro_monthly",
+        type: "permanent",
+        expiresAt: null,
+        reason: "Parceria",
+      },
+    });
+    assert.equal(r.accessSource, "manual_courtesy");
+    assert.equal(r.effectivePlanId, "pro_monthly");
+    assert.equal(r.courtesy.permanent, true);
+  });
+
+  it("10. blocked_reason administrativo não é ultrapassado por cortesia", () => {
+    const r = resolveEffectivePlanAccess({
+      uid: "u_block",
+      email: "cliente@test.com",
+      userData: baseUser({
+        status: "blocked",
+        blocked_reason: "admin: conta suspensa",
+        currentPlanId: "free_limited",
+      }),
+      courtesyGrant: {
+        active: true,
+        planId: "pro_monthly",
+        type: "permanent",
+      },
+    });
+    assert.equal(r.accessSource, "blocked");
+    assert.equal(r.effectiveStatus, "blocked");
+    assert.notEqual(r.effectivePlanId, "pro_monthly");
+  });
+
   it("16. planId inválido em manualOverride não eleva acesso", () => {
     const r = resolveEffectivePlanAccess({
       uid: "u11",

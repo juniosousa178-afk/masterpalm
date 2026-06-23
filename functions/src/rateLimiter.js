@@ -66,6 +66,11 @@ export const RATE_LIMITS = {
   masterGetPlanAccessSummary: { maxPerMin: 15, windowMs: 60_000 },
   masterListUsersPlanAccess: { maxPerMin: 30, windowMs: 60_000 },
   masterGetUserPlanDetails: { maxPerMin: 40, windowMs: 60_000 },
+  masterGrantCourtesyAccess: { maxPerMin: 20, windowMs: 60_000 },
+  masterUpdateCourtesyAccess: { maxPerMin: 20, windowMs: 60_000 },
+  masterRevokeCourtesyAccess: { maxPerMin: 20, windowMs: 60_000 },
+  masterListPlanAuditActions: { maxPerMin: 30, windowMs: 60_000 },
+  getMyPlanEffectiveAccess: { maxPerMin: 60, windowMs: 60_000 },
 
   // Cliente catálogo: perfil, carrinho, favoritos (uso legítimo frequente)
   getClienteCatalog: { maxPerMin: 60, windowMs: 60_000 },

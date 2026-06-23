@@ -60,6 +60,7 @@
     "xml2js": "^0.6.2"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.1",
     "@types/node": "^24.10.0",
     "firebase-tools": "^15.9.0",
     "typescript": "^5.9.3"

@@ -79,6 +79,14 @@ class RoleUtils {
     return rootEmails.contains(email.trim().toLowerCase());
   }
 
+  /// Único e-mail da administração Mestre de planos (P1).
+  static const String masterPlanAdminEmail = 'masterpalm26@gmail.com';
+
+  static bool isMasterPlanAdminEmail(String? email) {
+    if (email == null || email.isEmpty) return false;
+    return email.trim().toLowerCase() == masterPlanAdminEmail;
+  }
+
   /// Resolve o role correto para um usuário
   /// ROOT emails SEMPRE retornam programador
   static UserRole resolveRole({

@@ -7,6 +7,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hive/hive.dart';
 import 'package:intl/intl.dart';
 import '../core/plan_renewal_messages.dart';
+import '../core/master_plan_access_models.dart';
+import '../core/master_plan_admin_messages.dart';
 import '../services/planos_service.dart';
 import '../services/checkout_service.dart';
 import '../services/remote_config_service.dart';
@@ -53,6 +55,7 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
   bool _supportConsultLoading = false;
   String? _supportConsultResult;
   PlanInfo? _plan;
+  EffectivePlanAccessDto? _effectiveAccess;
   /// Checkout de planos usa Cloud Function + Secret Manager (token MP não fica no app).
   bool _checkoutPlanoServidor = true;
 
@@ -95,6 +98,15 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
   String _fmtBRL(double v) =>
       NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$', decimalDigits: 2)
           .format(v);
+
+  String _formatIsoDate(String iso) {
+    try {
+      final d = DateTime.parse(iso);
+      return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+    } catch (_) {
+      return iso;
+    }
+  }
 
   /// Traduz planId para português
   String _traduzirPlanId(String planId) {
@@ -241,6 +253,8 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
       final email = (user.email ?? '').trim().toLowerCase();
 
       var p = await _svc.fetchCurrentPlan(uid: user.uid, email: email);
+      _svc.clearEffectivePlanCache();
+      final effective = await _svc.fetchMyEffectivePlanAccess(forceRefresh: true);
       if (p != null) {
         try {
           await _svc.reconcilePlanStateWithBackend();
@@ -255,6 +269,7 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
       if (mounted) {
         setState(() {
           _plan = p;
+          _effectiveAccess = effective;
           _checkoutPlanoServidor = true;
         });
       }
@@ -753,6 +768,31 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
               'Seu status: $statusLabel',
               style: const TextStyle(color: Colors.white70, fontSize: 16),
             ),
+            if (_effectiveAccess != null &&
+                _effectiveAccess!.effectivePlanId != null &&
+                _effectiveAccess!.effectivePlanId != plan?.planId) ...[
+              const SizedBox(height: 6),
+              Text(
+                'Plano contratado: ${masterPlanIdLabel(plan?.planId)}',
+                style: const TextStyle(color: Colors.white60, fontSize: 14),
+              ),
+              Text(
+                'Acesso atual: ${masterPlanIdLabel(_effectiveAccess!.effectivePlanId)} por ${masterPlanAccessSourceLabel(_effectiveAccess!.accessSource).toLowerCase()}',
+                style: const TextStyle(color: _fluorGreen, fontSize: 14, fontWeight: FontWeight.w600),
+              ),
+              if (_effectiveAccess!.hasActiveCourtesy &&
+                  _effectiveAccess!.courtesy.expiresAt != null)
+                Text(
+                  'Validade da cortesia: até ${_formatIsoDate(_effectiveAccess!.courtesy.expiresAt!)}',
+                  style: const TextStyle(color: Colors.white70, fontSize: 13),
+                ),
+              if (_effectiveAccess!.hasActiveCourtesy &&
+                  _effectiveAccess!.courtesy.permanent)
+                const Text(
+                  'Cortesia permanente ativa — não há pagamento vinculado.',
+                  style: TextStyle(color: Colors.white70, fontSize: 13),
+                ),
+            ],
             if (expiresText != null)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
