@@ -62,6 +62,11 @@ export const RATE_LIMITS = {
   /** Suporte root: forense leve catálogo MP (somente leitura) */
   getMpCatalogPaymentSupportSnapshot: { maxPerMin: 25, windowMs: 60_000 },
 
+  /** Mestre planos: somente leitura (masterpalm26@gmail.com) */
+  masterGetPlanAccessSummary: { maxPerMin: 15, windowMs: 60_000 },
+  masterListUsersPlanAccess: { maxPerMin: 30, windowMs: 60_000 },
+  masterGetUserPlanDetails: { maxPerMin: 40, windowMs: 60_000 },
+
   // Cliente catálogo: perfil, carrinho, favoritos (uso legítimo frequente)
   getClienteCatalog: { maxPerMin: 60, windowMs: 60_000 },
   solicitarRedefinicaoSenhaCatalogo: { maxPerMin: 5, windowMs: 60_000 },

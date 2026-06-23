@@ -86,6 +86,11 @@ import {
   runSyncPlanSubscription,
 } from "./src/mpPlanRecurring.js";
 import { runGetPlanBillingSnapshotForSupport } from "./src/planSupportRead.js";
+import {
+  runMasterGetPlanAccessSummary,
+  runMasterGetUserPlanDetails,
+  runMasterListUsersPlanAccess,
+} from "./src/masterPlanAdmin.js";
 import { writeOrderLojaIndex } from "./src/orderLojaIndex.js";
 import {
   sugerirDescricaoProduto as aiSugerirDescricao,
@@ -3510,6 +3515,51 @@ export const getPlanBillingSnapshotForSupport = onCall(
       throw new HttpsError("internal", String(e?.message || e));
     }
   }
+);
+
+/** Mestre (masterpalm26@gmail.com): resumo agregado de planos — somente leitura. */
+export const masterGetPlanAccessSummary = onCall(
+  { region: "southamerica-east1", timeoutSeconds: 60, memory: "256MiB" },
+  async (request) => {
+    try {
+      await checkRateLimit("masterGetPlanAccessSummary", getCallableIdentifier(request));
+      return await runMasterGetPlanAccessSummary({ db, request });
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("[masterGetPlanAccessSummary]", e);
+      throw new HttpsError("internal", String(e?.message || e));
+    }
+  },
+);
+
+/** Mestre: lista paginada users/{uid} com acesso efetivo — somente leitura. */
+export const masterListUsersPlanAccess = onCall(
+  { region: "southamerica-east1", timeoutSeconds: 60, memory: "256MiB" },
+  async (request) => {
+    try {
+      await checkRateLimit("masterListUsersPlanAccess", getCallableIdentifier(request));
+      return await runMasterListUsersPlanAccess({ db, request });
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("[masterListUsersPlanAccess]", e);
+      throw new HttpsError("internal", String(e?.message || e));
+    }
+  },
+);
+
+/** Mestre: detalhe de plano + subscriptions de um usuário — somente leitura. */
+export const masterGetUserPlanDetails = onCall(
+  { region: "southamerica-east1", timeoutSeconds: 60, memory: "256MiB" },
+  async (request) => {
+    try {
+      await checkRateLimit("masterGetUserPlanDetails", getCallableIdentifier(request));
+      return await runMasterGetUserPlanDetails({ db, request });
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("[masterGetUserPlanDetails]", e);
+      throw new HttpsError("internal", String(e?.message || e));
+    }
+  },
 );
 
 /** Root: forense operacional leve do pagamento catálogo MP (Firestore persistido; sem logs GCP). */
