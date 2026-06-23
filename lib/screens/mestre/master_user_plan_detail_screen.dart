@@ -22,6 +22,7 @@ class _MasterUserPlanDetailScreenState extends State<MasterUserPlanDetailScreen>
   bool _loading = true;
   bool _actionLoading = false;
   String? _error;
+  String? _auditWarning;
   Map<String, dynamic>? _details;
   List<MasterPlanAuditAction> _audit = [];
 
@@ -53,21 +54,38 @@ class _MasterUserPlanDetailScreenState extends State<MasterUserPlanDetailScreen>
     setState(() {
       _loading = true;
       _error = null;
+      _auditWarning = null;
     });
     try {
-      final details =
-          await _service.fetchUserDetails(targetUid: widget.targetUid);
-      final audit = await _service.listAuditActions(targetUid: widget.targetUid);
+      final details = await _service.fetchUserDetails(
+        targetUid: widget.targetUid,
+      );
+      if (!mounted) return;
+      setState(() => _details = details);
+    } catch (e) {
+      debugPrint('[MasterPlanDetail] load details failed $e');
       if (!mounted) return;
       setState(() {
-        _details = details;
-        _audit = audit;
+        _details = null;
+        _error = masterPlanUserDetailErrorMessage(e);
       });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _error = e.toString());
+      return;
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+
+    try {
+      final audit = await _service.listAuditActions(targetUid: widget.targetUid);
+      if (!mounted) return;
+      setState(() => _audit = audit);
+    } catch (e, st) {
+      debugPrint('[MasterPlanDetail] audit load failed $e $st');
+      if (!mounted) return;
+      setState(() {
+        _audit = [];
+        _auditWarning =
+            'Não foi possível carregar o histórico administrativo deste usuário.';
+      });
     }
   }
 
@@ -346,7 +364,25 @@ class _MasterUserPlanDetailScreenState extends State<MasterUserPlanDetailScreen>
           : _loading
               ? const Center(child: CircularProgressIndicator())
               : _error != null
-                  ? Center(child: Text(_error!))
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              _error!,
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 16),
+                            FilledButton(
+                              onPressed: _loading ? null : _load,
+                              child: const Text('Tentar novamente'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
                   : ListView(
                       padding: const EdgeInsets.all(16),
                       children: [
@@ -405,6 +441,16 @@ class _MasterUserPlanDetailScreenState extends State<MasterUserPlanDetailScreen>
                         }),
                         const Divider(),
                         const Text('Histórico administrativo', style: TextStyle(fontWeight: FontWeight.bold)),
+                        if (_auditWarning != null)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Text(
+                              _auditWarning!,
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.error,
+                              ),
+                            ),
+                          ),
                         ..._audit.map(
                           (a) => ListTile(
                             dense: true,

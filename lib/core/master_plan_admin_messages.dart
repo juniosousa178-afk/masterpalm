@@ -49,6 +49,29 @@ String masterPlanAdminErrorMessage(Object? error) {
   return 'Não foi possível concluir a operação. Tente novamente em instantes.';
 }
 
+/// Mensagens da tela de detalhe do usuário (Mestre).
+String masterPlanUserDetailErrorMessage(Object? error) {
+  final raw = error?.toString() ?? '';
+  final lower = raw.toLowerCase();
+
+  if (lower.contains('permission-denied') ||
+      lower.contains('acesso restrito')) {
+    return 'Acesso restrito à administração Mestre.';
+  }
+  if (lower.contains('not-found')) {
+    return 'Não encontramos este usuário. Atualize a lista e tente novamente.';
+  }
+  if (lower.contains('failed-precondition') &&
+      (lower.contains('mais de um cadastro') || lower.contains('consulte pelo uid'))) {
+    return 'Há mais de um cadastro com este e-mail. Consulte pelo UID.';
+  }
+  if (lower.contains('invalid-argument')) {
+    return 'Não foi possível identificar o usuário selecionado. Atualize a lista e tente novamente.';
+  }
+
+  return 'Não foi possível carregar os detalhes deste usuário. Tente novamente em instantes.';
+}
+
 String masterPlanAccessSourceLabel(String? source) {
   switch (source) {
     case 'paid_subscription':

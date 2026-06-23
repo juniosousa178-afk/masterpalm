@@ -201,10 +201,7 @@ async function resolveTargetUidByEmail(db, email) {
 
 /** Exige exatamente um entre targetUid e targetEmail. */
 export async function resolveMasterPlanTargetExclusive(db, data) {
-  const targetUid = String(data?.targetUid || "").trim();
-  const targetEmail = normalizeEmail(data?.targetEmail || "");
-  const hasUid = !!targetUid;
-  const hasEmail = !!targetEmail;
+  const { targetUid, targetEmail, hasUid, hasEmail } = normalizeMasterPlanTargetInput(data);
   if (hasUid && hasEmail) {
     throw new HttpsError(
       "invalid-argument",
@@ -280,6 +277,47 @@ function sanitizeResultPayload(payload) {
     clone.planAccess = sanitizePlanAccessForSelf(clone.planAccess);
   }
   return clone;
+}
+
+/** Remove undefined e valores não serializáveis para Callable. */
+export function sanitizeCallableResponse(value) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  }
+  if (typeof value?.toDate === "function") {
+    const d = toDateAny(value);
+    return d ? d.toISOString() : null;
+  }
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => sanitizeCallableResponse(item))
+      .filter((item) => item !== undefined);
+  }
+  if (typeof value === "object") {
+    const out = {};
+    for (const [key, raw] of Object.entries(value)) {
+      if (raw === undefined) continue;
+      const sanitized = sanitizeCallableResponse(raw);
+      if (sanitized !== undefined) out[key] = sanitized;
+    }
+    return out;
+  }
+  if (typeof value === "number" && !Number.isFinite(value)) return null;
+  return value;
+}
+
+/** Normaliza entrada de consulta Mestre — ausente, null ou vazio conta como ausente. */
+export function normalizeMasterPlanTargetInput(data) {
+  const targetUid = String(data?.targetUid ?? "").trim();
+  const targetEmail = normalizeEmail(data?.targetEmail ?? "");
+  return {
+    targetUid,
+    targetEmail,
+    hasUid: !!targetUid,
+    hasEmail: !!targetEmail,
+  };
 }
 
 function mapSubscriptionDoc(doc) {
@@ -400,7 +438,7 @@ export async function runMasterGetUserPlanDetails({ db, request }) {
     subscriptions = subsSnap.docs.map(mapSubscriptionDoc);
   }
 
-  return {
+  return sanitizeCallableResponse({
     ok: true,
     user: {
       uid: targetUid,
@@ -409,9 +447,9 @@ export async function runMasterGetUserPlanDetails({ db, request }) {
       nome: nome || null,
       createdAt: createdAt ? createdAt.toISOString() : null,
     },
-    planAccess,
-    subscriptions,
-  };
+    planAccess: sanitizeCallableResponse(planAccess),
+    subscriptions: subscriptions.map((s) => sanitizeCallableResponse(s)),
+  });
 }
 
 async function safeCount(query) {
@@ -535,7 +573,7 @@ function assertTargetNotActor(actorUid, targetUid) {
 
 function mapAuditActionDoc(doc) {
   const d = doc.data?.() ?? doc.data ?? {};
-  return {
+  return sanitizeCallableResponse({
     actionId: doc.id,
     actionType: d.actionType != null ? String(d.actionType) : null,
     actorUid: d.actorUid != null ? String(d.actorUid) : null,
@@ -548,7 +586,7 @@ function mapAuditActionDoc(doc) {
     afterSnapshot: d.afterSnapshot ?? null,
     createdAt: toDateAny(d.createdAt)?.toISOString() ?? null,
     source: d.source != null ? String(d.source) : null,
-  };
+  });
 }
 
 /**
@@ -943,29 +981,38 @@ export async function runMasterListPlanAuditActions({ db, request }) {
   const pageSize = clampPageSize(data.pageSize);
   const pageToken = String(data.pageToken || "").trim();
 
-  let q = db
+  // Consulta simples por targetUid (sem orderBy) — evita índice composto em produção.
+  const snap = await db
     .collection("admin_plan_actions")
     .where("targetUid", "==", targetUid)
-    .orderBy("createdAt", "desc")
-    .limit(pageSize + 1);
+    .limit(500)
+    .get();
+
+  const sorted = [...snap.docs].sort((a, b) => {
+    const ta = toDateAny(a.data()?.createdAt)?.getTime() ?? 0;
+    const tb = toDateAny(b.data()?.createdAt)?.getTime() ?? 0;
+    return tb - ta;
+  });
+
+  let startIdx = 0;
   if (pageToken) {
-    q = q.startAfter(pageToken);
+    const tokenIdx = sorted.findIndex((doc) => doc.id === pageToken);
+    startIdx = tokenIdx >= 0 ? tokenIdx + 1 : 0;
   }
 
-  const snap = await q.get();
-  const docs = snap.docs;
-  const hasMore = docs.length > pageSize;
-  const pageDocs = hasMore ? docs.slice(0, pageSize) : docs;
+  const slice = sorted.slice(startIdx, startIdx + pageSize + 1);
+  const hasMore = slice.length > pageSize;
+  const pageDocs = hasMore ? slice.slice(0, pageSize) : slice;
   const actions = pageDocs.map(mapAuditActionDoc);
   const nextPageToken = hasMore ? pageDocs[pageDocs.length - 1].id : null;
 
-  return {
+  return sanitizeCallableResponse({
     ok: true,
     actions,
     pageSize,
     nextPageToken,
     hasMore,
-  };
+  });
 }
 
 /**

@@ -13,7 +13,11 @@ import {
   runMasterGetPlanAccessSummary,
   runMasterGetUserPlanDetails,
   runMasterListUsersPlanAccess,
+  runMasterListPlanAuditActions,
+  normalizeMasterPlanTargetInput,
+  sanitizeCallableResponse,
 } from "../src/masterPlanAdmin.js";
+import { makeMasterPlanMockDb } from "./mockMasterPlanDb.js";
 
 function authRequest(email, uid = "caller_uid") {
   return {
@@ -474,6 +478,168 @@ describe("runMasterGetUserPlanDetails", () => {
         e.code === "failed-precondition" &&
         e.message.includes("mais de um cadastro"),
     );
+  });
+
+  it("4. targetUid com targetEmail vazio funciona por UID", async () => {
+    const db = makeMockDb({
+      users: { t_uid: { email: "a@test.com", currentPlanId: "free_limited" } },
+    });
+    const r = await runMasterGetUserPlanDetails({
+      db,
+      request: {
+        ...authRequest(MASTER_PLAN_ADMIN_EMAIL),
+        data: { targetUid: "t_uid", targetEmail: "" },
+      },
+    });
+    assert.equal(r.user.uid, "t_uid");
+  });
+
+  it("5. targetEmail com targetUid vazio funciona por e-mail", async () => {
+    const db = makeMockDb({
+      users: { t_uid: { email: "solo@test.com", currentPlanId: "free_limited" } },
+    });
+    const r = await runMasterGetUserPlanDetails({
+      db,
+      request: {
+        ...authRequest(MASTER_PLAN_ADMIN_EMAIL),
+        data: { targetUid: "", targetEmail: "solo@test.com" },
+      },
+    });
+    assert.equal(r.user.uid, "t_uid");
+  });
+
+  it("6. ambos vazios retornam invalid-argument", async () => {
+    const db = makeMockDb({ users: {} });
+    await assert.rejects(
+      () =>
+        runMasterGetUserPlanDetails({
+          db,
+          request: {
+            ...authRequest(MASTER_PLAN_ADMIN_EMAIL),
+            data: { targetUid: "", targetEmail: "" },
+          },
+        }),
+      (e) => e instanceof HttpsError && e.code === "invalid-argument",
+    );
+  });
+
+  it("7. usuário legado sem e-mail não quebra", async () => {
+    const db = makeMockDb({
+      users: { legacy_uid: { currentPlanId: "free_limited" } },
+    });
+    const r = await runMasterGetUserPlanDetails({
+      db,
+      request: {
+        ...authRequest(MASTER_PLAN_ADMIN_EMAIL),
+        data: { targetUid: "legacy_uid" },
+      },
+    });
+    assert.equal(r.user.uid, "legacy_uid");
+    assert.equal(r.user.email, null);
+    assert.equal(r.ok, true);
+  });
+
+  it("8. subscriptions com campos ausentes não quebram resposta", async () => {
+    const db = makeMockDb({
+      users: { t_uid: { currentPlanId: "free_limited" } },
+      subscriptions: {
+        t_uid: {
+          sparse: {},
+        },
+      },
+    });
+    const r = await runMasterGetUserPlanDetails({
+      db,
+      request: {
+        ...authRequest(MASTER_PLAN_ADMIN_EMAIL),
+        data: { targetUid: "t_uid" },
+      },
+    });
+    assert.equal(r.subscriptions.length, 1);
+    assert.equal(r.subscriptions[0].planId, null);
+    assert.equal(r.subscriptions[0].status, null);
+  });
+
+  it("9. resposta final não contém undefined", async () => {
+    const db = makeMockDb({
+      users: { t_uid: { currentPlanId: "free_limited" } },
+    });
+    const r = await runMasterGetUserPlanDetails({
+      db,
+      request: {
+        ...authRequest(MASTER_PLAN_ADMIN_EMAIL),
+        data: { targetUid: "t_uid" },
+      },
+    });
+    const serialized = JSON.stringify(r);
+    assert.ok(!serialized.includes("undefined"));
+  });
+});
+
+describe("normalizeMasterPlanTargetInput", () => {
+  it("trata null e vazio como ausente", () => {
+    const a = normalizeMasterPlanTargetInput({ targetUid: null, targetEmail: null });
+    assert.equal(a.hasUid, false);
+    assert.equal(a.hasEmail, false);
+    const b = normalizeMasterPlanTargetInput({ targetUid: "  uid  ", targetEmail: "  " });
+    assert.equal(b.hasUid, true);
+    assert.equal(b.hasEmail, false);
+    assert.equal(b.targetUid, "uid");
+  });
+});
+
+describe("sanitizeCallableResponse", () => {
+  it("remove undefined e serializa Date", () => {
+    const out = sanitizeCallableResponse({
+      ok: true,
+      nested: { keep: 1, drop: undefined, when: new Date("2026-01-01T00:00:00.000Z") },
+    });
+    assert.equal(out.ok, true);
+    assert.equal(out.nested.keep, 1);
+    assert.equal(out.nested.when, "2026-01-01T00:00:00.000Z");
+    assert.equal("drop" in out.nested, false);
+    assert.ok(!JSON.stringify(out).includes("undefined"));
+  });
+});
+
+describe("runMasterListPlanAuditActions", () => {
+  it("lista auditoria sem orderBy composto (ordena em memória)", async () => {
+    const db = makeMasterPlanMockDb({
+      auditActions: {
+        a_old: {
+          actionType: "grant_courtesy",
+          targetUid: "t1",
+          createdAt: new Date("2026-06-01"),
+        },
+        a_new: {
+          actionType: "revoke_courtesy",
+          targetUid: "t1",
+          createdAt: new Date("2026-06-10"),
+        },
+      },
+    });
+    const r = await runMasterListPlanAuditActions({
+      db,
+      request: {
+        ...authRequest(MASTER_PLAN_ADMIN_EMAIL),
+        data: { targetUid: "t1", pageSize: 10 },
+      },
+    });
+    assert.equal(r.actions.length, 2);
+    assert.equal(r.actions[0].actionType, "revoke_courtesy");
+    assert.equal(db.writes.length, 0);
+  });
+
+  it("não escreve no Firestore", async () => {
+    const db = makeMasterPlanMockDb({ auditActions: {} });
+    await runMasterListPlanAuditActions({
+      db,
+      request: {
+        ...authRequest(MASTER_PLAN_ADMIN_EMAIL),
+        data: { targetUid: "t1" },
+      },
+    });
+    assert.equal(db.writes.length, 0);
   });
 });
 

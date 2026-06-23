@@ -39,4 +39,52 @@ void main() {
       expect(msg, 'Há mais de um cadastro com este e-mail. Consulte pelo UID.');
     });
   });
+
+  group('MasterPlanAdminService.buildUserLookupPayload', () {
+    test('envia somente targetUid quando UID informado', () {
+      final payload = MasterPlanAdminService.buildUserLookupPayload(
+        targetUid: 'abc123',
+      );
+      expect(payload, {'targetUid': 'abc123'});
+      expect(payload.containsKey('targetEmail'), isFalse);
+    });
+
+    test('envia somente targetEmail na busca por e-mail', () {
+      final payload = MasterPlanAdminService.buildUserLookupPayload(
+        targetEmail: 'Cliente@Loja.COM',
+      );
+      expect(payload, {'targetEmail': 'cliente@loja.com'});
+      expect(payload.containsKey('targetUid'), isFalse);
+    });
+
+    test('rejeita UID e e-mail juntos', () {
+      expect(
+        () => MasterPlanAdminService.buildUserLookupPayload(
+          targetUid: 'u1',
+          targetEmail: 'a@test.com',
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('rejeita ambos vazios', () {
+      expect(
+        () => MasterPlanAdminService.buildUserLookupPayload(),
+        throwsArgumentError,
+      );
+    });
+  });
+
+  group('masterPlanUserDetailErrorMessage', () {
+    test('not-found mostra mensagem amigável', () {
+      final msg = masterPlanUserDetailErrorMessage(Exception('not-found'));
+      expect(msg, contains('Não encontramos este usuário'));
+    });
+
+    test('erro genérico não expõe código interno', () {
+      final msg = masterPlanUserDetailErrorMessage(Exception('internal'));
+      expect(msg.toLowerCase(), isNot(contains('internal')));
+      expect(msg, contains('detalhes deste usuário'));
+    });
+  });
 }

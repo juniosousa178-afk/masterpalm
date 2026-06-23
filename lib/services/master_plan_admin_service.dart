@@ -39,6 +39,25 @@ class MasterPlanAdminService {
     return const {};
   }
 
+  /// Monta payload exclusivo: somente targetUid ou targetEmail (nunca ambos).
+  static Map<String, dynamic> buildUserLookupPayload({
+    String? targetUid,
+    String? targetEmail,
+  }) {
+    final normalizedUid = targetUid?.trim() ?? '';
+    final normalizedEmail = targetEmail?.trim().toLowerCase() ?? '';
+
+    if (normalizedUid.isNotEmpty && normalizedEmail.isEmpty) {
+      return {'targetUid': normalizedUid};
+    }
+    if (normalizedUid.isEmpty && normalizedEmail.isNotEmpty) {
+      return {'targetEmail': normalizedEmail};
+    }
+    throw ArgumentError(
+      'Informe somente UID ou e-mail exato para consultar o usuário.',
+    );
+  }
+
   Future<MasterPlanAccessSummary> fetchSummary() async {
     try {
       final map = _asMap(await _callFunction('masterGetPlanAccessSummary', {}));
@@ -84,14 +103,17 @@ class MasterPlanAdminService {
     String? targetEmail,
   }) async {
     try {
-      return _asMap(await _callFunction('masterGetUserPlanDetails', {
-        if (targetUid != null && targetUid.isNotEmpty) 'targetUid': targetUid,
-        if (targetEmail != null && targetEmail.isNotEmpty)
-          'targetEmail': targetEmail.trim().toLowerCase(),
-      }));
+      final payload = buildUserLookupPayload(
+        targetUid: targetUid,
+        targetEmail: targetEmail,
+      );
+      return _asMap(await _callFunction('masterGetUserPlanDetails', payload));
     } catch (e, st) {
       debugPrint('[MasterPlanAdmin] fetchUserDetails $e $st');
-      throw masterPlanAdminErrorMessage(e);
+      if (e is ArgumentError) {
+        throw masterPlanUserDetailErrorMessage(e);
+      }
+      throw masterPlanUserDetailErrorMessage(e);
     }
   }
 

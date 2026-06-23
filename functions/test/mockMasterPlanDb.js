@@ -208,6 +208,19 @@ export function makeMasterPlanMockDb({
               (id) => state.auditActions[id]?.[field] === value,
             );
             return {
+              limit(n) {
+                return {
+                  async get() {
+                    const picked = filtered.slice(0, n);
+                    return {
+                      docs: picked.map((id) => ({
+                        id,
+                        data: () => state.auditActions[id],
+                      })),
+                    };
+                  },
+                };
+              },
               orderBy(field2, dir) {
                 assert.equal(field2, "createdAt");
                 return {
