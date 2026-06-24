@@ -54,6 +54,7 @@ import {
   resolveCatalogPixPayerForMp,
 } from "./src/mpCatalogPayerBrasil.js";
 import { stripPaymentsSecretsForPublic } from "./src/paymentsPublicStrip.js";
+import { createSuperFreteHandlers } from "./src/superFreteIntegration.js";
 import { resolveStrictLojaMpAccessToken } from "./src/mpLojaTokenPolicy.js";
 import {
   tryBeginMpCatalogPaymentOrReuse,
@@ -1442,108 +1443,52 @@ export const calcularFrenet = onCall(
 );
 
 // ----------------------------------------------------------------------------
-// SuperFrete (API v8) - proxy para web (evita CORS)
+// SuperFrete — integração segura (token em fretes_secrets, proxy server-side)
 // ----------------------------------------------------------------------------
-const SUPERFRETE_USER_AGENT = "MasterPalm (contato@mastepalm.com.br)";
+function bindSuperFreteHandler(handlerName) {
+  return async (request) => {
+    const handlers = createSuperFreteHandlers({
+      db,
+      canManageStoreConfigServerSide,
+      checkRateLimit,
+      getCallableIdentifier,
+      fetchWithTimeout,
+      collectionLojas: COLLECTION_LOJAS,
+      request,
+    });
+    return handlers[handlerName]();
+  };
+}
 
+export const superFreteTestConnection = onCall(
+  { timeoutSeconds: 20, memory: "256MiB" },
+  bindSuperFreteHandler("superFreteTestConnection"),
+);
+
+export const superFreteSaveConfig = onCall(
+  { timeoutSeconds: 30, memory: "256MiB" },
+  bindSuperFreteHandler("superFreteSaveConfig"),
+);
+
+export const superFreteGetConfigStatus = onCall(
+  { timeoutSeconds: 15, memory: "256MiB" },
+  bindSuperFreteHandler("superFreteGetConfigStatus"),
+);
+
+export const superFreteQuote = onCall(
+  { timeoutSeconds: 25, memory: "256MiB" },
+  bindSuperFreteHandler("superFreteQuote"),
+);
+
+export const superFreteCreateCheckout = onCall(
+  { timeoutSeconds: 30, memory: "256MiB" },
+  bindSuperFreteHandler("superFreteCreateCheckout"),
+);
+
+/** @deprecated Wrapper seguro — use superFreteQuote. Rejeita token no payload. */
 export const calcularSuperFrete = onCall(
   { timeoutSeconds: 25, memory: "256MiB" },
-  async (request) => {
-  try {
-    const identifier = getCallableIdentifier(request);
-    await checkRateLimit("calcularSuperFrete", identifier);
-
-    const {
-      token,
-      cepOrigem,
-      cepDestino,
-      peso,
-      altura,
-      largura,
-      comprimento,
-      valorDeclarado,
-    } = request.data || {};
-
-    if (!token || !cepOrigem || !cepDestino || peso == null) {
-      throw new HttpsError(
-        "invalid-argument",
-        "Parâmetros insuficientes para calcular frete via SuperFrete."
-      );
-    }
-
-    const url = "https://api.superfrete.com/api/v8/calculator";
-
-    const alt = Math.max(1, Math.round(Number(altura) || 10));
-    const lar = Math.max(10, Math.round(Number(largura) || 20));
-    const comp = Math.max(15, Math.round(Number(comprimento) || 30));
-    const pesoKg = Math.max(0.3, Number(peso) / 1000);
-
-    const payload = {
-      from: { postal_code: String(cepOrigem).replace(/\D/g, "") },
-      to: { postal_code: String(cepDestino).replace(/\D/g, "") },
-      package: {
-        height: alt,
-        width: lar,
-        length: comp,
-        weight: pesoKg,
-      },
-      options: {
-        insurance_value: Number(valorDeclarado) || 10,
-        receipt: false,
-        own_hand: false,
-      },
-    };
-
-    const resp = await fetchWithTimeout(
-      url,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
-          "Accept": "application/json",
-          "User-Agent": SUPERFRETE_USER_AGENT,
-        },
-        body: JSON.stringify(payload),
-      },
-      20000
-    );
-
-    if (resp.status !== 200) {
-      const txt = await resp.text();
-      console.error("[calcularSuperFrete] HTTP error:", resp.status, txt);
-      throw new HttpsError("internal", "Erro ao consultar frete via SuperFrete.");
-    }
-
-    const body = await resp.text();
-    const bodyTrim = body.trim().toLowerCase();
-    if (bodyTrim.startsWith("<!") || bodyTrim.startsWith("<html")) {
-      console.error("[calcularSuperFrete] Resposta HTML em vez de JSON");
-      throw new HttpsError(
-        "internal",
-        "SuperFrete retornou página web. Verifique o token e o ambiente (sandbox/produção)."
-      );
-    }
-
-    const data = JSON.parse(body);
-    const arr = Array.isArray(data) ? data : [];
-    const opcoes = arr.map((s) => ({
-      nome: s.name ?? "SuperFrete",
-      preco: Number(s.price) || 0,
-      prazo: s.delivery_time ?? 0,
-      empresa: s.company?.name ?? "SuperFrete",
-      servico_id: s.id,
-    }));
-
-    opcoes.sort((a, b) => a.preco - b.preco);
-
-    return { sucesso: true, opcoes };
-  } catch (err) {
-    console.error("[calcularSuperFrete] error:", err);
-    if (err instanceof HttpsError) throw err;
-    throw new HttpsError("internal", "Erro ao consultar frete via SuperFrete.");
-  }
-  }
+  bindSuperFreteHandler("calcularSuperFreteSecure"),
 );
 
 // ============================== MERCADO PAGO — PEDIDOS ======================

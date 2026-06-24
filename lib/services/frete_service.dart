@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 
 import 'superfrete_service.dart';
+import 'superfrete_integration_service.dart';
 import 'via_cep_service.dart';
 import 'frete_helpers.dart' as frete_helpers;
 
@@ -19,7 +20,24 @@ class FreteService {
   /// User-Agent obrigatório pela documentação Melhor Envio
   static const String _melhorEnvioUserAgent = 'MasterPalm (contato@mastepalm.com.br)';
 
-  /// Calcula frete para um pedido consultando TODAS as plataformas cadastradas
+  static bool _isSuperFreteConfigured(Map<String, dynamic> config) {
+    final integrations = config['integrations'];
+    if (integrations is Map) {
+      final sf = integrations['superfrete'];
+      if (sf is Map && sf['configured'] == true && sf['enabled'] != false) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  static void _stripSuperFreteSecretsFromConfig(Map<String, dynamic> config) {
+    if (config['superfrete'] != null) {
+      config.remove('superfrete');
+    }
+    config.remove('superfrete_token');
+    config.remove('superfreteToken');
+  }
   ///
   /// Parâmetros:
   /// - [lojaId]: ID da loja
@@ -153,60 +171,39 @@ class FreteService {
         }
       }
 
-      // SUPERFRETE
-      final tokenSuperFrete = (config['superfrete']?['token'] ?? '').toString();
-      final superFreteSandbox = config['superfrete']?['sandbox'] == true;
-      if (tokenSuperFrete.isNotEmpty) {
-        debugPrint('🔄 [FRETE] SuperFrete: sandbox=$superFreteSandbox (config["superfrete"]=${config['superfrete']})');
+      // SUPERFRETE (token somente no backend — integrations.superfrete.configured)
+      if (_isSuperFreteConfigured(config)) {
+        debugPrint('🔄 [FRETE] SuperFrete: cotação via Cloud Function');
         try {
-          Map<String, dynamic> resultado;
-          final cepOrigem = (config['cepOrigem'] ?? '01310100').toString().replaceAll(RegExp(r'\D'), '');
+          final cepOrigem =
+              (config['cepOrigem'] ?? '01310100').toString().replaceAll(RegExp(r'\D'), '');
           final cepDestino = cep.replaceAll(RegExp(r'\D'), '');
           final pesoFinal = peso < 300 ? 300.0 : peso;
+          final docId =
+              (config['_resolvedLojaDocId'] ?? lojaId).toString().trim();
 
-          if (kIsWeb) {
-            final functions = FirebaseFunctions.instanceFor(region: 'southamerica-east1');
-            final callable = functions.httpsCallable('calcularSuperFrete');
-            final res = await callable.call({
-              'token': tokenSuperFrete,
-              'cepOrigem': cepOrigem,
-              'cepDestino': cepDestino,
-              'peso': pesoFinal,
-              'altura': altura < 1 ? 2 : altura,
-              'largura': largura < 1 ? 11 : largura,
-              'comprimento': comprimento < 1 ? 16 : comprimento,
-              'valorDeclarado': valorDeclarado > 0 ? valorDeclarado : 10.0,
-            });
-            final data = res.data as Map?;
-            resultado = {
-              'sucesso': data?['sucesso'] == true,
-              'opcoes': data?['opcoes'] ?? [],
-              if (data?['erro'] != null) 'erro': data!['erro'],
-            };
-          } else {
-            resultado = await SuperFreteService.calcularFrete(
-              token: tokenSuperFrete,
-              cepOrigem: cepOrigem,
-              cepDestino: cepDestino,
-              peso: pesoFinal,
-              valorDeclarado: valorDeclarado > 0 ? valorDeclarado : 10.0,
-              altura: altura < 1 ? 2 : altura,
-              largura: largura < 1 ? 11 : largura,
-              comprimento: comprimento < 1 ? 16 : comprimento,
-              useSandbox: superFreteSandbox,
-            );
-          }
+          final resultado = await SuperFreteIntegrationService.quote(
+            lojaId: docId,
+            destinationCep: cepDestino,
+            pesoGrams: pesoFinal,
+            altura: altura < 1 ? 2 : altura,
+            largura: largura < 1 ? 11 : largura,
+            comprimento: comprimento < 1 ? 16 : comprimento,
+            valorDeclarado: valorDeclarado > 0 ? valorDeclarado : 10.0,
+            cepOrigem: cepOrigem,
+          );
 
           if (resultado['sucesso'] == true) {
             final opcoesRaw = resultado['opcoes'] as List? ?? [];
             final opcoesSuperFrete = opcoesRaw.map<Map<String, dynamic>>((o) {
+              final m = o is Map ? Map<String, dynamic>.from(o) : <String, dynamic>{};
               return {
-                'nome': (o['nome'] ?? 'SuperFrete').toString(),
-                'valor': (o['preco'] as num?)?.toDouble() ?? 0.0,
-                'prazo': (o['prazo'] as num?)?.toInt() ?? 0,
-                'empresa': (o['empresa'] ?? 'SuperFrete').toString(),
+                'nome': (m['nome'] ?? 'SuperFrete').toString(),
+                'valor': (m['preco'] as num?)?.toDouble() ?? 0.0,
+                'prazo': (m['prazo'] as num?)?.toInt() ?? 0,
+                'empresa': (m['empresa'] ?? 'SuperFrete').toString(),
                 'plataforma': 'superfrete',
-                'servico_id': o['servico_id'],
+                'servico_id': m['servico_id'],
               };
             }).toList();
 
@@ -297,23 +294,17 @@ class FreteService {
       final base = FirebaseFirestore.instance.collection('lojas').doc(docId).collection('config');
       final docFretes = await base.doc('fretes').get();
       Map<String, dynamic> config = docFretes.exists ? (docFretes.data() ?? {}) : {};
-      debugPrint('📄 [FRETE] config/fretes existe=${docFretes.exists}, melhorEnvio.token=${(config['melhorEnvio']?['token'] ?? '').toString().isNotEmpty}, superfrete.token=${(config['superfrete']?['token'] ?? '').toString().isNotEmpty}');
+      debugPrint('📄 [FRETE] config/fretes existe=${docFretes.exists}, melhorEnvio=${(config['melhorEnvio']?['token'] ?? '').toString().isNotEmpty}, superfreteConfigured=${_isSuperFreteConfigured(config)}');
+      _stripSuperFreteSecretsFromConfig(config);
 
-      // Helper para aplicar tokens de um Map (config ou draft)
+      // Helper para aplicar tokens de um Map (config ou draft) — SuperFrete excluído (segredo no backend).
       void applyTokensFrom(Map<String, dynamic> data) {
         final fc = data['frete_config'] as Map<String, dynamic>?;
         final rootME = (data['melhorEnvioToken'] ?? data['melhor_envio_token'] ?? '').toString().trim();
-        final rootSF = (data['superfreteToken'] ?? data['superfrete_token'] ?? '').toString().trim();
         final tokenME = (config['melhorEnvio']?['token'] ?? '').toString().trim();
-        final tokenSF = (config['superfrete']?['token'] ?? '').toString().trim();
         if (tokenME.isEmpty && rootME.isNotEmpty) {
           config = Map<String, dynamic>.from(config);
           config['melhorEnvio'] = {'token': rootME};
-        }
-        if (tokenSF.isEmpty && rootSF.isNotEmpty) {
-          config = Map<String, dynamic>.from(config);
-          final sf = config['superfrete'] as Map<String, dynamic>? ?? {};
-          config['superfrete'] = Map<String, dynamic>.from(sf)..['token'] = rootSF;
         }
         if (fc != null) {
           if (tokenME.isEmpty) {
@@ -322,21 +313,6 @@ class FreteService {
               config = Map<String, dynamic>.from(config);
               config['melhorEnvio'] = {'token': t};
             }
-          }
-          if (tokenSF.isEmpty) {
-            final t = (fc['superfrete_token'] ?? '').toString().trim();
-            if (t.isNotEmpty) {
-              config = Map<String, dynamic>.from(config);
-              final sf = (config['superfrete'] as Map<String, dynamic>?) ?? {};
-              config['superfrete'] = Map<String, dynamic>.from(sf)
-                ..['token'] = t
-                ..['sandbox'] = fc['superfrete_sandbox'] == true;
-            }
-          } else if (fc['superfrete_sandbox'] != null) {
-            config = Map<String, dynamic>.from(config);
-            final sf = Map<String, dynamic>.from(config['superfrete'] as Map? ?? {});
-            sf['sandbox'] = fc['superfrete_sandbox'] == true;
-            config['superfrete'] = sf;
           }
           final cepO = (fc['cep_origem'] ?? fc['cepOrigem'] ?? '').toString().trim();
           if (cepO.isNotEmpty && (config['cepOrigem'] ?? '').toString().trim().isEmpty) {
@@ -364,20 +340,16 @@ class FreteService {
 
       // Fallback 1: config/config
       final tokenME = (config['melhorEnvio']?['token'] ?? '').toString().trim();
-      final tokenSF = (config['superfrete']?['token'] ?? '').toString().trim();
-      if (tokenME.isEmpty || tokenSF.isEmpty) {
+      if (tokenME.isEmpty) {
         final docConfig = await base.doc('config').get();
         if (docConfig.exists && docConfig.data() != null) {
           applyTokensFrom(docConfig.data()!);
-          if (((config['melhorEnvio']?['token'] ?? '').toString().isNotEmpty) ||
-              ((config['superfrete']?['token'] ?? '').toString().isNotEmpty)) {
+          if ((config['melhorEnvio']?['token'] ?? '').toString().isNotEmpty) {
             debugPrint('✅ [FRETE] Tokens obtidos de config/config');
           }
         }
-        // Fallback 2: draft_config/config (quando admin salvou em Fretes mas não publicou)
         final tokenME2 = (config['melhorEnvio']?['token'] ?? '').toString().trim();
-        final tokenSF2 = (config['superfrete']?['token'] ?? '').toString().trim();
-        if (tokenME2.isEmpty || tokenSF2.isEmpty) {
+        if (tokenME2.isEmpty) {
           // draft_config só o dono/admin lê. Visitante do catálogo: permission-denied —
           // não pode derrubar o fluxo (config/fretes com Melhor Envio já estaria carregada).
           try {
@@ -389,8 +361,7 @@ class FreteService {
             final docDraft = await draftRef.get();
             if (docDraft.exists && docDraft.data() != null) {
               applyTokensFrom(docDraft.data()!);
-              if (((config['melhorEnvio']?['token'] ?? '').toString().isNotEmpty) ||
-                  ((config['superfrete']?['token'] ?? '').toString().isNotEmpty)) {
+              if ((config['melhorEnvio']?['token'] ?? '').toString().isNotEmpty) {
                 debugPrint('✅ [FRETE] Tokens obtidos de draft_config/config');
               }
             }
@@ -406,13 +377,11 @@ class FreteService {
         }
         // Fallback 3: doc raiz da loja (config/config às vezes espelhado aqui)
         final tokenME3 = (config['melhorEnvio']?['token'] ?? '').toString().trim();
-        final tokenSF3 = (config['superfrete']?['token'] ?? '').toString().trim();
-        if (tokenME3.isEmpty || tokenSF3.isEmpty) {
+        if (tokenME3.isEmpty) {
           final lojaDocRef = await FirebaseFirestore.instance.collection('lojas').doc(docId).get();
           if (lojaDocRef.exists && lojaDocRef.data() != null) {
             applyTokensFrom(lojaDocRef.data()!);
-            if (((config['melhorEnvio']?['token'] ?? '').toString().isNotEmpty) ||
-                ((config['superfrete']?['token'] ?? '').toString().isNotEmpty)) {
+            if ((config['melhorEnvio']?['token'] ?? '').toString().isNotEmpty) {
               debugPrint('✅ [FRETE] Tokens obtidos do doc raiz da loja');
             }
           }
@@ -421,11 +390,14 @@ class FreteService {
 
       if (config.isEmpty) {
         debugPrint('⚠️  [FRETE] Config não encontrada, usando manual');
-        return {'provider': 'manual', 'manualFretes': []};
+        return {'provider': 'manual', 'manualFretes': [], '_resolvedLojaDocId': docId};
       }
 
+      _stripSuperFreteSecretsFromConfig(config);
+      config['_resolvedLojaDocId'] = docId;
+
       final hasME = (config['melhorEnvio']?['token'] ?? '').toString().trim().isNotEmpty;
-      final hasSF = (config['superfrete']?['token'] ?? '').toString().trim().isNotEmpty;
+      final hasSF = _isSuperFreteConfigured(config);
       debugPrint('📤 [FRETE] Retornando config: MelhorEnvio=$hasME, SuperFrete=$hasSF, cepOrigem=${(config['cepOrigem'] ?? '').toString().isNotEmpty}');
       return config;
     } catch (e, st) {
@@ -1158,9 +1130,8 @@ class FreteService {
     required Map<String, dynamic> freteSelecionado,
   }) async {
     try {
-      final token = (config['superfrete']?['token'] ?? '').toString();
-      if (token.isEmpty) {
-        debugPrint('⚠️  [FRETE] Token SuperFrete não configurado');
+      if (!_isSuperFreteConfigured(config)) {
+        debugPrint('⚠️  [FRETE] SuperFrete não configurada com segurança');
         return null;
       }
 
@@ -1239,7 +1210,7 @@ class FreteService {
       };
 
       final resultado = await SuperFreteService.criarEnvioNoCarrinho(
-        token: token,
+        lojaId: lojaId,
         servicoId: servicoId,
         from: from,
         to: to,

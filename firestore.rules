@@ -109,6 +109,29 @@ service cloud.firestore {
       return belongsToStore(lojaId) || isAdminOrSystem();
     }
 
+    // config/fretes público — proíbe gravar token SuperFrete pelo cliente.
+    function fretesHasSuperFreteSecretFields(data) {
+      return data.keys().hasAny(['superfrete_token', 'superfreteToken', 'apiToken'])
+        || (
+          data.keys().hasAll(['superfrete'])
+          && data.superfrete is map
+          && data.superfrete.keys().hasAny(['token'])
+          && data.superfrete.token is string
+          && data.superfrete.token.size() > 0
+        )
+        || (
+          data.keys().hasAll(['integrations'])
+          && data.integrations is map
+          && data.integrations.keys().hasAll(['superfrete'])
+          && data.integrations.superfrete is map
+          && data.integrations.superfrete.keys().hasAny(['token'])
+        );
+    }
+
+    function fretesPublicClientWriteOk() {
+      return !fretesHasSuperFreteSecretFields(request.resource.data);
+    }
+
     // -------- Planos / assinatura: cliente não escala para plano pago nem override manual --------
     function userPlanManualTamperAttempt() {
       return request.resource.data.diff(resource.data).affectedKeys()
@@ -542,17 +565,30 @@ service cloud.firestore {
 
       // config/payments: segredos (MP token etc.) — não expor ao catálogo anônimo.
       // config/payments_public: espelho sem tokens (PagamentosService.syncPaymentsPublic).
+      // config/fretes_secrets: somente Cloud Functions (Admin SDK).
       match /config/{configId} {
-        allow read: if configId == 'payments'
+        allow read: if configId == 'fretes_secrets'
+          ? false
+          : configId == 'payments'
           ? (isAdminOrSystem() || (isSignedIn() && canManageStoreConfig(lojaId)))
           : true;
-        allow create: if configId == 'payments_public'
+        allow create: if configId == 'fretes_secrets'
+          ? false
+          : configId == 'payments_public'
           ? ((isAdminOrSystem() || canManageStoreConfig(lojaId)) && paymentsPublicWithoutSecrets())
+          : configId == 'fretes'
+          ? ((isAdminOrSystem() || canManageStoreConfig(lojaId)) && fretesPublicClientWriteOk())
           : (isAdminOrSystem() || canManageStoreConfig(lojaId));
-        allow update: if configId == 'payments_public'
+        allow update: if configId == 'fretes_secrets'
+          ? false
+          : configId == 'payments_public'
           ? ((isAdminOrSystem() || canManageStoreConfig(lojaId)) && paymentsPublicWithoutSecrets())
+          : configId == 'fretes'
+          ? ((isAdminOrSystem() || canManageStoreConfig(lojaId)) && fretesPublicClientWriteOk())
           : (isAdminOrSystem() || canManageStoreConfig(lojaId));
-        allow delete: if isAdminOrSystem() || canManageStoreConfig(lojaId);
+        allow delete: if configId == 'fretes_secrets'
+          ? false
+          : (isAdminOrSystem() || canManageStoreConfig(lojaId));
       }
 
       match /settings/{settingsId} {

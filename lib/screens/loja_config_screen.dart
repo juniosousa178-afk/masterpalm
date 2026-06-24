@@ -3975,6 +3975,7 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
           final pesoEmb =
               double.tryParse((fc['peso_embalagem'] ?? '50').toString()) ??
                   50.0;
+          final superConfigured = fc['superfrete_configured'] == true;
           final fretesDoc = <String, dynamic>{
             'provider': (fc['provider'] ?? 'manual').toString(),
             'cepOrigem': cepO,
@@ -3982,9 +3983,12 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
             'melhorEnvio': {
               'token': (fc['melhor_envio_token'] ?? '').toString().trim()
             },
-            'superfrete': {
-              'token': (fc['superfrete_token'] ?? '').toString().trim(),
-              'sandbox': fc['superfrete_sandbox'] == true,
+            'integrations': {
+              'superfrete': {
+                'configured': superConfigured,
+                'enabled': true,
+                'sandbox': fc['superfrete_sandbox'] == true,
+              },
             },
             'correios': {
               'usuario': (fc['correios_user'] ?? '').toString().trim(),
@@ -3999,6 +4003,11 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
               .collection('config')
               .doc('fretes')
               .set(fretesDoc, SetOptions(merge: true));
+          await lojaDoc.collection('config').doc('fretes').set({
+            'superfrete': FieldValue.delete(),
+            'superfrete_token': FieldValue.delete(),
+            'superfreteToken': FieldValue.delete(),
+          }, SetOptions(merge: true));
           if (kDebugMode) logD('✅ config/fretes publicado (catálogo/frete).');
         } catch (e) {
           if (kDebugMode)
