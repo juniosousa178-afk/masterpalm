@@ -110,7 +110,7 @@ void main() {
       expect(
         source,
         contains(
-          'Token inválido ou expirado. Gere um novo token na SuperFrete.',
+          'O token informado é inválido ou expirou. Gere um novo token na SuperFrete.',
         ),
       );
       expect(
@@ -136,6 +136,15 @@ void main() {
         contains('Não foi possível testar a conexão. Tente novamente.'),
       );
       expect(source, contains("_messageForSafeCode"));
+    });
+
+    test('12. backend SuperFrete não usa /api/v8', () {
+      final backend = File('functions/src/superFreteIntegration.js')
+          .readAsStringSync();
+      expect(backend.contains('/api/v8'), isFalse);
+      expect(backend, contains('/api/v0/calculator'));
+      expect(backend, contains('/api/v0/cart'));
+      expect(backend, contains('/api/v0/user/addresses'));
     });
   });
 }

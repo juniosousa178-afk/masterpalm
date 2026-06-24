@@ -13,8 +13,17 @@ import {
   fretesPublicWriteSafe,
   createSuperFreteHandlers,
   getSuperFreteApiBase,
+  buildSuperFreteUrl,
+  buildSuperFreteHeaders,
+  mapSuperFreteHttpError,
+  parseSuperFreteResponseText,
+  buildCartPayload,
   SUPERFRETE_API_BASE,
   SUPERFRETE_SANDBOX_BASE,
+  SUPERFRETE_TOKEN_TEST_PATH,
+  SUPERFRETE_QUOTE_PATH,
+  SUPERFRETE_CART_PATH,
+  SUPERFRETE_USER_AGENT,
 } from "../src/superFreteIntegration.js";
 import { isRootAccountEmail } from "../src/rootAccounts.js";
 import { makeSuperFreteMockDb } from "./mockSuperFreteDb.js";
@@ -53,32 +62,53 @@ function okMeFetch() {
     status: 200,
     ok: true,
     async text() {
-      return JSON.stringify({ name: "Loja Teste" });
+      return JSON.stringify([{ name: "Loja Teste" }]);
     },
     async json() {
-      return { name: "Loja Teste" };
+      return [{ name: "Loja Teste" }];
     },
   });
 }
 
 function okQuoteFetch() {
-  return async (url) => {
-    if (String(url).includes("/me")) {
+  return async (url, opts) => {
+    if (String(url).includes(SUPERFRETE_TOKEN_TEST_PATH)) {
       return {
         status: 200,
         ok: true,
         async text() {
-          return JSON.stringify({ name: "Loja Teste" });
+          return JSON.stringify([{ name: "Loja Teste" }]);
         },
       };
     }
+    if (String(url).includes(SUPERFRETE_QUOTE_PATH)) {
+      const body = opts?.body ? JSON.parse(opts.body) : {};
+      assert.ok(body.services, "cotação deve enviar services");
+      return {
+        status: 200,
+        ok: true,
+        async text() {
+          return JSON.stringify([
+            { id: 1, name: "PAC", price: 12.5, delivery_time: 5, company: { name: "Correios" } },
+          ]);
+        },
+      };
+    }
+    throw new Error(`URL inesperada: ${url}`);
+  };
+}
+
+function okCheckoutFetch() {
+  return async (url, opts) => {
+    assert.ok(String(url).includes(SUPERFRETE_CART_PATH));
+    const body = JSON.parse(opts.body);
+    assert.ok(body.volume, "checkout deve enviar volume");
+    assert.equal(body.platform, "MasterPalm");
     return {
       status: 200,
       ok: true,
       async text() {
-        return JSON.stringify([
-          { id: 1, name: "PAC", price: 12.5, delivery_time: 5, company: { name: "Correios" } },
-        ]);
+        return JSON.stringify({ id: "cart-1", protocol: "SF-1" });
       },
     };
   };
@@ -148,6 +178,62 @@ describe("helpers SuperFrete", () => {
     assert.equal(isRootAccountEmail("masterpalm@gmail.com"), true);
     assert.equal(isRootAccountEmail("owner@test.com"), false);
   });
+
+  it("buildSuperFreteHeaders inclui User-Agent do backend", () => {
+    const headers = buildSuperFreteHeaders("tok_test", { json: true });
+    assert.equal(headers["User-Agent"], SUPERFRETE_USER_AGENT);
+    assert.equal(headers.Authorization, "Bearer tok_test");
+    assert.equal(headers["Content-Type"], "application/json");
+    assert.ok(!headers.Authorization.includes("tok_test".repeat(2)));
+  });
+
+  it("buildSuperFreteUrl usa paths v0 oficiais", () => {
+    assert.equal(
+      buildSuperFreteUrl(false, SUPERFRETE_QUOTE_PATH),
+      `${SUPERFRETE_API_BASE}${SUPERFRETE_QUOTE_PATH}`,
+    );
+    assert.equal(
+      buildSuperFreteUrl(true, SUPERFRETE_CART_PATH),
+      `${SUPERFRETE_SANDBOX_BASE}${SUPERFRETE_CART_PATH}`,
+    );
+  });
+
+  it("parseSuperFreteResponseText rejeita HTML", () => {
+    assert.throws(
+      () => parseSuperFreteResponseText("TESTE", 200, "<html></html>"),
+      (e) => e instanceof HttpsError && e.details?.code === "ENDPOINT_INCORRETO",
+    );
+  });
+
+  it("mapSuperFreteHttpError mapeia 401/429/5xx", () => {
+    assert.throws(
+      () => mapSuperFreteHttpError("TESTE", 401),
+      (e) => e.details?.code === "TOKEN_INVALIDO",
+    );
+    assert.throws(
+      () => mapSuperFreteHttpError("QUOTE", 429),
+      (e) => e.details?.code === "RATE_LIMIT",
+    );
+    assert.throws(
+      () => mapSuperFreteHttpError("QUOTE", 503),
+      (e) => e.details?.code === "API_INDISPONIVEL",
+    );
+  });
+
+  it("buildCartPayload usa volume e platform", () => {
+    const body = buildCartPayload({
+      servicoId: 1,
+      from: { postal_code: "01310100" },
+      to: { postal_code: "20040020", name: "Cliente" },
+      package: { height: 10, width: 20, length: 30, weight: 0.5 },
+      valorDeclarado: 50,
+      pedidoRef: "ped-1",
+    });
+    assert.equal(body.service, 1);
+    assert.ok(body.volume);
+    assert.equal(body.platform, "MasterPalm");
+    assert.equal(body.tag, "ped-1");
+  });
 });
 
 describe("superFreteTestConnection", () => {
@@ -214,7 +300,7 @@ describe("superFreteTestConnection", () => {
         status: 200,
         ok: true,
         async text() {
-          return JSON.stringify({ name: "Sandbox" });
+          return JSON.stringify([{ name: "Sandbox" }]);
         },
       };
     };
@@ -225,7 +311,30 @@ describe("superFreteTestConnection", () => {
     );
     await h.superFreteTestConnection();
     assert.ok(calledUrl.startsWith(SUPERFRETE_SANDBOX_BASE));
-    assert.ok(!calledUrl.includes("api.superfrete.com"));
+    assert.ok(calledUrl.includes(SUPERFRETE_TOKEN_TEST_PATH));
+    assert.ok(!calledUrl.includes("/api/v8"));
+  });
+
+  it("4c. resposta HTML retorna ENDPOINT_INCORRETO", async () => {
+    const db = makeSuperFreteMockDb();
+    const h = makeHandlers(
+      db,
+      authReq({ lojaId: LOJA, token: TOKEN, sandbox: false }),
+      async () => ({
+        status: 200,
+        ok: true,
+        async text() {
+          return "<html><body>app</body></html>";
+        },
+      }),
+    );
+    await assert.rejects(
+      () => h.superFreteTestConnection(),
+      (e) =>
+        e instanceof HttpsError
+        && e.code === "failed-precondition"
+        && e.details?.code === "ENDPOINT_INCORRETO",
+    );
   });
 });
 
@@ -354,6 +463,56 @@ describe("superFreteQuote / calcularSuperFreteSecure", () => {
     assert.ok(!JSON.stringify(res).includes(TOKEN));
   });
 
+  it("11b. cotação usa /api/v0/calculator em produção", async () => {
+    let calledUrl = "";
+    const db = makeSuperFreteMockDb({
+      lojas: { [LOJA]: { published: true } },
+      fretes: { [LOJA]: { cepOrigem: "01310100" } },
+      fretesSecrets: { [LOJA]: { superfrete: { token: TOKEN } } },
+    });
+    const fetchImpl = async (url, opts) => {
+      calledUrl = String(url);
+      return okQuoteFetch()(url, opts);
+    };
+    const h = makeHandlers(
+      db,
+      authReq({ lojaId: LOJA, destinationCep: "20040020", peso: 500 }),
+      fetchImpl,
+    );
+    await h.superFreteQuote();
+    assert.ok(calledUrl.includes(SUPERFRETE_QUOTE_PATH));
+    assert.ok(calledUrl.startsWith(SUPERFRETE_API_BASE));
+    assert.ok(!calledUrl.includes("/api/v8"));
+  });
+
+  it("11c. checkout usa /api/v0/cart", async () => {
+    const db = makeSuperFreteMockDb({
+      lojas: { [LOJA]: { published: true } },
+      fretesSecrets: { [LOJA]: { superfrete: { token: TOKEN } } },
+    });
+    let calledUrl = "";
+    const fetchImpl = async (url, opts) => {
+      calledUrl = String(url);
+      return okCheckoutFetch()(url, opts);
+    };
+    const h = makeHandlers(
+      db,
+      authReq({
+        lojaId: LOJA,
+        servicoId: 1,
+        from: { postal_code: "01310100" },
+        to: { postal_code: "20040020", name: "Cliente" },
+        package: { height: 10, width: 20, length: 30, weight: 0.5 },
+        valorDeclarado: 20,
+      }),
+      fetchImpl,
+    );
+    const res = await h.superFreteCreateCheckout();
+    assert.equal(res.sucesso, true);
+    assert.ok(calledUrl.includes(SUPERFRETE_CART_PATH));
+    assert.ok(!calledUrl.includes("/api/v8"));
+  });
+
   it("12. calcularSuperFrete antigo não aceita token de cliente", async () => {
     const db = makeSuperFreteMockDb({
       lojas: { [LOJA]: { published: true } },
@@ -390,7 +549,32 @@ describe("superFreteQuote / calcularSuperFreteSecure", () => {
     );
     await assert.rejects(
       () => h.superFreteQuote(),
-      (e) => e instanceof HttpsError && e.code === "unavailable",
+      (e) =>
+        e instanceof HttpsError
+        && e.code === "unavailable"
+        && e.details?.code === "API_INDISPONIVEL",
+    );
+  });
+
+  it("13b. timeout retorna TIMEOUT", async () => {
+    const db = makeSuperFreteMockDb({
+      lojas: { [LOJA]: { published: true } },
+      fretes: { [LOJA]: { cepOrigem: "01310100" } },
+      fretesSecrets: { [LOJA]: { superfrete: { token: TOKEN } } },
+    });
+    const timeoutFetch = async () => {
+      const err = new Error("timeout");
+      err.name = "TimeoutError";
+      throw err;
+    };
+    const h = makeHandlers(
+      db,
+      authReq({ lojaId: LOJA, destinationCep: "20040020", peso: 500 }),
+      timeoutFetch,
+    );
+    await assert.rejects(
+      () => h.superFreteQuote(),
+      (e) => e instanceof HttpsError && e.details?.code === "TIMEOUT",
     );
   });
 

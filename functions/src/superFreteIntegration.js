@@ -6,8 +6,16 @@ import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { HttpsError } from "firebase-functions/v2/https";
 
 export const SUPERFRETE_USER_AGENT = "MasterPalm (contato@mastepalm.com.br)";
+export const SUPERFRETE_PLATFORM_NAME = "MasterPalm";
 export const SUPERFRETE_API_BASE = "https://api.superfrete.com";
 export const SUPERFRETE_SANDBOX_BASE = "https://sandbox.superfrete.com";
+/** GET — validação de token (doc: exemplos user/addresses). */
+export const SUPERFRETE_TOKEN_TEST_PATH = "/api/v0/user/addresses";
+/** POST — cotação (doc: /reference/calculator). */
+export const SUPERFRETE_QUOTE_PATH = "/api/v0/calculator";
+/** POST — carrinho/checkout (doc: adicionar-frete-carrinho → /api/v0/cart). */
+export const SUPERFRETE_CART_PATH = "/api/v0/cart";
+export const SUPERFRETE_DEFAULT_SERVICES = "1,2,17";
 export const FRETES_SECRETS_DOC = "fretes_secrets";
 export const FRETES_PUBLIC_DOC = "fretes";
 
@@ -116,6 +124,156 @@ export function getSuperFreteApiBase(sandbox) {
   return parseSandbox(sandbox) ? SUPERFRETE_SANDBOX_BASE : SUPERFRETE_API_BASE;
 }
 
+export function buildSuperFreteUrl(sandbox, path) {
+  return `${getSuperFreteApiBase(sandbox)}${path}`;
+}
+
+export function buildSuperFreteHeaders(token, { json = false } = {}) {
+  const headers = {
+    Accept: "application/json",
+    Authorization: `Bearer ${token}`,
+    "User-Agent": SUPERFRETE_USER_AGENT,
+  };
+  if (json) {
+    headers["Content-Type"] = "application/json";
+  }
+  return headers;
+}
+
+function isHtmlResponse(text) {
+  const trim = String(text ?? "").trim().toLowerCase();
+  return trim.startsWith("<!") || trim.startsWith("<html");
+}
+
+function throwSuperFreteMappedError(phase, status, safeCode, message, httpsCode) {
+  logSuperFreteFail(phase, `status=${status} code=${safeCode}`);
+  const err = new HttpsError(httpsCode, message);
+  err.details = { code: safeCode };
+  throw err;
+}
+
+export function mapSuperFreteHttpError(phase, status) {
+  if (status === 401 || status === 403) {
+    throwSuperFreteMappedError(
+      phase,
+      status,
+      "TOKEN_INVALIDO",
+      "Token inválido ou expirado. Gere um novo token na SuperFrete e tente novamente.",
+      "permission-denied",
+    );
+  }
+  if (status === 429) {
+    throwSuperFreteMappedError(
+      phase,
+      status,
+      "RATE_LIMIT",
+      "Muitas tentativas em pouco tempo. Aguarde alguns minutos e tente novamente.",
+      "resource-exhausted",
+    );
+  }
+  if (status >= 500) {
+    throwSuperFreteMappedError(
+      phase,
+      status,
+      "API_INDISPONIVEL",
+      "SuperFrete temporariamente indisponível. Tente novamente em alguns minutos.",
+      "unavailable",
+    );
+  }
+  if (status === 404) {
+    throwSuperFreteMappedError(
+      phase,
+      status,
+      "ENDPOINT_INCORRETO",
+      "Não foi possível validar a integração. Nossa equipe já foi avisada.",
+      "failed-precondition",
+    );
+  }
+  throwSuperFreteMappedError(
+    phase,
+    status,
+    "ERRO_INTERNO_NAO_TRATADO",
+    "Não foi possível concluir a operação na SuperFrete. Tente novamente.",
+    "internal",
+  );
+}
+
+export function parseSuperFreteResponseText(phase, status, text) {
+  if (isHtmlResponse(text)) {
+    throwSuperFreteMappedError(
+      phase,
+      status,
+      "ENDPOINT_INCORRETO",
+      "Não foi possível validar a integração. Nossa equipe já foi avisada.",
+      "failed-precondition",
+    );
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    logSuperFreteFail(phase, `status=${status} code=JSON_INVALIDO`);
+    throwSuperFreteMappedError(
+      phase,
+      status,
+      "ENDPOINT_INCORRETO",
+      "Não foi possível validar a integração. Nossa equipe já foi avisada.",
+      "failed-precondition",
+    );
+  }
+}
+
+async function requestSuperFrete({
+  phase,
+  sandbox,
+  token,
+  path,
+  method = "GET",
+  body,
+  timeoutMs,
+  lojaId,
+  fetchImpl,
+}) {
+  const url = buildSuperFreteUrl(sandbox, path);
+  const logCtx = lojaId ? `lojaId=${lojaId}` : "";
+  try {
+    const resp = await fetchImpl(
+      url,
+      {
+        method,
+        headers: buildSuperFreteHeaders(token, { json: body != null }),
+        ...(body != null ? { body: JSON.stringify(body) } : {}),
+      },
+      timeoutMs,
+    );
+    const text = await resp.text();
+    if (!resp.ok) {
+      mapSuperFreteHttpError(phase, resp.status);
+    }
+    return parseSuperFreteResponseText(phase, resp.status, text);
+  } catch (err) {
+    if (err instanceof HttpsError) throw err;
+    const name = err?.name ?? "";
+    if (name === "AbortError" || name === "TimeoutError") {
+      logSuperFreteFail(phase, `${logCtx} code=TIMEOUT`.trim());
+      throwSuperFreteMappedError(
+        phase,
+        0,
+        "TIMEOUT",
+        "A conexão demorou mais que o esperado. Tente novamente.",
+        "deadline-exceeded",
+      );
+    }
+    logSuperFreteFail(phase, `${logCtx} code=REDE`.trim());
+    throwSuperFreteMappedError(
+      phase,
+      0,
+      "API_INDISPONIVEL",
+      "SuperFrete temporariamente indisponível. Tente novamente em alguns minutos.",
+      "unavailable",
+    );
+  }
+}
+
 function buildQuotePayload({
   cepOrigem,
   cepDestino,
@@ -130,9 +288,11 @@ function buildQuotePayload({
   const comp = Math.max(15, Math.round(Number(comprimento) || 30));
   const pesoKg = Math.max(0.3, Number(pesoGrams) / 1000);
 
+  const insurance = Number(valorDeclarado) > 0 ? Number(valorDeclarado) : 10;
   return {
     from: { postal_code: normalizeCep(cepOrigem) },
     to: { postal_code: normalizeCep(cepDestino) },
+    services: SUPERFRETE_DEFAULT_SERVICES,
     package: {
       height: alt,
       width: lar,
@@ -140,11 +300,55 @@ function buildQuotePayload({
       weight: pesoKg,
     },
     options: {
-      insurance_value: Number(valorDeclarado) > 0 ? Number(valorDeclarado) : 10,
+      insurance_value: insurance,
+      use_insurance_value: insurance > 0,
       receipt: false,
       own_hand: false,
     },
   };
+}
+
+export function buildCartPayload(data) {
+  const servicoId = data.servicoId ?? data.service;
+  const service =
+    typeof servicoId === "number"
+      ? servicoId
+      : parseInt(String(servicoId), 10) || 0;
+  const pkg = data.package && typeof data.package === "object" ? data.package : {};
+  const rawWeight = pkg.weight ?? pkg.peso ?? 0.3;
+  const weight =
+    typeof rawWeight === "string" ? parseFloat(rawWeight) : Number(rawWeight);
+
+  const body = {
+    service,
+    from: data.from,
+    to: data.to,
+    volume: {
+      height: Math.max(1, Math.round(Number(pkg.height ?? pkg.altura) || 10)),
+      width: Math.max(1, Math.round(Number(pkg.width ?? pkg.largura) || 20)),
+      length: Math.max(
+        1,
+        Math.round(Number(pkg.length ?? pkg.comprimento) || 30),
+      ),
+      weight: Math.max(0.3, weight || 0.3),
+    },
+    platform: SUPERFRETE_PLATFORM_NAME,
+    options: {
+      insurance_value:
+        Number(data.valorDeclarado) > 0 ? Number(data.valorDeclarado) : null,
+      receipt: false,
+      own_hand: false,
+      non_commercial: true,
+    },
+  };
+
+  if (Array.isArray(data.products) && data.products.length > 0) {
+    body.products = data.products;
+  }
+  if (data.pedidoRef) {
+    body.tag = String(data.pedidoRef);
+  }
+  return body;
 }
 
 function mapQuoteResponse(data) {
@@ -258,117 +462,43 @@ export function createSuperFreteHandlers(deps) {
     return data;
   }
 
-  async function callSuperFreteMe(token, sandbox) {
-    const base = getSuperFreteApiBase(sandbox);
-    const url = `${base}/api/v8/me`;
-    const resp = await fetchImpl(
-      url,
-      {
-        method: "GET",
-        headers: {
-          Accept: "application/json",
-          Authorization: `Bearer ${token}`,
-          "User-Agent": SUPERFRETE_USER_AGENT,
-        },
-      },
-      15000,
-    );
+  async function callSuperFreteMe(token, sandbox, lojaId) {
+    const data = await requestSuperFrete({
+      phase: "TESTE",
+      sandbox,
+      token,
+      path: SUPERFRETE_TOKEN_TEST_PATH,
+      method: "GET",
+      timeoutMs: 15000,
+      lojaId,
+      fetchImpl,
+    });
 
-    if (resp.status === 401) {
-      const err = new HttpsError(
-        "permission-denied",
-        "Token inválido ou expirado. Gere um novo token na SuperFrete e tente novamente.",
-      );
-      err.details = { code: "TOKEN_INVALIDO" };
-      throw err;
-    }
-
-    if (!resp.ok) {
-      logSuperFreteFail("TESTE", `status=${resp.status} code=HTTP_ERRO`);
-      if (resp.status >= 500) {
-        throw new HttpsError(
-          "unavailable",
-          "SuperFrete temporariamente indisponível. Tente novamente em alguns minutos.",
-        );
-      }
-      throw new HttpsError(
-        "internal",
-        "Não foi possível validar o token na SuperFrete.",
-      );
-    }
-
-    const txt = await resp.text();
-    const trim = txt.trim().toLowerCase();
-    if (trim.startsWith("<!") || trim.startsWith("<html")) {
-      const err = new HttpsError(
-        "failed-precondition",
-        "O token não corresponde ao ambiente selecionado. Confira a opção Sandbox.",
-      );
-      err.details = { code: "SANDBOX_INCOMPATIVEL" };
-      throw err;
-    }
-
-    let data;
-    try {
-      data = JSON.parse(txt);
-    } catch {
-      throw new HttpsError("internal", "Resposta inválida da SuperFrete.");
-    }
-
+    const firstAddress = Array.isArray(data) ? data[0] : data?.addresses?.[0];
     const displayName =
-      data?.name ?? data?.firstname ?? data?.email ?? undefined;
+      firstAddress?.name ??
+      data?.name ??
+      data?.firstname ??
+      data?.email ??
+      undefined;
     return {
-      displayName: displayName ? String(displayName) : undefined,
+      displayName: displayName ? String(displayName) : "SuperFrete",
       sandbox,
     };
   }
 
-  async function callSuperFreteCalculator(token, payload, sandbox = false) {
-    const base = getSuperFreteApiBase(sandbox);
-    const url = `${base}/api/v8/calculator`;
-    const resp = await fetchImpl(
-      url,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-          Accept: "application/json",
-          "User-Agent": SUPERFRETE_USER_AGENT,
-        },
-        body: JSON.stringify(payload),
-      },
-      20000,
-    );
-
-    if (resp.status === 401) {
-      throw new HttpsError(
-        "permission-denied",
-        "Integração SuperFrete precisa ser reconfigurada. Gere um novo token.",
-      );
-    }
-
-    if (!resp.ok) {
-      logSuperFreteFail("QUOTE", `status=${resp.status} code=HTTP_ERRO`);
-      if (resp.status >= 500) {
-        throw new HttpsError(
-          "unavailable",
-          "SuperFrete temporariamente indisponível. Tente novamente em alguns minutos.",
-        );
-      }
-      throw new HttpsError("internal", "Erro ao consultar frete via SuperFrete.");
-    }
-
-    const body = await resp.text();
-    const bodyTrim = body.trim().toLowerCase();
-    if (bodyTrim.startsWith("<!") || bodyTrim.startsWith("<html")) {
-      throw new HttpsError(
-        "internal",
-        "SuperFrete retornou resposta inválida. Verifique a integração.",
-      );
-    }
-
-    return JSON.parse(body);
+  async function callSuperFreteCalculator(token, payload, sandbox, lojaId) {
+    return requestSuperFrete({
+      phase: "QUOTE",
+      sandbox,
+      token,
+      path: SUPERFRETE_QUOTE_PATH,
+      method: "POST",
+      body: payload,
+      timeoutMs: 20000,
+      lojaId,
+      fetchImpl,
+    });
   }
 
   async function superFreteTestConnection() {
@@ -385,7 +515,7 @@ export function createSuperFreteHandlers(deps) {
     logSuperFrete("TESTE", `INICIO lojaId=${storeId} uid=${uid}`);
 
     const sb = parseSandbox(sandbox);
-    const me = await callSuperFreteMe(t, sb);
+    const me = await callSuperFreteMe(t, sb, storeId);
 
     return {
       ok: true,
@@ -412,7 +542,7 @@ export function createSuperFreteHandlers(deps) {
     const sb = parseSandbox(sandbox);
     logSuperFrete("SAVE", `INICIO lojaId=${storeId} uid=${uid}`);
 
-    await callSuperFreteMe(t, sb);
+    await callSuperFreteMe(t, sb, storeId);
 
     const lojaRef = db.collection(collectionLojas).doc(storeId);
     const publicRef = lojaRef.collection("config").doc(FRETES_PUBLIC_DOC);
@@ -595,6 +725,7 @@ export function createSuperFreteHandlers(deps) {
       secrets.token,
       payload,
       secrets.sandbox,
+      lojaId,
     );
     const opcoes = mapQuoteResponse(raw);
 
@@ -655,49 +786,27 @@ export function createSuperFreteHandlers(deps) {
       throw new HttpsError("invalid-argument", "Serviço de frete inválido.");
     }
 
-    const body = {
-      service:
-        typeof servicoId === "number"
-          ? servicoId
-          : parseInt(String(servicoId), 10) || 0,
-      from: data.from,
-      to: data.to,
-      package: data.package,
-      options: {
-        insurance_value:
-          Number(data.valorDeclarado) > 0 ? Number(data.valorDeclarado) : 10,
-        receipt: false,
-        own_hand: false,
-      },
-    };
-
-    if (data.pedidoRef) {
-      body.external_order_id = String(data.pedidoRef);
+    if (data.token) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Token não deve ser enviado no checkout.",
+      );
     }
 
-    const base = getSuperFreteApiBase(secrets.sandbox);
-    const url = `${base}/api/v8/checkout`;
-    const resp = await fetchImpl(
-      url,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${secrets.token}`,
-          Accept: "application/json",
-          "User-Agent": SUPERFRETE_USER_AGENT,
-        },
-        body: JSON.stringify(body),
-      },
-      25000,
-    );
+    const body = buildCartPayload(data);
 
-    if (!resp.ok) {
-      logSuperFreteFail("CHECKOUT", `status=${resp.status}`);
-      throw new HttpsError("internal", "Não foi possível criar envio na SuperFrete.");
-    }
+    const parsed = await requestSuperFrete({
+      phase: "CHECKOUT",
+      sandbox: secrets.sandbox,
+      token: secrets.token,
+      path: SUPERFRETE_CART_PATH,
+      method: "POST",
+      body,
+      timeoutMs: 25000,
+      lojaId,
+      fetchImpl,
+    });
 
-    const parsed = await resp.json();
     return {
       sucesso: true,
       id: parsed.id,

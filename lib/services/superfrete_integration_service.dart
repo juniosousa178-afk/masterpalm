@@ -43,7 +43,7 @@ class SuperFreteIntegrationService {
   static String _messageForSafeCode(String? safeCode) {
     switch (safeCode) {
       case 'TOKEN_INVALIDO':
-        return 'Token inválido ou expirado. Gere um novo token na SuperFrete.';
+        return 'O token informado é inválido ou expirou. Gere um novo token na SuperFrete.';
       case 'SANDBOX_INCOMPATIVEL':
         return 'O token não corresponde ao ambiente selecionado. Confira a opção Sandbox.';
       case 'ENDPOINT_INCORRETO':
@@ -52,6 +52,8 @@ class SuperFreteIntegrationService {
         return 'A SuperFrete está temporariamente indisponível. Tente novamente em alguns minutos.';
       case 'TIMEOUT':
         return 'A conexão demorou mais que o esperado. Tente novamente.';
+      case 'RATE_LIMIT':
+        return 'Muitas tentativas em pouco tempo. Aguarde alguns minutos e tente novamente.';
       case 'PERMISSION_DENIED':
         return 'Sua conta não possui permissão para configurar fretes desta loja.';
       case 'ERRO_INTERNO_NAO_TRATADO':
@@ -72,13 +74,17 @@ class SuperFreteIntegrationService {
     final msg = (e.message ?? '').trim();
     if (code == 'permission-denied') {
       if (msg.toLowerCase().contains('token')) {
-        return 'Token inválido ou expirado. Gere um novo token na SuperFrete e tente novamente.';
+        return 'O token informado é inválido ou expirou. Gere um novo token na SuperFrete.';
       }
       return 'Sua conta não possui permissão para configurar fretes desta loja.';
     }
     if (code == 'unavailable') {
       return 'A SuperFrete está temporariamente indisponível. Tente novamente em alguns minutos.';
     }
+    if (code == 'resource-exhausted') {
+      return 'Muitas tentativas em pouco tempo. Aguarde alguns minutos e tente novamente.';
+    }
+    if (code == 'failed-precondition' && msg.isNotEmpty) return msg;
     if (code == 'deadline-exceeded') {
       return 'A conexão demorou mais que o esperado. Tente novamente.';
     }
