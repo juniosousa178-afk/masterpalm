@@ -110,19 +110,32 @@ void main() {
       expect(
         source,
         contains(
-          'Token inválido ou expirado. Gere um novo token na SuperFrete e tente novamente.',
+          'Token inválido ou expirado. Gere um novo token na SuperFrete.',
         ),
       );
       expect(
         source,
         contains(
-          'SuperFrete temporariamente indisponível. Tente novamente em alguns minutos.',
+          'A SuperFrete está temporariamente indisponível. Tente novamente em alguns minutos.',
         ),
       );
       expect(
         source,
-        contains('Sem permissão para configurar fretes desta loja.'),
+        contains(
+          'Sua conta não possui permissão para configurar fretes desta loja.',
+        ),
       );
+      expect(
+        source,
+        contains(
+          'O token não corresponde ao ambiente selecionado. Confira a opção Sandbox.',
+        ),
+      );
+      expect(
+        source,
+        contains('Não foi possível testar a conexão. Tente novamente.'),
+      );
+      expect(source, contains("_messageForSafeCode"));
     });
   });
 }

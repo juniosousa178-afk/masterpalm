@@ -40,19 +40,52 @@ class SuperFreteIntegrationService {
   static FirebaseFunctions get _functions =>
       FirebaseFunctions.instanceFor(region: 'southamerica-east1');
 
+  static String _messageForSafeCode(String? safeCode) {
+    switch (safeCode) {
+      case 'TOKEN_INVALIDO':
+        return 'Token inválido ou expirado. Gere um novo token na SuperFrete.';
+      case 'SANDBOX_INCOMPATIVEL':
+        return 'O token não corresponde ao ambiente selecionado. Confira a opção Sandbox.';
+      case 'ENDPOINT_INCORRETO':
+        return 'Não foi possível validar a integração. Nossa equipe já foi avisada.';
+      case 'API_INDISPONIVEL':
+        return 'A SuperFrete está temporariamente indisponível. Tente novamente em alguns minutos.';
+      case 'TIMEOUT':
+        return 'A conexão demorou mais que o esperado. Tente novamente.';
+      case 'PERMISSION_DENIED':
+        return 'Sua conta não possui permissão para configurar fretes desta loja.';
+      case 'ERRO_INTERNO_NAO_TRATADO':
+        return 'Não foi possível testar a conexão. Tente novamente.';
+      default:
+        return '';
+    }
+  }
+
   static String _friendlyMessage(FirebaseFunctionsException e) {
+    final details = e.details;
+    if (details is Map) {
+      final fromCode = _messageForSafeCode(details['code']?.toString());
+      if (fromCode.isNotEmpty) return fromCode;
+    }
+
     final code = e.code;
     final msg = (e.message ?? '').trim();
     if (code == 'permission-denied') {
       if (msg.toLowerCase().contains('token')) {
         return 'Token inválido ou expirado. Gere um novo token na SuperFrete e tente novamente.';
       }
-      return 'Sem permissão para configurar fretes desta loja.';
+      return 'Sua conta não possui permissão para configurar fretes desta loja.';
     }
     if (code == 'unavailable') {
-      return 'SuperFrete temporariamente indisponível. Tente novamente em alguns minutos.';
+      return 'A SuperFrete está temporariamente indisponível. Tente novamente em alguns minutos.';
+    }
+    if (code == 'deadline-exceeded') {
+      return 'A conexão demorou mais que o esperado. Tente novamente.';
     }
     if (code == 'invalid-argument' && msg.isNotEmpty) return msg;
+    if (code == 'internal') {
+      return 'Não foi possível testar a conexão. Tente novamente.';
+    }
     return 'Não foi possível concluir a operação na SuperFrete. Tente novamente.';
   }
 

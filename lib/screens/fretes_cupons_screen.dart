@@ -835,16 +835,11 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
     }
 
     final msg = (result['message'] ?? '').toString();
-    if (msg.contains('inválido') || msg.contains('expirado')) {
-      _snack(
-          '❌ Token inválido ou expirado. Gere um novo token na SuperFrete e tente novamente.');
-    } else if (msg.contains('indisponível')) {
-      _snack('❌ SuperFrete temporariamente indisponível. Tente novamente em alguns minutos.');
-    } else if (msg.contains('permissão')) {
-      _snack('❌ Sem permissão para configurar fretes desta loja.');
-    } else {
-      _snack('❌ Não foi possível testar a conexão. Tente novamente.');
+    if (msg.isNotEmpty) {
+      _snack('❌ $msg');
+      return;
     }
+    _snack('❌ Não foi possível testar a conexão. Tente novamente.');
   }
 
   Future<void> _testarCorreios() async {

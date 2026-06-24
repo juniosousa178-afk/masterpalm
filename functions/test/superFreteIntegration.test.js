@@ -12,7 +12,11 @@ import {
   stripSuperFreteLegacyFromPublic,
   fretesPublicWriteSafe,
   createSuperFreteHandlers,
+  getSuperFreteApiBase,
+  SUPERFRETE_API_BASE,
+  SUPERFRETE_SANDBOX_BASE,
 } from "../src/superFreteIntegration.js";
+import { isRootAccountEmail } from "../src/rootAccounts.js";
 import { makeSuperFreteMockDb } from "./mockSuperFreteDb.js";
 
 const LOJA = "loja-sf-test";
@@ -134,6 +138,16 @@ describe("helpers SuperFrete", () => {
       true,
     );
   });
+
+  it("getSuperFreteApiBase alterna produção e sandbox", () => {
+    assert.equal(getSuperFreteApiBase(false), SUPERFRETE_API_BASE);
+    assert.equal(getSuperFreteApiBase(true), SUPERFRETE_SANDBOX_BASE);
+  });
+
+  it("isRootAccountEmail reconhece contas root (regressão ROOT_EMAILS)", () => {
+    assert.equal(isRootAccountEmail("masterpalm@gmail.com"), true);
+    assert.equal(isRootAccountEmail("owner@test.com"), false);
+  });
 });
 
 describe("superFreteTestConnection", () => {
@@ -186,8 +200,32 @@ describe("superFreteTestConnection", () => {
       (e) =>
         e instanceof HttpsError
         && e.code === "permission-denied"
-        && e.message.includes("inválido"),
+        && e.message.includes("inválido")
+        && e.details?.code === "TOKEN_INVALIDO",
     );
+  });
+
+  it("4b. sandbox usa host sandbox.superfrete.com", async () => {
+    const db = makeSuperFreteMockDb();
+    let calledUrl = "";
+    const fetchImpl = async (url) => {
+      calledUrl = String(url);
+      return {
+        status: 200,
+        ok: true,
+        async text() {
+          return JSON.stringify({ name: "Sandbox" });
+        },
+      };
+    };
+    const h = makeHandlers(
+      db,
+      authReq({ lojaId: LOJA, token: TOKEN, sandbox: true }),
+      fetchImpl,
+    );
+    await h.superFreteTestConnection();
+    assert.ok(calledUrl.startsWith(SUPERFRETE_SANDBOX_BASE));
+    assert.ok(!calledUrl.includes("api.superfrete.com"));
   });
 });
 

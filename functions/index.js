@@ -55,6 +55,7 @@ import {
 } from "./src/mpCatalogPayerBrasil.js";
 import { stripPaymentsSecretsForPublic } from "./src/paymentsPublicStrip.js";
 import { createSuperFreteHandlers } from "./src/superFreteIntegration.js";
+import { isRootAccountEmail } from "./src/rootAccounts.js";
 import { resolveStrictLojaMpAccessToken } from "./src/mpLojaTokenPolicy.js";
 import {
   tryBeginMpCatalogPaymentOrReuse,
@@ -544,7 +545,7 @@ async function getLojaPaymentsRaw(lojaId) {
 async function canManageStoreConfigServerSide({ lojaId, uid, email }) {
   const emailNorm = String(email || "").trim().toLowerCase();
   if (!uid) return false;
-  if (ROOT_EMAILS.has(emailNorm)) return true;
+  if (isRootAccountEmail(emailNorm)) return true;
 
   const lojaRef = db.collection(COLLECTION_LOJAS).doc(String(lojaId));
   const [lojaSnap, userSnap, memberSnap] = await Promise.all([
@@ -1447,16 +1448,30 @@ export const calcularFrenet = onCall(
 // ----------------------------------------------------------------------------
 function bindSuperFreteHandler(handlerName) {
   return async (request) => {
-    const handlers = createSuperFreteHandlers({
-      db,
-      canManageStoreConfigServerSide,
-      checkRateLimit,
-      getCallableIdentifier,
-      fetchWithTimeout,
-      collectionLojas: COLLECTION_LOJAS,
-      request,
-    });
-    return handlers[handlerName]();
+    try {
+      const handlers = createSuperFreteHandlers({
+        db,
+        canManageStoreConfigServerSide,
+        checkRateLimit,
+        getCallableIdentifier,
+        fetchWithTimeout,
+        collectionLojas: COLLECTION_LOJAS,
+        request,
+      });
+      return await handlers[handlerName]();
+    } catch (err) {
+      if (err instanceof HttpsError) throw err;
+      console.error(
+        `[SuperFrete/${handlerName}] unhandled`,
+        err?.name,
+        err?.message,
+      );
+      throw new HttpsError(
+        "internal",
+        "Não foi possível concluir a operação na SuperFrete. Tente novamente.",
+        { code: "ERRO_INTERNO_NAO_TRATADO" },
+      );
+    }
   };
 }
 

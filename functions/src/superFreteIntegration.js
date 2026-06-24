@@ -7,6 +7,7 @@ import { HttpsError } from "firebase-functions/v2/https";
 
 export const SUPERFRETE_USER_AGENT = "MasterPalm (contato@mastepalm.com.br)";
 export const SUPERFRETE_API_BASE = "https://api.superfrete.com";
+export const SUPERFRETE_SANDBOX_BASE = "https://sandbox.superfrete.com";
 export const FRETES_SECRETS_DOC = "fretes_secrets";
 export const FRETES_PUBLIC_DOC = "fretes";
 
@@ -109,6 +110,10 @@ function requireAuthUid(request) {
 
 function parseSandbox(value) {
   return value === true || value === "true" || value === 1;
+}
+
+export function getSuperFreteApiBase(sandbox) {
+  return parseSandbox(sandbox) ? SUPERFRETE_SANDBOX_BASE : SUPERFRETE_API_BASE;
 }
 
 function buildQuotePayload({
@@ -254,7 +259,8 @@ export function createSuperFreteHandlers(deps) {
   }
 
   async function callSuperFreteMe(token, sandbox) {
-    const url = `${SUPERFRETE_API_BASE}/api/v8/me`;
+    const base = getSuperFreteApiBase(sandbox);
+    const url = `${base}/api/v8/me`;
     const resp = await fetchImpl(
       url,
       {
@@ -294,10 +300,12 @@ export function createSuperFreteHandlers(deps) {
     const txt = await resp.text();
     const trim = txt.trim().toLowerCase();
     if (trim.startsWith("<!") || trim.startsWith("<html")) {
-      throw new HttpsError(
+      const err = new HttpsError(
         "failed-precondition",
-        "Resposta inválida da SuperFrete. Verifique o ambiente (sandbox/produção).",
+        "O token não corresponde ao ambiente selecionado. Confira a opção Sandbox.",
       );
+      err.details = { code: "SANDBOX_INCOMPATIVEL" };
+      throw err;
     }
 
     let data;
@@ -315,8 +323,9 @@ export function createSuperFreteHandlers(deps) {
     };
   }
 
-  async function callSuperFreteCalculator(token, payload) {
-    const url = `${SUPERFRETE_API_BASE}/api/v8/calculator`;
+  async function callSuperFreteCalculator(token, payload, sandbox = false) {
+    const base = getSuperFreteApiBase(sandbox);
+    const url = `${base}/api/v8/calculator`;
     const resp = await fetchImpl(
       url,
       {
@@ -582,7 +591,11 @@ export function createSuperFreteHandlers(deps) {
 
     logSuperFrete("QUOTE", `INICIO lojaId=${lojaId}`);
 
-    const raw = await callSuperFreteCalculator(secrets.token, payload);
+    const raw = await callSuperFreteCalculator(
+      secrets.token,
+      payload,
+      secrets.sandbox,
+    );
     const opcoes = mapQuoteResponse(raw);
 
     return { sucesso: true, opcoes };
@@ -662,7 +675,8 @@ export function createSuperFreteHandlers(deps) {
       body.external_order_id = String(data.pedidoRef);
     }
 
-    const url = `${SUPERFRETE_API_BASE}/api/v8/checkout`;
+    const base = getSuperFreteApiBase(secrets.sandbox);
+    const url = `${base}/api/v8/checkout`;
     const resp = await fetchImpl(
       url,
       {
