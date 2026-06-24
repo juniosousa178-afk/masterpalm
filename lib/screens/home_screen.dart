@@ -91,7 +91,9 @@ import '../motor_crescimento/screens/motor_crescimento_screen.dart';
 import '../motor_crescimento_automacoes/screens/campanhas_sugeridas_screen.dart';
 import '../core/logger.dart';
 import '../core/plan_matrix.dart';
+import '../core/plan_access_resolver.dart';
 import '../widgets/plan_gated_screen.dart';
+import '../utils/store_screen_route_observer.dart';
 import '../services/catalog_public_url_service.dart';
 import '../services/public_store_link_helper.dart';
 import '../utils/home_store_context_helper.dart';
@@ -108,7 +110,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, RouteAware {
   // Cores do tema moderno
   static const Color _primaryColor = Color(0xFF6366F1); // Indigo
   static const Color _successColor = Color(0xFF22C55E); // Green
@@ -147,6 +149,11 @@ class _HomeScreenState extends State<HomeScreen>
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       BootPerfLog.markBoot('home_first_paint');
+    });
+
+    // Atualiza acesso efetivo para gates da Home (cortesia, assinatura paga, etc.)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_refreshPlanGates(force: true));
     });
 
     // Sincronização automática ao entrar (paridade Web/APK – vendas de qualquer plataforma aparecem em todas)
@@ -404,7 +411,44 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route is PageRoute) {
+      storeScreenRouteObserver.subscribe(this, route);
+    }
+  }
+
+  @override
+  void didPopNext() {
+    unawaited(_refreshPlanGates(force: true));
+  }
+
+  Future<void> _refreshPlanGates({bool force = false}) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      PlanosService().clearEffectivePlanCache();
+      return;
+    }
+    if (_tipo == 'admin') {
+      await PlanosService().refreshEffectivePlanAccess(force: force);
+    }
+    if (!mounted) return;
+    setState(() {
+      _homeCardsRetryKey++;
+      _homeSidebarMenuRetryKey++;
+      _homeDrawerMenuRetryKey++;
+    });
+  }
+
+  Future<PlanAccessTier> _resolveMenuPlanTier() async {
+    if (_tipo != 'admin') return PlanAccessTier.lifetime;
+    return PlanAccessResolver.currentTier();
+  }
+
+  @override
   void dispose() {
+    storeScreenRouteObserver.unsubscribe(this);
     FirestoreCriticalListenerService.cancelPermissoesListener();
     super.dispose();
   }
@@ -1685,14 +1729,7 @@ class _HomeScreenState extends State<HomeScreen>
     PlanAccessTier menuPlanTier = PlanAccessTier.lifetime;
     final bool applyPlanGate = _tipo == 'admin';
     if (applyPlanGate) {
-      final u = FirebaseAuth.instance.currentUser;
-      if (u != null) {
-        final pi = await PlanosService().fetchCurrentPlan(
-          uid: u.uid,
-          email: (u.email ?? '').trim().toLowerCase(),
-        );
-        if (pi != null) menuPlanTier = PlanMatrix.tierFor(pi);
-      }
+      menuPlanTier = await _resolveMenuPlanTier();
     }
 
     // Seções expansíveis: (título, cor?, filhos)
@@ -2545,14 +2582,7 @@ class _HomeScreenState extends State<HomeScreen>
     PlanAccessTier menuPlanTier = PlanAccessTier.lifetime;
     final bool applyPlanGate = _tipo == 'admin';
     if (applyPlanGate) {
-      final u = FirebaseAuth.instance.currentUser;
-      if (u != null) {
-        final pi = await PlanosService().fetchCurrentPlan(
-          uid: u.uid,
-          email: (u.email ?? '').trim().toLowerCase(),
-        );
-        if (pi != null) menuPlanTier = PlanMatrix.tierFor(pi);
-      }
+      menuPlanTier = await _resolveMenuPlanTier();
     }
 
     final cards = <Widget>[];
@@ -2829,7 +2859,9 @@ class _HomeScreenState extends State<HomeScreen>
                     builder: (context, snap) {
                       return _futureListOrError(
                         snap: snap,
-                        onRetry: () => setState(() => _homeCardsRetryKey++),
+                        onRetry: () {
+                          unawaited(_refreshPlanGates(force: true));
+                        },
                         onData: (children) => GridView.count(
                           crossAxisCount: responsiveGridCount(context,
                               mobile: 2, tablet: 3, desktop: 4),
@@ -2870,7 +2902,9 @@ class _HomeScreenState extends State<HomeScreen>
                   builder: (context, snap) {
                     return _futureListOrError(
                       snap: snap,
-                      onRetry: () => setState(() => _homeSidebarMenuRetryKey++),
+                      onRetry: () {
+                        unawaited(_refreshPlanGates(force: true));
+                      },
                       onData: (items) => AdminSidebar(
                         usuario: _usuario,
                         tipo: _tipo,
@@ -3161,7 +3195,9 @@ class _HomeScreenState extends State<HomeScreen>
           builder: (context, snap) {
             return _futureListOrError(
               snap: snap,
-              onRetry: () => setState(() => _homeDrawerMenuRetryKey++),
+              onRetry: () {
+                unawaited(_refreshPlanGates(force: true));
+              },
               onData: (items) => ListView(
                 padding: EdgeInsets.zero,
                 children: [

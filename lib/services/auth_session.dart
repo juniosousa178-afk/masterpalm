@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 
 import 'session_sanity.dart';
+import 'planos_service.dart';
 
 class AuthSession {
   /// Faz signOut no Firebase, limpa caixas locais e volta ao /login
@@ -17,6 +18,7 @@ class AuthSession {
 
     // ✅ CRÍTICO: Limpar cache de loja para evitar mistura multi-tenant
     await SessionSanity.clearAllStoreCache();
+    PlanosService().clearEffectivePlanCache();
 
     // Fecha e limpa caixas locais principais
     for (final boxName in ['sessao', 'config', 'licenca']) {

@@ -52,16 +52,15 @@ class LimitsGuard {
     return snap.count ?? 0;
   }
 
-  /// Obtém o planId do usuário atual (users/{uid}.currentPlanId ou PlanosService)
-  Future<String?> _currentPlanId() async {
+  /// Obtém o planId efetivo do usuário (gates e limites — cortesia incluída).
+  Future<String?> _effectivePlanIdForLimits() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return null;
     try {
-      final plan = await PlanosService().fetchCurrentPlan(
+      return await PlanosService().effectivePlanIdForGates(
         uid: user.uid,
         email: (user.email ?? '').trim().toLowerCase(),
       );
-      return plan?.planId;
     } catch (_) {
       return null;
     }
@@ -76,7 +75,7 @@ class LimitsGuard {
     String? planId,
   }) async {
     try {
-      final p = planId ?? await _currentPlanId();
+      final p = planId ?? await _effectivePlanIdForLimits();
       if (!hasLimits(p)) return true;
 
       final total = await _countOf(
@@ -97,7 +96,7 @@ class LimitsGuard {
     required int currentCount,
   }) async {
     try {
-      final p = planId ?? await _currentPlanId();
+      final p = planId ?? await _effectivePlanIdForLimits();
       if (!hasLimits(p)) return true;
       final max = _limitFor(p, 'maxImagesPerProduct');
       return currentCount < max;
@@ -109,14 +108,14 @@ class LimitsGuard {
 
   /// Limite máximo de imagens por produto para o plano
   Future<int> maxImagesPerProduct(String? planId) async {
-    final p = planId ?? await _currentPlanId();
+    final p = planId ?? await _effectivePlanIdForLimits();
     if (!hasLimits(p)) return 999;
     return _limitFor(p, 'maxImagesPerProduct');
   }
 
   /// Limite máximo de banners (desktop + mobile) para o plano
   Future<int> maxBanners(String? planId) async {
-    final p = planId ?? await _currentPlanId();
+    final p = planId ?? await _effectivePlanIdForLimits();
     if (!hasLimits(p)) return 99;
     return _limitFor(p, 'maxBanners');
   }
@@ -128,7 +127,7 @@ class LimitsGuard {
     required int currentTotalBanners,
   }) async {
     try {
-      final p = planId ?? await _currentPlanId();
+      final p = planId ?? await _effectivePlanIdForLimits();
       if (!hasLimits(p)) return true;
       final max = _limitFor(p, 'maxBanners');
       return currentTotalBanners < max;
@@ -144,7 +143,7 @@ class LimitsGuard {
     String? planId,
   }) async {
     try {
-      final p = planId ?? await _currentPlanId();
+      final p = planId ?? await _effectivePlanIdForLimits();
       if (!hasLimits(p)) return true;
 
       final total = await _countOf(
@@ -163,7 +162,7 @@ class LimitsGuard {
     String? planId,
   }) async {
     try {
-      final p = planId ?? await _currentPlanId();
+      final p = planId ?? await _effectivePlanIdForLimits();
       if (!hasLimits(p)) return true;
 
       final now = DateTime.now();

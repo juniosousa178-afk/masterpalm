@@ -33,14 +33,14 @@ abstract final class PlanAccessResolver {
       return PlanAccessTier.lifetime;
     }
     final email = (user.email ?? '').trim().toLowerCase();
-    final effectivePlanId = await PlanosService().effectivePlanIdForGates(
+    final access = await PlanosService().resolveEffectivePlanAccess(
       uid: user.uid,
       email: email,
     );
-    if (effectivePlanId == null || effectivePlanId.isEmpty) {
-      return PlanAccessTier.freeLimited;
+    if (access != null) {
+      return access.effectiveTier;
     }
-    return PlanMatrix.tierForPlanId(effectivePlanId);
+    return PlanAccessTier.freeLimited;
   }
 
   static Future<bool> allows(PlanGateFeature feature) async {

@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 import '../utils/role_utils.dart';
+import '../core/effective_plan_access.dart';
 import '../core/master_plan_access_models.dart';
 import 'master_plan_admin_service.dart';
 
@@ -308,24 +309,128 @@ class PlanSubscriptionSyncResult {
 
 class PlanosService {
   final _db = FirebaseFirestore.instance;
-  EffectivePlanAccessDto? _cachedEffectiveAccess;
-  DateTime? _cachedEffectiveAccessAt;
 
-  /// Acesso efetivo via Cloud Function — sem elevação local em falha.
+  static EffectivePlanAccessDto? _cachedEffectiveAccess;
+  static String? _cachedEffectiveAccessUid;
+  static DateTime? _cachedEffectiveAccessAt;
+  static Future<EffectivePlanAccessDto?>? _inFlightEffectiveAccess;
+
+  /// Normaliza IDs para gates/limites — nunca eleva tier por ID desconhecido.
+  static String normalizePlanIdForAccess(String? raw) {
+    final normalized = normalizePlanId(raw);
+    if (_isKnownAccessPlanId(normalized)) return normalized;
+    return PlanId.freeLimited;
+  }
+
+  static bool _isKnownAccessPlanId(String planId) {
+    switch (planId) {
+      case PlanId.freeTrial30d:
+      case PlanId.freeTrial90d:
+      case PlanId.freeLimited:
+      case PlanId.basicMonthly:
+      case PlanId.intermediateMonthly:
+      case PlanId.proMonthly:
+      case PlanId.proYearly:
+      case PlanId.lifetime:
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  /// Resolve plano para gates sem I/O — útil em testes e fallback seguro.
+  @visibleForTesting
+  static String? resolveEffectivePlanIdForGates({
+    EffectivePlanAccessDto? serverDto,
+    String? contractedPlanId,
+  }) {
+    final fromServer = serverDto?.effectivePlanId;
+    if (fromServer != null && fromServer.trim().isNotEmpty) {
+      return normalizePlanIdForAccess(fromServer);
+    }
+    if (contractedPlanId != null && contractedPlanId.trim().isNotEmpty) {
+      return normalizePlanIdForAccess(contractedPlanId);
+    }
+    return null;
+  }
+
+  /// Acesso efetivo via Cloud Function — cache em memória por UID, sem elevação local em falha.
   Future<EffectivePlanAccessDto?> fetchMyEffectivePlanAccess({
     bool forceRefresh = false,
   }) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      clearEffectivePlanCache();
+      return null;
+    }
+    if (_cachedEffectiveAccessUid != null && _cachedEffectiveAccessUid != uid) {
+      clearEffectivePlanCache();
+    }
+
     if (!forceRefresh &&
         _cachedEffectiveAccess != null &&
+        _cachedEffectiveAccessUid == uid &&
         _cachedEffectiveAccessAt != null &&
         DateTime.now().difference(_cachedEffectiveAccessAt!) <
             const Duration(minutes: 2)) {
       return _cachedEffectiveAccess;
     }
-    final dto = await MyPlanEffectiveAccessService().fetchMyEffectiveAccess();
-    _cachedEffectiveAccess = dto;
-    _cachedEffectiveAccessAt = DateTime.now();
-    return dto;
+
+    if (!forceRefresh && _inFlightEffectiveAccess != null) {
+      return _inFlightEffectiveAccess;
+    }
+
+    final future = MyPlanEffectiveAccessService().fetchMyEffectiveAccess();
+    _inFlightEffectiveAccess = future;
+    try {
+      final dto = await future;
+      _cachedEffectiveAccess = dto;
+      _cachedEffectiveAccessUid = uid;
+      _cachedEffectiveAccessAt = DateTime.now();
+      return dto;
+    } finally {
+      _inFlightEffectiveAccess = null;
+    }
+  }
+
+  /// Atualiza acesso efetivo do servidor (deduplica chamadas simultâneas).
+  Future<EffectivePlanAccessDto?> refreshEffectivePlanAccess({
+    bool force = false,
+  }) {
+    return fetchMyEffectivePlanAccess(forceRefresh: force);
+  }
+
+  void invalidateEffectivePlanAccess() => clearEffectivePlanCache();
+
+  /// Estado unificado para UI e gates.
+  Future<EffectivePlanAccess?> resolveEffectivePlanAccess({
+    required String uid,
+    required String email,
+    bool forceRefresh = false,
+  }) async {
+    if (RoleUtils.isRootEmail(email)) {
+      return EffectivePlanAccess(
+        contractedPlanId: PlanId.lifetime,
+        effectivePlanId: PlanId.lifetime,
+        accessSource: 'lifetime',
+        courtesy: const MasterPlanCourtesySummary(active: false),
+        renewal: const MasterPlanRenewalSummary(
+          active: false,
+          cancelAtPeriodEnd: false,
+        ),
+      );
+    }
+    final contracted = await fetchCurrentPlan(uid: uid, email: email);
+    final dto = await fetchMyEffectivePlanAccess(forceRefresh: forceRefresh);
+    if (dto != null) {
+      return EffectivePlanAccess.fromDto(dto);
+    }
+    if (contracted != null) {
+      return EffectivePlanAccess.fallbackContracted(
+        contractedPlanId: contracted.planId,
+      );
+    }
+    return null;
   }
 
   /// Plano usado em gates/menus — prioriza effectivePlanId do servidor.
@@ -335,17 +440,18 @@ class PlanosService {
   }) async {
     if (RoleUtils.isRootEmail(email)) return PlanId.lifetime;
     final effective = await fetchMyEffectivePlanAccess();
-    final fromServer = effective?.effectivePlanId;
-    if (fromServer != null && fromServer.trim().isNotEmpty) {
-      return normalizePlanId(fromServer);
-    }
     final contracted = await fetchCurrentPlan(uid: uid, email: email);
-    return contracted?.planId;
+    return resolveEffectivePlanIdForGates(
+      serverDto: effective,
+      contractedPlanId: contracted?.planId,
+    );
   }
 
   void clearEffectivePlanCache() {
     _cachedEffectiveAccess = null;
+    _cachedEffectiveAccessUid = null;
     _cachedEffectiveAccessAt = null;
+    _inFlightEffectiveAccess = null;
   }
 
   /// Regra única: admin pode usar o app (Home) sem ser redirecionado a Planos.
@@ -404,6 +510,8 @@ class PlanosService {
       case 'basic':
       case 'basic_monthly':
         return PlanId.basicMonthly;
+      case 'pro':
+        return PlanId.proMonthly;
       case 'intermediate':
       case 'intermediate_monthly':
         return PlanId.intermediateMonthly;
