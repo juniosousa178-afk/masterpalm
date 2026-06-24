@@ -397,6 +397,77 @@ describe("superFreteSaveConfig", () => {
     const draft = db.state.draftConfig[LOJA];
     assert.equal(draft.frete_config?.superfrete_token, undefined);
   });
+
+  it("save lê draft_config antes de qualquer escrita na transaction", async () => {
+    const db = makeSuperFreteMockDb({
+      lojas: { [LOJA]: { published: true, ownerUid: UID } },
+      draftConfig: {
+        [LOJA]: { frete_config: { superfrete_token: "legacy_exposed_token" } },
+      },
+    });
+    const h = makeHandlers(
+      db,
+      authReq({ lojaId: LOJA, token: TOKEN, cepOrigem: "01310100" }),
+      okMeFetch(),
+    );
+    await h.superFreteSaveConfig();
+    const draftWrite = db.writes.find((w) => w.path.endsWith("/draft_config/config"));
+    const secretWrite = db.writes.find((w) => w.path.endsWith("/config/fretes_secrets"));
+    const publicWrite = db.writes.find((w) => w.path.endsWith("/config/fretes"));
+    assert.ok(draftWrite);
+    assert.ok(secretWrite);
+    assert.ok(publicWrite);
+    const draftIdx = db.writes.indexOf(draftWrite);
+    const firstWriteIdx = db.writes.findIndex((w) => w.op === "set");
+    assert.ok(draftIdx > firstWriteIdx, "draft deve ser escrito após leituras preparadas");
+  });
+
+  it("falha na transaction retorna ERRO_AO_SALVAR_CONFIG sem expor token", async () => {
+    const base = makeSuperFreteMockDb({
+      lojas: { [LOJA]: { published: true, ownerUid: UID } },
+    });
+    const origRun = base.runTransaction.bind(base);
+    base.runTransaction = async (fn) => {
+      const tx = {
+        async get(ref) {
+          return ref.get();
+        },
+        set() {
+          throw new Error("simulated firestore failure");
+        },
+      };
+      return fn(tx);
+    };
+    const h = makeHandlers(
+      base,
+      authReq({ lojaId: LOJA, token: TOKEN, cepOrigem: "01310100" }),
+      okMeFetch(),
+    );
+    await assert.rejects(
+      () => h.superFreteSaveConfig(),
+      (e) =>
+        e instanceof HttpsError
+        && e.code === "internal"
+        && e.details?.code === "ERRO_AO_SALVAR_CONFIG"
+        && !JSON.stringify(e).includes(TOKEN),
+    );
+    assert.equal(base.state.fretesSecrets[LOJA], undefined);
+    base.runTransaction = origRun;
+  });
+
+  it("retorno contém somente máscara e status, sem token", async () => {
+    const h = makeHandlers(
+      makeSuperFreteMockDb({
+        lojas: { [LOJA]: { published: true, ownerUid: UID } },
+      }),
+      authReq({ lojaId: LOJA, token: TOKEN, cepOrigem: "01310100" }),
+      okMeFetch(),
+    );
+    const res = await h.superFreteSaveConfig();
+    assert.deepEqual(Object.keys(res).sort(), ["configured", "maskedToken", "ok", "sandbox"]);
+    assert.equal(res.maskedToken, maskToken(TOKEN));
+    assert.ok(!JSON.stringify(res).includes(TOKEN));
+  });
 });
 
 describe("superFreteGetConfigStatus", () => {

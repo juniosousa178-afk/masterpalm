@@ -551,71 +551,85 @@ export function createSuperFreteHandlers(deps) {
 
     const now = FieldValue.serverTimestamp();
 
-    await db.runTransaction(async (tx) => {
-      const pubSnap = await tx.get(publicRef);
-      const pubBase = pubSnap.exists ? pubSnap.data() ?? {} : {};
-      const cleaned = stripSuperFreteLegacyFromPublic(pubBase);
+    try {
+      await db.runTransaction(async (tx) => {
+        // Firestore exige todas as leituras antes de qualquer escrita.
+        const pubSnap = await tx.get(publicRef);
+        const draftSnap = await tx.get(draftRef);
 
-      const publicPatch = {
-        ...cleaned,
-        cepOrigem: normalizeCep(cepOrigem),
-        integrations: {
-          ...(cleaned.integrations ?? {}),
-          superfrete: {
-            configured: true,
-            enabled: true,
-            sandbox: sb,
-          },
-        },
-        updatedAt: now,
-      };
+        const pubBase = pubSnap.exists ? pubSnap.data() ?? {} : {};
+        const cleaned = stripSuperFreteLegacyFromPublic(pubBase);
 
-      delete publicPatch.superfrete;
-
-      const legacyDeletes = {
-        superfrete: FieldValue.delete(),
-        superfrete_token: FieldValue.delete(),
-        superfreteToken: FieldValue.delete(),
-        apiToken: FieldValue.delete(),
-      };
-
-      tx.set(secretsRef, {
-        schemaVersion: 1,
-        superfrete: {
-          token: t,
-          sandbox: sb,
-          updatedAt: now,
-          updatedByUid: uid,
-          lastValidatedAt: now,
-          lastValidationStatus: "ok",
-        },
-      }, { merge: true });
-
-      tx.set(publicRef, { ...publicPatch, ...legacyDeletes }, { merge: true });
-
-      const draftSnap = await tx.get(draftRef);
-      if (draftSnap.exists) {
-        const draft = draftSnap.data() ?? {};
-        const fc = { ...(draft.frete_config ?? {}) };
-        delete fc.superfrete_token;
-        delete fc.superfreteToken;
-        tx.set(
-          draftRef,
-          {
-            frete_config: {
-              ...fc,
-              cep_origem: normalizeCep(cepOrigem),
-              superfrete_sandbox: sb,
-              superfrete_configured: true,
-              superfrete_token: FieldValue.delete(),
-              superfreteToken: FieldValue.delete(),
+        const publicPatch = {
+          ...cleaned,
+          cepOrigem: normalizeCep(cepOrigem),
+          integrations: {
+            ...(cleaned.integrations ?? {}),
+            superfrete: {
+              configured: true,
+              enabled: true,
+              sandbox: sb,
             },
-            updatedAt: now,
           },
-          { merge: true },
-        );
-      }
-    });
+          updatedAt: now,
+        };
+
+        delete publicPatch.superfrete;
+
+        const legacyDeletes = {
+          superfrete: FieldValue.delete(),
+          superfrete_token: FieldValue.delete(),
+          superfreteToken: FieldValue.delete(),
+          apiToken: FieldValue.delete(),
+        };
+
+        tx.set(secretsRef, {
+          schemaVersion: 1,
+          superfrete: {
+            token: t,
+            sandbox: sb,
+            updatedAt: now,
+            updatedByUid: uid,
+            lastValidatedAt: now,
+            lastValidationStatus: "ok",
+          },
+        }, { merge: true });
+
+        tx.set(publicRef, { ...publicPatch, ...legacyDeletes }, { merge: true });
+
+        if (draftSnap.exists) {
+          const draft = draftSnap.data() ?? {};
+          const fc = { ...(draft.frete_config ?? {}) };
+          delete fc.superfrete_token;
+          delete fc.superfreteToken;
+          tx.set(
+            draftRef,
+            {
+              frete_config: {
+                ...fc,
+                cep_origem: normalizeCep(cepOrigem),
+                superfrete_sandbox: sb,
+                superfrete_configured: true,
+                superfrete_token: FieldValue.delete(),
+                superfreteToken: FieldValue.delete(),
+              },
+              updatedAt: now,
+            },
+            { merge: true },
+          );
+        }
+      });
+    } catch (err) {
+      logSuperFreteFail(
+        "SAVE",
+        `lojaId=${storeId} code=ERRO_AO_SALVAR_CONFIG type=${err?.name ?? "Error"}`,
+      );
+      throw new HttpsError(
+        "internal",
+        "Não foi possível salvar a configuração. Tente novamente.",
+        { code: "ERRO_AO_SALVAR_CONFIG" },
+      );
+    }
 
     return {
       ok: true,

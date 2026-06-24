@@ -147,11 +147,18 @@ export function makeSuperFreteMockDb({
       };
     },
     async runTransaction(fn) {
+      let wrote = false;
       const tx = {
         async get(ref) {
+          if (wrote) {
+            throw new Error(
+              "Firestore transactions require all reads to be executed before all writes.",
+            );
+          }
           return ref.get();
         },
         set(ref, data, opts) {
+          wrote = true;
           return ref.set(data, opts);
         },
       };

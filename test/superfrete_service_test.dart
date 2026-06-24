@@ -135,6 +135,10 @@ void main() {
         source,
         contains('Não foi possível testar a conexão. Tente novamente.'),
       );
+      expect(
+        source,
+        contains('Não foi possível salvar a configuração. Tente novamente.'),
+      );
       expect(source, contains("_messageForSafeCode"));
     });
 

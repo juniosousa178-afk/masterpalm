@@ -58,6 +58,8 @@ class SuperFreteIntegrationService {
         return 'Sua conta não possui permissão para configurar fretes desta loja.';
       case 'ERRO_INTERNO_NAO_TRATADO':
         return 'Não foi possível testar a conexão. Tente novamente.';
+      case 'ERRO_AO_SALVAR_CONFIG':
+        return 'Não foi possível salvar a configuração. Tente novamente.';
       default:
         return '';
     }
