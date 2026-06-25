@@ -2333,6 +2333,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
               : 'Produto salvo sem alterações remotas pendentes.',
         ProdutoSyncRemotoStatus.bloqueadoExclusaoTombstone =>
           'Produto salvo localmente, porém bloqueado para sincronização porque foi marcado para exclusão remota.',
+        ProdutoSyncRemotoStatus.recuperacaoManualNecessaria =>
+          'Produto salvo no aparelho, mas requer recuperação manual antes da sincronização com a nuvem.',
       };
 
       final sucessoPleno = (remoteStatus == ProdutoSyncRemotoStatus.confirmado ||
