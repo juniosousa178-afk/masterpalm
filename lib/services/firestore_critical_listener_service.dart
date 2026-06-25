@@ -73,9 +73,8 @@ class FirestoreCriticalListenerService {
       );
       if (stillPending) {
         debugPrint(
-          '⏸️ [LISTENER_SYNC] Pull adiado: há sync local de produto pendente/dead-letter (loja=$lojaId)',
+          '⏸️ [LISTENER_SYNC] Fila com pendências/dead-letter — pull parcial por produto (loja=$lojaId)',
         );
-        return;
       }
       await ProdutosFirestoreService.syncFirestoreToHive(
         lojaId: lojaId,

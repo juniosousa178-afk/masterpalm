@@ -61,6 +61,8 @@ import '../services/ai_loja_service.dart';
 import '../services/ia_uso_limite_service.dart';
 import '../services/produto_exclusao_remota_service.dart';
 import '../widgets/app_help_icon_button.dart';
+import '../services/produto_sync_recovery_access.dart';
+import 'produto_sync_recovery_screen.dart';
 
 const bool kAutoSyncOnStart = false;
 
@@ -112,6 +114,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
   bool _sugerindoPromocaoIa = false;
   bool _catalogoPrecisaAtualizar = false;
   int _comprasRevendaPendentesCount = 0;
+  bool _podeRecuperacaoSync = false;
 
   /// Ordenação: nome_asc | nome_desc | preco_asc | preco_desc | qtd_asc | qtd_desc
   String _ordenacao = 'nome_asc';
@@ -280,11 +283,9 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
         includeDeadLetter: true,
       );
       if (stillPending) {
-        _showSnackBar(
-          'Sincronização local pendente. Primeiro o app confirma suas edições/exclusões; depois importe da nuvem.',
-          isError: true,
+        logW(
+          '[ESTOQUE] Pull manual com fila pendente/dead-letter — apenas produtos sem conflito local serão atualizados',
         );
-        return;
       }
       final n = await ProdutosFirestoreService.syncFirestoreToHive(
         lojaId: lojaId,
@@ -463,9 +464,9 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
       );
       if (stillPending) {
         logW(
-          '[ESTOQUE] Pull em background adiado: há sync local de produto pendente/dead-letter (loja=$lojaId)',
+          '[ESTOQUE] Pull com itens pendentes/dead-letter na fila — produtos sem conflito ainda serão baixados (loja=$lojaId)',
         );
-      } else {
+      }
       // Só pull na abertura: não enviar Hive inteiro antes (evita nuvem ser sobrescrita por base local velha/incompleta).
       await ProdutosFirestoreService.syncFirestoreToHive(
         lojaId: lojaId,
@@ -473,7 +474,6 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
         preferRemoteQuantity: true,
       );
       logD('Produtos sincronizados do Firestore');
-      }
     } catch (e, st) {
       logE('[ESTOQUE] Erro ao sincronizar produtos do Firestore em background (type=${e.runtimeType})', error: e, st: st);
     }
@@ -498,8 +498,13 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
 
   Future<void> _verificarPermissao() async {
     final permitido = await PermissaoService.possuiPermissao('estoque');
+    final podeRecuperacao =
+        await ProdutoSyncRecoveryAccess.podeAcessarRecuperacao();
     if (!mounted) return;
-    setState(() => _temPermissao = permitido);
+    setState(() {
+      _temPermissao = permitido;
+      _podeRecuperacaoSync = podeRecuperacao;
+    });
   }
 
   String _norm(String? s) => normalizeText(s ?? '');
@@ -2823,6 +2828,7 @@ Future<void> _importarProdutos() async {
       );
     }
 
+    await SyncQueueService.runWithDeferredQueueProcessing(() async {
     int idx = 0;
     for (final r in rows) {
       idx++;
@@ -2994,6 +3000,7 @@ Future<void> _importarProdutos() async {
         });
       }
     }
+    });
 
     final resumo = ProdutoImportResumo(linhas: resultadosImport);
 
@@ -3003,6 +3010,9 @@ Future<void> _importarProdutos() async {
       setState(() => _catalogoPrecisaAtualizar = true);
     }
     _showSnackBar(resumo.mensagemResumo());
+    if (resumo.importadosComSucessoLocal > 0) {
+      SyncQueueService.requestProcessWhenOnline(lojaId: lojaId);
+    }
     setState(() {});
   } catch (e) {
     if (!mounted) return;
@@ -4025,6 +4035,35 @@ String _formatGradeTexto(Produto p) {
                     _puxarDoFirestore();
                   },
           ),
+          if (_podeRecuperacaoSync) ...[
+            const Divider(height: 24),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: Text(
+                'Recuperação de sincronização',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[700],
+                ),
+              ),
+            ),
+            _drawerTile(
+              icon: Icons.healing_outlined,
+              iconColor: const Color(0xFF8B5CF6),
+              label: 'Recuperação de sincronização de estoque',
+              subtitle: 'Preview e reparo assistido (dono/admin)',
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push<void>(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const ProdutoSyncRecoveryScreen(),
+                  ),
+                );
+              },
+            ),
+          ],
           _drawerTile(
             icon: Icons.auto_awesome,
             iconColor: Colors.amber,

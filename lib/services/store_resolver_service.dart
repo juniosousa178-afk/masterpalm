@@ -43,6 +43,16 @@ class StoreResolverService {
     return _resolveOwnerStoreInternal(persistToSession: true);
   }
 
+  /// Loja canônica do perfil (Firestore), sem priorizar sessão local.
+  static Future<String?> resolveCanonicalOwnerStoreFromProfile() async {
+    return _resolveOwnerStoreInternal(persistToSession: false);
+  }
+
+  /// store_id operacional validado na sessão (sem consultar Firestore).
+  static Future<String?> readValidatedSessionStoreId() async {
+    return _readValidatedSessionStoreId();
+  }
+
   /// Compat: delega a [resolveOwnerStore] após tentar sessão operacional alinhada.
   static Future<String?> resolve() async {
     final sessionFirst = await _readValidatedSessionStoreId();

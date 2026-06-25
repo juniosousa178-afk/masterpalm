@@ -107,6 +107,32 @@ class SyncQueueService {
   Box? _box;
   bool _isProcessing = false;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
+  static int _deferProcessDepth = 0;
+  static String? _pendingProcessScopeLojaId;
+  static int _processRequestCount = 0;
+
+  /// Contagem de [requestProcessWhenOnline] (somente testes).
+  @visibleForTesting
+  static int get debugProcessRequestCount => _processRequestCount;
+
+  @visibleForTesting
+  static void resetProcessRequestCountForTests() {
+    _processRequestCount = 0;
+    _pendingProcessScopeLojaId = null;
+    _deferProcessDepth = 0;
+  }
+
+  /// Enfileira várias operações sem disparar processamento até o fim do lote.
+  static Future<T> runWithDeferredQueueProcessing<T>(
+    Future<T> Function() action,
+  ) async {
+    _deferProcessDepth++;
+    try {
+      return await action();
+    } finally {
+      _deferProcessDepth--;
+    }
+  }
 
   /// Inicializa o serviço (chamar no app startup)
   static Future<void> init() async {
@@ -127,6 +153,7 @@ class SyncQueueService {
     required String boxName,
     required int entityKey,
     String? lastError,
+    bool scheduleProcess = true,
   }) async {
     await _instance._enqueue(
       type,
@@ -134,6 +161,7 @@ class SyncQueueService {
       boxName,
       entityKey,
       lastError: lastError,
+      scheduleProcess: scheduleProcess,
     );
   }
 
@@ -171,6 +199,7 @@ class SyncQueueService {
     String boxName,
     int entityKey, {
     String? lastError,
+    bool scheduleProcess = true,
   }) async {
     await _ensureBox();
     final box = _box!;
@@ -197,6 +226,13 @@ class SyncQueueService {
       '${errInicial != null ? " lastError=$errInicial" : ""}',
     );
 
+    if (scheduleProcess) {
+      _maybeScheduleProcess();
+    }
+  }
+
+  void _maybeScheduleProcess() {
+    if (_deferProcessDepth > 0) return;
     _scheduleProcess();
   }
 
@@ -205,6 +241,56 @@ class SyncQueueService {
     Future.delayed(const Duration(milliseconds: 800), () {
       processPending();
     });
+  }
+
+  /// Solicita processamento da fila após lote — escopo explícito de loja.
+  static void requestProcessWhenOnline({required String lojaId}) {
+    final scoped = lojaId.trim();
+    if (scoped.isEmpty) return;
+    _processRequestCount++;
+    _pendingProcessScopeLojaId = scoped;
+    _instance._scheduleScopedProcess();
+  }
+
+  void _scheduleScopedProcess() {
+    Future.delayed(const Duration(milliseconds: 800), () async {
+      final scope = _pendingProcessScopeLojaId;
+      _pendingProcessScopeLojaId = null;
+      await processPending(scopeLojaId: scope);
+    });
+  }
+
+  /// Enfileira upsert de produto substituindo entradas anteriores da mesma entityKey.
+  static Future<void> enqueueProdutoUnico({
+    required String lojaId,
+    required String boxName,
+    required int entityKey,
+    String? lastError,
+    bool scheduleProcess = true,
+  }) async {
+    await _instance._ensureBox();
+    final box = _instance._box!;
+    final toDelete = <dynamic>[];
+    for (final k in box.keys) {
+      final map = _instance._rawToMap(box.get(k));
+      if (map == null) continue;
+      final item = SyncQueueItem.fromMap(map);
+      if (item.type != SyncOperationType.upsertProduto) continue;
+      if (item.lojaId != lojaId) continue;
+      if (item.entityKey != entityKey) continue;
+      toDelete.add(k);
+    }
+    for (final k in toDelete) {
+      await box.delete(k);
+    }
+    await _instance._enqueue(
+      SyncOperationType.upsertProduto,
+      lojaId,
+      boxName,
+      entityKey,
+      lastError: lastError,
+      scheduleProcess: scheduleProcess,
+    );
   }
 
   static void Function()? _onReconnectCallback;
@@ -240,9 +326,9 @@ class SyncQueueService {
     _instance._connectivitySub = null;
   }
 
-  /// Processa todas as operações pendentes
-  static Future<SyncQueueResult> processPending() async {
-    return _instance._processPending();
+  /// Processa operações pendentes. Com [scopeLojaId], ignora itens de outras lojas.
+  static Future<SyncQueueResult> processPending({String? scopeLojaId}) async {
+    return _instance._processPending(scopeLojaId: scopeLojaId);
   }
 
   /// Verifica se existe item pendente/dead-letter para uma entidade específica.
@@ -300,7 +386,7 @@ class SyncQueueService {
     return false;
   }
 
-  Future<SyncQueueResult> _processPending() async {
+  Future<SyncQueueResult> _processPending({String? scopeLojaId}) async {
     if (_isProcessing) {
       // Outro ciclo em andamento: reagendar para não perder itens recém-enfileirados (ex.: cadastro web).
       _scheduleProcess();
@@ -351,6 +437,12 @@ class SyncQueueService {
           }
 
           final item = SyncQueueItem.fromMap(map);
+          if (scopeLojaId != null &&
+              scopeLojaId.isNotEmpty &&
+              item.lojaId != scopeLojaId) {
+            skipped++;
+            continue;
+          }
           if (item.deadLetter) {
             deadLetterSkipped++;
             logD(

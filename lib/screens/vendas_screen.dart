@@ -468,17 +468,16 @@ class _VendasScreenState extends State<VendasScreen>
         lojaId: lojaId!,
         includeDeadLetter: true,
       );
-      if (!pendingAfterPush) {
-        await ProdutosFirestoreService.syncFirestoreToHive(
-          lojaId: lojaId!,
-          produtosBox: produtosBox,
-        );
-        logD('Produtos sincronizados (enviados + puxados)');
-      } else {
+      if (pendingAfterPush) {
         logW(
-          '[SYNC] Pull pós-push adiado: pendências locais de produto ainda não confirmadas',
+          '[SYNC] Pull pós-push com pendências locais — merge por produto (sem sobrescrever pendentes)',
         );
       }
+      await ProdutosFirestoreService.syncFirestoreToHive(
+        lojaId: lojaId!,
+        produtosBox: produtosBox,
+      );
+      logD('Produtos sincronizados (enviados + puxados)');
     } catch (e, st) {
       logE('Erro ao sincronizar produtos (type=${e.runtimeType})', error: e, st: st);
       if (mounted) setState(() => _syncFalhou = true);
