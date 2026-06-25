@@ -9,6 +9,7 @@ import '../core/combo_configuravel_resumo.dart';
 import '../core/logger.dart';
 import '../core/produto_variacao_extra.dart';
 import '../services/pre_pedido_service.dart';
+import '../services/shipping_preorder_service.dart';
 import '../services/catalog_cart_item_snapshot.dart';
 import '../services/catalogo_venda_service.dart';
 import '../services/pos_pagamento_service.dart';
@@ -1787,6 +1788,11 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                       const SizedBox(height: 8),
                       _buildDetalheEntrega(dados['frete']),
 
+                      if (_temShippingPreOrder(dados)) ...[
+                        const SizedBox(height: 16),
+                        _buildShippingPreOrderSection(dados),
+                      ],
+
                       const SizedBox(height: 24),
 
                       _buildSectionTitle(Icons.payment, 'Pagamento'),
@@ -2192,6 +2198,105 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
         ],
       ),
     );
+  }
+
+  bool _temShippingPreOrder(Map<String, dynamic> dados) {
+    final frete = dados['frete'];
+    final plataforma = frete is Map
+        ? (frete['plataforma'] ?? '').toString().trim()
+        : '';
+    if (plataforma == 'superfrete' || plataforma == 'melhor_envio') {
+      return true;
+    }
+    return dados['shippingPreOrder'] is Map;
+  }
+
+  Widget _buildShippingPreOrderSection(Map<String, dynamic> dados) {
+    final shipping = dados['shippingPreOrder'] is Map
+        ? Map<String, dynamic>.from(dados['shippingPreOrder'] as Map)
+        : <String, dynamic>{};
+    final frete = dados['frete'] is Map
+        ? Map<String, dynamic>.from(dados['frete'] as Map)
+        : <String, dynamic>{};
+    final provider =
+        (shipping['provider'] ?? frete['plataforma'] ?? '').toString();
+    final status = (shipping['status'] ?? 'pending').toString();
+    final errorCode = shipping['errorCode']?.toString();
+    final canRetry =
+        status == 'failed' || status == 'needs_product_data';
+    final statusLabel = ShippingPreOrderService.statusLabel(status);
+    final providerLabel = ShippingPreOrderService.providerLabel(provider);
+    final errorMsg = ShippingPreOrderService.messageForErrorCode(errorCode);
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: _surfaceColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Pré-pedido de envio',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              color: Colors.grey.shade800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text('$providerLabel: $statusLabel'),
+          if (status == 'created' &&
+              (shipping['providerReference'] ?? '').toString().isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                'Referência: ${shipping['providerReference']}',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+              ),
+            ),
+          if (errorMsg.isNotEmpty && status != 'created')
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                errorMsg,
+                style: TextStyle(fontSize: 12, color: Colors.orange.shade800),
+              ),
+            ),
+          if (canRetry) ...[
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: () => _retryShippingPreOrder(dados),
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text('Criar novamente pré-pedido'),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _retryShippingPreOrder(Map<String, dynamic> dados) async {
+    final pedidoId = dados['id']?.toString() ?? '';
+    if (pedidoId.isEmpty) return;
+    _showModernSnackBar('Criando pré-pedido de envio...');
+    final res = await ShippingPreOrderService.retryPreOrder(
+      lojaId: widget.lojaId,
+      orderId: pedidoId,
+    );
+    if (!mounted) return;
+    if (res['ok'] == true) {
+      _showModernSnackBar('Pré-pedido de envio criado com sucesso.');
+      setState(() {});
+    } else {
+      final msg = (res['message'] ?? 'Não foi possível criar o pré-pedido.')
+          .toString();
+      _showModernSnackBar(msg);
+    }
   }
 
   Future<void> _mostrarDialogoAtualizarStatus(

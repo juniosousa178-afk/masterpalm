@@ -128,8 +128,20 @@ service cloud.firestore {
         );
     }
 
+    function fretesHasMelhorEnvioSecretFields(data) {
+      return data.keys().hasAny(['melhor_envio_token', 'melhorEnvioToken'])
+        || (
+          data.keys().hasAll(['melhorEnvio'])
+          && data.melhorEnvio is map
+          && data.melhorEnvio.keys().hasAny(['token'])
+          && data.melhorEnvio.token is string
+          && data.melhorEnvio.token.size() > 0
+        );
+    }
+
     function fretesPublicClientWriteOk() {
-      return !fretesHasSuperFreteSecretFields(request.resource.data);
+      return !fretesHasSuperFreteSecretFields(request.resource.data)
+        && !fretesHasMelhorEnvioSecretFields(request.resource.data);
     }
 
     // -------- Planos / assinatura: cliente não escala para plano pago nem override manual --------
@@ -929,6 +941,12 @@ service cloud.firestore {
           || (resource.data.lojaId == lojaId
               && isValidPrePedidoGovernancaSubstituicao());
         allow delete: if isAdminOrSystem();
+      }
+
+      // Pré-pedidos de envio externos — somente admin/dono lê; escrita só via Functions.
+      match /shipping_preorders/{shippingPreOrderId} {
+        allow read: if canManageStoreConfig(lojaId);
+        allow create, update, delete: if false;
       }
 
       match /pedido_status_publico/{pedidoId} {

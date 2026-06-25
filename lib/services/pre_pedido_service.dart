@@ -12,7 +12,6 @@ import '../core/produto_variacao_extra.dart';
 import '../repositories/cliente_portal_repository.dart';
 import '../repositories/pedido_repository.dart';
 import '../repositories/pedido_status_publico_repository.dart';
-import 'frete_service.dart';
 import 'notificacao_vendas_service.dart';
 import 'pedido_collection_resolver.dart';
 import 'indicacao_config_service.dart';
@@ -388,6 +387,8 @@ class PrePedidoService {
           'gratis': freteGratis,
           'tipo': entrega['tipo'] ?? '',
           if (entrega['plataforma'] != null) 'plataforma': entrega['plataforma'],
+          if (entrega['service_id'] != null) 'service_id': entrega['service_id'],
+          if (entrega['servico_id'] != null) 'servico_id': entrega['servico_id'],
         },
         'cupom': cupomCodigo != null
             ? {
@@ -606,77 +607,12 @@ class PrePedidoService {
         total: total,
       );
 
-      // 🎯 CRIAR PRÉ-PEDIDO NA PLATAFORMA DE FRETE (Melhor Envio, etc - em background)
-      final plataforma = (entrega['plataforma'] ?? '').toString().trim();
-      final deveCriarNaPlataforma = plataforma.isNotEmpty &&
-          plataforma != 'manual' &&
-          (entrega['tipo'] != null && entrega['tipo'].toString().isNotEmpty);
-      if (deveCriarNaPlataforma) {
+      // Pré-pedido de envio (carrinho SuperFrete/Melhor Envio): Cloud Function
+      // onPrePedidoShippingPreOrder — idempotente, somente no backend.
+      final plataformaFrete = (entrega['plataforma'] ?? '').toString().trim();
+      if (plataformaFrete.isNotEmpty && plataformaFrete != 'manual') {
         logD(
-            '📦 [PRÉ-PEDIDO] Criando pedido na plataforma de frete: $plataforma');
-
-        unawaited(
-          (() async {
-            try {
-              final resultadoFrete =
-                  await FreteService.criarPrePedidoNaPlataforma(
-                lojaId: lojaId,
-                pedido: {
-                  'id': docRef.id,
-                  'itens': itensList,
-                  'subtotal': subtotal,
-                  'total': total,
-                },
-                cliente: {
-                  'nome': customer['nome'],
-                  'cpf': customer['cpf'],
-                  'email': customer['email'],
-                  'telefone': customer['telefone'],
-                  'endereco': customer['endereco'],
-                },
-                freteSelecionado: entrega,
-              );
-
-              if (resultadoFrete != null && resultadoFrete['success'] == true) {
-                logD(
-                    '✅ [PRÉ-PEDIDO] Pedido adicionado ao carrinho da plataforma!');
-                logD('   Plataforma: ${resultadoFrete['plataforma']}');
-                logD('   ID: ${resultadoFrete['cart_id']}');
-
-                await docRef.update({
-                  'plataformaFrete': {
-                    'plataforma': resultadoFrete['plataforma'],
-                    'cart_id': resultadoFrete['cart_id'],
-                    'protocol': resultadoFrete['protocol'],
-                    'message': resultadoFrete['message'],
-                    'instrucoes': resultadoFrete['instrucoes'],
-                    'criadoEm': FieldValue.serverTimestamp(),
-                  }
-                });
-              } else {
-                logD(
-                    '⚠️  [PRÉ-PEDIDO] Não foi possível criar na plataforma de frete');
-                final err = resultadoFrete?['error'];
-                final inst = resultadoFrete?['instrucoes'];
-                if ((err != null || inst != null) && resultadoFrete != null) {
-                  await docRef.update({
-                    'plataformaFrete': {
-                      'plataforma': resultadoFrete['plataforma'] ?? 'melhor_envio',
-                      'success': false,
-                      'error': err,
-                      'instrucoes': inst ?? 'Crie o envio manualmente em melhorenvio.com.br/painel/carrinho',
-                      'criadoEm': FieldValue.serverTimestamp(),
-                    }
-                  });
-                }
-              }
-            } catch (e, st) {
-              logE(
-                  '❌ [PRÉ-PEDIDO] Erro ao criar na plataforma de frete (type=${e.runtimeType})', error: e, st: st);
-              // Não falhar o pedido se a criação no frete falhar
-            }
-          })(),
-        );
+            '📦 [PRÉ-PEDIDO] Envio externo enfileirado no servidor ($plataformaFrete)');
       }
 
       // E-mail ao cliente e ao vendedor: Cloud Function onPrePedidoCreated (SMTP no

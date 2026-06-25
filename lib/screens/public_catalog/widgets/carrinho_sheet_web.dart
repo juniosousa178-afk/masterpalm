@@ -4324,6 +4324,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                               'plataforma': freteSelecionado['plataforma'],
                             if (freteSelecionado['service_id'] != null)
                               'service_id': freteSelecionado['service_id'],
+                            if (freteSelecionado['servico_id'] != null)
+                              'servico_id': freteSelecionado['servico_id'],
                           };
 
                           await widget.onCheckoutWhatsapp(
@@ -4478,6 +4480,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                                 'plataforma': freteSelecionado['plataforma'],
                               if (freteSelecionado['service_id'] != null)
                                 'service_id': freteSelecionado['service_id'],
+                              if (freteSelecionado['servico_id'] != null)
+                                'servico_id': freteSelecionado['servico_id'],
                             };
                             final cupomCod = _cupomCodigoParaPedido() ?? '';
                             final cupomIdDesc = _cupomDescontoIdFirestore();
@@ -4653,6 +4657,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                                 'plataforma': freteSelecionado['plataforma'],
                               if (freteSelecionado['service_id'] != null)
                                 'service_id': freteSelecionado['service_id'],
+                              if (freteSelecionado['servico_id'] != null)
+                                'servico_id': freteSelecionado['servico_id'],
                             };
 
                             await widget.onCheckoutMercadoPago(

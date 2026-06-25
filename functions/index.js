@@ -55,6 +55,11 @@ import {
 } from "./src/mpCatalogPayerBrasil.js";
 import { stripPaymentsSecretsForPublic } from "./src/paymentsPublicStrip.js";
 import { createSuperFreteHandlers } from "./src/superFreteIntegration.js";
+import { createMelhorEnvioHandlers, readMelhorEnvioSecrets } from "./src/melhorEnvioIntegration.js";
+import {
+  createShippingPreOrderHandlers,
+  onPrePedidoShippingPreOrderTrigger,
+} from "./src/shippingPreOrder.js";
 import { isRootAccountEmail } from "./src/rootAccounts.js";
 import { resolveStrictLojaMpAccessToken } from "./src/mpLojaTokenPolicy.js";
 import {
@@ -1221,7 +1226,8 @@ export const calcularMelhorEnvio = onCall(
     await checkRateLimit("calcularMelhorEnvio", identifier);
 
     const {
-      token,
+      lojaId,
+      token: tokenPayload,
       origem,
       destino,
       peso,
@@ -1232,14 +1238,39 @@ export const calcularMelhorEnvio = onCall(
       valorProdutos,
     } = request.data || {};
 
-    if (!token || !origem || !destino || !peso) {
+    if (tokenPayload) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Token não deve ser enviado na cotação.",
+      );
+    }
+
+    const storeId = String(lojaId ?? "").trim();
+    if (!storeId || !origem || !destino || !peso) {
       throw new HttpsError(
         "invalid-argument",
         "Parâmetros insuficientes para calcular frete pelo Melhor Envio."
       );
     }
 
-    const url = "https://www.melhorenvio.com.br/api/v2/me/shipment/calculate";
+    const lojaSnap = await db.collection(COLLECTION_LOJAS).doc(storeId).get();
+    if (!lojaSnap.exists) {
+      throw new HttpsError("not-found", "Loja não encontrada.");
+    }
+    const published = lojaSnap.data()?.published;
+    if (published !== true) {
+      throw new HttpsError("failed-precondition", "Loja não publicada.");
+    }
+
+    const secrets = await readMelhorEnvioSecrets(db, COLLECTION_LOJAS, storeId);
+    if (!secrets?.token) {
+      return { servicos: [] };
+    }
+
+    const apiBase = secrets.sandbox
+      ? "https://sandbox.melhorenvio.com.br/api/v2"
+      : "https://melhorenvio.com.br/api/v2";
+    const url = `${apiBase}/me/shipment/calculate`;
 
     const vProd = Number(valorProdutos);
     const insuranceValue = Number.isFinite(vProd) && vProd > 0 ? vProd : 10;
@@ -1266,7 +1297,7 @@ export const calcularMelhorEnvio = onCall(
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${secrets.token}`,
           "Content-Type": "application/json",
           Accept: "application/json",
           "User-Agent": "MasterPalm (contato@mastepalm.com.br)",
@@ -1500,10 +1531,88 @@ export const superFreteCreateCheckout = onCall(
   bindSuperFreteHandler("superFreteCreateCheckout"),
 );
 
+function bindMelhorEnvioHandler(handlerName) {
+  return async (request) => {
+    try {
+      const handlers = createMelhorEnvioHandlers({
+        db,
+        canManageStoreConfigServerSide,
+        checkRateLimit,
+        getCallableIdentifier,
+        fetchWithTimeout,
+        collectionLojas: COLLECTION_LOJAS,
+        request,
+      });
+      return await handlers[handlerName]();
+    } catch (err) {
+      if (err instanceof HttpsError) throw err;
+      console.error(
+        `[MelhorEnvio/${handlerName}] unhandled`,
+        err?.name,
+        err?.message,
+      );
+      throw new HttpsError(
+        "internal",
+        "Não foi possível concluir a operação no Melhor Envio. Tente novamente.",
+        { code: "ERRO_INTERNO_NAO_TRATADO" },
+      );
+    }
+  };
+}
+
+export const melhorEnvioTestConnection = onCall(
+  { timeoutSeconds: 20, memory: "256MiB" },
+  bindMelhorEnvioHandler("melhorEnvioTestConnection"),
+);
+
+export const melhorEnvioSaveConfig = onCall(
+  { timeoutSeconds: 30, memory: "256MiB" },
+  bindMelhorEnvioHandler("melhorEnvioSaveConfig"),
+);
+
+export const melhorEnvioGetConfigStatus = onCall(
+  { timeoutSeconds: 15, memory: "256MiB" },
+  bindMelhorEnvioHandler("melhorEnvioGetConfigStatus"),
+);
+
 /** @deprecated Wrapper seguro — use superFreteQuote. Rejeita token no payload. */
 export const calcularSuperFrete = onCall(
   { timeoutSeconds: 25, memory: "256MiB" },
   bindSuperFreteHandler("calcularSuperFreteSecure"),
+);
+
+function bindShippingPreOrderHandler(handlerName) {
+  return async (request) => {
+    try {
+      const handlers = createShippingPreOrderHandlers({
+        db,
+        canManageStoreConfigServerSide,
+        checkRateLimit,
+        getCallableIdentifier,
+        fetchWithTimeout,
+        collectionLojas: COLLECTION_LOJAS,
+        request,
+      });
+      return await handlers[handlerName]();
+    } catch (err) {
+      if (err instanceof HttpsError) throw err;
+      console.error(
+        `[ShippingPreOrder/${handlerName}] unhandled`,
+        err?.name,
+        err?.message,
+      );
+      throw new HttpsError(
+        "internal",
+        "Não foi possível processar o pré-pedido de envio.",
+        { code: "PRE_ORDER_FAILED" },
+      );
+    }
+  };
+}
+
+export const retryShippingPreOrder = onCall(
+  { timeoutSeconds: 45, memory: "256MiB" },
+  bindShippingPreOrderHandler("retryShippingPreOrder"),
 );
 
 // ============================== MERCADO PAGO — PEDIDOS ======================
@@ -3879,6 +3988,39 @@ export const onPrePedidoCreated = onDocumentCreated(
       console.error("[onPrePedidoCreated] Erro:", e);
     }
   }
+);
+
+// ======================================================================
+// PRÉ-PEDIDO DE ENVIO — carrinho SuperFrete / Melhor Envio (idempotente)
+// ======================================================================
+export const onPrePedidoShippingPreOrder = onDocumentCreated(
+  {
+    document: `${COLLECTION_LOJAS}/{lojaId}/pre_pedidos/{pedidoId}`,
+    timeoutSeconds: 120,
+    memory: "512MiB",
+  },
+  async (event) => {
+    const lojaId = event?.params?.lojaId;
+    const pedidoId = event?.params?.pedidoId;
+    const snap = event.data;
+    if (!snap?.exists || !lojaId || !pedidoId) return;
+    try {
+      await onPrePedidoShippingPreOrderTrigger({
+        db,
+        collectionLojas: COLLECTION_LOJAS,
+        lojaId,
+        orderId: pedidoId,
+        orderData: snap.data() ?? {},
+        fetchImpl: fetchWithTimeout,
+      });
+    } catch (err) {
+      console.error(
+        "[onPrePedidoShippingPreOrder] Erro:",
+        err?.name,
+        err?.message,
+      );
+    }
+  },
 );
 
 /** E-mails ao cliente por etapa de status (catálogo) + deduplicação em emailsStatusEnviados* */

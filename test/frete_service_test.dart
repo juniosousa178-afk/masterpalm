@@ -21,11 +21,9 @@ void main() {
       expect(quoteBlock.contains('superfrete_token'), isFalse);
     });
 
-    test('3. checkout SuperFrete usa fachada com lojaId', () {
-      expect(source, contains('SuperFreteService.criarEnvioNoCarrinho'));
-      final checkoutBlock = source.split('_criarPrePedidoSuperFrete')[1]
-          .split('static Future')[0];
-      expect(checkoutBlock, contains('lojaId:'));
+    test('3. criarPrePedidoNaPlataforma não chama API (backend)', () {
+      expect(source, contains('criarPrePedidoNaPlataforma ignorado'));
+      expect(source, contains('use trigger backend'));
     });
 
     test('4. strip remove segredos SuperFrete da config', () {

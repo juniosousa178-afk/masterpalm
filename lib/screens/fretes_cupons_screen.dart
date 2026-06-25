@@ -5,7 +5,6 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -18,6 +17,7 @@ import '../services/store_resolver_facade.dart';
 import '../services/cupom_desconto_service.dart';
 import '../services/indicacao_config_service.dart';
 import '../services/superfrete_integration_service.dart';
+import '../services/melhor_envio_integration_service.dart';
 import '../services/carrinho_abandonado_service.dart';
 import 'carrinhos_abandonados_screen.dart';
 import '../models/cupom.dart';
@@ -84,6 +84,9 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
   bool _superFreteSandbox = false;
   SuperFreteConfigStatus _superFreteStatus =
       const SuperFreteConfigStatus(configured: false);
+  MelhorEnvioConfigStatus _melhorEnvioStatus =
+      const MelhorEnvioConfigStatus(configured: false);
+  bool _melhorEnvioSandbox = false;
   String _freteMelhorEnvioModoExibicao = 'somente_correios';
 
   // =================== EMBALAGENS ===================
@@ -235,8 +238,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
 
     _freteProvider = (_config.get('frete_provider') ?? 'manual').toString();
     _cepOrigemCtrl.text = (_config.get('frete_cep_origem') ?? '').toString();
-    _melhorEnvioTokenCtrl.text =
-        (_config.get('frete_melhor_envio_token') ?? '').toString();
+    _melhorEnvioTokenCtrl.clear();
     _correiosUserCtrl.text =
         (_config.get('frete_correios_user') ?? '').toString();
     _correiosSenhaCtrl.text =
@@ -258,6 +260,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
       await _loadEmbalagensFromFirestorePreferRemote(_slug!);
       await _loadFreteConfigFromFirestore(_slug!);
       await _loadSuperFreteStatus(_slug!);
+      await _loadMelhorEnvioStatus(_slug!);
       await _loadIndicacaoConfig(_slug!);
       await _loadCarrinhoAbandonadoConfig(_slug!);
     }
@@ -442,6 +445,21 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
     }).toList();
   }
 
+  Future<void> _loadMelhorEnvioStatus(String lojaId) async {
+    try {
+      final status =
+          await MelhorEnvioIntegrationService.getConfigStatus(lojaId: lojaId);
+      if (!mounted) return;
+      setState(() {
+        _melhorEnvioStatus = status;
+        _melhorEnvioSandbox = status.sandbox;
+      });
+    } catch (e) {
+      debugPrint(
+          '[FRETES/CUPONS] status Melhor Envio (type=${e.runtimeType})');
+    }
+  }
+
   Future<void> _loadSuperFreteStatus(String lojaId) async {
     try {
       final status =
@@ -473,12 +491,12 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
 
       String provider = _freteProvider;
       String cep = _cepOrigemCtrl.text;
-      String melhor = _melhorEnvioTokenCtrl.text;
       String corUser = _correiosUserCtrl.text;
       String corSenha = _correiosSenhaCtrl.text;
       String frenet = _frenetTokenCtrl.text;
       String modoExibicao = _freteMelhorEnvioModoExibicao;
       var superFreteSandbox = _superFreteSandbox;
+      var melhorEnvioSandbox = _melhorEnvioSandbox;
       List<Map<String, dynamic>> fretesManuais =
           List<Map<String, dynamic>>.from(_fretes);
       var manualFretesVeioDoLive = false;
@@ -488,13 +506,16 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
         final c0 = (d['cepOrigem'] ?? d['cep_origem'] ?? '').toString();
         if (c0.isNotEmpty) cep = c0;
 
-        final me = d['melhorEnvio'];
-        if (me is Map && (me['token'] ?? '').toString().trim().isNotEmpty) {
-          melhor = me['token'].toString();
-        } else {
-          final root = (d['melhorEnvioToken'] ?? d['melhor_envio_token'] ?? '')
-              .toString();
-          if (root.trim().isNotEmpty) melhor = root;
+        final integrations = d['integrations'];
+        if (integrations is Map) {
+          if (integrations['melhor_envio'] is Map) {
+            final ime = integrations['melhor_envio'] as Map;
+            melhorEnvioSandbox = ime['sandbox'] == true || melhorEnvioSandbox;
+          }
+          if (integrations['superfrete'] is Map) {
+            final isf = integrations['superfrete'] as Map;
+            superFreteSandbox = isf['sandbox'] == true || superFreteSandbox;
+          }
         }
 
         final fr = d['frenet'];
@@ -505,12 +526,6 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
         final sf = d['superfrete'];
         if (sf is Map) {
           superFreteSandbox = sf['sandbox'] == true || superFreteSandbox;
-        }
-        final integrations = d['integrations'];
-        if (integrations is Map && integrations['superfrete'] is Map) {
-          final isf = integrations['superfrete'] as Map;
-          superFreteSandbox =
-              isf['sandbox'] == true || superFreteSandbox;
         }
 
         final co = d['correios'];
@@ -537,8 +552,6 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
         provider = (fc['provider'] ?? provider).toString();
         final c0 = (fc['cep_origem'] ?? fc['cepOrigem'] ?? '').toString();
         if (c0.isNotEmpty) cep = c0;
-        final tMe = (fc['melhor_envio_token'] ?? '').toString().trim();
-        if (tMe.isNotEmpty) melhor = tMe;
         final tFr = (fc['frenet_token'] ?? '').toString().trim();
         if (tFr.isNotEmpty) frenet = tFr;
         final u = (fc['correios_user'] ?? '').toString();
@@ -596,12 +609,13 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
       setState(() {
         _freteProvider = provider;
         _cepOrigemCtrl.text = cep;
-        _melhorEnvioTokenCtrl.text = melhor;
+        _melhorEnvioTokenCtrl.clear();
         _correiosUserCtrl.text = corUser;
         _correiosSenhaCtrl.text = corSenha;
         _frenetTokenCtrl.text = frenet;
         _superFreteTokenCtrl.clear();
         _superFreteSandbox = superFreteSandbox;
+        _melhorEnvioSandbox = melhorEnvioSandbox;
         _freteMelhorEnvioModoExibicao = modoExibicao;
         _fretes
           ..clear()
@@ -714,37 +728,32 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
       return;
     }
 
+    final lojaId = await StoreResolverFacade.resolveForAdminApp() ?? _slug;
+    if (lojaId == null || lojaId.isEmpty) {
+      _snack('❌ Loja atual não definida.');
+      return;
+    }
+
     _snack('🔄 Testando conexão com Melhor Envio...');
 
-    try {
-      final functions =
-          FirebaseFunctions.instanceFor(region: 'southamerica-east1');
-      final callable = functions.httpsCallable('testarMelhorEnvioToken');
-      final result = await callable
-          .call(<String, dynamic>{'token': token}).timeout(
-              const Duration(seconds: 22));
-      final raw = result.data;
-      if (raw is Map && raw['ok'] == true) {
-        final nome = raw['firstname'] ?? 'Usuário';
-        _snack('✅ Conectado com sucesso! Bem-vindo, $nome');
-      } else {
-        _snack('❌ Resposta inesperada do servidor');
-      }
-    } on FirebaseFunctionsException catch (e) {
-      final code = e.code;
-      final msg = e.message ?? '';
-      if (code == 'permission-denied' ||
-          msg.toLowerCase().contains('inválido') ||
-          msg.toLowerCase().contains('expirado')) {
-        _snack('❌ Token inválido ou expirado');
-      } else if (code == 'invalid-argument') {
-        _snack('⚠️ $msg');
-      } else {
-        _snack('❌ $msg');
-      }
-    } catch (e) {
-      _snack('❌ Erro ao conectar: $e');
+    final result = await MelhorEnvioIntegrationService.testConnection(
+      lojaId: lojaId,
+      token: token,
+      sandbox: _melhorEnvioSandbox,
+    );
+
+    if (result['ok'] == true) {
+      final nome = result['displayName'] ?? 'Usuário';
+      _snack('✅ Conectado com sucesso! ($nome)');
+      return;
     }
+
+    final msg = (result['message'] ?? '').toString();
+    if (msg.isNotEmpty) {
+      _snack('❌ $msg');
+      return;
+    }
+    _snack('❌ Não foi possível testar a conexão. Tente novamente.');
   }
 
   Future<void> _testarFrenet() async {
@@ -916,6 +925,35 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
 
     setState(() => _salvando = true);
     try {
+      final novoTokenMelhorEnvio = _melhorEnvioTokenCtrl.text.trim();
+      if (novoTokenMelhorEnvio.isNotEmpty) {
+        final saveMe = await MelhorEnvioIntegrationService.saveConfig(
+          lojaId: lojaId,
+          token: novoTokenMelhorEnvio,
+          cepOrigem: _cepOrigemCtrl.text.trim(),
+          sandbox: _melhorEnvioSandbox,
+        );
+        if (saveMe['ok'] != true) {
+          final msg = (saveMe['message'] ?? '').toString();
+          if (msg.contains('inválido') || msg.contains('expirado')) {
+            _snack(
+                '❌ Token inválido ou expirado. Gere um novo token no Melhor Envio e tente novamente.');
+          } else if (msg.contains('permissão')) {
+            _snack('❌ Sem permissão para configurar fretes desta loja.');
+          } else {
+            _snack('❌ Não foi possível salvar a integração Melhor Envio.');
+          }
+          return;
+        }
+        _melhorEnvioTokenCtrl.clear();
+        _melhorEnvioStatus = MelhorEnvioConfigStatus(
+          configured: true,
+          sandbox: _melhorEnvioSandbox,
+          maskedToken: saveMe['maskedToken']?.toString(),
+          legacyTokenNeedsRotation: false,
+        );
+      }
+
       final novoTokenSuperFrete = _superFreteTokenCtrl.text.trim();
       if (novoTokenSuperFrete.isNotEmpty) {
         final saveSf = await SuperFreteIntegrationService.saveConfig(
@@ -958,8 +996,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
 
       await _putConfig('frete_provider', _freteProvider);
       await _putConfig('frete_cep_origem', _cepOrigemCtrl.text.trim());
-      await _putConfig(
-          'frete_melhor_envio_token', _melhorEnvioTokenCtrl.text.trim());
+      await _putConfig('frete_melhor_envio_token', '');
       await _putConfig('frete_correios_user', _correiosUserCtrl.text.trim());
       await _putConfig('frete_correios_senha', _correiosSenhaCtrl.text.trim());
       await _putConfig('frete_frenet_token', _frenetTokenCtrl.text.trim());
@@ -1012,9 +1049,6 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                 : double.tryParse('${f['valor']}') ?? 0.0;
             return {'nome': nome, 'valor': val};
           }).toList(),
-          'melhorEnvio': {
-            'token': _melhorEnvioTokenCtrl.text.trim(),
-          },
           'correios': {
             'usuario': _correiosUserCtrl.text.trim(),
             'senha': _correiosSenhaCtrl.text.trim(),
@@ -1028,6 +1062,12 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                   novoTokenSuperFrete.isNotEmpty,
               'enabled': true,
               'sandbox': _superFreteSandbox,
+            },
+            'melhor_envio': {
+              'configured': _melhorEnvioStatus.configured ||
+                  novoTokenMelhorEnvio.isNotEmpty,
+              'enabled': true,
+              'sandbox': _melhorEnvioSandbox,
             },
           },
           'freteMelhorEnvioModoExibicao': _freteMelhorEnvioModoExibicao,
@@ -1043,6 +1083,9 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
           'superfrete': FieldValue.delete(),
           'superfrete_token': FieldValue.delete(),
           'superfreteToken': FieldValue.delete(),
+          'melhorEnvio': FieldValue.delete(),
+          'melhor_envio_token': FieldValue.delete(),
+          'melhorEnvioToken': FieldValue.delete(),
         }, SetOptions(merge: true));
       } catch (e) {
         debugPrint(
@@ -1056,7 +1099,9 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
         'frete_config': {
           'provider': _freteProvider,
           'cep_origem': _cepOrigemCtrl.text.trim(),
-          'melhor_envio_token': _melhorEnvioTokenCtrl.text.trim(),
+          'melhor_envio_configured': _melhorEnvioStatus.configured ||
+              novoTokenMelhorEnvio.isNotEmpty,
+          'melhor_envio_sandbox': _melhorEnvioSandbox,
           'correios_user': _correiosUserCtrl.text.trim(),
           'correios_senha': _correiosSenhaCtrl.text.trim(),
           'frenet_token': _frenetTokenCtrl.text.trim(),
@@ -1081,7 +1126,8 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
         return;
       }
       await _loadSuperFreteStatus(lojaId);
-      if (novoTokenSuperFrete.isNotEmpty) {
+      await _loadMelhorEnvioStatus(lojaId);
+      if (novoTokenSuperFrete.isNotEmpty || novoTokenMelhorEnvio.isNotEmpty) {
         _snack('✅ A integração foi configurada com segurança.');
       } else {
         _snack('✅ Configurações de frete salvas com sucesso!');
@@ -1416,6 +1462,36 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
           ),
         ),
         const SizedBox(height: 16),
+        if (_melhorEnvioStatus.configured &&
+            (_melhorEnvioStatus.maskedToken ?? '').isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              'Token configurado: ${_melhorEnvioStatus.maskedToken}',
+              style: TextStyle(color: Colors.green.shade800, fontSize: 13),
+            ),
+          ),
+        if (_melhorEnvioStatus.legacyTokenNeedsRotation)
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.orange.shade50,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.orange.shade300),
+            ),
+            child: const Text(
+              'Detectamos token antigo exposto. Gere um novo token no Melhor Envio e salve novamente.',
+              style: TextStyle(fontSize: 13),
+            ),
+          ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Usar ambiente Sandbox (testes)'),
+          value: _melhorEnvioSandbox,
+          onChanged: (v) => setState(() => _melhorEnvioSandbox = v),
+        ),
         TextField(
           controller: _cepOrigemCtrl,
           keyboardType: TextInputType.number,
@@ -1435,12 +1511,16 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
               child: TextField(
                 controller: _melhorEnvioTokenCtrl,
                 focusNode: _melhorEnvioTokenFocus,
+                obscureText: true,
                 keyboardType: TextInputType.visiblePassword,
                 autocorrect: false,
                 enableSuggestions: false,
                 textInputAction: TextInputAction.done,
                 decoration: InputDecoration(
                   labelText: 'Token da API',
+                  hintText: _melhorEnvioStatus.configured
+                      ? 'Cole um novo token para substituir'
+                      : 'Cole o token gerado no Melhor Envio',
                   prefixIcon: const Icon(Icons.vpn_key),
                   suffixIcon: IconButton(
                     tooltip: 'Colar da área de transferência',

@@ -31,6 +31,25 @@ class FreteService {
     return false;
   }
 
+  static bool _isMelhorEnvioConfigured(Map<String, dynamic> config) {
+    final integrations = config['integrations'];
+    if (integrations is Map) {
+      final me = integrations['melhor_envio'];
+      if (me is Map && me['configured'] == true && me['enabled'] != false) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  static void _stripMelhorEnvioSecretsFromConfig(Map<String, dynamic> config) {
+    if (config['melhorEnvio'] is Map) {
+      config.remove('melhorEnvio');
+    }
+    config.remove('melhor_envio_token');
+    config.remove('melhorEnvioToken');
+  }
+
   static void _stripSuperFreteSecretsFromConfig(Map<String, dynamic> config) {
     if (config['superfrete'] != null) {
       config.remove('superfrete');
@@ -88,13 +107,13 @@ class FreteService {
 
       // 2. Verificar quais plataformas estão configuradas e consultar TODAS
 
-      // MELHOR ENVIO
-      final tokenMelhorEnvio = (config['melhorEnvio']?['token'] ?? '').toString();
-      if (tokenMelhorEnvio.isNotEmpty) {
+      // MELHOR ENVIO (token somente no backend — integrations.melhor_envio.configured)
+      if (_isMelhorEnvioConfigured(config)) {
         debugPrint('🔄 [FRETE] Consultando Melhor Envio...');
         try {
           final opcoesMelhorEnvio = await _calcularMelhorEnvio(
             config: config,
+            lojaId: lojaId,
             cep: cep,
             peso: peso,
             valorDeclarado: valorDeclarado,
@@ -294,26 +313,14 @@ class FreteService {
       final base = FirebaseFirestore.instance.collection('lojas').doc(docId).collection('config');
       final docFretes = await base.doc('fretes').get();
       Map<String, dynamic> config = docFretes.exists ? (docFretes.data() ?? {}) : {};
-      debugPrint('📄 [FRETE] config/fretes existe=${docFretes.exists}, melhorEnvio=${(config['melhorEnvio']?['token'] ?? '').toString().isNotEmpty}, superfreteConfigured=${_isSuperFreteConfigured(config)}');
+      debugPrint('📄 [FRETE] config/fretes existe=${docFretes.exists}, melhorEnvioConfigured=${_isMelhorEnvioConfigured(config)}, superfreteConfigured=${_isSuperFreteConfigured(config)}');
       _stripSuperFreteSecretsFromConfig(config);
+      _stripMelhorEnvioSecretsFromConfig(config);
 
-      // Helper para aplicar tokens de um Map (config ou draft) — SuperFrete excluído (segredo no backend).
+      // Helper para aplicar config pública de draft — sem tokens de transportadora.
       void applyTokensFrom(Map<String, dynamic> data) {
         final fc = data['frete_config'] as Map<String, dynamic>?;
-        final rootME = (data['melhorEnvioToken'] ?? data['melhor_envio_token'] ?? '').toString().trim();
-        final tokenME = (config['melhorEnvio']?['token'] ?? '').toString().trim();
-        if (tokenME.isEmpty && rootME.isNotEmpty) {
-          config = Map<String, dynamic>.from(config);
-          config['melhorEnvio'] = {'token': rootME};
-        }
         if (fc != null) {
-          if (tokenME.isEmpty) {
-            final t = (fc['melhor_envio_token'] ?? '').toString().trim();
-            if (t.isNotEmpty) {
-              config = Map<String, dynamic>.from(config);
-              config['melhorEnvio'] = {'token': t};
-            }
-          }
           final cepO = (fc['cep_origem'] ?? fc['cepOrigem'] ?? '').toString().trim();
           if (cepO.isNotEmpty && (config['cepOrigem'] ?? '').toString().trim().isEmpty) {
             config = Map<String, dynamic>.from(config);
@@ -339,19 +346,13 @@ class FreteService {
       }
 
       // Fallback 1: config/config
-      final tokenME = (config['melhorEnvio']?['token'] ?? '').toString().trim();
-      if (tokenME.isEmpty) {
+      if (!_isMelhorEnvioConfigured(config)) {
         final docConfig = await base.doc('config').get();
         if (docConfig.exists && docConfig.data() != null) {
           applyTokensFrom(docConfig.data()!);
-          if ((config['melhorEnvio']?['token'] ?? '').toString().isNotEmpty) {
-            debugPrint('✅ [FRETE] Tokens obtidos de config/config');
-          }
+          _stripMelhorEnvioSecretsFromConfig(config);
         }
-        final tokenME2 = (config['melhorEnvio']?['token'] ?? '').toString().trim();
-        if (tokenME2.isEmpty) {
-          // draft_config só o dono/admin lê. Visitante do catálogo: permission-denied —
-          // não pode derrubar o fluxo (config/fretes com Melhor Envio já estaria carregada).
+        if (!_isMelhorEnvioConfigured(config)) {
           try {
             final draftRef = FirebaseFirestore.instance
                 .collection('lojas')
@@ -361,29 +362,14 @@ class FreteService {
             final docDraft = await draftRef.get();
             if (docDraft.exists && docDraft.data() != null) {
               applyTokensFrom(docDraft.data()!);
-              if ((config['melhorEnvio']?['token'] ?? '').toString().isNotEmpty) {
-                debugPrint('✅ [FRETE] Tokens obtidos de draft_config/config');
-              }
+              _stripMelhorEnvioSecretsFromConfig(config);
             }
           } on FirebaseException catch (e) {
             debugPrint(
               '⚠️ [FRETE] draft_config não aplicado (${e.code}) — seguindo com config já carregada',
             );
           } catch (e) {
-            debugPrint(
-              '⚠️ [FRETE] draft_config: $e',
-            );
-          }
-        }
-        // Fallback 3: doc raiz da loja (config/config às vezes espelhado aqui)
-        final tokenME3 = (config['melhorEnvio']?['token'] ?? '').toString().trim();
-        if (tokenME3.isEmpty) {
-          final lojaDocRef = await FirebaseFirestore.instance.collection('lojas').doc(docId).get();
-          if (lojaDocRef.exists && lojaDocRef.data() != null) {
-            applyTokensFrom(lojaDocRef.data()!);
-            if ((config['melhorEnvio']?['token'] ?? '').toString().isNotEmpty) {
-              debugPrint('✅ [FRETE] Tokens obtidos do doc raiz da loja');
-            }
+            debugPrint('⚠️ [FRETE] draft_config: $e');
           }
         }
       }
@@ -394,9 +380,10 @@ class FreteService {
       }
 
       _stripSuperFreteSecretsFromConfig(config);
+      _stripMelhorEnvioSecretsFromConfig(config);
       config['_resolvedLojaDocId'] = docId;
 
-      final hasME = (config['melhorEnvio']?['token'] ?? '').toString().trim().isNotEmpty;
+      final hasME = _isMelhorEnvioConfigured(config);
       final hasSF = _isSuperFreteConfigured(config);
       debugPrint('📤 [FRETE] Retornando config: MelhorEnvio=$hasME, SuperFrete=$hasSF, cepOrigem=${(config['cepOrigem'] ?? '').toString().isNotEmpty}');
       return config;
@@ -520,6 +507,7 @@ class FreteService {
   /// Na web (navegador) usa Cloud Function para evitar CORS.
   static Future<List<Map<String, dynamic>>> _calcularMelhorEnvio({
     required Map<String, dynamic> config,
+    required String lojaId,
     required String cep,
     required double peso,
     required double valorDeclarado,
@@ -528,12 +516,13 @@ class FreteService {
     required double comprimento,
   }) async {
     try {
-      final token = (config['melhorEnvio']?['token'] ?? '').toString();
-      if (token.isEmpty) {
-        debugPrint('⚠️  [FRETE] Token Melhor Envio não configurado');
+      if (!_isMelhorEnvioConfigured(config)) {
+        debugPrint('⚠️  [FRETE] Melhor Envio não configurado');
         return _calcularManual(config);
       }
 
+      final resolvedLojaId =
+          (config['_resolvedLojaDocId'] ?? lojaId).toString().trim();
       final cepOrigem = (config['cepOrigem'] ?? '01310100').toString().replaceAll(RegExp(r'\D'), '');
       final cepDestino = cep.replaceAll(RegExp(r'\D'), '');
 
@@ -545,76 +534,26 @@ class FreteService {
 
       debugPrint('📏 [MELHOR_ENVIO] Dimensões: ${alturaFinal}x${larguraFinal}x${comprimentoFinal}cm, Peso: ${pesoFinal}g');
 
-      // Na web: Cloud Function evita CORS (APIs bloqueiam requisições cross-origin no navegador)
-      if (kIsWeb) {
-        try {
-          final functions = FirebaseFunctions.instanceFor(region: 'southamerica-east1');
-          final callable = functions.httpsCallable('calcularMelhorEnvio');
-          final result = await callable.call({
-            'token': token,
-            'origem': cepOrigem,
-            'destino': cepDestino,
-            'peso': pesoKg,
-            'altura': alturaFinal.toInt(),
-            'largura': larguraFinal.toInt(),
-            'comprimento': comprimentoFinal.toInt(),
-            'valorProdutos': valorDeclarado > 0 ? valorDeclarado : 10.0,
-            'servico': '1,2,3,4,17', // PAC, SEDEX, Jadlog .Package, .Com, Mini Envios (17)
-          });
-          final data = result.data as Map?;
-          final servicos = data?['servicos'];
-          final list = servicos is List ? servicos : <dynamic>[];
-          return _parsearOpcoesMelhorEnvio(list, config);
-        } catch (e) {
-          debugPrint('⚠️ [MELHOR_ENVIO] Cloud Function erro (web) (type=${e.runtimeType})');
-          return _calcularManual(config);
-        }
-      }
-
-      final response = await http.post(
-        Uri.parse('$_melhorEnvioBaseUrl/me/shipment/calculate'),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-          'User-Agent': _melhorEnvioUserAgent,
-        },
-        body: jsonEncode({
-          'from': {'postal_code': cepOrigem},
-          'to': {'postal_code': cepDestino},
-          'package': {
-            'height': alturaFinal.toInt(),
-            'width': larguraFinal.toInt(),
-            'length': comprimentoFinal.toInt(),
-            'weight': pesoFinal / 1000, // Melhor Envio usa kg
-          },
-          'services': '1,2,3,4,17', // PAC, SEDEX, Jadlog .Package, .Com, Mini Envios (17)
-          'options': {
-            'insurance_value': valorDeclarado > 0 ? valorDeclarado : 10.0,
-            'receipt': false,
-            'own_hand': false,
-          },
-        }),
-      ).timeout(const Duration(seconds: 15));
-
-      final respBody = response.body.trim().toLowerCase();
-      if (respBody.startsWith('<!') || respBody.startsWith('<html')) {
-        debugPrint('❌ [MELHOR_ENVIO] Resposta HTML em vez de JSON. Verifique token e URL da API.');
-        return _calcularManual(config);
-      }
-
-      if (response.statusCode == 200) {
-        final rawData = jsonDecode(response.body);
-        final data = rawData is List ? rawData : <dynamic>[];
-        if (data.isEmpty && rawData is Map) {
-          debugPrint('❌ [MELHOR_ENVIO] API retornou objeto de erro: $rawData');
-          return _calcularManual(config);
-        }
-
-        debugPrint('✅ [MELHOR_ENVIO] API retornou ${data.length} opções');
-        return _parsearOpcoesMelhorEnvio(data, config);
-      } else {
-        debugPrint('❌ [FRETE] Melhor Envio erro ${response.statusCode}: ${response.body}');
+      try {
+        final functions = FirebaseFunctions.instanceFor(region: 'southamerica-east1');
+        final callable = functions.httpsCallable('calcularMelhorEnvio');
+        final result = await callable.call({
+          'lojaId': resolvedLojaId,
+          'origem': cepOrigem,
+          'destino': cepDestino,
+          'peso': pesoKg,
+          'altura': alturaFinal.toInt(),
+          'largura': larguraFinal.toInt(),
+          'comprimento': comprimentoFinal.toInt(),
+          'valorProdutos': valorDeclarado > 0 ? valorDeclarado : 10.0,
+          'servico': '1,2,3,4,17',
+        });
+        final data = result.data as Map?;
+        final servicos = data?['servicos'];
+        final list = servicos is List ? servicos : <dynamic>[];
+        return _parsearOpcoesMelhorEnvio(list, config);
+      } catch (e) {
+        debugPrint('⚠️ [MELHOR_ENVIO] Cloud Function erro (type=${e.runtimeType})');
         return _calcularManual(config);
       }
     } catch (e) {
@@ -815,79 +754,22 @@ class FreteService {
   // 🎯 CRIAR PRÉ-PEDIDO NA PLATAFORMA DE FRETE
   // ================================================================
 
-  /// Cria um pré-pedido/cotação na plataforma de frete
-  /// Após o cliente finalizar o pedido no app, este método adiciona
-  /// o pedido no carrinho da plataforma para o lojista finalizar manualmente
-  ///
-  /// Retorna: Map com informações do pré-pedido criado
+  /// Cria um pré-pedido/cotação na plataforma de frete.
+  /// @deprecated O backend cria o carrinho via onPrePedidoShippingPreOrder.
   static Future<Map<String, dynamic>?> criarPrePedidoNaPlataforma({
     required String lojaId,
     required Map<String, dynamic> pedido,
     required Map<String, dynamic> cliente,
     required Map<String, dynamic> freteSelecionado,
   }) async {
-    try {
-      // Buscar configuração
-      final config = await _buscarConfigFrete(lojaId);
-
-      // Identificar a plataforma através do campo 'plataforma' do frete selecionado
-      final plataforma = freteSelecionado['plataforma'] as String? ?? 'manual';
-
-      debugPrint('📦 [FRETE] Criando pré-pedido na plataforma: $plataforma');
-      debugPrint('   Frete selecionado: ${freteSelecionado['nome']} - ${freteSelecionado['empresa']}');
-
-      switch (plataforma) {
-        case 'melhor_envio':
-          return await _criarPrePedidoMelhorEnvio(
-            lojaId: lojaId,
-            config: config,
-            pedido: pedido,
-            cliente: cliente,
-            freteSelecionado: freteSelecionado,
-          );
-
-        case 'superfrete':
-          return await _criarPrePedidoSuperFrete(
-            lojaId: lojaId,
-            config: config,
-            pedido: pedido,
-            cliente: cliente,
-            freteSelecionado: freteSelecionado,
-          );
-
-        case 'frenet':
-          debugPrint('⚠️  [FRETE] Frenet não suporta criação automática de pedidos');
-          debugPrint('   ℹ️  Frenet é APENAS um cotador de preços');
-          debugPrint('   ℹ️  Você precisa criar o envio manualmente no site da transportadora');
-          return {
-            'success': false,
-            'plataforma': 'frenet',
-            'message': 'Frenet apenas cotou o preço',
-            'instrucoes': 'Acesse o site da ${freteSelecionado['empresa']} para criar o envio manualmente',
-          };
-
-        case 'correios':
-          debugPrint('⚠️  [FRETE] Correios requer integração manual no site');
-          return {
-            'success': false,
-            'plataforma': 'correios',
-            'message': 'Correios requer criação manual',
-            'instrucoes': 'Acesse www.correios.com.br para criar o envio',
-          };
-
-        case 'manual':
-        default:
-          debugPrint('ℹ️  [FRETE] Frete manual não requer pré-pedido');
-          return null;
-      }
-    } catch (e) {
-      debugPrint('❌ [FRETE] Erro ao criar pré-pedido (type=${e.runtimeType})');
-      return null;
-    }
+    debugPrint(
+      'ℹ️  [FRETE] criarPrePedidoNaPlataforma ignorado — use trigger backend',
+    );
+    return null;
   }
 
-  /// Cria pedido no carrinho do Melhor Envio
-  static Future<Map<String, dynamic>?> _criarPrePedidoMelhorEnvio({
+  /// @deprecated Implementação legada — não chamar API a partir do cliente.
+  static Future<Map<String, dynamic>?> _criarPrePedidoNaPlataformaLegacy({
     required String lojaId,
     required Map<String, dynamic> config,
     required Map<String, dynamic> pedido,
