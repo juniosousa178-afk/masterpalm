@@ -31,7 +31,8 @@ import 'package:firebase_storage/firebase_storage.dart';
 
 import '../models/produto.dart';
 import '../services/permissao_service.dart';
-import '../services/produto_upsert_service.dart';
+import '../models/venda.dart';
+import '../services/produto_import_service.dart';
 import '../services/catalogo_sync_service.dart';
 import '../services/produtos_firestore_service.dart';
 import '../services/sync_queue_service.dart';
@@ -2801,7 +2802,13 @@ Future<void> _importarProdutos() async {
         timeout: kIsWeb ? const Duration(seconds: 25) : const Duration(seconds: 10));
     if (lojaId == null) throw StateError('Nenhuma loja ativa');
 
-    int ok = 0, fail = 0;
+    final vendasBoxName = HiveBoxNames.vendas(lojaId);
+    if (!Hive.isBoxOpen(vendasBoxName)) {
+      await Hive.openBox<Venda>(vendasBoxName);
+    }
+    final vendasBox = Hive.box<Venda>(vendasBoxName);
+
+    final resultadosImport = <ProdutoImportLinhaResult>[];
     if (mounted) {
       setState(() {
         _importTotal = rows.length;
@@ -2825,12 +2832,22 @@ Future<void> _importarProdutos() async {
       final tamanhosRaw = (r['tamanhos'] ?? '').toString();
 
       if (nome.isEmpty) {
-        fail++;
+        resultadosImport.add(
+          ProdutoImportLinhaResult(
+            linha: idx,
+            status: ProdutoImportLinhaStatus.falhouDadosInvalidos,
+          ),
+        );
         if (mounted) {
           setState(() {
-          _importProgress = idx;
-          _importErros = fail;
-        });
+            _importProgress = idx;
+            _importErros = resultadosImport
+                .where((e) =>
+                    e.status == ProdutoImportLinhaStatus.falhouDadosInvalidos ||
+                    e.status == ProdutoImportLinhaStatus.falhouIdInvalido ||
+                    e.status == ProdutoImportLinhaStatus.ignoradoConflito)
+                .length;
+          });
         }
         continue;
       }
@@ -2877,7 +2894,7 @@ Future<void> _importarProdutos() async {
       final imagensStr = (r['imagens'] ?? r['imagens_urls'] ?? '').toString();
       final imagensListRaw = _splitList(imagensStr);
 
-      final produtoSlug = "$lojaId-${_slugify(nome)}";
+      final produtoSlugStorage = "$lojaId-${_slugify(nome)}";
 
       final imagensFinal = <String>[];
       var idxImg = 1;
@@ -2889,7 +2906,7 @@ Future<void> _importarProdutos() async {
         if (_isUrl(s)) {
           final urlFinal = await _baixarEEnviarParaStorage(
             lojaId: lojaId,
-            produtoSlug: produtoSlug,
+            produtoSlug: produtoSlugStorage,
             url: s,
             index: idxImg,
           );
@@ -2928,7 +2945,6 @@ Future<void> _importarProdutos() async {
         descricao: (r['descricao'] ?? '').toString().trim(),
         imagens: imagensFinal,
         publicadoNoCatalogo: publicar,
-        slug: produtoSlug,
         tamanhos: tamanhosLista,
         estoquePorTamanho: estoqueMapa,
         lojaId: lojaId,
@@ -2943,51 +2959,50 @@ Future<void> _importarProdutos() async {
         marketplaces: marketplacesList,
       );
 
-      final (result, produtoAfetado) = await upsertProduto(
-        _box,
-        lojaId,
-        p,
+      final linhaResult = await ProdutoImportService.processarLinha(
+        linha: idx,
+        produto: p,
+        lojaId: lojaId,
+        produtosBox: _box,
+        vendasBox: vendasBox,
         codigoBarras: codigoBarras.isNotEmpty ? codigoBarras : null,
         sku: sku.isNotEmpty ? sku : null,
         importCusto: importCusto,
       );
+      resultadosImport.add(linhaResult);
 
-      if (result == UpsertResult.skippedConflict) {
-        fail++;
-        if (mounted) {
-          setState(() {
+      if (mounted) {
+        setState(() {
           _importProgress = idx;
-          _importErros = fail;
+          if (linhaResult.status == ProdutoImportLinhaStatus.sincronizado ||
+              linhaResult.status ==
+                  ProdutoImportLinhaStatus.pendenteSincronizacao ||
+              linhaResult.status ==
+                  ProdutoImportLinhaStatus.importadoLocalmente) {
+            _importCriados++;
+          } else if (linhaResult.status ==
+              ProdutoImportLinhaStatus.atualizadoLocalmente) {
+            _importAtualizados++;
+          } else if (linhaResult.status ==
+                  ProdutoImportLinhaStatus.falhouDadosInvalidos ||
+              linhaResult.status ==
+                  ProdutoImportLinhaStatus.falhouIdInvalido ||
+              linhaResult.status ==
+                  ProdutoImportLinhaStatus.ignoradoConflito) {
+            _importErros++;
+          }
         });
-        }
-      } else {
-        ok++;
-        if (result == UpsertResult.inserted) {
-          if (mounted) setState(() => _importCriados++);
-        } else if (result == UpsertResult.updated) {
-          if (mounted) setState(() => _importAtualizados++);
-        }
-        if (produtoAfetado != null) {
-          await ProdutosFirestoreService.syncProduto(produtoAfetado, lojaId: lojaId);
-        }
-        if (mounted) setState(() => _importProgress = idx);
       }
     }
 
+    final resumo = ProdutoImportResumo(linhas: resultadosImport);
+
     if (!mounted) return;
-    if (ok > 0 || _importCriados > 0 || _importAtualizados > 0) {
+    if (resumo.importadosComSucessoLocal > 0) {
       await CatalogPublishService.marcarCatalogoPrecisaAtualizar();
       setState(() => _catalogoPrecisaAtualizar = true);
     }
-    final msg = StringBuffer('Importação concluída: ');
-    if (_importCriados > 0) msg.write('$_importCriados novos');
-    if (_importAtualizados > 0) {
-      if (_importCriados > 0) msg.write(', ');
-      msg.write('$_importAtualizados atualizados');
-    }
-    if (_importCriados == 0 && _importAtualizados == 0) msg.write('$ok processados');
-    if (fail > 0) msg.write(' ? $fail ignorados');
-    _showSnackBar(msg.toString());
+    _showSnackBar(resumo.mensagemResumo());
     setState(() {});
   } catch (e) {
     if (!mounted) return;

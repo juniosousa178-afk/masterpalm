@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb, visibleForTest
 import 'package:firebase_storage/firebase_storage.dart';
 
 import '../core/combo_config_canonical.dart';
+import '../core/firestore_access_guard.dart';
 import '../core/hive_box_names.dart';
 import '../core/produto_custo_guard.dart';
 import '../core/produto_estoque_grade_canonical_guard.dart';
@@ -27,6 +28,8 @@ import 'produto_sync_erro_util.dart';
 import 'sync_queue_service.dart';
 import 'produto_catalogo_upsert_falha.dart';
 import 'produto_exclusao_tombstone_service.dart';
+import 'produto_import_sync_prep_service.dart';
+import '../core/produto_firestore_doc_id_validator.dart';
 import 'produto_pull_skip_guard.dart';
 import 'sync_mass_delete_guard.dart';
 import '../src/blob_fetch_stub.dart'
@@ -52,12 +55,28 @@ enum ProdutoSyncRemotoStatus {
 
   /// Produto com exclusão definitiva (tombstone) — upsert remoto descartado.
   bloqueadoExclusaoTombstone,
+
+  /// Produto com venda/referência e colisão remota — sem troca automática de ID.
+  recuperacaoManualNecessaria,
 }
 
 class ProdutosFirestoreService {
   static FirebaseFirestore? debugFirestoreOverride;
-  static FirebaseFirestore get _db =>
-      debugFirestoreOverride ?? FirebaseFirestore.instance;
+
+  @visibleForTesting
+  static bool get debugForbidFirestoreAccess => FirestoreAccessGuard.forbidAccess;
+
+  @visibleForTesting
+  static set debugForbidFirestoreAccess(bool value) {
+    FirestoreAccessGuard.forbidAccess = value;
+  }
+
+  @visibleForTesting
+  static int get debugFirestoreAccessCount => FirestoreAccessGuard.accessCount;
+
+  static FirebaseFirestore get _db => FirestoreAccessGuard.resolve(
+        override: debugFirestoreOverride,
+      );
 
   /// Chaves de variação/grade no Firestore.
   @visibleForTesting
@@ -746,6 +765,7 @@ class ProdutosFirestoreService {
               ? (data['maxParcelasSemJuros'] as num).toInt()
               : 12,
           codigoBarras: (data['codigoBarras'] ?? '').toString(),
+          sku: (data['sku'] ?? '').toString(),
           estoqueMinimo: (data['estoqueMinimo'] is num)
               ? (data['estoqueMinimo'] as num).toInt()
               : 0,
@@ -1273,11 +1293,49 @@ class ProdutosFirestoreService {
         return ProdutoSyncRemotoStatus.lojaInvalida;
       }
 
-      final produtoId = produto.idFirebase.isNotEmpty
+      final produtoIdRaw = produto.idFirebase.isNotEmpty
           ? produto.idFirebase
           : produto.slug.isNotEmpty
               ? produto.slug
               : DateTime.now().millisecondsSinceEpoch.toString();
+
+      final idValidation = ProdutoFirestoreDocIdValidator.validate(
+        storeId: storeId,
+        produtoId: produtoIdRaw,
+      );
+      if (!idValidation.ok) {
+        logW(
+          '[PRODUTOS-SYNC] docId inválido (${idValidation.code}) — push abortado',
+          tag: 'PRODUTO_ID',
+        );
+        ultimoErroSyncSanitizado = idValidation.sanitizedMessage ??
+            ProdutoSyncErroUtil.sanitizar(
+              null,
+              status: ProdutoSyncRemotoStatus.produtoInvalido,
+            );
+        return ProdutoSyncRemotoStatus.produtoInvalido;
+      }
+
+      var produtoId = produtoIdRaw.trim();
+
+      final prep = await ProdutoImportSyncPrepService.prepareBeforeRemotePush(
+        produto: produto,
+        lojaId: storeId,
+      );
+      if (prep.recuperacaoManual) {
+        ultimoErroSyncSanitizado = prep.mensagem ??
+            'Produto requer recuperação manual antes da sincronização.';
+        return ProdutoSyncRemotoStatus.recuperacaoManualNecessaria;
+      }
+      if (prep.tentativasEsgotadas) {
+        ultimoErroSyncSanitizado = prep.mensagem ??
+            'Não foi possível sincronizar o produto importado.';
+        return ProdutoSyncRemotoStatus.falhaRemota;
+      }
+
+      produtoId = produto.idFirebase.isNotEmpty
+          ? produto.idFirebase.trim()
+          : produto.slug.trim();
 
       await ProdutoExclusaoTombstoneService.ensureHydratedForLoja(storeId);
       if (await ProdutoExclusaoTombstoneService.isProdutoBloqueadoRemoto(
@@ -1534,6 +1592,7 @@ class ProdutosFirestoreService {
         'videoUrl': produto.videoUrl.isNotEmpty ? produto.videoUrl : null,
         'codigoBarras':
             produto.codigoBarras.isNotEmpty ? produto.codigoBarras : null,
+        'sku': produto.sku.isNotEmpty ? produto.sku : null,
         'estoqueMinimo': produto.estoqueMinimo,
         'fornecedor': produto.fornecedor.isNotEmpty ? produto.fornecedor : null,
         'marketplaces': produto.marketplaces,
@@ -1641,6 +1700,7 @@ class ProdutosFirestoreService {
             'tipoEmbalagem': produto.tipoEmbalagem,
             'codigoBarras':
                 produto.codigoBarras.isNotEmpty ? produto.codigoBarras : null,
+            'sku': produto.sku.isNotEmpty ? produto.sku : null,
             'estoqueMinimo': produto.estoqueMinimo,
             // Custo e campos internos: removidos no doc final via forceRemoveKeys (set sem merge).
             'marketplaces': produto.marketplaces,
@@ -2056,6 +2116,7 @@ class ProdutosFirestoreService {
               p.slug = data['slug'] ?? p.slug;
               p.codigoBarras =
                   (data['codigoBarras'] ?? p.codigoBarras ?? '').toString();
+              p.sku = (data['sku'] ?? p.sku ?? '').toString();
               p.estoqueMinimo = (data['estoqueMinimo'] is num)
                   ? (data['estoqueMinimo'] as num).toInt()
                   : p.estoqueMinimo;
@@ -2225,6 +2286,7 @@ class ProdutosFirestoreService {
                   ? (data['maxParcelasSemJuros'] as num).toInt()
                   : 12,
               codigoBarras: (data['codigoBarras'] ?? '').toString(),
+          sku: (data['sku'] ?? '').toString(),
               estoqueMinimo: (data['estoqueMinimo'] is num)
                   ? (data['estoqueMinimo'] as num).toInt()
                   : 0,

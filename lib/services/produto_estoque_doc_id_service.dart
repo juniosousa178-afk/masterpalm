@@ -3,6 +3,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
+import '../core/firestore_access_guard.dart';
 import 'firestore_paths.dart';
 import 'produto_exclusao_tombstone_service.dart';
 import 'produtos_firestore_service.dart';
@@ -11,9 +12,9 @@ import 'produtos_firestore_service.dart';
 class ProdutoEstoqueDocIdService {
   ProdutoEstoqueDocIdService._();
 
-  static FirebaseFirestore get _db =>
-      ProdutosFirestoreService.debugFirestoreOverride ??
-      FirebaseFirestore.instance;
+  static FirebaseFirestore get _db => FirestoreAccessGuard.resolve(
+        override: ProdutosFirestoreService.debugFirestoreOverride,
+      );
 
   /// Mesma regra de [gerarSlug] em `produto_form_screen.dart`.
   @visibleForTesting
@@ -26,7 +27,6 @@ class ProdutoEstoqueDocIdService {
   }
 
   /// Padrão do app: `{lojaId}-{slugNome}`.
-  @visibleForTesting
   static String slugCanonicoParaLoja({
     required String lojaId,
     required String nome,
@@ -37,7 +37,6 @@ class ProdutoEstoqueDocIdService {
   }
 
   /// `true` se o doc não pode ser usado para um produto novo (tombstone ou já existe).
-  @visibleForTesting
   static Future<bool> docIdIndisponivelParaNovoProduto({
     required String lojaId,
     required String docId,

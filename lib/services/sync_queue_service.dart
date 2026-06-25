@@ -521,6 +521,15 @@ class SyncQueueService {
       );
       return false;
     }
+    if (status == ProdutoSyncRemotoStatus.recuperacaoManualNecessaria) {
+      final msg = ProdutosFirestoreService.ultimoErroSyncSanitizado ??
+          'recuperacao-manual-necessaria';
+      await _incrementAttempt(item, msg);
+      logW(
+        '⚠️ [SYNC-QUEUE] Produto requer recuperação manual (entityKey=${item.entityKey})',
+      );
+      return false;
+    }
     if (status != ProdutoSyncRemotoStatus.confirmado &&
         status != ProdutoSyncRemotoStatus.semMudancas) {
       final detalhe = ProdutosFirestoreService.ultimoErroSyncSanitizado ??

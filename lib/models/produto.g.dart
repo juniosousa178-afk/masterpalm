@@ -69,13 +69,14 @@ class ProdutoAdapter extends TypeAdapter<Produto> {
           fields[45] == null ? [] : (fields[45] as List).cast<String>(),
       subcategoriasExtras:
           fields[46] == null ? [] : (fields[46] as List).cast<String>(),
+      sku: fields[47] == null ? '' : fields[47] as String,
     );
   }
 
   @override
   void write(BinaryWriter writer, Produto obj) {
     writer
-      ..writeByte(47)
+      ..writeByte(48)
       ..writeByte(0)
       ..write(obj.nome)
       ..writeByte(1)
@@ -169,7 +170,9 @@ class ProdutoAdapter extends TypeAdapter<Produto> {
       ..writeByte(45)
       ..write(obj.categoriasExtras)
       ..writeByte(46)
-      ..write(obj.subcategoriasExtras);
+      ..write(obj.subcategoriasExtras)
+      ..writeByte(47)
+      ..write(obj.sku);
   }
 
   @override

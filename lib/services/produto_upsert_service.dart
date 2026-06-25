@@ -8,7 +8,10 @@ import '../core/combo_config_canonical.dart';
 import '../core/logger.dart';
 import '../core/produto_custo_guard.dart';
 import '../models/produto.dart';
+import '../models/venda.dart';
 import 'combo_receita_normalizacao.dart';
+import '../core/produto_firestore_doc_id_validator.dart';
+import 'produto_import_doc_id_helper.dart';
 
 /// Normaliza string para comparação: remove acentos, lowercase, trim, colapsa espaços.
 String normalizeKey(String s) {
@@ -48,15 +51,17 @@ Produto? findProdutoExistente(
     final pKey = normalizeKey('${p.nome}|${p.categoria}');
     final pKeyNomeOnly = normalizeKey(p.nome);
 
-    // a) Código de barras: slug pode armazenar barcode quando importado com coluna codigo_barras
+    // a) Código de barras no campo dedicado (+ legado slug)
     if (codigoBarras != null && codigoBarras.trim().isNotEmpty) {
       final b = codigoBarras.trim();
+      if (p.codigoBarras == b) return p;
       if (p.slug == b || p.slug == '$lojaId-$b') return p;
     }
 
-    // b) SKU: slug pode armazenar sku
+    // b) SKU no campo dedicado (+ legado slug)
     if (sku != null && sku.trim().isNotEmpty) {
       final s = sku.trim();
+      if (p.sku == s) return p;
       if (p.slug == s || p.slug == '$lojaId-$s') return p;
     }
 
@@ -97,13 +102,20 @@ bool hasConflito(
     if (!match) continue;
 
     final pSlug = p.slug.trim();
+    final pBarras = p.codigoBarras.trim();
+    final pSku = p.sku.trim();
     if (codigoBarras != null && codigoBarras.trim().isNotEmpty) {
       final b = codigoBarras.trim();
-      if (pSlug != b && pSlug != '$lojaId-$b') return true;
+      final ok = pBarras.isEmpty ||
+          pBarras == b ||
+          pSlug == b ||
+          pSlug == '$lojaId-$b';
+      if (!ok) return true;
     }
     if (sku != null && sku.trim().isNotEmpty) {
       final s = sku.trim();
-      if (pSlug != s && pSlug != '$lojaId-$s') return true;
+      final ok = pSku.isEmpty || pSku == s || pSlug == s || pSlug == '$lojaId-$s';
+      if (!ok) return true;
     }
   }
   return false;
@@ -170,6 +182,7 @@ void _mergeProdutoExistente(
     existente.subcategoriasExtras = List<String>.from(novo.subcategoriasExtras);
   }
   if (_temTexto(novo.codigoBarras)) existente.codigoBarras = novo.codigoBarras.trim();
+  if (_temTexto(novo.sku)) existente.sku = novo.sku.trim();
   if (_temTexto(novo.videoUrl)) existente.videoUrl = novo.videoUrl.trim();
   if (_temTexto(novo.fornecedor)) existente.fornecedor = novo.fornecedor.trim();
   if (_temTexto(novo.lojaId)) existente.lojaId = novo.lojaId.trim();
@@ -237,6 +250,134 @@ void _mergeProdutoExistente(
     existente.variacoesExtraTipo = null;
     existente.estoquePorTamanho = <String, int>{};
   }
+}
+
+/// Resultado do upsert de importação (docId seguro).
+enum UpsertImportResult {
+  inserted,
+  updated,
+  skippedConflict,
+  recuperacaoManualNecessaria,
+  falhouIdInvalido,
+}
+
+typedef UpsertImportResultWithProduct = (UpsertImportResult, Produto?);
+
+Future<void> _aplicarCodigosExternosNoProduto(
+  Produto produto, {
+  String? codigoBarras,
+  String? sku,
+}) async {
+  if (codigoBarras != null && codigoBarras.trim().isNotEmpty) {
+    produto.codigoBarras = codigoBarras.trim();
+  }
+  if (sku != null && sku.trim().isNotEmpty) {
+    produto.sku = sku.trim();
+  }
+}
+
+/// Upsert exclusivo da importação Excel: docId seguro, SKU/código só em campos.
+Future<UpsertImportResultWithProduct> upsertProdutoParaImportacao(
+  Box<Produto> box,
+  String lojaId,
+  Produto novo,
+  Box<Venda> vendasBox, {
+  String? codigoBarras,
+  String? sku,
+  ImportCustoInput importCusto = ImportCustoInput.colunaAusente,
+  void Function(String msg)? onLog,
+}) async {
+  final codigoBarrasStr = codigoBarras?.trim();
+  final skuStr = sku?.trim();
+
+  await _aplicarCodigosExternosNoProduto(
+    novo,
+    codigoBarras: codigoBarrasStr,
+    sku: skuStr,
+  );
+
+  if (hasConflito(box, lojaId, novo.nome, novo.categoria,
+      codigoBarras: codigoBarrasStr, sku: skuStr)) {
+    onLog?.call('Conflito de códigos — linha ignorada.');
+    return (UpsertImportResult.skippedConflict, null);
+  }
+
+  final existente = findProdutoExistente(
+    box,
+    lojaId,
+    codigoBarras: codigoBarrasStr,
+    sku: skuStr,
+    nome: novo.nome,
+    categoria: novo.categoria,
+  );
+
+  if (existente != null) {
+    if (existente.key == null) {
+      return (UpsertImportResult.skippedConflict, null);
+    }
+
+    _mergeProdutoExistente(existente, novo, importCusto: importCusto);
+    await _aplicarCodigosExternosNoProduto(
+      existente,
+      codigoBarras: codigoBarrasStr,
+      sku: skuStr,
+    );
+
+    if (novo.precoPorTamanho != null && novo.precoPorTamanho!.isNotEmpty) {
+      existente.precoPorTamanho = Map<String, double>.from(novo.precoPorTamanho!);
+    }
+    if (novo.variacoes != null) {
+      if (novo.variacoes!.isEmpty) {
+        existente.variacoes = null;
+        existente.variacoesExtraTipo = null;
+        existente.estoquePorTamanho = _mapaComDados(novo.estoquePorTamanho)
+            ? Map<String, int>.from(novo.estoquePorTamanho)
+            : <String, int>{};
+        existente.quantidade = novo.quantidade;
+      } else {
+        final Map<String, dynamic> deepCopy = {};
+        for (final entry in novo.variacoes!.entries) {
+          final value = entry.value;
+          if (value is Map) {
+            deepCopy[entry.key] = Map<String, dynamic>.from(
+              value.map((k, v) => MapEntry(k.toString(), v)),
+            );
+          } else {
+            deepCopy[entry.key] = value;
+          }
+        }
+        existente.variacoes = deepCopy;
+        existente.recalcularQuantidadeTotal();
+      }
+    } else if (novo.estoquePorTamanho.isNotEmpty) {
+      existente.quantidade =
+          existente.estoquePorTamanho.values.fold(0, (a, b) => a + b);
+    }
+
+    existente.custoEditadoNoCadastro = true;
+    existente.updatedAt = DateTime.now();
+    await existente.save();
+    return (UpsertImportResult.updated, existente);
+  }
+
+  ProdutoImportDocIdHelper.aplicarDocIdLocalOfflineNoProduto(
+    produto: novo,
+    lojaId: lojaId,
+  );
+
+  final idCheck = ProdutoFirestoreDocIdValidator.validateProduto(
+    storeId: lojaId,
+    produto: novo,
+  );
+  if (!idCheck.ok) {
+    return (UpsertImportResult.falhouIdInvalido, null);
+  }
+
+  novo.custoEditadoNoCadastro = true;
+  novo.updatedAt = DateTime.now();
+  await box.add(novo);
+  await novo.save();
+  return (UpsertImportResult.inserted, novo);
 }
 
 /// Upsert: atualiza se existir, insere se não existir.
@@ -329,11 +470,11 @@ Future<UpsertResultWithProduct> upsertProduto(
           existente.estoquePorTamanho.values.fold(0, (a, b) => a + b);
     }
 
-    // Atualizar slug apenas se não tiver código e o existente tiver
     if (codigoBarrasStr != null && codigoBarrasStr.isNotEmpty) {
-      existente.slug = codigoBarrasStr;
-    } else if (skuStr != null && skuStr.isNotEmpty) {
-      existente.slug = existente.slug.isEmpty ? skuStr : existente.slug;
+      existente.codigoBarras = codigoBarrasStr;
+    }
+    if (skuStr != null && skuStr.isNotEmpty) {
+      existente.sku = skuStr;
     }
 
     existente.custoEditadoNoCadastro = true;
@@ -346,12 +487,13 @@ Future<UpsertResultWithProduct> upsertProduto(
     return (UpsertResult.updated, existente);
   }
 
-  final slugFinal = codigoBarrasStr;
-  if (slugFinal != null && slugFinal.isNotEmpty) {
-    novo.slug = slugFinal;
-  } else if (skuStr != null && skuStr.isNotEmpty) {
-    novo.slug = skuStr;
-  } else if (novo.slug.isEmpty) {
+  if (codigoBarrasStr != null && codigoBarrasStr.isNotEmpty) {
+    novo.codigoBarras = codigoBarrasStr;
+  }
+  if (skuStr != null && skuStr.isNotEmpty) {
+    novo.sku = skuStr;
+  }
+  if (novo.slug.isEmpty) {
     novo.slug = '$lojaId-${_slugify(novo.nome)}';
   }
 

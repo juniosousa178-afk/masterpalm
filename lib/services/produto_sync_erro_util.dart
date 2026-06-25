@@ -32,9 +32,11 @@ class ProdutoSyncErroUtil {
       case ProdutoSyncRemotoStatus.lojaInvalida:
         return 'lojaId ausente';
       case ProdutoSyncRemotoStatus.produtoInvalido:
-        return 'chave local do produto inválida';
+        return 'identificador do produto inválido';
       case ProdutoSyncRemotoStatus.bloqueadoExclusaoTombstone:
         return 'identificador-excluido (tombstone)';
+      case ProdutoSyncRemotoStatus.recuperacaoManualNecessaria:
+        return 'recuperacao-manual-necessaria';
       case ProdutoSyncRemotoStatus.falhaRemota:
         return 'falha-remota-sem-enfileirar';
       case ProdutoSyncRemotoStatus.pendenteFila:

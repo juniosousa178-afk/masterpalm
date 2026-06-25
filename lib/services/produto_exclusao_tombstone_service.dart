@@ -9,6 +9,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, visibleForTesting;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/firestore_access_guard.dart';
 import '../core/logger.dart';
 import '../core/produto_variacao_extra.dart';
 import '../models/produto.dart';
@@ -35,8 +36,9 @@ class ProdutoExclusaoTombstoneService {
   @visibleForTesting
   static FirebaseFirestore? debugFirestoreOverride;
 
-  static FirebaseFirestore get _db =>
-      debugFirestoreOverride ?? FirebaseFirestore.instance;
+  static FirebaseFirestore get _db => FirestoreAccessGuard.resolve(
+        override: debugFirestoreOverride,
+      );
   static final Map<String, _LojaTomb> _byLoja = {};
   static String? _lastHydrateLoja;
   static DateTime? _lastHydrateAt;
@@ -87,6 +89,7 @@ class ProdutoExclusaoTombstoneService {
     _lastHydrateAt = null;
     _prefsCarregou = false;
     debugFirestoreOverride = null;
+    FirestoreAccessGuard.resetForTests();
   }
 
   // --- chaves a partir de mapa remoto / local (mesma regra em diff e filtro) ---

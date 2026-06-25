@@ -183,6 +183,10 @@ class Produto extends HiveObject {
   @HiveField(46, defaultValue: <String>[])
   List<String> subcategoriasExtras;
 
+  /// SKU / referência interna (opcional). Nunca usado como document ID Firestore.
+  @HiveField(47, defaultValue: '')
+  String sku;
+
   Produto({
     required this.nome,
     required this.custoReal,
@@ -231,6 +235,7 @@ class Produto extends HiveObject {
     this.fornecedor = '',
     this.categoriasExtras = const [],
     this.subcategoriasExtras = const [],
+    this.sku = '',
   });
 
   bool get ehCombo => tipoProduto == 'combo';
