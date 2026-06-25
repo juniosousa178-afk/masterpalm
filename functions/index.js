@@ -1615,6 +1615,11 @@ export const retryShippingPreOrder = onCall(
   bindShippingPreOrderHandler("retryShippingPreOrder"),
 );
 
+export const confirmSuperFreteCartCreated = onCall(
+  { timeoutSeconds: 30, memory: "256MiB" },
+  bindShippingPreOrderHandler("confirmSuperFreteCartCreated"),
+);
+
 // ============================== MERCADO PAGO — PEDIDOS ======================
 function mapItemsForMP(items = []) {
   return (items || []).map((it = {}) => ({

@@ -2222,11 +2222,18 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
         (shipping['provider'] ?? frete['plataforma'] ?? '').toString();
     final status = (shipping['status'] ?? 'pending').toString();
     final errorCode = shipping['errorCode']?.toString();
-    final canRetry =
-        status == 'failed' || status == 'needs_product_data';
-    final statusLabel = ShippingPreOrderService.statusLabel(status);
+    final isSuperFrete = provider == 'superfrete';
+    final isExternalUnknown = status == 'external_state_unknown';
+    final canRetry = !isExternalUnknown
+        && (status == 'failed' || status == 'needs_product_data');
+    final canManualConfirm =
+        isSuperFrete && isExternalUnknown && status != 'created';
+    final statusLabel =
+        ShippingPreOrderService.statusLabel(status, provider: provider);
     final providerLabel = ShippingPreOrderService.providerLabel(provider);
-    final errorMsg = ShippingPreOrderService.messageForErrorCode(errorCode);
+    final errorMsg = isExternalUnknown
+        ? ShippingPreOrderService.externalStateUnknownGuidance()
+        : ShippingPreOrderService.messageForErrorCode(errorCode);
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -2275,6 +2282,17 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
               ),
             ),
           ],
+          if (canManualConfirm) ...[
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: () => _confirmSuperFreteCartManual(dados),
+                icon: const Icon(Icons.check_circle_outline, size: 18),
+                label: const Text('Marcar como carrinho criado'),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -2296,6 +2314,69 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
       final msg = (res['message'] ?? 'Não foi possível criar o pré-pedido.')
           .toString();
       _showModernSnackBar(msg);
+    }
+  }
+
+  Future<void> _confirmSuperFreteCartManual(Map<String, dynamic> dados) async {
+    final pedidoId = dados['id']?.toString() ?? '';
+    if (pedidoId.isEmpty) return;
+
+    final controller = TextEditingController();
+    final cartId = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Marcar como carrinho criado'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Informe o identificador do carrinho exibido no painel da SuperFrete. '
+              'Esta ação não cria um novo carrinho na transportadora.',
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              decoration: const InputDecoration(
+                labelText: 'ID do carrinho SuperFrete',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final v = controller.text.trim();
+              if (v.isEmpty) return;
+              Navigator.pop(ctx, v);
+            },
+            child: const Text('Confirmar'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (cartId == null || cartId.isEmpty || !mounted) return;
+
+    _showModernSnackBar('Salvando confirmação...');
+    final res = await ShippingPreOrderService.confirmSuperFreteCartCreated(
+      lojaId: widget.lojaId,
+      orderId: pedidoId,
+      providerCartId: cartId,
+    );
+    if (!mounted) return;
+    if (res['ok'] == true) {
+      _showModernSnackBar('Carrinho marcado como criado.');
+      setState(() {});
+    } else {
+      _showModernSnackBar(
+        (res['message'] ?? 'Não foi possível confirmar.').toString(),
+      );
     }
   }
 

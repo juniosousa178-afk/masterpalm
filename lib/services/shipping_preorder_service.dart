@@ -10,16 +10,21 @@ class ShippingPreOrderService {
   static FirebaseFunctions get _functions =>
       FirebaseFunctions.instanceFor(region: 'southamerica-east1');
 
-  static String statusLabel(String? status) {
+  static String statusLabel(String? status, {String? provider}) {
+    final isSuperFrete = provider == 'superfrete';
     switch (status) {
       case 'created':
-        return 'Criado';
+        return isSuperFrete ? 'Carrinho criado' : 'Criado';
       case 'processing':
-        return 'Aguardando criação';
+        return isSuperFrete ? 'Criando pré-pedido' : 'Aguardando criação';
       case 'needs_product_data':
         return 'Dados de produto pendentes';
       case 'failed':
-        return 'Falhou ao criar';
+        return isSuperFrete
+            ? 'Falhou antes da criação'
+            : 'Falhou ao criar';
+      case 'external_state_unknown':
+        return 'Necessita conferência no painel SuperFrete';
       case 'pending':
         return 'Aguardando criação';
       default:
@@ -55,12 +60,19 @@ class ShippingPreOrderService {
       case 'PRE_ORDER_CREATED':
         return 'Pré-pedido criado com sucesso.';
       case 'LEGACY_TOKEN_NEEDS_ROTATION':
-        return 'Configure um novo token do Melhor Envio na tela de fretes antes de criar o pré-pedido.';
+        return 'Configure um novo token de frete na tela de fretes antes de criar o pré-pedido.';
       case 'EXTERNAL_RECONCILIATION_UNAVAILABLE':
-        return 'Criação automática de pré-pedido SuperFrete indisponível até suporte oficial de reconciliação externa.';
+      case 'EXTERNAL_STATE_UNKNOWN':
+        return 'Não foi possível confirmar automaticamente se o carrinho foi criado na SuperFrete. Confira o painel da SuperFrete antes de tentar qualquer novo envio.';
+      case 'SUPERFRETE_PREORDER_SANDBOX_ONLY':
+        return 'Pré-pedido automático da SuperFrete está em homologação. O carrinho não foi criado automaticamente.';
       default:
         return '';
     }
+  }
+
+  static String externalStateUnknownGuidance() {
+    return 'Confira o carrinho no painel da SuperFrete antes de qualquer nova ação.';
   }
 
   static Future<Map<String, dynamic>> retryPreOrder({
@@ -93,6 +105,9 @@ class ShippingPreOrderService {
               'Sua conta não possui permissão para configurar fretes desta loja.',
         };
       }
+      if (e.message != null && e.message!.contains('SuperFrete')) {
+        return {'ok': false, 'message': e.message};
+      }
       return {
         'ok': false,
         'message': 'Não foi possível criar o pré-pedido de envio.',
@@ -102,6 +117,45 @@ class ShippingPreOrderService {
       return {
         'ok': false,
         'message': 'Não foi possível criar o pré-pedido de envio.',
+      };
+    }
+  }
+
+  static Future<Map<String, dynamic>> confirmSuperFreteCartCreated({
+    required String lojaId,
+    required String orderId,
+    required String providerCartId,
+  }) async {
+    try {
+      final callable = _functions.httpsCallable('confirmSuperFreteCartCreated');
+      final res = await callable.call(<String, dynamic>{
+        'lojaId': lojaId,
+        'orderId': orderId,
+        'providerCartId': providerCartId.trim(),
+      }).timeout(const Duration(seconds: 30));
+      final raw = res.data;
+      return raw is Map
+          ? Map<String, dynamic>.from(raw)
+          : <String, dynamic>{'ok': false};
+    } on FirebaseFunctionsException catch (e) {
+      if (e.code == 'permission-denied') {
+        return {
+          'ok': false,
+          'message':
+              'Sua conta não possui permissão para configurar fretes desta loja.',
+        };
+      }
+      return {
+        'ok': false,
+        'message': e.message ?? 'Não foi possível confirmar o carrinho.',
+      };
+    } catch (e) {
+      debugPrint(
+        '[ShippingPreOrder] confirmSuperFreteCartCreated falhou (type=${e.runtimeType})',
+      );
+      return {
+        'ok': false,
+        'message': 'Não foi possível confirmar o carrinho.',
       };
     }
   }

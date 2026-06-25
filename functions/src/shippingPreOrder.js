@@ -41,6 +41,7 @@ export const SHIPPING_PREORDER_STATUS = {
   CREATED: "created",
   FAILED: "failed",
   NEEDS_PRODUCT_DATA: "needs_product_data",
+  EXTERNAL_STATE_UNKNOWN: "external_state_unknown",
 };
 
 export const SHIPPING_ERROR_CODE = {
@@ -55,6 +56,7 @@ export const SHIPPING_ERROR_CODE = {
   ORDER_CANCELLED: "ORDER_CANCELLED",
   LEGACY_TOKEN_NEEDS_ROTATION: "LEGACY_TOKEN_NEEDS_ROTATION",
   EXTERNAL_RECONCILIATION_UNAVAILABLE: "EXTERNAL_RECONCILIATION_UNAVAILABLE",
+  SUPERFRETE_PREORDER_SANDBOX_ONLY: "SUPERFRETE_PREORDER_SANDBOX_ONLY",
 };
 
 /** Lease de processamento — evita POST paralelo (5 min). */
@@ -698,12 +700,329 @@ function safeStatusMessage(code) {
     case SHIPPING_ERROR_CODE.PRE_ORDER_FAILED:
       return "Não foi possível criar o pré-pedido de envio.";
     case SHIPPING_ERROR_CODE.LEGACY_TOKEN_NEEDS_ROTATION:
-      return "Configure um novo token do Melhor Envio na tela de fretes antes de criar o pré-pedido.";
+      return "Configure um novo token de frete na tela de fretes antes de criar o pré-pedido.";
     case SHIPPING_ERROR_CODE.EXTERNAL_RECONCILIATION_UNAVAILABLE:
-      return "Criação automática de pré-pedido SuperFrete indisponível até suporte oficial de reconciliação externa.";
+      return "Não foi possível confirmar automaticamente se o carrinho foi criado na SuperFrete. Confira o painel da SuperFrete antes de tentar qualquer novo envio.";
+    case SHIPPING_ERROR_CODE.SUPERFRETE_PREORDER_SANDBOX_ONLY:
+      return "Pré-pedido automático da SuperFrete está em homologação. O carrinho não foi criado automaticamente.";
     default:
       return "Não foi possível criar o pré-pedido de envio.";
   }
+}
+
+function isHtmlLikeResponse(text) {
+  const trim = String(text ?? "").trim().toLowerCase();
+  return trim.startsWith("<!") || trim.startsWith("<html");
+}
+
+function isSafeSuperFretePreOrderClientError(status) {
+  const s = Number(status) || 0;
+  return s >= 400 && s < 500 && s !== 408;
+}
+
+/**
+ * POST carrinho SuperFrete — classifica resultado para at-most-once.
+ * Nunca expõe token; não compra etiqueta.
+ */
+export async function executeSuperFreteCartPost({
+  token,
+  sandbox,
+  body,
+  fetchImpl,
+}) {
+  const base = getSuperFreteApiBase(sandbox);
+  const url = `${base}${SUPERFRETE_CART_PATH}`;
+  try {
+    const resp = await fetchImpl(url, {
+      method: "POST",
+      headers: buildSuperFreteHeaders(token),
+      body: JSON.stringify(body),
+    });
+    const text = await resp.text();
+
+    if (isHtmlLikeResponse(text)) {
+      return {
+        outcome: "ambiguous",
+        errorCode: SHIPPING_ERROR_CODE.API_INDISPONIVEL,
+      };
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      if (resp.ok) {
+        return {
+          outcome: "ambiguous",
+          errorCode: SHIPPING_ERROR_CODE.PRE_ORDER_FAILED,
+        };
+      }
+      if (isSafeSuperFretePreOrderClientError(resp.status)) {
+        const code = resp.status === 401 || resp.status === 403
+          ? SHIPPING_ERROR_CODE.PROVIDER_NOT_CONFIGURED
+          : SHIPPING_ERROR_CODE.PRE_ORDER_FAILED;
+        return { outcome: "failed", errorCode: code };
+      }
+      return {
+        outcome: "ambiguous",
+        errorCode: SHIPPING_ERROR_CODE.API_INDISPONIVEL,
+      };
+    }
+
+    if (resp.ok) {
+      const cartId = String(parsed?.id ?? "").trim();
+      if (!cartId) {
+        return {
+          outcome: "ambiguous",
+          errorCode: SHIPPING_ERROR_CODE.PRE_ORDER_FAILED,
+        };
+      }
+      return { outcome: "created", providerCartId: cartId };
+    }
+
+    if (isSafeSuperFretePreOrderClientError(resp.status)) {
+      const code = resp.status === 401 || resp.status === 403
+        ? SHIPPING_ERROR_CODE.PROVIDER_NOT_CONFIGURED
+        : SHIPPING_ERROR_CODE.PRE_ORDER_FAILED;
+      return { outcome: "failed", errorCode: code };
+    }
+
+    return {
+      outcome: "ambiguous",
+      errorCode: SHIPPING_ERROR_CODE.API_INDISPONIVEL,
+    };
+  } catch {
+    return {
+      outcome: "ambiguous",
+      errorCode: SHIPPING_ERROR_CODE.API_INDISPONIVEL,
+    };
+  }
+}
+
+export function isSuperFreteAutomaticPostBlocked(record) {
+  if (!record) return false;
+  if (record.status === SHIPPING_PREORDER_STATUS.CREATED) return true;
+  if (record.status === SHIPPING_PREORDER_STATUS.EXTERNAL_STATE_UNKNOWN) {
+    return true;
+  }
+  if (
+    record.status === SHIPPING_PREORDER_STATUS.PROCESSING
+    && isProcessingLeaseActive(record)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+export function isAdminShippingPreOrderRetryAllowed({
+  provider,
+  orderStatus,
+  preRecord,
+  leaseExpiredProcessing = false,
+}) {
+  if (orderStatus === SHIPPING_PREORDER_STATUS.EXTERNAL_STATE_UNKNOWN) {
+    return false;
+  }
+  if (preRecord?.status === SHIPPING_PREORDER_STATUS.EXTERNAL_STATE_UNKNOWN) {
+    return false;
+  }
+  if (provider === SHIPPING_PROVIDER.SUPERFRETE) {
+    return (
+      orderStatus === SHIPPING_PREORDER_STATUS.FAILED
+      || orderStatus === SHIPPING_PREORDER_STATUS.NEEDS_PRODUCT_DATA
+      || preRecord?.status === SHIPPING_PREORDER_STATUS.FAILED
+      || preRecord?.status === SHIPPING_PREORDER_STATUS.NEEDS_PRODUCT_DATA
+    );
+  }
+  return (
+    orderStatus === SHIPPING_PREORDER_STATUS.FAILED
+    || orderStatus === SHIPPING_PREORDER_STATUS.NEEDS_PRODUCT_DATA
+    || (orderStatus === SHIPPING_PREORDER_STATUS.PROCESSING && leaseExpiredProcessing)
+    || preRecord?.status === SHIPPING_PREORDER_STATUS.FAILED
+    || preRecord?.status === SHIPPING_PREORDER_STATUS.NEEDS_PRODUCT_DATA
+    || (preRecord?.status === SHIPPING_PREORDER_STATUS.PROCESSING && leaseExpiredProcessing)
+  );
+}
+
+async function markShippingPreOrderDispatched({
+  db,
+  collectionLojas,
+  lojaId,
+  orderId,
+  provider,
+}) {
+  const docId = buildShippingPreOrderDocId(provider, orderId);
+  const ref = db
+    .collection(collectionLojas)
+    .doc(lojaId)
+    .collection(SHIPPING_PREORDER_COL)
+    .doc(docId);
+  await ref.set(
+    { dispatchedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() },
+    { merge: true },
+  );
+}
+
+export async function processSuperFreteShippingPreOrder({
+  db,
+  collectionLojas,
+  lojaId,
+  orderId,
+  orderData,
+  eligibility,
+  pkg,
+  providerReference,
+  fetchImpl,
+}) {
+  const provider = SHIPPING_PROVIDER.SUPERFRETE;
+
+  const publicFretes = await readPublicFretes(db, collectionLojas, lojaId);
+  if (detectLegacySuperFreteToken(publicFretes, {})) {
+    const summary = await finalizeShippingPreOrder({
+      db,
+      collectionLojas,
+      lojaId,
+      orderId,
+      provider,
+      result: {
+        status: SHIPPING_PREORDER_STATUS.FAILED,
+        providerReference,
+        errorCode: SHIPPING_ERROR_CODE.LEGACY_TOKEN_NEEDS_ROTATION,
+        errorMessage: safeStatusMessage(SHIPPING_ERROR_CODE.LEGACY_TOKEN_NEEDS_ROTATION),
+      },
+    });
+    return { ok: false, ...summary };
+  }
+
+  const secrets = await readSuperFreteSecrets(db, collectionLojas, lojaId);
+  if (!secrets?.token) {
+    const summary = await finalizeShippingPreOrder({
+      db,
+      collectionLojas,
+      lojaId,
+      orderId,
+      provider,
+      result: {
+        status: SHIPPING_PREORDER_STATUS.FAILED,
+        providerReference,
+        errorCode: SHIPPING_ERROR_CODE.PROVIDER_NOT_CONFIGURED,
+        errorMessage: safeStatusMessage(SHIPPING_ERROR_CODE.PROVIDER_NOT_CONFIGURED),
+      },
+    });
+    return { ok: false, ...summary };
+  }
+
+  if (secrets.sandbox !== true) {
+    const summary = await finalizeShippingPreOrder({
+      db,
+      collectionLojas,
+      lojaId,
+      orderId,
+      provider,
+      result: {
+        status: SHIPPING_PREORDER_STATUS.FAILED,
+        providerReference,
+        errorCode: SHIPPING_ERROR_CODE.SUPERFRETE_PREORDER_SANDBOX_ONLY,
+        errorMessage: safeStatusMessage(
+          SHIPPING_ERROR_CODE.SUPERFRETE_PREORDER_SANDBOX_ONLY,
+        ),
+      },
+    });
+    logShippingFail(
+      "SUPERFRETE_SANDBOX_GATE",
+      `lojaId=${lojaId} orderId=${orderId} code=${SHIPPING_ERROR_CODE.SUPERFRETE_PREORDER_SANDBOX_ONLY}`,
+    );
+    return { ok: false, ...summary };
+  }
+
+  const body = buildSuperFreteCartRequest(
+    orderData,
+    eligibility,
+    pkg,
+    providerReference,
+  );
+
+  await markShippingPreOrderDispatched({
+    db,
+    collectionLojas,
+    lojaId,
+    orderId,
+    provider,
+  });
+
+  const postResult = await executeSuperFreteCartPost({
+    token: secrets.token,
+    sandbox: secrets.sandbox,
+    body,
+    fetchImpl,
+  });
+
+  if (postResult.outcome === "created") {
+    const summary = await finalizeShippingPreOrder({
+      db,
+      collectionLojas,
+      lojaId,
+      orderId,
+      provider,
+      result: {
+        status: SHIPPING_PREORDER_STATUS.CREATED,
+        providerCartId: postResult.providerCartId,
+        providerReference,
+        confirmedAt: FieldValue.serverTimestamp(),
+        errorCode: SHIPPING_ERROR_CODE.PRE_ORDER_CREATED,
+        errorMessage: safeStatusMessage(SHIPPING_ERROR_CODE.PRE_ORDER_CREATED),
+      },
+    });
+    logShipping(
+      "OK",
+      `lojaId=${lojaId} orderId=${orderId} provider=${provider} cartId=${postResult.providerCartId}`,
+    );
+    return { ok: true, ...summary };
+  }
+
+  if (postResult.outcome === "failed") {
+    const summary = await finalizeShippingPreOrder({
+      db,
+      collectionLojas,
+      lojaId,
+      orderId,
+      provider,
+      result: {
+        status: SHIPPING_PREORDER_STATUS.FAILED,
+        providerReference,
+        errorCode: postResult.errorCode ?? SHIPPING_ERROR_CODE.PRE_ORDER_FAILED,
+        errorMessage: safeStatusMessage(
+          postResult.errorCode ?? SHIPPING_ERROR_CODE.PRE_ORDER_FAILED,
+        ),
+      },
+    });
+    logShippingFail(
+      "SUPERFRETE_FAIL",
+      `lojaId=${lojaId} orderId=${orderId} code=${postResult.errorCode}`,
+    );
+    return { ok: false, ...summary };
+  }
+
+  const summary = await finalizeShippingPreOrder({
+    db,
+    collectionLojas,
+    lojaId,
+    orderId,
+    provider,
+    result: {
+      status: SHIPPING_PREORDER_STATUS.EXTERNAL_STATE_UNKNOWN,
+      providerReference,
+      errorCode: SHIPPING_ERROR_CODE.EXTERNAL_RECONCILIATION_UNAVAILABLE,
+      errorMessage: safeStatusMessage(
+        SHIPPING_ERROR_CODE.EXTERNAL_RECONCILIATION_UNAVAILABLE,
+      ),
+    },
+  });
+  logShippingFail(
+    "SUPERFRETE_AMBIGUO",
+    `lojaId=${lojaId} orderId=${orderId} code=${SHIPPING_ERROR_CODE.EXTERNAL_RECONCILIATION_UNAVAILABLE}`,
+  );
+  return { ok: false, ...summary };
 }
 
 async function reserveShippingPreOrder({
@@ -763,12 +1082,22 @@ async function reserveShippingPreOrder({
       existing?.status === SHIPPING_PREORDER_STATUS.PROCESSING
       && !isProcessingLeaseActive(existing);
 
+    if (existing?.status === SHIPPING_PREORDER_STATUS.EXTERNAL_STATE_UNKNOWN) {
+      return {
+        action: "skip",
+        reason: "external_state_unknown",
+        docId,
+        record: existing,
+        providerReference: existing.providerReference ?? providerReference,
+      };
+    }
+
     const retryable = forceRetry
       || !existing
       || existing.status === SHIPPING_PREORDER_STATUS.FAILED
       || existing.status === SHIPPING_PREORDER_STATUS.NEEDS_PRODUCT_DATA
       || existing.status === SHIPPING_PREORDER_STATUS.PENDING
-      || leaseExpiredProcessing;
+      || (leaseExpiredProcessing && provider !== SHIPPING_PROVIDER.SUPERFRETE);
 
     if (!retryable) {
       return {
@@ -869,6 +1198,10 @@ async function finalizeShippingPreOrder({
         errorCode: result.errorCode ?? null,
         errorMessage: result.errorMessage ?? null,
         updatedAt: now,
+        ...(result.confirmedAt != null ? { confirmedAt: result.confirmedAt } : {}),
+        ...(result.manualConfirmationAudit
+          ? { manualConfirmationAudit: result.manualConfirmationAudit }
+          : {}),
       },
       { merge: true },
     );
@@ -939,30 +1272,6 @@ export async function processShippingPreOrder({
   try {
     const fretesConfig = await readPublicFretes(db, collectionLojas, lojaId);
 
-    // SuperFrete: sem reconciliação externa documentada — não fazer POST repetível.
-    if (provider === SHIPPING_PROVIDER.SUPERFRETE) {
-      const summary = await finalizeShippingPreOrder({
-        db,
-        collectionLojas,
-        lojaId,
-        orderId,
-        provider,
-        result: {
-          status: SHIPPING_PREORDER_STATUS.FAILED,
-          providerReference,
-          errorCode: SHIPPING_ERROR_CODE.EXTERNAL_RECONCILIATION_UNAVAILABLE,
-          errorMessage: safeStatusMessage(
-            SHIPPING_ERROR_CODE.EXTERNAL_RECONCILIATION_UNAVAILABLE,
-          ),
-        },
-      });
-      logShippingFail(
-        "SUPERFRETE_NO_GO",
-        `lojaId=${lojaId} orderId=${orderId} code=${SHIPPING_ERROR_CODE.EXTERNAL_RECONCILIATION_UNAVAILABLE}`,
-      );
-      return { ok: false, ...summary };
-    }
-
     const productMetrics = await loadProductShippingMetrics(
       db,
       collectionLojas,
@@ -990,6 +1299,20 @@ export async function processShippingPreOrder({
         `lojaId=${lojaId} orderId=${orderId} code=${pkg.code}`,
       );
       return { ok: false, ...summary };
+    }
+
+    if (provider === SHIPPING_PROVIDER.SUPERFRETE) {
+      return processSuperFreteShippingPreOrder({
+        db,
+        collectionLojas,
+        lojaId,
+        orderId,
+        orderData,
+        eligibility,
+        pkg,
+        providerReference,
+        fetchImpl,
+      });
     }
 
     // Reconciliação externa Melhor Envio antes de POST.
@@ -1136,11 +1459,9 @@ export function createShippingPreOrderHandlers(deps) {
     }
 
     const orderData = orderSnap.data() ?? {};
+    const provider = resolveShippingProviderFromOrder(orderData);
     const current = orderData.shippingPreOrder?.status;
-    const docId = buildShippingPreOrderDocId(
-      resolveShippingProviderFromOrder(orderData) ?? "",
-      oid,
-    );
+    const docId = buildShippingPreOrderDocId(provider ?? "", oid);
     const preSnap = await db
       .collection(collectionLojas)
       .doc(lojaId)
@@ -1152,13 +1473,27 @@ export function createShippingPreOrderHandlers(deps) {
       && preRecord.status === SHIPPING_PREORDER_STATUS.PROCESSING;
 
     if (
-      current !== SHIPPING_PREORDER_STATUS.FAILED
-      && current !== SHIPPING_PREORDER_STATUS.NEEDS_PRODUCT_DATA
-      && !(current === SHIPPING_PREORDER_STATUS.PROCESSING && leaseExpired)
+      preRecord.status === SHIPPING_PREORDER_STATUS.EXTERNAL_STATE_UNKNOWN
+      || current === SHIPPING_PREORDER_STATUS.EXTERNAL_STATE_UNKNOWN
     ) {
       throw new HttpsError(
         "failed-precondition",
-        "Só é possível tentar novamente após falha, dados pendentes ou processamento travado.",
+        "Não foi possível confirmar automaticamente se o carrinho foi criado na SuperFrete. Confira o painel da SuperFrete antes de tentar qualquer novo envio.",
+        { code: "EXTERNAL_STATE_UNKNOWN" },
+      );
+    }
+
+    if (
+      !isAdminShippingPreOrderRetryAllowed({
+        provider,
+        orderStatus: current,
+        preRecord,
+        leaseExpiredProcessing: leaseExpired,
+      })
+    ) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Só é possível tentar novamente após falha ou dados pendentes.",
         { code: "PRE_ORDER_NOT_RETRYABLE" },
       );
     }
@@ -1181,7 +1516,100 @@ export function createShippingPreOrderHandlers(deps) {
     };
   }
 
-  return { retryShippingPreOrder };
+  async function confirmSuperFreteCartCreated() {
+    const { lojaId, orderId, providerCartId } = request.data ?? {};
+    const { uid } = await requireStoreAdmin(lojaId);
+    const oid = String(orderId ?? "").trim();
+    const cartId = String(providerCartId ?? "").trim();
+    if (!oid) {
+      throw new HttpsError("invalid-argument", "Informe o pedido.");
+    }
+    if (!cartId) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Informe o identificador do carrinho SuperFrete.",
+      );
+    }
+
+    const identifier = getCallableIdentifier(request);
+    await checkRateLimit("confirmSuperFreteCartCreated", identifier);
+
+    const orderSnap = await db
+      .collection(collectionLojas)
+      .doc(lojaId)
+      .collection("pre_pedidos")
+      .doc(oid)
+      .get();
+    if (!orderSnap.exists) {
+      throw new HttpsError("not-found", "Pedido não encontrado.");
+    }
+
+    const orderData = orderSnap.data() ?? {};
+    const provider = resolveShippingProviderFromOrder(orderData);
+    if (provider !== SHIPPING_PROVIDER.SUPERFRETE) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Confirmação manual só se aplica a pedidos SuperFrete.",
+        { code: "PROVIDER_NOT_APPLICABLE" },
+      );
+    }
+
+    const docId = buildShippingPreOrderDocId(SHIPPING_PROVIDER.SUPERFRETE, oid);
+    const preSnap = await db
+      .collection(collectionLojas)
+      .doc(lojaId)
+      .collection(SHIPPING_PREORDER_COL)
+      .doc(docId)
+      .get();
+    const preRecord = preSnap.exists ? preSnap.data() ?? {} : {};
+
+    if (preRecord.status === SHIPPING_PREORDER_STATUS.CREATED) {
+      return {
+        ok: true,
+        status: SHIPPING_PREORDER_STATUS.CREATED,
+        providerCartId: preRecord.providerCartId ?? cartId,
+        idempotent: true,
+      };
+    }
+
+    const providerReference =
+      preRecord.providerReference
+      ?? buildProviderReference(lojaId, oid, SHIPPING_PROVIDER.SUPERFRETE);
+
+    const summary = await finalizeShippingPreOrder({
+      db,
+      collectionLojas,
+      lojaId,
+      orderId: oid,
+      provider: SHIPPING_PROVIDER.SUPERFRETE,
+      result: {
+        status: SHIPPING_PREORDER_STATUS.CREATED,
+        providerCartId: cartId,
+        providerReference,
+        confirmedAt: FieldValue.serverTimestamp(),
+        errorCode: SHIPPING_ERROR_CODE.PRE_ORDER_CREATED,
+        errorMessage: safeStatusMessage(SHIPPING_ERROR_CODE.PRE_ORDER_CREATED),
+        manualConfirmationAudit: {
+          confirmedByUid: uid,
+          confirmedAt: FieldValue.serverTimestamp(),
+          source: "admin_manual_cart_confirm",
+        },
+      },
+    });
+
+    logShipping(
+      "MANUAL_CONFIRM",
+      `lojaId=${lojaId} orderId=${oid} provider=superfrete cartId=${cartId}`,
+    );
+
+    return {
+      ok: true,
+      status: summary.status,
+      providerCartId: cartId,
+    };
+  }
+
+  return { retryShippingPreOrder, confirmSuperFreteCartCreated };
 }
 
 export async function onPrePedidoShippingPreOrderTrigger({
