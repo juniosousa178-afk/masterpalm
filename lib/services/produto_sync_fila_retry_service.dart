@@ -3,6 +3,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../core/produto_form_grade_hydration.dart';
+import 'catalogo_sync_attempt_context.dart';
 import 'produtos_firestore_service.dart';
 import 'sync_queue_service.dart';
 import '../models/produto.dart';
@@ -22,6 +23,7 @@ class ProdutoSyncFilaRetryService {
     bool forcePushFromCadastro = false,
     bool enqueueOnFailure = true,
     ProdutoFormGradeBaseline? gradeBaseline,
+    CatalogoSyncAttemptContext? catalogoDiagContext,
   }) async {
     var status = await ProdutosFirestoreService.syncProdutoComStatus(
       produto,
@@ -33,6 +35,7 @@ class ProdutoSyncFilaRetryService {
           : 'produto_sync_fila_retry.primeira',
       enqueueOnFailure: enqueueOnFailure,
       gradeBaseline: gradeBaseline,
+      catalogoDiagContext: catalogoDiagContext,
     );
 
     if (!_precisaRetentativaFila(status)) {
@@ -52,6 +55,7 @@ class ProdutoSyncFilaRetryService {
           : 'produto_sync_fila_retry.segunda',
       enqueueOnFailure: enqueueOnFailure,
       gradeBaseline: gradeBaseline,
+      catalogoDiagContext: catalogoDiagContext,
     );
   }
 

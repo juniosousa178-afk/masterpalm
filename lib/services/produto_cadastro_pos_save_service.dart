@@ -2,6 +2,7 @@
 
 import '../core/produto_form_grade_hydration.dart';
 import '../models/produto.dart';
+import 'catalogo_sync_attempt_context.dart';
 import 'catalog_publish_service.dart';
 import 'catalogo_sync_service.dart';
 import 'produto_catalogo_upsert_falha.dart';
@@ -17,6 +18,7 @@ class ProdutoCadastroPosSaveService {
     required String lojaId,
     required ProdutoSyncRemotoStatus remoteStatus,
     ProdutoFormGradeBaseline? gradeBaseline,
+    CatalogoSyncAttemptContext? catalogoDiagContext,
   }) async {
     if (remoteStatus != ProdutoSyncRemotoStatus.confirmado &&
         remoteStatus != ProdutoSyncRemotoStatus.semMudancas) {
@@ -27,11 +29,13 @@ class ProdutoCadastroPosSaveService {
       produto,
       target: SyncTarget.draft,
       lojaIdOverride: lojaId,
+      catalogoDiagContext: catalogoDiagContext,
     );
     await CatalogoSyncService.upsertFromProdutoRegistrandoFalha(
       produto,
       target: SyncTarget.live,
       lojaIdOverride: lojaId,
+      catalogoDiagContext: catalogoDiagContext,
     );
     await CatalogPublishService.marcarCatalogoPrecisaAtualizar();
 

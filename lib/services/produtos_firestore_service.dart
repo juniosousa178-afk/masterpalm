@@ -27,6 +27,8 @@ import 'image_upload_service.dart';
 import 'produto_sync_erro_util.dart';
 import 'sync_queue_service.dart';
 import 'produto_catalogo_upsert_falha.dart';
+import 'catalogo_sync_attempt_context.dart';
+import 'catalogo_sync_diagnostics_service.dart';
 import 'produto_exclusao_tombstone_service.dart';
 import 'produto_import_sync_prep_service.dart';
 import '../core/produto_firestore_doc_id_validator.dart';
@@ -1274,6 +1276,7 @@ class ProdutosFirestoreService {
     String? writeOrigin,
     bool enqueueOnFailure = true,
     ProdutoFormGradeBaseline? gradeBaseline,
+    CatalogoSyncAttemptContext? catalogoDiagContext,
   }) async {
     ultimoErroSyncSanitizado = null;
     limparFalhasUpsertCatalogo();
@@ -1661,6 +1664,7 @@ class ProdutosFirestoreService {
 
       // 🔹 TAMBÉM atualizar no catálogo público (produtos) se o produto está publicado
       if (produto.publicadoNoCatalogo) {
+        CatalogoSyncOperationHandle? diagHandle;
         try {
           final publicoRef = _db
               .collection('lojas')
@@ -1736,15 +1740,37 @@ class ProdutosFirestoreService {
               '${sanitizePublico.adjustedPaths.join(' | ')}',
             );
           }
+          if (catalogoDiagContext != null) {
+            diagHandle = await CatalogoSyncDiagnosticsService.startOperation(
+              context: catalogoDiagContext,
+              operationName: 'upsert_produtos_live_inline',
+              collectionName: 'produtos',
+              storeId: storeId,
+              produtoId: produtoId,
+              path: 'lojas/$storeId/produtos/$produtoId',
+              firestoreMethod: 'set',
+              mutationIntent: CatalogoSyncMutationIntent.set,
+              documentStateHint: publicoSnap.exists
+                  ? CatalogoSyncDocumentStateHint.knownPresentFromExistingState
+                  : CatalogoSyncDocumentStateHint.knownAbsentFromExistingState,
+              sourceMethod: 'ProdutosFirestoreService.syncProdutoComStatus',
+            );
+          }
           await _upsertProdutoDocument(
             publicoRef,
             sanitizePublico.payload,
             existingData: publicoSnap.exists ? publicoSnap.data() : null,
             forceRemoveKeys: publicoRemoveKeys,
           );
+          if (diagHandle != null) {
+            await CatalogoSyncDiagnosticsService.completeSuccess(diagHandle);
+          }
           _dlog('[ProdutoPublico] upsert produtos/$produtoId concluído');
           logD('✅ [PRODUTOS-SYNC] Catálogo público (produtos) atualizado');
         } catch (e, st) {
+          if (diagHandle != null) {
+            await CatalogoSyncDiagnosticsService.completeFailure(diagHandle, e);
+          }
           registrarFalhaUpsertCatalogo(
             lojaId: storeId,
             produtoId: produtoId,

@@ -63,6 +63,7 @@ import '../services/produto_exclusao_remota_service.dart';
 import '../widgets/app_help_icon_button.dart';
 import '../services/produto_sync_recovery_access.dart';
 import 'produto_sync_recovery_screen.dart';
+import 'catalogo_sync_diagnostics_screen.dart';
 
 const bool kAutoSyncOnStart = false;
 
@@ -4059,6 +4060,21 @@ String _formatGradeTexto(Produto p) {
                   context,
                   MaterialPageRoute(
                     builder: (_) => const ProdutoSyncRecoveryScreen(),
+                  ),
+                );
+              },
+            ),
+            _drawerTile(
+              icon: Icons.bug_report_outlined,
+              iconColor: const Color(0xFF0EA5E9),
+              label: 'Diagnóstico de sincronização do catálogo',
+              subtitle: 'Registro local sanitizado (dono/admin)',
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push<void>(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const CatalogoSyncDiagnosticsScreen(),
                   ),
                 );
               },

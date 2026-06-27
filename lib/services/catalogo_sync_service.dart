@@ -19,6 +19,8 @@ import '../models/produto.dart';
 import 'catalog_cache_service.dart';
 import 'produto_exclusao_tombstone_service.dart';
 import 'produtos_firestore_service.dart';
+import 'catalogo_sync_attempt_context.dart';
+import 'catalogo_sync_diagnostics_service.dart';
 import 'sync_mass_delete_guard.dart';
 import '../services/store_resolver_facade.dart';
 import '../services/upload_manager.dart';
@@ -758,6 +760,7 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
     required SyncTarget target,
     bool removerSeSemEstoque = false,
     String? lojaIdOverride,
+    CatalogoSyncAttemptContext? catalogoDiagContext,
   }) async {
     final lojaId = await _resolveLojaId(lojaIdOverride);
     final docId = catalogFirestoreDocId(produto);
@@ -765,7 +768,22 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
     final operacao = target == SyncTarget.draft
         ? 'upsert_draft_produtos'
         : 'upsert_produtos_live';
+    CatalogoSyncOperationHandle? diagHandle;
     try {
+      if (catalogoDiagContext != null) {
+        diagHandle = await CatalogoSyncDiagnosticsService.startOperation(
+          context: catalogoDiagContext,
+          operationName: operacao,
+          collectionName: _collectionName(target),
+          storeId: lojaId,
+          produtoId: docId,
+          path: path,
+          firestoreMethod: 'set',
+          mutationIntent: CatalogoSyncMutationIntent.set,
+          documentStateHint: CatalogoSyncDocumentStateHint.unknown,
+          sourceMethod: 'CatalogoSyncService.upsertFromProdutoRegistrandoFalha',
+        );
+      }
       if (debugForceUpsertFailureTarget == target) {
         throw FirebaseException(
           plugin: 'cloud_firestore',
@@ -779,7 +797,13 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
         removerSeSemEstoque: removerSeSemEstoque,
         lojaIdOverride: lojaIdOverride,
       );
+      if (diagHandle != null) {
+        await CatalogoSyncDiagnosticsService.completeSuccess(diagHandle);
+      }
     } catch (e, st) {
+      if (diagHandle != null) {
+        await CatalogoSyncDiagnosticsService.completeFailure(diagHandle, e);
+      }
       ProdutosFirestoreService.registrarFalhaUpsertCatalogo(
         lojaId: lojaId,
         produtoId: docId,

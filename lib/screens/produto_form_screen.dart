@@ -22,6 +22,7 @@ import '../services/limits_guard.dart';
 import '../services/produto_estoque_doc_id_service.dart';
 import '../services/produto_exclusao_tombstone_service.dart';
 import '../services/produto_cadastro_pos_save_service.dart';
+import '../services/catalogo_sync_attempt_context.dart';
 import '../services/produto_catalogo_upsert_falha.dart';
 import '../services/produto_sync_erro_util.dart';
 import '../services/produto_sync_fila_retry_service.dart';
@@ -1509,12 +1510,17 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         variacoesMapResolved,
         estoqueMapa,
       );
+      final catalogoDiagPersist = await CatalogoSyncAttemptContext.capture(
+        origin: 'produto_form.persistir_atual',
+        sessionStoreIdHint: lojaId,
+      );
       final remoteStatusPersist = await ProdutosFirestoreService.syncProdutoComStatus(
         p,
         lojaId: lojaId,
         forcePushFromCadastro: true,
         writeOrigin: 'produto_form.persistir_atual',
         gradeBaseline: _gradeBaseline,
+        catalogoDiagContext: catalogoDiagPersist,
       ).timeout(const Duration(seconds: 45), onTimeout: () => throw TimeoutException('Sincronização demorou muito'));
       final rehydratePersist =
           await ProdutoCadastroPosSaveService.executarAposEstoqueRemotoOk(
@@ -1522,6 +1528,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         lojaId: lojaId!,
         remoteStatus: remoteStatusPersist,
         gradeBaseline: _gradeBaseline,
+        catalogoDiagContext: catalogoDiagPersist,
       );
       await ProdutoImagensStorageCleanup.apagarUrlsRemovidasGerenciadas(
         anteriores: imagensAntesPersist,
@@ -1866,6 +1873,10 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       late final Produto produtoSalvoParaRetorno;
       var remoteStatus = ProdutoSyncRemotoStatus.confirmado;
       ProdutoRehydratePosSaveResult? rehydratePosSave;
+      final catalogoDiagContext = await CatalogoSyncAttemptContext.capture(
+        origin: 'produto_form.save',
+        sessionStoreIdHint: lojaId,
+      );
 
     try {
       final qtdGeral = int.tryParse(_quantidade.text) ?? 0;
@@ -2072,6 +2083,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             forcePushFromCadastro: true,
             enqueueOnFailure: true,
             gradeBaseline: _gradeBaseline,
+            catalogoDiagContext: catalogoDiagContext,
           )
               .timeout(const Duration(seconds: 45), onTimeout: () => throw TimeoutException('Sincronização com Firestore demorou muito.'));
         rehydratePosSave =
@@ -2080,6 +2092,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           lojaId: lojaId!,
           remoteStatus: remoteStatus,
           gradeBaseline: _gradeBaseline,
+          catalogoDiagContext: catalogoDiagContext,
         );
           await ProdutoImagensStorageCleanup.apagarUrlsRemovidasGerenciadas(
             anteriores: imagensAntesExistente,
@@ -2169,6 +2182,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             forcePushFromCadastro: true,
             enqueueOnFailure: true,
             gradeBaseline: _gradeBaseline,
+            catalogoDiagContext: catalogoDiagContext,
           )
               .timeout(const Duration(seconds: 45), onTimeout: () => throw TimeoutException('Sincronização com Firestore demorou muito.'));
           rehydratePosSave =
@@ -2177,6 +2191,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             lojaId: lojaId!,
             remoteStatus: remoteStatus,
             gradeBaseline: _gradeBaseline,
+            catalogoDiagContext: catalogoDiagContext,
           );
           await _vincularCompraPipelineAposSalvar(novo);
           produtoSalvoParaRetorno = novo;
@@ -2269,6 +2284,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           forcePushFromCadastro: true,
           enqueueOnFailure: true,
           gradeBaseline: _gradeBaseline,
+          catalogoDiagContext: catalogoDiagContext,
         )
             .timeout(const Duration(seconds: 45), onTimeout: () => throw TimeoutException('Sincronização com Firestore demorou muito.'));
         rehydratePosSave =
@@ -2277,6 +2293,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           lojaId: lojaId!,
           remoteStatus: remoteStatus,
           gradeBaseline: _gradeBaseline,
+          catalogoDiagContext: catalogoDiagContext,
         );
         await ProdutoImagensStorageCleanup.apagarUrlsRemovidasGerenciadas(
           anteriores: imagensAntesEdit,
