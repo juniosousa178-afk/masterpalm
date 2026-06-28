@@ -8,6 +8,7 @@ import 'package:hive/hive.dart';
 
 import 'catalogo_sync_attempt_context.dart';
 import 'catalogo_sync_diagnostic_mask_util.dart';
+import 'store_identity_diagnostic_snapshot.dart';
 
 /// Handle de uma operação em andamento (sem estado global).
 class CatalogoSyncOperationHandle {
@@ -391,6 +392,13 @@ class CatalogoSyncDiagnosticsService {
       buffer.writeln('UID: ${ctx['authUidMasked'] ?? '—'}');
       buffer.writeln('Auth: ${ctx['authState'] ?? '—'}');
       buffer.writeln('Token metadata: ${ctx['tokenMetadataState'] ?? '—'}');
+      final identidade = ctx['identidadeLoja'] as Map<String, dynamic>?;
+      if (identidade != null) {
+        buffer.writeln('');
+        buffer.writeln(
+          _buildIdentityReportFromMap(identidade),
+        );
+      }
     }
     buffer.writeln('--- Operações ---');
     final ops =
@@ -409,5 +417,76 @@ class CatalogoSyncDiagnosticsService {
       }
     }
     return buffer.toString().trim();
+  }
+
+  static String buildIdentityReport(StoreIdentityDiagnosticSnapshot snapshot) {
+    return snapshot.buildReportSection();
+  }
+
+  static String buildCombinedSafeReport({
+    required Map<String, dynamic>? attemptRecord,
+    required StoreIdentityDiagnosticSnapshot? identitySnapshot,
+  }) {
+    final parts = <String>[];
+    if (identitySnapshot != null) {
+      parts.add(identitySnapshot.buildReportSection());
+    }
+    if (attemptRecord != null) {
+      parts.add(buildSafeReport(attemptRecord));
+    }
+    if (parts.isEmpty) {
+      return 'Nenhum dado de diagnóstico disponível.';
+    }
+    return parts.join('\n\n');
+  }
+
+  static String _buildIdentityReportFromMap(Map<String, dynamic> map) {
+    try {
+      return StoreIdentityDiagnosticSnapshot(
+        capturedAtUtc: DateTime.tryParse(
+              (map['capturedAtUtc'] ?? '').toString(),
+            ) ??
+            DateTime.now().toUtc(),
+        activeStoreResolutionSource: StoreIdentityResolutionSource.values
+            .byName((map['activeStoreResolutionSource'] ?? 'unavailable')
+                .toString()),
+        profileCanonicalStoreAvailable:
+            map['profileCanonicalStoreAvailable'] == true,
+        profileHasLegacyConflict: map['profileHasLegacyConflict'] == true,
+        sessionVsCanonical: StoreIdentityRelation.values.byName(
+          (map['sessionVsCanonical'] ?? 'unavailable').toString(),
+        ),
+        sessionVsLegacy: StoreIdentityRelation.values.byName(
+          (map['sessionVsLegacy'] ?? 'unavailable').toString(),
+        ),
+        resolvedVsCanonical: StoreIdentityRelation.values.byName(
+          (map['resolvedVsCanonical'] ?? 'unavailable').toString(),
+        ),
+        resolvedVsLegacy: StoreIdentityRelation.values.byName(
+          (map['resolvedVsLegacy'] ?? 'unavailable').toString(),
+        ),
+        sessionEqualsResolved: StoreIdentityRelation.values.byName(
+          (map['sessionEqualsResolved'] ?? 'unavailable').toString(),
+        ),
+        activeStoreMatchesCanonical: StoreIdentityRelation.values.byName(
+          (map['activeStoreMatchesCanonical'] ?? 'unavailable').toString(),
+        ),
+        activeStoreMatchesLegacy: StoreIdentityRelation.values.byName(
+          (map['activeStoreMatchesLegacy'] ?? 'unavailable').toString(),
+        ),
+        profileStoreIdAvailable: map['profileStoreIdAvailable'] == true,
+        profileOwnerOfAvailable: map['profileOwnerOfAvailable'] == true,
+        profileLojaIdLegacyAvailable:
+            map['profileLojaIdLegacyAvailable'] == true,
+        legacyOwnerStoreIdAvailable:
+            map['legacyOwnerStoreIdAvailable'] == true,
+        diagnosticDataCompleteness:
+            StoreIdentityDiagnosticCompleteness.values.byName(
+          (map['diagnosticDataCompleteness'] ?? 'unavailable').toString(),
+        ),
+      ).buildReportSection();
+    } catch (_) {
+      return '--- Identidade da loja ---\n(indisponível)';
+    }
   }
 }

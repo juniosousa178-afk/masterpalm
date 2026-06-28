@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 
 import '../services/catalogo_sync_diagnostics_access.dart';
 import '../services/catalogo_sync_diagnostics_service.dart';
+import '../services/store_identity_diagnostic_snapshot.dart';
+import '../services/store_identity_diagnostics_service.dart';
 
 class CatalogoSyncDiagnosticsScreen extends StatefulWidget {
   const CatalogoSyncDiagnosticsScreen({super.key});
@@ -19,6 +21,7 @@ class _CatalogoSyncDiagnosticsScreenState
   bool _podeAcessar = false;
   bool _carregando = true;
   List<Map<String, dynamic>> _tentativas = [];
+  StoreIdentityDiagnosticSnapshot? _identidade;
 
   @override
   void initState() {
@@ -41,15 +44,22 @@ class _CatalogoSyncDiagnosticsScreenState
     setState(() => _carregando = true);
     try {
       final list = await CatalogoSyncDiagnosticsService.listAttempts();
+      final identidade = await StoreIdentityDiagnosticsService.captureSafe();
       if (!mounted) return;
-      setState(() => _tentativas = list);
+      setState(() {
+        _tentativas = list;
+        _identidade = identidade;
+      });
     } finally {
       if (mounted) setState(() => _carregando = false);
     }
   }
 
-  Future<void> _copiarRelatorio(Map<String, dynamic> record) async {
-    final text = CatalogoSyncDiagnosticsService.buildSafeReport(record);
+  Future<void> _copiarRelatorio(Map<String, dynamic>? record) async {
+    final text = CatalogoSyncDiagnosticsService.buildCombinedSafeReport(
+      attemptRecord: record,
+      identitySnapshot: _identidade,
+    );
     await Clipboard.setData(ClipboardData(text: text));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -73,7 +83,7 @@ class _CatalogoSyncDiagnosticsScreenState
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            tooltip: 'Recarregar lista local',
+            tooltip: 'Atualizar diagnóstico',
             onPressed: _carregando ? null : _recarregar,
           ),
         ],
@@ -83,6 +93,18 @@ class _CatalogoSyncDiagnosticsScreenState
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                _secaoTitulo('Diagnóstico de identidade da loja'),
+                if (_identidade == null)
+                  const Text('Identidade indisponível neste aparelho.')
+                else
+                  _identidadeBloc(_identidade!),
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed: () => _copiarRelatorio(ultima),
+                  icon: const Icon(Icons.copy),
+                  label: const Text('Copiar relatório seguro'),
+                ),
+                const SizedBox(height: 24),
                 if (ultima == null)
                   const Text('Nenhuma tentativa registrada neste aparelho.')
                 else ...[
@@ -94,12 +116,6 @@ class _CatalogoSyncDiagnosticsScreenState
                   const SizedBox(height: 12),
                   _secaoTitulo('Operações'),
                   ..._operacoesWidgets(ultima),
-                  const SizedBox(height: 16),
-                  FilledButton.icon(
-                    onPressed: () => _copiarRelatorio(ultima),
-                    icon: const Icon(Icons.copy),
-                    label: const Text('Copiar relatório seguro'),
-                  ),
                 ],
                 if (_tentativas.length > 1) ...[
                   const SizedBox(height: 24),
@@ -125,13 +141,82 @@ class _CatalogoSyncDiagnosticsScreenState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SizedBox(
-              width: 120,
+              width: 160,
               child: Text(label, style: const TextStyle(color: Colors.grey)),
             ),
             Expanded(child: Text(value)),
           ],
         ),
       );
+
+  Widget _identidadeBloc(StoreIdentityDiagnosticSnapshot snap) {
+    final conflict = snap.profileHasLegacyConflict
+        ? 'sim'
+        : (snap.diagnosticDataCompleteness ==
+                StoreIdentityDiagnosticCompleteness.unavailable
+            ? 'indisponível'
+            : 'não');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _linha(
+          'Origem da loja ativa',
+          StoreIdentityDiagnosticSnapshot.sourceLabel(
+            snap.activeStoreResolutionSource,
+          ),
+        ),
+        _linha(
+          'Loja canônica do perfil',
+          snap.profileCanonicalStoreAvailable ? 'disponível' : 'indisponível',
+        ),
+        _linha('Conflito remoto de perfil detectado', conflict),
+        _linha(
+          'Sessão vs canônica',
+          StoreIdentityDiagnosticSnapshot.relationLabel(snap.sessionVsCanonical),
+        ),
+        _linha(
+          'Sessão vs legado',
+          StoreIdentityDiagnosticSnapshot.relationLabel(snap.sessionVsLegacy),
+        ),
+        _linha(
+          'Resolvida vs canônica',
+          StoreIdentityDiagnosticSnapshot.relationLabel(
+            snap.resolvedVsCanonical,
+          ),
+        ),
+        _linha(
+          'Resolvida vs legado',
+          StoreIdentityDiagnosticSnapshot.relationLabel(snap.resolvedVsLegacy),
+        ),
+        _linha(
+          'Sessão = resolvida',
+          StoreIdentityDiagnosticSnapshot.yesNoUnavailable(
+            snap.sessionEqualsResolved,
+          ),
+        ),
+        _linha(
+          'Loja ativa vs canônica',
+          StoreIdentityDiagnosticSnapshot.relationLabel(
+            snap.activeStoreMatchesCanonical,
+          ),
+        ),
+        _linha(
+          'Loja ativa vs legado',
+          StoreIdentityDiagnosticSnapshot.relationLabel(
+            snap.activeStoreMatchesLegacy,
+          ),
+        ),
+        _linha(
+          'Completude do diagnóstico',
+          StoreIdentityDiagnosticSnapshot.completenessLabel(
+            snap.diagnosticDataCompleteness,
+          ),
+        ),
+        _linha('Horário da captura', snap.capturedAtUtc.toIso8601String()),
+      ],
+    );
+  }
 
   Widget _contextoBloc(Map<String, dynamic> record) {
     final ctx = record['contextoSanitizado'] as Map<String, dynamic>?;
@@ -142,12 +227,70 @@ class _CatalogoSyncDiagnosticsScreenState
         _linha('Build', '${ctx['buildId'] ?? '—'}'),
         _linha('Host', '${ctx['host'] ?? '—'}'),
         _linha('Projeto Firebase', '${ctx['firebaseProjectId'] ?? '—'}'),
-        _linha('Loja da sessão', '${ctx['sessionStoreIdMasked'] ?? '—'}'),
-        _linha('Loja resolvida', '${ctx['resolvedStoreIdMasked'] ?? '—'}'),
-        _linha('UID', '${ctx['authUidMasked'] ?? '—'}'),
         _linha('Auth', '${ctx['authState'] ?? '—'}'),
         _linha('Token metadata', '${ctx['tokenMetadataState'] ?? '—'}'),
+        if (ctx['identidadeLoja'] != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            'Identidade na tentativa (relacional)',
+            style: TextStyle(
+              color: Colors.grey.shade700,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            CatalogoSyncDiagnosticsService.buildIdentityReport(
+              _snapshotFromMap(ctx['identidadeLoja'] as Map<String, dynamic>),
+            ),
+            style: const TextStyle(fontSize: 12),
+          ),
+        ],
       ],
+    );
+  }
+
+  StoreIdentityDiagnosticSnapshot _snapshotFromMap(Map<String, dynamic> map) {
+    return StoreIdentityDiagnosticSnapshot(
+      capturedAtUtc: DateTime.tryParse(
+            (map['capturedAtUtc'] ?? '').toString(),
+          ) ??
+          DateTime.now().toUtc(),
+      activeStoreResolutionSource: StoreIdentityResolutionSource.values.byName(
+        (map['activeStoreResolutionSource'] ?? 'unavailable').toString(),
+      ),
+      profileCanonicalStoreAvailable:
+          map['profileCanonicalStoreAvailable'] == true,
+      profileHasLegacyConflict: map['profileHasLegacyConflict'] == true,
+      sessionVsCanonical: StoreIdentityRelation.values.byName(
+        (map['sessionVsCanonical'] ?? 'unavailable').toString(),
+      ),
+      sessionVsLegacy: StoreIdentityRelation.values.byName(
+        (map['sessionVsLegacy'] ?? 'unavailable').toString(),
+      ),
+      resolvedVsCanonical: StoreIdentityRelation.values.byName(
+        (map['resolvedVsCanonical'] ?? 'unavailable').toString(),
+      ),
+      resolvedVsLegacy: StoreIdentityRelation.values.byName(
+        (map['resolvedVsLegacy'] ?? 'unavailable').toString(),
+      ),
+      sessionEqualsResolved: StoreIdentityRelation.values.byName(
+        (map['sessionEqualsResolved'] ?? 'unavailable').toString(),
+      ),
+      activeStoreMatchesCanonical: StoreIdentityRelation.values.byName(
+        (map['activeStoreMatchesCanonical'] ?? 'unavailable').toString(),
+      ),
+      activeStoreMatchesLegacy: StoreIdentityRelation.values.byName(
+        (map['activeStoreMatchesLegacy'] ?? 'unavailable').toString(),
+      ),
+      profileStoreIdAvailable: map['profileStoreIdAvailable'] == true,
+      profileOwnerOfAvailable: map['profileOwnerOfAvailable'] == true,
+      profileLojaIdLegacyAvailable: map['profileLojaIdLegacyAvailable'] == true,
+      legacyOwnerStoreIdAvailable: map['legacyOwnerStoreIdAvailable'] == true,
+      diagnosticDataCompleteness:
+          StoreIdentityDiagnosticCompleteness.values.byName(
+        (map['diagnosticDataCompleteness'] ?? 'unavailable').toString(),
+      ),
     );
   }
 
@@ -165,16 +308,16 @@ class _CatalogoSyncDiagnosticsScreenState
           ? Icons.check_circle_outline
           : status == 'skipped'
               ? Icons.skip_next_outlined
-          : status == 'failure'
-              ? Icons.error_outline
-              : Icons.hourglass_empty;
+              : status == 'failure'
+                  ? Icons.error_outline
+                  : Icons.hourglass_empty;
       final cor = status == 'success'
           ? Colors.green
           : status == 'skipped'
               ? Colors.blueGrey
-          : status == 'failure'
-              ? Colors.orange
-              : Colors.grey;
+              : status == 'failure'
+                  ? Colors.orange
+                  : Colors.grey;
       return Card(
         margin: const EdgeInsets.only(bottom: 8),
         child: ListTile(

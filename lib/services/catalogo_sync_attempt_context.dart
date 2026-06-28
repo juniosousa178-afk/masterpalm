@@ -9,6 +9,8 @@ import 'package:uuid/uuid.dart';
 
 import '../core/loja_ativa_resolver.dart';
 import 'catalogo_sync_diagnostic_mask_util.dart';
+import 'store_identity_diagnostic_snapshot.dart';
+import 'store_identity_diagnostics_service.dart';
 import 'store_resolver_facade.dart';
 
 /// Intenção da mutação Firestore (sem afirmar create/update de Rules).
@@ -46,6 +48,7 @@ class CatalogoSyncAttemptContext {
     this.issuedAtUtc,
     this.expirationTimeUtc,
     this.claimKeysOnly = const [],
+    this.storeIdentity,
   });
 
   final String attemptId;
@@ -66,6 +69,7 @@ class CatalogoSyncAttemptContext {
   final String? issuedAtUtc;
   final String? expirationTimeUtc;
   final List<String> claimKeysOnly;
+  final StoreIdentityDiagnosticSnapshot? storeIdentity;
 
   String get attemptIdCurto =>
       CatalogoSyncDiagnosticMaskUtil.attemptIdCurto(attemptId);
@@ -145,6 +149,13 @@ class CatalogoSyncAttemptContext {
       }
     }
 
+    StoreIdentityDiagnosticSnapshot? storeIdentity;
+    try {
+      storeIdentity = await StoreIdentityDiagnosticsService.captureSafe();
+    } catch (_) {
+      storeIdentity = StoreIdentityDiagnosticsService.unavailableSnapshot();
+    }
+
     return CatalogoSyncAttemptContext(
       attemptId: attemptId,
       origin: origin,
@@ -166,6 +177,7 @@ class CatalogoSyncAttemptContext {
       issuedAtUtc: issuedAtUtc,
       expirationTimeUtc: expirationTimeUtc,
       claimKeysOnly: List<String>.unmodifiable(claimKeysOnly),
+      storeIdentity: storeIdentity,
     );
   }
 
@@ -185,6 +197,7 @@ class CatalogoSyncAttemptContext {
     String authState = 'signed_in',
     bool isAnonymous = false,
     String tokenMetadataState = 'unavailable',
+    StoreIdentityDiagnosticSnapshot? storeIdentity,
   }) {
     return CatalogoSyncAttemptContext(
       attemptId: attemptId,
@@ -201,6 +214,7 @@ class CatalogoSyncAttemptContext {
       authState: authState,
       isAnonymous: isAnonymous,
       tokenMetadataState: tokenMetadataState,
+      storeIdentity: storeIdentity,
     );
   }
 
@@ -258,5 +272,7 @@ class CatalogoSyncAttemptContext {
         if (issuedAtUtc != null) 'issuedAtUtc': issuedAtUtc,
         if (expirationTimeUtc != null) 'expirationTimeUtc': expirationTimeUtc,
         'claimKeysOnly': claimKeysOnly,
+        if (storeIdentity != null)
+          'identidadeLoja': storeIdentity!.toSanitizedMap(),
       };
 }
