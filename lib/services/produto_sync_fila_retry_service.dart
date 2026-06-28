@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../core/produto_form_grade_hydration.dart';
 import 'catalogo_sync_attempt_context.dart';
+import 'catalogo_live_inline_policy.dart';
 import 'produtos_firestore_service.dart';
 import 'sync_queue_service.dart';
 import '../models/produto.dart';
@@ -24,6 +25,8 @@ class ProdutoSyncFilaRetryService {
     bool enqueueOnFailure = true,
     ProdutoFormGradeBaseline? gradeBaseline,
     CatalogoSyncAttemptContext? catalogoDiagContext,
+    CatalogoLiveInlinePolicy catalogoLiveInlinePolicy =
+        CatalogoLiveInlinePolicy.executar,
   }) async {
     var status = await ProdutosFirestoreService.syncProdutoComStatus(
       produto,
@@ -36,6 +39,7 @@ class ProdutoSyncFilaRetryService {
       enqueueOnFailure: enqueueOnFailure,
       gradeBaseline: gradeBaseline,
       catalogoDiagContext: catalogoDiagContext,
+      catalogoLiveInlinePolicy: catalogoLiveInlinePolicy,
     );
 
     if (!_precisaRetentativaFila(status)) {
@@ -56,6 +60,7 @@ class ProdutoSyncFilaRetryService {
       enqueueOnFailure: enqueueOnFailure,
       gradeBaseline: gradeBaseline,
       catalogoDiagContext: catalogoDiagContext,
+      catalogoLiveInlinePolicy: catalogoLiveInlinePolicy,
     );
   }
 

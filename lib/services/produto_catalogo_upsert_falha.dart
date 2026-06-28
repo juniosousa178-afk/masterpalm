@@ -1,6 +1,5 @@
 // Registro de falhas parciais ao sincronizar draft/live após save em estoque_produtos.
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import 'produto_sync_erro_util.dart';
@@ -24,6 +23,9 @@ class ProdutoCatalogoUpsertFalha {
     required this.path,
     required this.operacao,
     required this.erro,
+    this.attemptId,
+    this.origin,
+    this.timestampUtc,
   });
 
   final String lojaId;
@@ -31,6 +33,16 @@ class ProdutoCatalogoUpsertFalha {
   final String path;
   final String operacao;
   final String erro;
+  final String? attemptId;
+  final String? origin;
+  final DateTime? timestampUtc;
+
+  static const canonicalOperacoes = {
+    'upsert_draft_produtos',
+    'upsert_produtos_live',
+  };
+
+  bool get isCanonicalCatalogo => canonicalOperacoes.contains(operacao);
 
   static String erroDe(Object error) {
     if (error is FirebaseException) {

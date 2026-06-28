@@ -23,6 +23,10 @@ import 'vendas_firestore_service.dart';
 import 'produto_sync_erro_util.dart';
 import 'produtos_firestore_service.dart';
 import 'fornecedores_firestore_service.dart';
+import 'catalogo_live_inline_policy.dart';
+import 'catalogo_queue_publish_plan.dart';
+import 'catalogo_sync_attempt_context.dart';
+import 'produto_cadastro_pos_save_service.dart';
 
 /// Tipos de operação suportados
 enum SyncOperationType {
@@ -50,6 +54,15 @@ class SyncQueueItem {
   /// Última vez que houve tentativa falha (ms epoch). 0 = nunca registrado.
   final int lastAttemptAt;
 
+  /// Plano de publicação do catálogo (retrocompat: ausente → legadoInline).
+  final CatalogoQueuePublishPlan catalogoPublishPlan;
+
+  /// Fase da máquina de estados canônica (retrocompat: ausente → aguardandoEstoque).
+  final CatalogoQueuePublishPhase catalogoPublishPhase;
+
+  /// Origem sanitizada do enfileiramento (ex.: produto_form.save).
+  final String? catalogoQueueSourceOrigin;
+
   SyncQueueItem({
     required this.id,
     required this.type,
@@ -61,7 +74,41 @@ class SyncQueueItem {
     this.lastError,
     this.deadLetter = false,
     this.lastAttemptAt = 0,
+    this.catalogoPublishPlan = CatalogoQueuePublishPlan.legadoInline,
+    this.catalogoPublishPhase = CatalogoQueuePublishPhase.aguardandoEstoque,
+    this.catalogoQueueSourceOrigin,
   });
+
+  SyncQueueItem copyWith({
+    int? attemptCount,
+    String? lastError,
+    bool? deadLetter,
+    int? lastAttemptAt,
+    CatalogoQueuePublishPlan? catalogoPublishPlan,
+    CatalogoQueuePublishPhase? catalogoPublishPhase,
+    String? catalogoQueueSourceOrigin,
+  }) {
+    return SyncQueueItem(
+      id: id,
+      type: type,
+      lojaId: lojaId,
+      boxName: boxName,
+      entityKey: entityKey,
+      createdAt: createdAt,
+      attemptCount: attemptCount ?? this.attemptCount,
+      lastError: lastError ?? this.lastError,
+      deadLetter: deadLetter ?? this.deadLetter,
+      lastAttemptAt: lastAttemptAt ?? this.lastAttemptAt,
+      catalogoPublishPlan: catalogoPublishPlan ?? this.catalogoPublishPlan,
+      catalogoPublishPhase:
+          catalogoPublishPhase ?? this.catalogoPublishPhase,
+      catalogoQueueSourceOrigin:
+          catalogoQueueSourceOrigin ?? this.catalogoQueueSourceOrigin,
+    );
+  }
+
+  bool get isCatalogoCanonicoAposEstoque =>
+      catalogoPublishPlan == CatalogoQueuePublishPlan.canonicoAposEstoque;
 
   Map<String, dynamic> toMap() => {
         'id': id,
@@ -74,6 +121,10 @@ class SyncQueueItem {
         'lastError': lastError,
         'deadLetter': deadLetter,
         'lastAttemptAt': lastAttemptAt,
+        'catalogoPublishPlan': catalogoPublishPlan.index,
+        'catalogoPublishPhase': catalogoPublishPhase.index,
+        if (catalogoQueueSourceOrigin != null)
+          'catalogoQueueSourceOrigin': catalogoQueueSourceOrigin,
       };
 
   factory SyncQueueItem.fromMap(Map<String, dynamic> m) => SyncQueueItem(
@@ -87,6 +138,12 @@ class SyncQueueItem {
         lastError: m['lastError'] as String?,
         deadLetter: m['deadLetter'] == true,
         lastAttemptAt: (m['lastAttemptAt'] as num?)?.toInt() ?? 0,
+        catalogoPublishPlan: CatalogoQueuePublishPlan
+            .values[(m['catalogoPublishPlan'] as int?) ?? 0],
+        catalogoPublishPhase: CatalogoQueuePublishPhase
+            .values[(m['catalogoPublishPhase'] as int?) ?? 0],
+        catalogoQueueSourceOrigin:
+            m['catalogoQueueSourceOrigin'] as String?,
       );
 
   /// operationId para idempotência
@@ -114,6 +171,22 @@ class SyncQueueService {
   /// Contagem de [requestProcessWhenOnline] (somente testes).
   @visibleForTesting
   static int get debugProcessRequestCount => _processRequestCount;
+
+  @visibleForTesting
+  static int debugCanonicalPhaseEstoqueRuns = 0;
+
+  @visibleForTesting
+  static int debugCanonicalPhaseDraftRuns = 0;
+
+  @visibleForTesting
+  static int debugCanonicalPhaseLiveRuns = 0;
+
+  @visibleForTesting
+  static void resetCanonicalPhaseCountersForTests() {
+    debugCanonicalPhaseEstoqueRuns = 0;
+    debugCanonicalPhaseDraftRuns = 0;
+    debugCanonicalPhaseLiveRuns = 0;
+  }
 
   @visibleForTesting
   static void resetProcessRequestCountForTests() {
@@ -154,6 +227,11 @@ class SyncQueueService {
     required int entityKey,
     String? lastError,
     bool scheduleProcess = true,
+    CatalogoQueuePublishPlan catalogoPublishPlan =
+        CatalogoQueuePublishPlan.legadoInline,
+    CatalogoQueuePublishPhase catalogoPublishPhase =
+        CatalogoQueuePublishPhase.aguardandoEstoque,
+    String? catalogoQueueSourceOrigin,
   }) async {
     await _instance._enqueue(
       type,
@@ -162,6 +240,9 @@ class SyncQueueService {
       entityKey,
       lastError: lastError,
       scheduleProcess: scheduleProcess,
+      catalogoPublishPlan: catalogoPublishPlan,
+      catalogoPublishPhase: catalogoPublishPhase,
+      catalogoQueueSourceOrigin: catalogoQueueSourceOrigin,
     );
   }
 
@@ -200,6 +281,11 @@ class SyncQueueService {
     int entityKey, {
     String? lastError,
     bool scheduleProcess = true,
+    CatalogoQueuePublishPlan catalogoPublishPlan =
+        CatalogoQueuePublishPlan.legadoInline,
+    CatalogoQueuePublishPhase catalogoPublishPhase =
+        CatalogoQueuePublishPhase.aguardandoEstoque,
+    String? catalogoQueueSourceOrigin,
   }) async {
     await _ensureBox();
     final box = _box!;
@@ -218,6 +304,9 @@ class SyncQueueService {
       deadLetter: false,
       lastAttemptAt: 0,
       lastError: errInicial,
+      catalogoPublishPlan: catalogoPublishPlan,
+      catalogoPublishPhase: catalogoPublishPhase,
+      catalogoQueueSourceOrigin: catalogoQueueSourceOrigin,
     );
 
     await box.put(id, jsonEncode(item.toMap()));
@@ -524,13 +613,7 @@ class SyncQueueService {
     final justMarkedDead = next >= _maxAttempts;
     final err = _truncateError(error);
     final nowMs = DateTime.now().millisecondsSinceEpoch;
-    final updated = SyncQueueItem(
-      id: item.id,
-      type: item.type,
-      lojaId: item.lojaId,
-      boxName: item.boxName,
-      entityKey: item.entityKey,
-      createdAt: item.createdAt,
+    final updated = item.copyWith(
       attemptCount: next,
       lastError: err,
       deadLetter: justMarkedDead,
@@ -591,6 +674,16 @@ class SyncQueueService {
       return true;
     }
 
+    if (item.isCatalogoCanonicoAposEstoque) {
+      return _executeUpsertProdutoCanonico(item, produto);
+    }
+    return _executeUpsertProdutoLegado(item, produto);
+  }
+
+  Future<bool> _executeUpsertProdutoLegado(
+    SyncQueueItem item,
+    Produto produto,
+  ) async {
     final status = await ProdutosFirestoreService.syncProdutoComStatus(
       produto,
       lojaId: item.lojaId,
@@ -598,6 +691,98 @@ class SyncQueueService {
       writeOrigin: 'sync_queue.upsert_produto',
       enqueueOnFailure: false,
     );
+    return _tratarStatusEstoqueFila(item, status);
+  }
+
+  Future<bool> _executeUpsertProdutoCanonico(
+    SyncQueueItem item,
+    Produto produto,
+  ) async {
+    final diagContext = await CatalogoSyncAttemptContext.captureForQueueRetry(
+      lojaId: item.lojaId,
+    );
+
+    var current = item;
+
+    if (current.catalogoPublishPhase ==
+        CatalogoQueuePublishPhase.aguardandoEstoque) {
+      debugCanonicalPhaseEstoqueRuns++;
+      final status = await ProdutosFirestoreService.syncProdutoComStatus(
+        produto,
+        lojaId: item.lojaId,
+        bumpHiveTimestamp: false,
+        writeOrigin: 'sync_queue.upsert_produto.canonical',
+        enqueueOnFailure: false,
+        catalogoLiveInlinePolicy:
+            CatalogoLiveInlinePolicy.ignorarPorquePosSaveCanonico,
+        catalogoDiagContext: diagContext,
+      );
+      final ok = await _tratarStatusEstoqueFila(current, status);
+      if (!ok) return false;
+      current = await _persistCatalogoPhase(
+        current,
+        CatalogoQueuePublishPhase.aguardandoDraft,
+      );
+    }
+
+    if (current.catalogoPublishPhase ==
+        CatalogoQueuePublishPhase.aguardandoDraft) {
+      debugCanonicalPhaseDraftRuns++;
+      ProdutosFirestoreService.limparFalhasUpsertCatalogo();
+      final draft = await ProdutoCadastroPosSaveService.sincronizarDraftCanonical(
+        produto: produto,
+        lojaId: item.lojaId,
+        catalogoDiagContext: diagContext,
+      );
+      if (!draft.sucesso) {
+        await _incrementAttempt(
+          current,
+          draft.erroSanitizado ?? 'upsert_draft_produtos falhou',
+        );
+        logW(
+          '⚠️ [SYNC-QUEUE] draft canônico pendente (phase=aguardandoDraft, operationId=${item.operationId})',
+        );
+        return false;
+      }
+      current = await _persistCatalogoPhase(
+        current,
+        CatalogoQueuePublishPhase.aguardandoLive,
+      );
+    }
+
+    if (current.catalogoPublishPhase ==
+        CatalogoQueuePublishPhase.aguardandoLive) {
+      debugCanonicalPhaseLiveRuns++;
+      ProdutosFirestoreService.limparFalhasUpsertCatalogo();
+      final live = await ProdutoCadastroPosSaveService.sincronizarLiveCanonical(
+        produto: produto,
+        lojaId: item.lojaId,
+        catalogoDiagContext: diagContext,
+      );
+      if (!live.sucesso) {
+        await _incrementAttempt(
+          current,
+          live.erroSanitizado ?? 'upsert_produtos_live falhou',
+        );
+        logW(
+          '⚠️ [SYNC-QUEUE] live canônico pendente (phase=aguardandoLive, operationId=${item.operationId})',
+        );
+        return false;
+      }
+      logD(
+        '[SYNC-QUEUE] canonical_catalog_publish_complete operationId=${item.operationId} '
+        'source=${item.catalogoQueueSourceOrigin ?? "—"}',
+      );
+      return true;
+    }
+
+    return false;
+  }
+
+  Future<bool> _tratarStatusEstoqueFila(
+    SyncQueueItem item,
+    ProdutoSyncRemotoStatus status,
+  ) async {
     if (status == ProdutoSyncRemotoStatus.bloqueadoExclusaoTombstone) {
       final tombErr = ProdutoSyncErroUtil.sanitizar(
         null,
@@ -634,6 +819,19 @@ class SyncQueueService {
       return false;
     }
     return true;
+  }
+
+  Future<SyncQueueItem> _persistCatalogoPhase(
+    SyncQueueItem item,
+    CatalogoQueuePublishPhase phase,
+  ) async {
+    await _ensureBox();
+    final updated = item.copyWith(catalogoPublishPhase: phase);
+    await _box!.put(item.id, jsonEncode(updated.toMap()));
+    logD(
+      '[SYNC-QUEUE] catalogo_phase=$phase operationId=${item.operationId}',
+    );
+    return updated;
   }
 
   Future<bool> _executeUpsertFornecedor(SyncQueueItem item) async {
@@ -739,13 +937,7 @@ class SyncQueueService {
     final map = _instance._rawToMap(raw);
     if (map == null) return false;
     final item = SyncQueueItem.fromMap(map);
-    final reset = SyncQueueItem(
-      id: item.id,
-      type: item.type,
-      lojaId: item.lojaId,
-      boxName: item.boxName,
-      entityKey: item.entityKey,
-      createdAt: item.createdAt,
+    final reset = item.copyWith(
       attemptCount: 0,
       lastError: null,
       deadLetter: false,
@@ -802,6 +994,9 @@ class SyncQueueService {
       lastError: item.lastError,
       deadLetter: justMarkedDead,
       lastAttemptAt: item.lastAttemptAt,
+      catalogoPublishPlan: item.catalogoPublishPlan,
+      catalogoPublishPhase: item.catalogoPublishPhase,
+      catalogoQueueSourceOrigin: item.catalogoQueueSourceOrigin,
     );
   }
 
@@ -838,6 +1033,25 @@ class SyncQueueService {
     await _instance._ensureBox();
     logW('[SYNC_QUEUE] limpeza_manual_fila_completa');
     await _instance._box!.clear();
+  }
+
+  /// Localiza item de produto na fila (somente testes/diagnóstico).
+  @visibleForTesting
+  static Future<SyncQueueItem?> findProdutoQueueItem({
+    required String lojaId,
+    required int entityKey,
+  }) async {
+    await _instance._ensureBox();
+    for (final k in _instance._box!.keys) {
+      final map = _instance._rawToMap(_instance._box!.get(k));
+      if (map == null) continue;
+      final it = SyncQueueItem.fromMap(map);
+      if (it.type != SyncOperationType.upsertProduto) continue;
+      if (it.lojaId != lojaId) continue;
+      if (it.entityKey != entityKey) continue;
+      return it;
+    }
+    return null;
   }
 }
 

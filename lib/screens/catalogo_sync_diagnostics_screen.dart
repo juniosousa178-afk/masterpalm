@@ -163,11 +163,15 @@ class _CatalogoSyncDiagnosticsScreenState
       final code = op['firebaseErrorCode'];
       final icone = status == 'success'
           ? Icons.check_circle_outline
+          : status == 'skipped'
+              ? Icons.skip_next_outlined
           : status == 'failure'
               ? Icons.error_outline
               : Icons.hourglass_empty;
       final cor = status == 'success'
           ? Colors.green
+          : status == 'skipped'
+              ? Colors.blueGrey
           : status == 'failure'
               ? Colors.orange
               : Colors.grey;
@@ -179,6 +183,7 @@ class _CatalogoSyncDiagnosticsScreenState
           subtitle: Text(
             [
               if (code != null) 'Código: $code',
+              if (op['skipReason'] != null) 'Motivo: ${op['skipReason']}',
               'Path: ${op['pathMasked'] ?? '—'}',
               if (op['errorMessageSanitized'] != null)
                 'Msg: ${op['errorMessageSanitized']}',

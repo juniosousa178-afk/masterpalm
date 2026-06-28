@@ -204,6 +204,41 @@ class CatalogoSyncAttemptContext {
     );
   }
 
+  /// Contexto sanitizado para retry da fila (novo attemptId a cada processamento).
+  /// Não reutiliza attemptId do save offline original.
+  static Future<CatalogoSyncAttemptContext> captureForQueueRetry({
+    required String lojaId,
+  }) async {
+    try {
+      return await capture(
+        origin: 'sync_queue.canonical_catalog_publish',
+        sessionStoreIdHint: lojaId,
+      );
+    } catch (_) {
+      return CatalogoSyncAttemptContext(
+        attemptId: const Uuid().v4(),
+        origin: 'sync_queue.canonical_catalog_publish',
+        startedAtUtc: DateTime.now().toUtc(),
+        buildId: const String.fromEnvironment(
+          'CATALOG_BUILD_ID',
+          defaultValue: 'dev',
+        ),
+        firebaseProjectId: '—',
+        firebaseAppName: '—',
+        firestoreAppName: '—',
+        host: kIsWeb ? 'web' : defaultTargetPlatform.name,
+        sessionStoreIdMasked:
+            CatalogoSyncDiagnosticMaskUtil.mascararLojaId(lojaId),
+        resolvedStoreIdMasked:
+            CatalogoSyncDiagnosticMaskUtil.mascararLojaId(lojaId),
+        authUidMasked: '—',
+        authState: 'unknown',
+        isAnonymous: false,
+        tokenMetadataState: 'unavailable',
+      );
+    }
+  }
+
   Map<String, dynamic> toSanitizedMap() => {
         'attemptIdCurto': attemptIdCurto,
         'origin': origin,

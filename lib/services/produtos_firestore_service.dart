@@ -25,6 +25,8 @@ import 'combo_receita_normalizacao.dart';
 import 'firestore_payload_sanitizer.dart';
 import 'image_upload_service.dart';
 import 'produto_sync_erro_util.dart';
+import 'catalogo_live_inline_policy.dart';
+import 'catalogo_queue_publish_plan.dart';
 import 'sync_queue_service.dart';
 import 'produto_catalogo_upsert_falha.dart';
 import 'catalogo_sync_attempt_context.dart';
@@ -997,6 +999,10 @@ class ProdutosFirestoreService {
   @visibleForTesting
   static int debugForceSyncFailureRemaining = 0;
 
+  /// Apenas testes: contagem de execuções reais de upsert_produtos_live_inline.
+  @visibleForTesting
+  static int debugInlineUpsertCallCount = 0;
+
   /// Último erro sanitizado do ciclo de sync (UI / fila).
   static String? ultimoErroSyncSanitizado;
 
@@ -1013,12 +1019,29 @@ class ProdutosFirestoreService {
   static bool get temFalhasUpsertCatalogo =>
       ultimasFalhasUpsertCatalogo.isNotEmpty;
 
+  /// Falhas canônicas (draft/live) do attemptId ativo — para snackbar do formulário.
+  static List<ProdutoCatalogoUpsertFalha> falhasCanonicalDoAttempt(
+    String? attemptId,
+  ) {
+    return ultimasFalhasUpsertCatalogo
+        .where(
+          (f) =>
+              f.isCanonicalCatalogo &&
+              attemptId != null &&
+              attemptId.isNotEmpty &&
+              f.attemptId == attemptId,
+        )
+        .toList(growable: false);
+  }
+
   static void registrarFalhaUpsertCatalogo({
     required String lojaId,
     required String produtoId,
     required String path,
     required String operacao,
     required Object error,
+    String? attemptId,
+    String? origin,
   }) {
     final falha = ProdutoCatalogoUpsertFalha(
       lojaId: lojaId,
@@ -1026,6 +1049,9 @@ class ProdutosFirestoreService {
       path: path,
       operacao: operacao,
       erro: ProdutoCatalogoUpsertFalha.erroDe(error),
+      attemptId: attemptId,
+      origin: origin,
+      timestampUtc: DateTime.now().toUtc(),
     );
     ultimasFalhasUpsertCatalogo = [...ultimasFalhasUpsertCatalogo, falha];
     logE(
@@ -1277,6 +1303,8 @@ class ProdutosFirestoreService {
     bool enqueueOnFailure = true,
     ProdutoFormGradeBaseline? gradeBaseline,
     CatalogoSyncAttemptContext? catalogoDiagContext,
+    CatalogoLiveInlinePolicy catalogoLiveInlinePolicy =
+        CatalogoLiveInlinePolicy.executar,
   }) async {
     ultimoErroSyncSanitizado = null;
     limparFalhasUpsertCatalogo();
@@ -1664,127 +1692,162 @@ class ProdutosFirestoreService {
 
       // 🔹 TAMBÉM atualizar no catálogo público (produtos) se o produto está publicado
       if (produto.publicadoNoCatalogo) {
-        CatalogoSyncOperationHandle? diagHandle;
-        try {
-          final publicoRef = _db
-              .collection('lojas')
-              .doc(storeId)
-              .collection('produtos')
-              .doc(produtoId);
-          final publicoData = <String, dynamic>{
-            // Campos mínimos para o stream/filtros do catálogo web.
-            // Sem esses campos, o doc pode ser ignorado por filtros de publicação.
-            'ativo': true,
-            'publicar': true,
-            'publicadoNoCatalogo': true,
-            'nome': produto.nome,
-            'descricao': produto.descricao,
-            'preco': produto.precoFinal,
-            'preco_venda': produto.precoFinal,
-            'precoFinal': produto.precoFinal,
-            'quantidade': produto.quantidade,
-            'estoque': produto.quantidade,
-            'estoque_atual': produto.quantidade,
-            'qtdEstoque': produto.quantidade,
-            'imagens': imagensFinais,
-            'slug': produto.slug,
-            'cores': produto.cores,
-            'categoria': produto.categoria,
-            'categoriaId': produto.categoria,
-            'subcategoria': produto.subcategoria,
-            'subcategoriaId': produto.subcategoria,
-            'categoriasExtras': produto.categoriasExtras,
-            'subcategoriasExtras': produto.subcategoriasExtras,
-            'categoriasAssociadas': produto.categoriasAssociadas,
-            'subcategoriasAssociadas': produto.subcategoriasAssociadas,
-            'emPromocao': produto.emPromocao,
-            'percentualPromo': produto.percentualPromo,
-            'valorPromo': produto.valorPromo,
-            'peso': produto.peso,
-            'tipoEmbalagem': produto.tipoEmbalagem,
-            'codigoBarras':
-                produto.codigoBarras.isNotEmpty ? produto.codigoBarras : null,
-            'sku': produto.sku.isNotEmpty ? produto.sku : null,
-            'estoqueMinimo': produto.estoqueMinimo,
-            // Custo e campos internos: removidos no doc final via forceRemoveKeys (set sem merge).
-            'marketplaces': produto.marketplaces,
-            'divideSemJuros': produto.divideSemJuros,
-            'maxParcelasSemJuros': produto.maxParcelasSemJuros,
-            'percentualDescontoPix': produto.percentualDescontoPix,
-            if (produto.videoUrl.isNotEmpty) 'videoUrl': produto.videoUrl,
-            'updatedAt': FieldValue.serverTimestamp(),
-          };
-          final publicoSnap = await publicoRef.get();
-          final publicoVariationKeysToRemove = <String>{};
-          applyVariationFieldsToFirestorePayload(
-            publicoData,
-            variacoes: variacoesPushEfetivo,
-            variacoesExtraTipo: variacoesExtraPushEfetivo,
-            estoquePorTamanho: estoquePorTamPushEfetivo,
-            precoPorTamanho: precoPorTamanhoPushEfetivo,
-            variationKeysToRemove: publicoVariationKeysToRemove,
-            treatEmptyAsOmitOnly: preservouGradeRemotaNoPush,
-          );
-          final publicoRemoveKeys = <String>{
-            ...publicoVariationKeysToRemove,
-            ..._publicoInternoKeysToStrip,
-          };
-          final sanitizePublico = sanitizePayloadForFirestore(
-            publicoData,
-            rootPath: 'produtos/$produtoId',
-            forFullDocumentSet: true,
-          );
-          if (sanitizePublico.adjustedPaths.isNotEmpty) {
-            logW(
-              '[PRODUTOS-SYNC] payload sanitizado em produtos/$produtoId: '
-              '${sanitizePublico.adjustedPaths.join(' | ')}',
-            );
-          }
+        final inlinePath = 'lojas/$storeId/produtos/$produtoId';
+        if (catalogoLiveInlinePolicy ==
+            CatalogoLiveInlinePolicy.ignorarPorquePosSaveCanonico) {
           if (catalogoDiagContext != null) {
-            diagHandle = await CatalogoSyncDiagnosticsService.startOperation(
+            await CatalogoSyncDiagnosticsService.skipOperation(
               context: catalogoDiagContext,
               operationName: 'upsert_produtos_live_inline',
               collectionName: 'produtos',
               storeId: storeId,
               produtoId: produtoId,
-              path: 'lojas/$storeId/produtos/$produtoId',
-              firestoreMethod: 'set',
-              mutationIntent: CatalogoSyncMutationIntent.set,
-              documentStateHint: publicoSnap.exists
-                  ? CatalogoSyncDocumentStateHint.knownPresentFromExistingState
-                  : CatalogoSyncDocumentStateHint.knownAbsentFromExistingState,
+              path: inlinePath,
+              skipReason: 'canonical_post_save',
               sourceMethod: 'ProdutosFirestoreService.syncProdutoComStatus',
             );
           }
-          await _upsertProdutoDocument(
-            publicoRef,
-            sanitizePublico.payload,
-            existingData: publicoSnap.exists ? publicoSnap.data() : null,
-            forceRemoveKeys: publicoRemoveKeys,
+          logD(
+            '[PRODUTOS-SYNC] inline produtos/$produtoId ignorado — pós-save canônico',
           );
-          if (diagHandle != null) {
-            await CatalogoSyncDiagnosticsService.completeSuccess(diagHandle);
+        } else {
+          CatalogoSyncOperationHandle? diagHandle;
+          CatalogoSyncAttemptContext? inlineDiagContext = catalogoDiagContext;
+          if (inlineDiagContext == null) {
+            try {
+              inlineDiagContext = await CatalogoSyncAttemptContext.capture(
+                origin: 'produtos_firestore.inline_fallback',
+                sessionStoreIdHint: storeId,
+              );
+            } catch (_) {}
           }
-          _dlog('[ProdutoPublico] upsert produtos/$produtoId concluído');
-          logD('✅ [PRODUTOS-SYNC] Catálogo público (produtos) atualizado');
-        } catch (e, st) {
-          if (diagHandle != null) {
-            await CatalogoSyncDiagnosticsService.completeFailure(diagHandle, e);
+          try {
+            final publicoRef = _db
+                .collection('lojas')
+                .doc(storeId)
+                .collection('produtos')
+                .doc(produtoId);
+            final publicoData = <String, dynamic>{
+              // Campos mínimos para o stream/filtros do catálogo web.
+              // Sem esses campos, o doc pode ser ignorado por filtros de publicação.
+              'ativo': true,
+              'publicar': true,
+              'publicadoNoCatalogo': true,
+              'nome': produto.nome,
+              'descricao': produto.descricao,
+              'preco': produto.precoFinal,
+              'preco_venda': produto.precoFinal,
+              'precoFinal': produto.precoFinal,
+              'quantidade': produto.quantidade,
+              'estoque': produto.quantidade,
+              'estoque_atual': produto.quantidade,
+              'qtdEstoque': produto.quantidade,
+              'imagens': imagensFinais,
+              'slug': produto.slug,
+              'cores': produto.cores,
+              'categoria': produto.categoria,
+              'categoriaId': produto.categoria,
+              'subcategoria': produto.subcategoria,
+              'subcategoriaId': produto.subcategoria,
+              'categoriasExtras': produto.categoriasExtras,
+              'subcategoriasExtras': produto.subcategoriasExtras,
+              'categoriasAssociadas': produto.categoriasAssociadas,
+              'subcategoriasAssociadas': produto.subcategoriasAssociadas,
+              'emPromocao': produto.emPromocao,
+              'percentualPromo': produto.percentualPromo,
+              'valorPromo': produto.valorPromo,
+              'peso': produto.peso,
+              'tipoEmbalagem': produto.tipoEmbalagem,
+              'codigoBarras':
+                  produto.codigoBarras.isNotEmpty ? produto.codigoBarras : null,
+              'sku': produto.sku.isNotEmpty ? produto.sku : null,
+              'estoqueMinimo': produto.estoqueMinimo,
+              // Custo e campos internos: removidos no doc final via forceRemoveKeys (set sem merge).
+              'marketplaces': produto.marketplaces,
+              'divideSemJuros': produto.divideSemJuros,
+              'maxParcelasSemJuros': produto.maxParcelasSemJuros,
+              'percentualDescontoPix': produto.percentualDescontoPix,
+              if (produto.videoUrl.isNotEmpty) 'videoUrl': produto.videoUrl,
+              'updatedAt': FieldValue.serverTimestamp(),
+            };
+            final publicoSnap = await publicoRef.get();
+            final publicoVariationKeysToRemove = <String>{};
+            applyVariationFieldsToFirestorePayload(
+              publicoData,
+              variacoes: variacoesPushEfetivo,
+              variacoesExtraTipo: variacoesExtraPushEfetivo,
+              estoquePorTamanho: estoquePorTamPushEfetivo,
+              precoPorTamanho: precoPorTamanhoPushEfetivo,
+              variationKeysToRemove: publicoVariationKeysToRemove,
+              treatEmptyAsOmitOnly: preservouGradeRemotaNoPush,
+            );
+            final publicoRemoveKeys = <String>{
+              ...publicoVariationKeysToRemove,
+              ..._publicoInternoKeysToStrip,
+            };
+            final sanitizePublico = sanitizePayloadForFirestore(
+              publicoData,
+              rootPath: 'produtos/$produtoId',
+              forFullDocumentSet: true,
+            );
+            if (sanitizePublico.adjustedPaths.isNotEmpty) {
+              logW(
+                '[PRODUTOS-SYNC] payload sanitizado em produtos/$produtoId: '
+                '${sanitizePublico.adjustedPaths.join(' | ')}',
+              );
+            }
+            if (inlineDiagContext != null) {
+              diagHandle = await CatalogoSyncDiagnosticsService.startOperation(
+                context: inlineDiagContext,
+                operationName: 'upsert_produtos_live_inline',
+                collectionName: 'produtos',
+                storeId: storeId,
+                produtoId: produtoId,
+                path: inlinePath,
+                firestoreMethod: 'set',
+                mutationIntent: CatalogoSyncMutationIntent.set,
+                documentStateHint: publicoSnap.exists
+                    ? CatalogoSyncDocumentStateHint.knownPresentFromExistingState
+                    : CatalogoSyncDocumentStateHint.knownAbsentFromExistingState,
+                sourceMethod: 'ProdutosFirestoreService.syncProdutoComStatus',
+              );
+            }
+            debugInlineUpsertCallCount++;
+            await _upsertProdutoDocument(
+              publicoRef,
+              sanitizePublico.payload,
+              existingData: publicoSnap.exists ? publicoSnap.data() : null,
+              forceRemoveKeys: publicoRemoveKeys,
+            );
+            if (diagHandle != null) {
+              await CatalogoSyncDiagnosticsService.completeSuccess(diagHandle);
+            }
+            _dlog('[ProdutoPublico] upsert produtos/$produtoId concluído');
+            logD('✅ [PRODUTOS-SYNC] Catálogo público (produtos) atualizado');
+          } catch (e, st) {
+            if (diagHandle != null) {
+              await CatalogoSyncDiagnosticsService.completeFailure(
+                diagHandle,
+                e,
+              );
+            }
+            registrarFalhaUpsertCatalogo(
+              lojaId: storeId,
+              produtoId: produtoId,
+              path: inlinePath,
+              operacao: 'upsert_produtos_live_inline',
+              error: e,
+              attemptId: inlineDiagContext?.attemptId,
+              origin: inlineDiagContext?.origin,
+            );
+            logE(
+              '⚠️ [PRODUTOS-SYNC] Falha ao atualizar produtos/$produtoId '
+              '(estoque já salvo) type=${e.runtimeType}',
+              tag: 'CATALOGO_UPSERT_FAIL',
+              error: e,
+              st: st,
+            );
           }
-          registrarFalhaUpsertCatalogo(
-            lojaId: storeId,
-            produtoId: produtoId,
-            path: 'lojas/$storeId/produtos/$produtoId',
-            operacao: 'upsert_produtos_live_inline',
-            error: e,
-          );
-          logE(
-            '⚠️ [PRODUTOS-SYNC] Falha ao atualizar produtos/$produtoId '
-            '(estoque já salvo) type=${e.runtimeType}',
-            tag: 'CATALOGO_UPSERT_FAIL',
-            error: e,
-            st: st,
-          );
         }
       }
 
@@ -1835,6 +1898,15 @@ class ProdutosFirestoreService {
           boxName: boxName,
           entityKey: parsedKey,
           lastError: ultimoErroSyncSanitizado,
+          catalogoPublishPlan:
+              catalogoLiveInlinePolicy ==
+                      CatalogoLiveInlinePolicy.ignorarPorquePosSaveCanonico
+                  ? CatalogoQueuePublishPlan.canonicoAposEstoque
+                  : CatalogoQueuePublishPlan.legadoInline,
+          catalogoPublishPhase: CatalogoQueuePublishPhase.aguardandoEstoque,
+          catalogoQueueSourceOrigin: CatalogoQueueSourceOrigins.sanitizar(
+            writeOrigin,
+          ),
         );
         return ProdutoSyncRemotoStatus.pendenteFila;
       }

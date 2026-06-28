@@ -8,6 +8,7 @@ import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:master_palm/models/produto.dart';
+import 'package:master_palm/services/catalogo_live_inline_policy.dart';
 import 'package:master_palm/services/catalogo_sync_attempt_context.dart';
 import 'package:master_palm/services/catalogo_sync_diagnostic_mask_util.dart';
 import 'package:master_palm/services/catalogo_sync_diagnostics_access.dart';
@@ -92,6 +93,7 @@ void main() {
     CatalogoSyncService.debugForceUpsertFailureTarget = null;
     CatalogoSyncService.debugFirestoreOverride = null;
     ProdutosFirestoreService.debugFirestoreOverride = null;
+    ProdutosFirestoreService.debugInlineUpsertCallCount = 0;
     ProdutosFirestoreService.limparFalhasUpsertCatalogo();
     final box = CatalogoSyncDiagnosticsService.debugBoxOverride;
     CatalogoSyncDiagnosticsService.debugBoxOverride = null;
@@ -138,6 +140,7 @@ void main() {
       writeOrigin: 'test.inline',
       enqueueOnFailure: false,
       catalogoDiagContext: ctx,
+      catalogoLiveInlinePolicy: CatalogoLiveInlinePolicy.executar,
     );
 
     CatalogoSyncService.debugForceUpsertFailureTarget = SyncTarget.live;
@@ -335,7 +338,7 @@ void main() {
   });
 
   test('histórico limita a 30 tentativas', () async {
-    final box = await _openDiagBox();
+    await _openDiagBox();
     for (var i = 0; i < 35; i++) {
       final id = 'attempt-$i-${const Uuid().v4()}';
       await CatalogoSyncDiagnosticsService.ensureAttemptShell(

@@ -762,6 +762,23 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
     String? lojaIdOverride,
     CatalogoSyncAttemptContext? catalogoDiagContext,
   }) async {
+    await tryUpsertFromProdutoRegistrandoFalha(
+      produto,
+      target: target,
+      removerSeSemEstoque: removerSeSemEstoque,
+      lojaIdOverride: lojaIdOverride,
+      catalogoDiagContext: catalogoDiagContext,
+    );
+  }
+
+  /// Igual a [upsertFromProdutoRegistrandoFalha], mas retorna sucesso explícito.
+  static Future<bool> tryUpsertFromProdutoRegistrandoFalha(
+    Produto produto, {
+    required SyncTarget target,
+    bool removerSeSemEstoque = false,
+    String? lojaIdOverride,
+    CatalogoSyncAttemptContext? catalogoDiagContext,
+  }) async {
     final lojaId = await _resolveLojaId(lojaIdOverride);
     final docId = catalogFirestoreDocId(produto);
     final path = 'lojas/$lojaId/${_collectionName(target)}/$docId';
@@ -810,13 +827,17 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
         path: path,
         operacao: operacao,
         error: e,
+        attemptId: catalogoDiagContext?.attemptId,
+        origin: catalogoDiagContext?.origin,
       );
       logE(
         '[CATALOGO_UPSERT_FAIL] $path operacao=$operacao',
         error: e,
         st: st,
       );
+      return false;
     }
+    return true;
   }
 
   /// Compat com telas antigas

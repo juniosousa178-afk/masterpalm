@@ -107,6 +107,37 @@ class CatalogoSyncDiagnosticsService {
     );
   }
 
+  /// Operação não executada (ex.: inline ignorado por pós-save canônico).
+  static Future<void> skipOperation({
+    required CatalogoSyncAttemptContext context,
+    required String operationName,
+    required String collectionName,
+    required String storeId,
+    required String produtoId,
+    required String path,
+    required String skipReason,
+    required String sourceMethod,
+  }) async {
+    final started = DateTime.now().toUtc();
+    await ensureAttemptShell(context);
+    await _upsertOperation(
+      attemptId: context.attemptId,
+      operationName: operationName,
+      collectionName: collectionName,
+      storeId: storeId,
+      produtoId: produtoId,
+      path: path,
+      firestoreMethod: 'none',
+      mutationIntent: CatalogoSyncMutationIntent.unknown,
+      documentStateHint: CatalogoSyncDocumentStateHint.unknown,
+      sourceMethod: sourceMethod,
+      startedAtUtc: started,
+      finishedAtUtc: started,
+      status: 'skipped',
+      skipReason: skipReason,
+    );
+  }
+
   static Future<void> _upsertOperation({
     required String attemptId,
     required String operationName,
@@ -124,6 +155,7 @@ class CatalogoSyncDiagnosticsService {
     String? firebaseErrorCode,
     String? firebaseErrorCategory,
     String? errorMessageSanitized,
+    String? skipReason,
   }) async {
     final box = await _box();
     final record = _readRecord(box, attemptId);
@@ -147,6 +179,7 @@ class CatalogoSyncDiagnosticsService {
       firebaseErrorCode: firebaseErrorCode,
       firebaseErrorCategory: firebaseErrorCategory,
       errorMessageSanitized: errorMessageSanitized,
+      skipReason: skipReason,
     );
     if (idx >= 0) {
       ops[idx] = opMap;
@@ -215,6 +248,7 @@ class CatalogoSyncDiagnosticsService {
     String? firebaseErrorCode,
     String? firebaseErrorCategory,
     String? errorMessageSanitized,
+    String? skipReason,
   }) {
     return {
       'operationName': operationName,
@@ -236,6 +270,7 @@ class CatalogoSyncDiagnosticsService {
         'firebaseErrorCategory': firebaseErrorCategory,
       if (errorMessageSanitized != null && errorMessageSanitized.isNotEmpty)
         'errorMessageSanitized': errorMessageSanitized,
+      if (skipReason != null && skipReason.isNotEmpty) 'skipReason': skipReason,
       'sourceMethod': sourceMethod,
     };
   }
@@ -363,7 +398,7 @@ class CatalogoSyncDiagnosticsService {
     for (final op in ops) {
       buffer.writeln(
         '${op['operationName']}: ${op['status']} '
-        '(${op['firebaseErrorCode'] ?? '—'})',
+        '(${op['firebaseErrorCode'] ?? op['skipReason'] ?? '—'})',
       );
       buffer.writeln('  path: ${op['pathMasked'] ?? '—'}');
       buffer.writeln('  método: ${op['firestoreMethod'] ?? '—'} / '

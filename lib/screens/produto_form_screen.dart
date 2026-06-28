@@ -23,6 +23,7 @@ import '../services/produto_estoque_doc_id_service.dart';
 import '../services/produto_exclusao_tombstone_service.dart';
 import '../services/produto_cadastro_pos_save_service.dart';
 import '../services/catalogo_sync_attempt_context.dart';
+import '../services/catalogo_live_inline_policy.dart';
 import '../services/produto_catalogo_upsert_falha.dart';
 import '../services/produto_sync_erro_util.dart';
 import '../services/produto_sync_fila_retry_service.dart';
@@ -1521,6 +1522,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         writeOrigin: 'produto_form.persistir_atual',
         gradeBaseline: _gradeBaseline,
         catalogoDiagContext: catalogoDiagPersist,
+        catalogoLiveInlinePolicy:
+            CatalogoLiveInlinePolicy.ignorarPorquePosSaveCanonico,
       ).timeout(const Duration(seconds: 45), onTimeout: () => throw TimeoutException('Sincronização demorou muito'));
       final rehydratePersist =
           await ProdutoCadastroPosSaveService.executarAposEstoqueRemotoOk(
@@ -1536,7 +1539,9 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         lojaId: lojaId!,
       );
       if (mounted && mostrarSnackSucesso) {
-        final falhas = ProdutosFirestoreService.falhasUpsertCatalogo;
+        final falhas = ProdutosFirestoreService.falhasCanonicalDoAttempt(
+          catalogoDiagPersist.attemptId,
+        );
         final msg = falhas.isNotEmpty
             ? ProdutoSyncErroUtil.mensagemCadastroFalhaParcialCatalogo(
                 falhas: falhas,
@@ -2084,6 +2089,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             enqueueOnFailure: true,
             gradeBaseline: _gradeBaseline,
             catalogoDiagContext: catalogoDiagContext,
+            catalogoLiveInlinePolicy:
+                CatalogoLiveInlinePolicy.ignorarPorquePosSaveCanonico,
           )
               .timeout(const Duration(seconds: 45), onTimeout: () => throw TimeoutException('Sincronização com Firestore demorou muito.'));
         rehydratePosSave =
@@ -2183,6 +2190,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             enqueueOnFailure: true,
             gradeBaseline: _gradeBaseline,
             catalogoDiagContext: catalogoDiagContext,
+            catalogoLiveInlinePolicy:
+                CatalogoLiveInlinePolicy.ignorarPorquePosSaveCanonico,
           )
               .timeout(const Duration(seconds: 45), onTimeout: () => throw TimeoutException('Sincronização com Firestore demorou muito.'));
           rehydratePosSave =
@@ -2285,6 +2294,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           enqueueOnFailure: true,
           gradeBaseline: _gradeBaseline,
           catalogoDiagContext: catalogoDiagContext,
+          catalogoLiveInlinePolicy:
+              CatalogoLiveInlinePolicy.ignorarPorquePosSaveCanonico,
         )
             .timeout(const Duration(seconds: 45), onTimeout: () => throw TimeoutException('Sincronização com Firestore demorou muito.'));
         rehydratePosSave =
@@ -2315,7 +2326,9 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         );
       }
 
-      final falhasCatalogo = ProdutosFirestoreService.falhasUpsertCatalogo;
+      final falhasCatalogo = ProdutosFirestoreService.falhasCanonicalDoAttempt(
+        catalogoDiagContext.attemptId,
+      );
       final temFalhasCatalogo = falhasCatalogo.isNotEmpty;
 
       final mensagemSalvar = switch (remoteStatus) {

@@ -8,6 +8,14 @@ import 'catalogo_sync_service.dart';
 import 'produto_catalogo_upsert_falha.dart';
 import 'produtos_firestore_service.dart';
 
+/// Resultado explícito de uma etapa draft/live (fila canônica).
+class CatalogoCanonicalStepResult {
+  const CatalogoCanonicalStepResult({required this.sucesso, this.erroSanitizado});
+
+  final bool sucesso;
+  final String? erroSanitizado;
+}
+
 /// Fluxo compartilhado após estoque remoto OK (botão Salvar / persistir).
 class ProdutoCadastroPosSaveService {
   ProdutoCadastroPosSaveService._();
@@ -48,6 +56,54 @@ class ProdutoCadastroPosSaveService {
       lojaId: lojaId,
       gradeBaseline: gradeBaseline,
     );
+  }
+
+  /// Draft canônico isolado (fila offline — fase aguardandoDraft).
+  static Future<CatalogoCanonicalStepResult> sincronizarDraftCanonical({
+    required Produto produto,
+    required String lojaId,
+    CatalogoSyncAttemptContext? catalogoDiagContext,
+  }) async {
+    final ok = await CatalogoSyncService.tryUpsertFromProdutoRegistrandoFalha(
+      produto,
+      target: SyncTarget.draft,
+      lojaIdOverride: lojaId,
+      catalogoDiagContext: catalogoDiagContext,
+    );
+    if (ok) return const CatalogoCanonicalStepResult(sucesso: true);
+    return CatalogoCanonicalStepResult(
+      sucesso: false,
+      erroSanitizado: _ultimaFalhaCanonicalOperacao('upsert_draft_produtos'),
+    );
+  }
+
+  /// Live canônico isolado (fila offline — fase aguardandoLive).
+  static Future<CatalogoCanonicalStepResult> sincronizarLiveCanonical({
+    required Produto produto,
+    required String lojaId,
+    CatalogoSyncAttemptContext? catalogoDiagContext,
+  }) async {
+    final ok = await CatalogoSyncService.tryUpsertFromProdutoRegistrandoFalha(
+      produto,
+      target: SyncTarget.live,
+      lojaIdOverride: lojaId,
+      catalogoDiagContext: catalogoDiagContext,
+    );
+    if (ok) {
+      await CatalogPublishService.marcarCatalogoPrecisaAtualizar();
+      return const CatalogoCanonicalStepResult(sucesso: true);
+    }
+    return CatalogoCanonicalStepResult(
+      sucesso: false,
+      erroSanitizado: _ultimaFalhaCanonicalOperacao('upsert_produtos_live'),
+    );
+  }
+
+  static String? _ultimaFalhaCanonicalOperacao(String operacao) {
+    for (final f in ProdutosFirestoreService.falhasUpsertCatalogo.reversed) {
+      if (f.operacao == operacao) return f.erro;
+    }
+    return 'falha-$operacao';
   }
 
   static bool estoqueSalvoComSucesso(ProdutoSyncRemotoStatus status) =>
