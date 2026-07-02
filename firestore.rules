@@ -94,6 +94,80 @@ service cloud.firestore {
         || isLojaMemberElevated(lojaId);
     }
 
+    // PDV V1 — markers estoque_baixa_pagamento (protocolVersion == 1, fail-closed)
+    function isStoreMember(lojaId) {
+      return belongsToStore(lojaId);
+    }
+
+    function isPdvV1MarkerDocument() {
+      return resource != null
+        && resource.data.get('protocolVersion', null) == 1;
+    }
+
+    function isLegacyMarkerCreate() {
+      return !request.resource.data.keys().hasAny(['protocolVersion']);
+    }
+
+    function isLegacyMarkerUpdate() {
+      return !isPdvV1MarkerDocument()
+        && request.resource.data.get('protocolVersion', null) != 1;
+    }
+
+    function isLegacyMarkerDelete() {
+      return !isPdvV1MarkerDocument();
+    }
+
+    function hasExactV1MarkerKeys() {
+      return request.resource.data.keys().hasOnly([
+        'protocolVersion',
+        'origem',
+        'operationId',
+        'saleId',
+        'lojaId',
+        'baixaAplicada',
+        'snapshotHash',
+        'txItemsHash',
+      ]);
+    }
+
+    function hasValidV1MarkerTypes() {
+      let d = request.resource.data;
+      return d.protocolVersion is int
+        && d.protocolVersion == 1
+        && d.origem is string
+        && d.origem == 'pdv'
+        && d.operationId is string
+        && d.operationId.size() > 0
+        && d.operationId.size() <= 128
+        && d.saleId is string
+        && d.saleId.size() > 0
+        && d.saleId.size() <= 128
+        && d.lojaId is string
+        && d.lojaId.size() > 0
+        && d.lojaId.size() <= 128
+        && d.snapshotHash is string
+        && d.snapshotHash.size() > 0
+        && d.snapshotHash.size() <= 256
+        && d.txItemsHash is string
+        && d.txItemsHash.size() > 0
+        && d.txItemsHash.size() <= 256
+        && d.baixaAplicada is bool
+        && d.baixaAplicada == true;
+    }
+
+    function hasValidV1MarkerIdentity(lojaId, markerId) {
+      return request.resource.data.lojaId == lojaId
+        && markerId == request.resource.data.operationId;
+    }
+
+    function isV1MarkerCreate(lojaId, markerId) {
+      return isStoreMember(lojaId)
+        && request.resource.data.get('protocolVersion', null) == 1
+        && hasExactV1MarkerKeys()
+        && hasValidV1MarkerTypes()
+        && hasValidV1MarkerIdentity(lojaId, markerId);
+    }
+
     // Dono / admin da loja (não inclui vendedor): pode editar docs em lojas/{id}/config/* (ex.: payments).
     function canManageStoreConfig(lojaId) {
       return isSignedIn()
@@ -1001,13 +1075,21 @@ service cloud.firestore {
 
       // Idempotência do pós-pagamento do catálogo/WhatsApp.
       // Usado pelo PosPagamentoService para evitar baixa duplicada de estoque.
-      match /estoque_baixa_pagamento/{vendaId} {
-        allow read: if belongsToStore(lojaId);
+      match /estoque_baixa_pagamento/{markerId} {
+        allow read: if isStoreMember(lojaId);
 
-        allow create, update: if belongsToStore(lojaId)
-          && request.resource.data.lojaId == lojaId;
+        allow create: if isStoreMember(lojaId)
+          && request.resource.data.lojaId == lojaId
+          && (
+            isLegacyMarkerCreate()
+            || isV1MarkerCreate(lojaId, markerId)
+          );
 
-        allow delete: if isAdminOrSystem();
+        allow update: if isStoreMember(lojaId)
+          && request.resource.data.lojaId == lojaId
+          && isLegacyMarkerUpdate();
+
+        allow delete: if isAdminOrSystem() && isLegacyMarkerDelete();
       }
 
       // Pedidos pendentes: catalogo com combos (itens.itensComboComSelecao)
