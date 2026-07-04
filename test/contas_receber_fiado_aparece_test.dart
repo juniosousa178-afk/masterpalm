@@ -6,6 +6,7 @@ import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:master_palm/core/hive_box_names.dart';
+import 'package:master_palm/core/loja_ativa_resolver.dart';
 import 'package:master_palm/core/safe_cast.dart';
 import 'package:master_palm/models/cliente.dart';
 import 'package:master_palm/models/conta_receber.dart';
@@ -138,6 +139,7 @@ void main() {
     });
 
     tearDownAll(() async {
+      LojaAtivaResolver.debugResolveOverride = null;
       try {
         await Directory(hivePath).delete(recursive: true);
       } catch (_) {}
@@ -145,6 +147,8 @@ void main() {
 
     setUp(() async {
       SharedPreferences.setMockInitialValues({});
+      LojaAtivaResolver.debugResolveOverride =
+          ({String origem = 'app'}) async => lojaId;
       ProdutoExclusaoTombstoneService.resetCacheForTests();
       firestore = FakeFirebaseFirestore();
       EstoqueTransactionService.debugFirestoreOverride = firestore;
@@ -193,6 +197,7 @@ void main() {
     });
 
     tearDown(() async {
+      LojaAtivaResolver.debugResolveOverride = null;
       ProdutoExclusaoTombstoneService.resetCacheForTests();
       EstoqueTransactionService.debugFirestoreOverride = null;
       ProdutosFirestoreService.debugFirestoreOverride = null;

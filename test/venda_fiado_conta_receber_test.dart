@@ -6,12 +6,14 @@ import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:master_palm/core/hive_box_names.dart';
+import 'package:master_palm/core/loja_ativa_resolver.dart';
 import 'package:master_palm/core/safe_cast.dart';
 import 'package:master_palm/models/cliente.dart';
 import 'package:master_palm/models/conta_receber.dart';
 import 'package:master_palm/models/produto.dart';
 import 'package:master_palm/models/venda.dart';
 import 'package:master_palm/models/venda_item.dart';
+import 'package:master_palm/services/conta_receber_firestore_service.dart';
 import 'package:master_palm/services/estoque_transaction_service.dart';
 import 'package:master_palm/services/firestore_paths.dart';
 import 'package:master_palm/services/produto_exclusao_tombstone_service.dart';
@@ -95,10 +97,14 @@ void main() {
   });
 
   group('contrato vendaKey fiado', () {
-    test('registrarVendaMulti usa retorno de vendasBox.add', () {
+    test('registrarVendaMulti captura key do add e resolve vendaHiveKey', () {
       final src = File('lib/services/vendas_service.dart').readAsStringSync();
-      expect(src.contains('final addedKey = await vendasBox.add(venda)'), isTrue);
+      expect(src.contains('await vendasBox.add(venda)'), isTrue);
+      expect(src.contains('addedKey = debugVendasBoxAddOverride'), isTrue);
+      expect(src.contains('resolverVendaHiveKeyAposAdd'), isTrue);
+      expect(src.contains('addedKey: addedKey'), isTrue);
       expect(src.contains('hiveKeyOrNull(addedKey)'), isTrue);
+      expect(src.contains('vendaKey: _vendaKeyParaContaReceber(vendaHiveKey)'), isTrue);
       expect(
         src.contains('venda.key is int ? venda.key as int : 0'),
         isFalse,
@@ -128,6 +134,8 @@ void main() {
     });
 
     tearDownAll(() async {
+      LojaAtivaResolver.debugResolveOverride = null;
+      ContaReceberFirestoreService.debugFirestoreOverride = null;
       try {
         await Directory(hivePath).delete(recursive: true);
       } catch (_) {}
@@ -135,11 +143,14 @@ void main() {
 
     setUp(() async {
       SharedPreferences.setMockInitialValues({});
+      LojaAtivaResolver.debugResolveOverride =
+          ({String origem = 'app'}) async => lojaId;
       ProdutoExclusaoTombstoneService.resetCacheForTests();
       firestore = FakeFirebaseFirestore();
       EstoqueTransactionService.debugFirestoreOverride = firestore;
       ProdutosFirestoreService.debugFirestoreOverride = firestore;
       ProdutoExclusaoTombstoneService.debugFirestoreOverride = firestore;
+      ContaReceberFirestoreService.debugFirestoreOverride = firestore;
 
       produtosBox = await Hive.openBox<Produto>(
         'prod_fiado_${DateTime.now().microsecondsSinceEpoch}',
@@ -180,10 +191,12 @@ void main() {
     });
 
     tearDown(() async {
+      LojaAtivaResolver.debugResolveOverride = null;
       ProdutoExclusaoTombstoneService.resetCacheForTests();
       EstoqueTransactionService.debugFirestoreOverride = null;
       ProdutosFirestoreService.debugFirestoreOverride = null;
       ProdutoExclusaoTombstoneService.debugFirestoreOverride = null;
+      ContaReceberFirestoreService.debugFirestoreOverride = null;
       await produtosBox.close();
       await clientesBox.close();
       await vendasBox.close();

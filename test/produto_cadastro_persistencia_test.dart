@@ -4,7 +4,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
+import 'package:master_palm/core/hive_box_names.dart';
 import 'package:master_palm/models/produto.dart';
+import 'package:master_palm/models/venda.dart';
 import 'package:master_palm/services/produtos_firestore_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -37,6 +39,43 @@ Produto _produtoBase({
     updatedAt: updatedAt ?? DateTime(2026, 6, 5, 12, 0),
     custoEditadoNoCadastro: true,
   );
+}
+
+Future<void> _closeHiveBoxesByName(Iterable<String> names) async {
+  for (final name in names) {
+    if (Hive.isBoxOpen(name)) {
+      await Hive.box(name).close();
+    }
+  }
+  final vendasBoxName = HiveBoxNames.vendas(_lojaId);
+  if (Hive.isBoxOpen(vendasBoxName)) {
+    if (!Hive.isAdapterRegistered(1)) {
+      Hive.registerAdapter(VendaAdapter());
+    }
+    await Hive.box<Venda>(vendasBoxName).close();
+  }
+}
+
+Future<void> _deleteHiveTempDirWithRetry(Directory hiveDir) async {
+  if (!hiveDir.existsSync()) return;
+  for (var attempt = 0; attempt < 5; attempt++) {
+    try {
+      await hiveDir.delete(recursive: true);
+      return;
+    } on FileSystemException {
+      if (attempt == 4) rethrow;
+      await Future<void>.delayed(Duration(milliseconds: 50 * (attempt + 1)));
+    }
+  }
+}
+
+Future<void> _cleanupProdutoCadastroHiveTemp(
+  Directory hiveDir, {
+  List<String> boxNames = const [],
+}) async {
+  await _closeHiveBoxesByName(boxNames);
+  await Hive.close();
+  await _deleteHiveTempDirWithRetry(hiveDir);
 }
 
 void main() {
@@ -73,8 +112,10 @@ void main() {
         expect(reread.quantidade, 12);
         await box.close();
       } finally {
-        Hive.close();
-        if (hiveDir.existsSync()) hiveDir.deleteSync(recursive: true);
+        await _cleanupProdutoCadastroHiveTemp(
+          hiveDir,
+          boxNames: ['produtos_cadastro'],
+        );
       }
     });
 
@@ -129,8 +170,10 @@ void main() {
         expect(data['quantidade'], 8);
       } finally {
         ProdutosFirestoreService.debugFirestoreOverride = null;
-        Hive.close();
-        if (hiveDir.existsSync()) hiveDir.deleteSync(recursive: true);
+        await _cleanupProdutoCadastroHiveTemp(
+          hiveDir,
+          boxNames: ['produtos_cadastro_push'],
+        );
       }
     });
 
@@ -268,8 +311,10 @@ void main() {
         await box.close();
       } finally {
         ProdutosFirestoreService.debugFirestoreOverride = null;
-        Hive.close();
-        if (hiveDir.existsSync()) hiveDir.deleteSync(recursive: true);
+        await _cleanupProdutoCadastroHiveTemp(
+          hiveDir,
+          boxNames: ['produto_cadastro_bump_stale'],
+        );
       }
     });
 
@@ -337,8 +382,10 @@ void main() {
         expect(snap.data()!['descricao'], 'Edição explícita do usuário');
       } finally {
         ProdutosFirestoreService.debugFirestoreOverride = null;
-        Hive.close();
-        if (hiveDir.existsSync()) hiveDir.deleteSync(recursive: true);
+        await _cleanupProdutoCadastroHiveTemp(
+          hiveDir,
+          boxNames: ['produtos_cadastro_bump'],
+        );
       }
     });
 
@@ -394,8 +441,10 @@ void main() {
         expect(snap.data()?.containsKey('variacoes'), isFalse);
       } finally {
         ProdutosFirestoreService.debugFirestoreOverride = null;
-        Hive.close();
-        if (hiveDir.existsSync()) hiveDir.deleteSync(recursive: true);
+        await _cleanupProdutoCadastroHiveTemp(
+          hiveDir,
+          boxNames: ['produtos_cadastro_simples'],
+        );
       }
     });
   });
