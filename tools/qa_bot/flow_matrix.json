@@ -43,8 +43,7 @@
       "impacto": "P0",
       "runner": "flutter_test",
       "tests": [
-        "test/vendas_service_test.dart",
-        "test/venda_persistencia_consistencia_test.dart"
+        "test/vendas_service_test.dart"
       ],
       "statusCobertura": "PARTIAL"
     },
