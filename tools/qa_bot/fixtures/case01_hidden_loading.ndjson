@@ -1,0 +1,11 @@
+{"protocolVersion":"0.1.1","type":"start","time":0}
+{"suite":{"id":0,"platform":"vm","path":"synthetic/suite.dart"},"type":"suite","time":0}
+{"test":{"id":1,"name":"loading synthetic/suite.dart","suiteID":0,"groupIDs":[],"metadata":{"skip":false},"url":null},"type":"testStart","time":1}
+{"testID":1,"result":"success","skipped":false,"hidden":true,"type":"testDone","time":10}
+{"test":{"id":2,"name":"group a case 1","suiteID":0,"groupIDs":[10],"metadata":{"skip":false},"url":"file:///synthetic/suite.dart"},"type":"testStart","time":11}
+{"testID":2,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":12}
+{"test":{"id":3,"name":"group a case 2","suiteID":0,"groupIDs":[10],"metadata":{"skip":false},"url":"file:///synthetic/suite.dart"},"type":"testStart","time":13}
+{"testID":3,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":14}
+{"test":{"id":4,"name":"group b case 3","suiteID":0,"groupIDs":[11],"metadata":{"skip":false},"url":"file:///synthetic/suite.dart"},"type":"testStart","time":15}
+{"testID":4,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":16}
+{"success":true,"type":"done","time":20}

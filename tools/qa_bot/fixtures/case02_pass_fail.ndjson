@@ -1,0 +1,5 @@
+{"test":{"id":1,"name":"pass case","suiteID":0,"groupIDs":[],"metadata":{"skip":false},"url":"file:///synthetic/a.dart"},"type":"testStart","time":1}
+{"testID":1,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":2}
+{"test":{"id":2,"name":"fail case","suiteID":0,"groupIDs":[],"metadata":{"skip":false},"url":"file:///synthetic/a.dart"},"type":"testStart","time":3}
+{"testID":2,"result":"failure","skipped":false,"hidden":false,"type":"testDone","time":4,"error":"Expected: true Actual: false"}
+{"success":false,"type":"done","time":5}

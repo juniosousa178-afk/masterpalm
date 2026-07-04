@@ -1,0 +1,205 @@
+{
+  "version": "M1",
+  "description": "Matriz declarativa de fluxos criticos MasterPalm. Dados only — nao autoriza execucao shell arbitraria.",
+  "parserContract": {
+    "excludeTestDoneHidden": true,
+    "excludeTestStartWithoutUrl": true,
+    "countDuplicateTestDoneOnce": true,
+    "correlateTestStartTestDoneById": true
+  },
+  "flows": [
+    {
+      "id": "produto_simples",
+      "descricao": "Cadastro e persistencia de produto simples (Hive + sync)",
+      "impacto": "P0",
+      "runner": "flutter_test",
+      "tests": [
+        "test/produto_cadastro_persistencia_test.dart"
+      ],
+      "statusCobertura": "COVERED"
+    },
+    {
+      "id": "produto_variacao",
+      "descricao": "Cadastro e edicao de produto com variacoes (grade/tamanho/cor)",
+      "impacto": "P0",
+      "runner": "flutter_test",
+      "tests": [
+        "test/produto_variacao_edicao_persistencia_test.dart",
+        "test/produto_estoque_grade_canonica_save_test.dart"
+      ],
+      "statusCobertura": "COVERED"
+    },
+    {
+      "id": "cliente_cadastro",
+      "descricao": "Cadastro, persistencia e sync de clientes",
+      "impacto": "P0",
+      "runner": "flutter_test",
+      "tests": [],
+      "statusCobertura": "NOT_COVERED"
+    },
+    {
+      "id": "pdv_venda",
+      "descricao": "Venda no PDV — resolucao de produto e persistencia",
+      "impacto": "P0",
+      "runner": "flutter_test",
+      "tests": [
+        "test/vendas_service_test.dart",
+        "test/venda_persistencia_consistencia_test.dart"
+      ],
+      "statusCobertura": "PARTIAL"
+    },
+    {
+      "id": "pdv_venda_variacao",
+      "descricao": "Venda no PDV com variacao obrigatoria",
+      "impacto": "P0",
+      "runner": "flutter_test",
+      "tests": [
+        "test/venda_validacao_variacao_tamanho_cor_test.dart",
+        "test/estoque_baixa_nova_venda_variacoes_test.dart"
+      ],
+      "statusCobertura": "COVERED"
+    },
+    {
+      "id": "fiado",
+      "descricao": "Venda fiada e criacao/vinculo de conta a receber",
+      "impacto": "P0",
+      "runner": "flutter_test",
+      "tests": [
+        "test/venda_fiado_conta_receber_test.dart",
+        "test/contas_receber_fiado_aparece_test.dart"
+      ],
+      "statusCobertura": "COVERED"
+    },
+    {
+      "id": "baixa_parcial",
+      "descricao": "Baixa parcial de fiado e reabertura de saldo",
+      "impacto": "P0",
+      "runner": "flutter_test",
+      "tests": [
+        "test/conta_receber_baixa_parcial_test.dart",
+        "test/financeiro_estorna_baixa_parcial_reabre_saldo_test.dart"
+      ],
+      "statusCobertura": "COVERED"
+    },
+    {
+      "id": "exclusao_estorno",
+      "descricao": "Cancelamento/exclusao de venda com estorno de estoque e guardas",
+      "impacto": "P0",
+      "runner": "flutter_test",
+      "tests": [
+        "test/venda_exclusao_estorno_estoque_test.dart",
+        "test/critical_flows_source_contract_test.dart"
+      ],
+      "statusCobertura": "COVERED"
+    },
+    {
+      "id": "combo",
+      "descricao": "Venda combo e consistencia de estoque/productId",
+      "impacto": "P1",
+      "runner": "flutter_test",
+      "tests": [
+        "test/venda_combo_estoque_product_id_stale_test.dart",
+        "test/pdv_v1_harness/pdv_v1_combo_cap_contract_harness_test.dart"
+      ],
+      "statusCobertura": "PARTIAL"
+    },
+    {
+      "id": "catalogo_web",
+      "descricao": "Catalogo publico web — rotas, URL codec e smoke de helpers",
+      "impacto": "P1",
+      "runner": "flutter_test",
+      "tests": [
+        "test/public_catalog_regression_smoke_test.dart",
+        "test/catalog_initial_web_route_test.dart"
+      ],
+      "statusCobertura": "PARTIAL"
+    },
+    {
+      "id": "carrinho_pedido",
+      "descricao": "Carrinho, snapshot de pedido e pre-pedido",
+      "impacto": "P1",
+      "runner": "flutter_test",
+      "tests": [
+        "test/catalogo_pedido_item_snapshot_test.dart",
+        "test/catalog_cart_quantity_stepper_test.dart"
+      ],
+      "statusCobertura": "PARTIAL"
+    },
+    {
+      "id": "sync_hive_firestore",
+      "descricao": "Sincronizacao local Hive com Firestore remoto",
+      "impacto": "P0",
+      "runner": "flutter_test",
+      "tests": [
+        "test/sync_produto_deletefield_set_test.dart",
+        "test/contas_receber_firestore_sync_test.dart"
+      ],
+      "statusCobertura": "COVERED"
+    },
+    {
+      "id": "plano_permissoes",
+      "descricao": "Permissoes e gates por plano de assinatura",
+      "impacto": "P1",
+      "runner": "flutter_test",
+      "tests": [
+        "test/plan_access_resolver_test.dart",
+        "test/limits_guard_venda_limite_test.dart"
+      ],
+      "statusCobertura": "PARTIAL"
+    },
+    {
+      "id": "cortesia_pro",
+      "descricao": "Cortesia Pro — concessao e auditoria (Cloud Functions)",
+      "impacto": "P1",
+      "runner": "functions_npm",
+      "tests": [
+        "functions/test/masterPlanCourtesy.test.js"
+      ],
+      "statusCobertura": "COVERED"
+    },
+    {
+      "id": "firestore_rules",
+      "descricao": "Regras Firestore — blocos PDV V1 e emulador",
+      "impacto": "P0",
+      "runner": "flutter_test_emulator",
+      "tests": [
+        "test/pdv_v1_rules_v1/pdv_v1_marker_rules_v1_emulator_test.dart"
+      ],
+      "statusCobertura": "PARTIAL"
+    }
+  ],
+  "m0SmokeAllowlist": {
+    "runner": "flutter_test",
+    "logicalCommand": "flutter test test/critical_flows_source_contract_test.dart --reporter json --no-pub",
+    "tests": [
+      "test/critical_flows_source_contract_test.dart"
+    ],
+    "relatedFlowIds": [
+      "exclusao_estorno"
+    ]
+  },
+  "m1P0Execution": {
+    "mode": "M1P0",
+    "description": "Execucao categorizada de fluxos P0 com testes unit/service existentes. Comandos reais derivam de allowlist fixa em run_qa_bot.ps1.",
+    "executeFlowIds": [
+      "produto_simples",
+      "produto_variacao",
+      "pdv_venda",
+      "pdv_venda_variacao",
+      "fiado",
+      "baixa_parcial",
+      "exclusao_estorno",
+      "sync_hive_firestore"
+    ],
+    "notCoveredFlowIds": [
+      "cliente_cadastro"
+    ],
+    "excludedP0": [
+      {
+        "id": "firestore_rules",
+        "reason": "Runner flutter_test_emulator requer FIRESTORE_EMULATOR_HOST - fora do escopo M1P0"
+      }
+    ],
+    "omitP1InThisPhase": true
+  }
+}

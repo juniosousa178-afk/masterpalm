@@ -1,0 +1,3 @@
+{"test":{"id":1,"name":"skipped case","suiteID":0,"groupIDs":[],"metadata":{"skip":true},"url":"file:///synthetic/a.dart"},"type":"testStart","time":1}
+{"testID":1,"result":"success","skipped":true,"hidden":false,"type":"testDone","time":2}
+{"success":true,"type":"done","time":3}

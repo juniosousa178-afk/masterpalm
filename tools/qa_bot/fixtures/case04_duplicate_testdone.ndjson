@@ -1,0 +1,4 @@
+{"test":{"id":9,"name":"dup case","suiteID":0,"groupIDs":[],"metadata":{"skip":false},"url":"file:///synthetic/a.dart"},"type":"testStart","time":1}
+{"testID":9,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":2}
+{"testID":9,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":3}
+{"success":true,"type":"done","time":4}
