@@ -10,6 +10,7 @@ import '../core/dart_error_unwrap.dart';
 import '../core/logger.dart';
 import '../core/produto_variacao_extra.dart';
 import '../core/strict_product_resolution.dart';
+import '../core/venda_finalizacao_reentrada_guard.dart';
 import '../core/venda_metrics_filter.dart';
 import 'package:hive/hive.dart';
 
@@ -108,6 +109,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
   int _pendenteDiasVencimento = 30;
   int _pendenteQtdParcelasFiado = 1;
   int _pendenteIntervaloParcelasDias = 30;
+
+  final _finalizacaoReentradaGuard = VendaFinalizacaoReentradaGuard();
 
   /// produtos: produto, preço, qtd, tamanho, cor, extraValor (técnico), variacaoExtraResumo (exibição)
   List<Map<String, dynamic>> produtosSelecionados = [
@@ -1185,6 +1188,9 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
   // FINALIZAR VENDA
   // ---------------------------------------------------------------------------
   Future<void> _finalizarVenda() async {
+    if (!_finalizacaoReentradaGuard.tentarIniciar()) return;
+    if (mounted) setState(() {});
+    try {
     // 🔹 Valida dados obrigatórios ANTES de abrir o dialog (evita bug ao voltar)
     final nomeClienteDigitado = clienteController.text.trim();
     if (nomeClienteDigitado.isEmpty) {
@@ -1285,6 +1291,10 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     }
 
     await _executarFinalizacaoVenda();
+    } finally {
+      _finalizacaoReentradaGuard.liberar();
+      if (mounted) setState(() {});
+    }
   }
 
   void _sincronizarQuantidadesDosControllers() {
@@ -3137,7 +3147,9 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                         Expanded(
                           flex: 2,
                           child: ElevatedButton.icon(
-                            onPressed: _finalizarVenda,
+                            onPressed: _finalizacaoReentradaGuard.emAndamento
+                                ? null
+                                : _finalizarVenda,
                             icon: const Icon(Icons.check_circle, size: 20),
                             label: Text(_modoEdicao
                                 ? 'Salvar alterações'
