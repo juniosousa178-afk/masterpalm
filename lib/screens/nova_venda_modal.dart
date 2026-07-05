@@ -903,10 +903,6 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     );
   }
 
-  /// Extrai o erro real quando vem encapsulado (comum no app web).
-  String _extrairErroReal(Object e) =>
-      formatDartErrorForUser(e);
-
   String? _extrairPathFirestore(String texto) {
     final m =
         RegExp(r'lojas\/[^\s,)]+', caseSensitive: false).firstMatch(texto);
@@ -914,21 +910,22 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
   }
 
   String _detalharErroSalvarVenda(Object e) {
-    final erroReal = _extrairErroReal(e);
+    final root = unwrapDartInteropError(e);
+    final erroReal = formatDartErrorForUser(e);
     String? code;
     String? plugin;
     String? message;
     try {
-      final dyn = e as dynamic;
+      final dyn = root as dynamic;
       code = dyn.code?.toString();
       plugin = dyn.plugin?.toString();
       message = dyn.message?.toString();
     } catch (_) {}
 
-    if (e is FirebaseException) {
-      code ??= e.code;
-      plugin ??= e.plugin;
-      message ??= e.message;
+    if (root is FirebaseException) {
+      code ??= root.code;
+      plugin ??= root.plugin;
+      message ??= root.message;
     }
 
     final path = _extrairPathFirestore('$erroReal ${message ?? ''}');
@@ -1915,9 +1912,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       if (!mounted) return;
       _logErroSalvarVenda(etapa: 'UI_FINALIZAR', erro: e, st: stackTrace);
       await _mostrarErro(
-        'Erro ao salvar venda. '
-        'Verifique sua conexão e se o produto está no estoque. '
-        'Detalhe: ${_detalharErroSalvarVenda(e)}',
+        formatSalvarVendaErrorForUser(e),
       );
     }
   }
@@ -2033,12 +2028,11 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         itensVenda: itens,
       );
       if (VendaComboEstoqueExpansion.isErroVariacaoObrigatoria(e)) {
-        final msg = _detalharErroSalvarVenda(e);
+        final msg = formatSalvarVendaErrorForUser(e);
         onErro?.call(msg);
         return (false, null, msg);
       }
-      final msg =
-          'Erro ao salvar venda. Verifique conexão e estoque. ${_detalharErroSalvarVenda(e)}';
+      final msg = formatSalvarVendaErrorForUser(e);
       onErro?.call(msg);
       return (false, null, msg);
     }
