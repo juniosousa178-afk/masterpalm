@@ -18,6 +18,7 @@ import 'package:master_palm/services/estoque_transaction_service.dart';
 import 'package:master_palm/services/produtos_firestore_service.dart';
 import 'package:master_palm/services/firestore_paths.dart';
 import 'package:master_palm/services/produto_exclusao_tombstone_service.dart';
+import 'package:master_palm/services/sync_queue_service.dart';
 import 'package:master_palm/services/venda_combo_estoque_expansion.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -158,7 +159,7 @@ void main() {
     });
 
     test(
-      'aplicarTeto direto ainda lança quando combo só está no Hive',
+      'aplicarTeto direto recalcula combo só-Hive localmente sem lançar',
       () async {
         const idPingente = 'pingente-lanca';
         await firestore
@@ -192,19 +193,20 @@ void main() {
         );
         pingente.quantidade = 1;
 
-        expect(
-          ComboKitStockService.aplicarTetoEstoqueComboAposBaixa(
-            lojaId: lojaId,
-            produtosBox: box,
-            produtoIdsDebitadosNaVenda: {idPingente},
-          ),
-          throwsA(isA<Exception>()),
+        final cap = await ComboKitStockService.aplicarTetoEstoqueComboAposBaixa(
+          lojaId: lojaId,
+          produtosBox: box,
+          produtoIdsDebitadosNaVenda: {idPingente},
         );
+
+        expect(cap, hasLength(1));
+        expect(cap.first.ajusteCapComboSomenteHive, isTrue);
+        expect(colar.quantidade, 1);
       },
     );
 
     test(
-      'SemAbortarVenda engole falha de combo só-local e retorna lista vazia',
+      'SemAbortarVenda aplica teto local quando combo só está no Hive',
       () async {
         const idPingente = 'pingente-sem-abort';
         await firestore
@@ -253,12 +255,13 @@ void main() {
           produtoIdsDebitadosNaVenda: {idPingente},
         );
 
-        expect(cap, isEmpty);
+        expect(cap, hasLength(1));
+        expect(colar.quantidade, 1);
       },
     );
 
     test(
-      'após venda do componente, ajuste do combo só-local falha com mensagem de sincronização (não converted Future)',
+      'após venda do componente, combo só-local recalcula teto no Hive',
       () async {
         const idPingente = 'pingente-sync-ok';
         await firestore
@@ -310,21 +313,15 @@ void main() {
         );
         pingente.quantidade = 1;
 
-        Object? capturado;
-        try {
-          await ComboKitStockService.aplicarTetoEstoqueComboAposBaixa(
-            lojaId: lojaId,
-            produtosBox: box,
-            produtoIdsDebitadosNaVenda: {idPingente},
-          );
-        } catch (e) {
-          capturado = e;
-        }
+        final cap = await ComboKitStockService.aplicarTetoEstoqueComboAposBaixa(
+          lojaId: lojaId,
+          produtosBox: box,
+          produtoIdsDebitadosNaVenda: {idPingente},
+        );
 
-        expect(capturado, isNotNull);
-        final msg = formatDartErrorForUser(capturado!);
-        expect(msg.toLowerCase(), contains('nuvem'));
-        expect(msg, isNot(contains('converted Future')));
+        expect(cap, hasLength(1));
+        expect(colar.quantidade, 1);
+        expect(cap.first.quantidadeTotalAtualizada, 1);
       },
     );
 
@@ -668,6 +665,20 @@ void main() {
             .doc(idPingente)
             .get();
         expect((snap.data()?['quantidade'] as num?)?.toInt(), 3);
+
+        final comboLocal = produtosBox.values.firstWhere(
+          (p) => p.idFirebase == 'combo-local-only',
+        );
+        expect(comboLocal.quantidade, 3);
+
+        final snapCombo = await firestore
+            .collection('lojas')
+            .doc(lojaId)
+            .collection(FSPaths.estoqueProdutosCol)
+            .doc('combo-local-only')
+            .get();
+        expect(snapCombo.exists, isTrue);
+        expect((snapCombo.data()?['quantidade'] as num?)?.toInt(), 3);
       },
     );
 
@@ -832,6 +843,274 @@ void main() {
         throwsA(isA<Exception>()),
       );
       expect(vendasBox.length, 0);
+    });
+  });
+
+  group('M2.5 — convergência combo só-Hive → Firestore', () {
+    late FakeFirebaseFirestore firestore;
+    late String hivePath;
+    late Box<Produto> produtosBox;
+    late Box<Cliente> clientesBox;
+    late Box<Venda> vendasBox;
+
+    setUpAll(() async {
+      final dir =
+          await Directory.systemTemp.createTemp('hive_m25_combo_converge_');
+      hivePath = dir.path;
+      Hive.init(hivePath);
+      if (!Hive.isAdapterRegistered(0)) Hive.registerAdapter(ClienteAdapter());
+      if (!Hive.isAdapterRegistered(1)) Hive.registerAdapter(VendaAdapter());
+      if (!Hive.isAdapterRegistered(2)) Hive.registerAdapter(ProdutoAdapter());
+      if (!Hive.isAdapterRegistered(7)) Hive.registerAdapter(VendaItemAdapter());
+    });
+
+    tearDownAll(() async {
+      try {
+        await Directory(hivePath).delete(recursive: true);
+      } catch (_) {}
+    });
+
+    setUp(() async {
+      SharedPreferences.setMockInitialValues({});
+      ProdutoExclusaoTombstoneService.resetCacheForTests();
+      ComboKitStockService.debugEnfileirarConvergenciaComboOverride = null;
+      LojaAtivaResolver.debugResolveOverride =
+          ({String origem = 'app'}) async => lojaId;
+      firestore = FakeFirebaseFirestore();
+      EstoqueTransactionService.debugFirestoreOverride = firestore;
+      ProdutosFirestoreService.debugFirestoreOverride = firestore;
+      ProdutoExclusaoTombstoneService.debugFirestoreOverride = firestore;
+      await SyncQueueService.init();
+      await SyncQueueService.clearQueue();
+
+      final suffix = DateTime.now().microsecondsSinceEpoch;
+      produtosBox = await Hive.openBox<Produto>('m25_prod_$suffix');
+      clientesBox = await Hive.openBox<Cliente>('m25_cli_$suffix');
+      vendasBox = await Hive.openBox<Venda>('m25_ven_$suffix');
+    });
+
+    tearDown(() async {
+      ProdutoExclusaoTombstoneService.resetCacheForTests();
+      ComboKitStockService.debugEnfileirarConvergenciaComboOverride = null;
+      LojaAtivaResolver.debugResolveOverride = null;
+      EstoqueTransactionService.debugFirestoreOverride = null;
+      ProdutosFirestoreService.debugFirestoreOverride = null;
+      ProdutoExclusaoTombstoneService.debugFirestoreOverride = null;
+      await SyncQueueService.clearQueue();
+      await produtosBox.close();
+      await clientesBox.close();
+      await vendasBox.close();
+    });
+
+    Future<Cliente> clienteM25() async {
+      final c = Cliente(
+        nome: 'Cliente M25',
+        telefone: '11',
+        instagram: '',
+        cep: '',
+        cidade: '',
+        lojaId: lojaId,
+      );
+      await clientesBox.add(c);
+      return c;
+    }
+
+    Future<Map<String, dynamic>?> fsComboData(String id) async {
+      final snap = await firestore
+          .collection('lojas')
+          .doc(lojaId)
+          .collection(FSPaths.estoqueProdutosCol)
+          .doc(id)
+          .get();
+      return snap.exists ? snap.data() : null;
+    }
+
+    test('M2.5 — venda componente converge combo Hive e cria Firestore', () async {
+      const idComp = 'comp-m25-converge';
+      const idCombo = 'combo-m25-converge';
+      await firestore
+          .collection('lojas')
+          .doc(lojaId)
+          .collection(FSPaths.estoqueProdutosCol)
+          .doc(idComp)
+          .set({'nome': 'Comp', 'quantidade': 5});
+
+      await produtosBox.addAll([
+        Produto.vazio()
+          ..nome = 'Comp'
+          ..idFirebase = idComp
+          ..lojaId = lojaId
+          ..quantidade = 5
+          ..precoFinal = 10,
+        Produto.vazio()
+          ..nome = 'Colar Combo'
+          ..idFirebase = idCombo
+          ..lojaId = lojaId
+          ..tipoProduto = 'combo'
+          ..quantidade = 5
+          ..precoFinal = 50
+          ..itensCombo = [
+            {'productId': idComp, 'nome': 'Comp', 'quantidade': 1},
+          ],
+      ]);
+
+      final c = await clienteM25();
+      await VendasService.registrarVendaMulti(
+        produtosBox: produtosBox,
+        clientesBox: clientesBox,
+        vendasBox: vendasBox,
+        clienteNome: c.nome,
+        clienteExistente: c,
+        itens: [
+          VendaItem(
+            produtoNome: 'Comp',
+            quantidade: 2,
+            precoUnitario: 10,
+            productId: idComp,
+          ),
+        ],
+        dinheiro: 20,
+        lojaId: lojaId,
+      );
+
+      final comboHive = produtosBox.values.firstWhere(
+        (p) => p.idFirebase == idCombo,
+      );
+      expect(comboHive.quantidade, 3);
+
+      final fsCombo = await fsComboData(idCombo);
+      expect(fsCombo, isNotNull);
+      expect((fsCombo!['quantidade'] as num?)?.toInt(), 3);
+    });
+
+    test('M2.5 — retry idempotente não reduz combo novamente', () async {
+      const idComp = 'comp-m25-idem';
+      const idCombo = 'combo-m25-idem';
+      await firestore
+          .collection('lojas')
+          .doc(lojaId)
+          .collection(FSPaths.estoqueProdutosCol)
+          .doc(idComp)
+          .set({'nome': 'Comp', 'quantidade': 5});
+
+      final combo = Produto.vazio()
+        ..nome = 'Colar'
+        ..idFirebase = idCombo
+        ..lojaId = lojaId
+        ..tipoProduto = 'combo'
+        ..quantidade = 5
+        ..itensCombo = [
+          {'productId': idComp, 'nome': 'Comp', 'quantidade': 1},
+        ];
+      await produtosBox.addAll([
+        Produto.vazio()
+          ..nome = 'Comp'
+          ..idFirebase = idComp
+          ..lojaId = lojaId
+          ..quantidade = 3,
+        combo,
+      ]);
+
+      await ComboKitStockService.aplicarTetoEstoqueComboAposBaixa(
+        lojaId: lojaId,
+        produtosBox: produtosBox,
+        produtoIdsDebitadosNaVenda: {idComp},
+      );
+      expect(combo.quantidade, 3);
+
+      await ProdutosFirestoreService.syncProdutoComStatus(
+        combo,
+        lojaId: lojaId,
+        bumpHiveTimestamp: false,
+      );
+      await ProdutosFirestoreService.syncProdutoComStatus(
+        combo,
+        lojaId: lojaId,
+        bumpHiveTimestamp: false,
+      );
+
+      expect(combo.quantidade, 3);
+      final fs = await fsComboData(idCombo);
+      expect((fs?['quantidade'] as num?)?.toInt(), 3);
+    });
+
+    test('M2.5 — remoto mais novo não é sobrescrito por local stale', () async {
+      const idComp = 'comp-m25-stale';
+      const idCombo = 'combo-m25-stale';
+      final remotoMaisNovo = DateTime.now().add(const Duration(hours: 2));
+
+      await firestore
+          .collection('lojas')
+          .doc(lojaId)
+          .collection(FSPaths.estoqueProdutosCol)
+          .doc(idComp)
+          .set({'nome': 'Comp', 'quantidade': 3});
+      await firestore
+          .collection('lojas')
+          .doc(lojaId)
+          .collection(FSPaths.estoqueProdutosCol)
+          .doc(idCombo)
+          .set({
+        'nome': 'Colar',
+        'quantidade': 10,
+        'updatedAt': remotoMaisNovo,
+      });
+
+      final combo = Produto.vazio()
+        ..nome = 'Colar'
+        ..idFirebase = idCombo
+        ..lojaId = lojaId
+        ..tipoProduto = 'combo'
+        ..quantidade = 3
+        ..updatedAt = DateTime.now().subtract(const Duration(hours: 1))
+        ..itensCombo = [
+          {'productId': idComp, 'nome': 'Comp', 'quantidade': 1},
+        ];
+      await produtosBox.add(combo);
+
+      final status = await ProdutosFirestoreService.syncProdutoComStatus(
+        combo,
+        lojaId: lojaId,
+        bumpHiveTimestamp: false,
+      );
+
+      expect(status, ProdutoSyncRemotoStatus.semMudancas);
+      final fs = await fsComboData(idCombo);
+      expect((fs?['quantidade'] as num?)?.toInt(), 10);
+    });
+
+    test('M2.5 — tombstone não ressuscita combo remoto', () async {
+      const idCombo = 'combo-m25-tomb';
+      await firestore
+          .collection('lojas')
+          .doc(lojaId)
+          .collection(FSPaths.exclusaoProdutoCol)
+          .doc(idCombo)
+          .set({'p': true});
+      ProdutoExclusaoTombstoneService.resetCacheForTests();
+      ProdutoExclusaoTombstoneService.debugFirestoreOverride = firestore;
+      await ProdutoExclusaoTombstoneService.ensureHydratedForLoja(lojaId);
+
+      final combo = Produto.vazio()
+        ..nome = 'Colar Tomb'
+        ..idFirebase = idCombo
+        ..lojaId = lojaId
+        ..tipoProduto = 'combo'
+        ..quantidade = 3
+        ..itensCombo = [
+          {'productId': 'x', 'nome': 'X', 'quantidade': 1},
+        ];
+      await produtosBox.add(combo);
+
+      final cap = await ComboKitStockService.aplicarTetoEstoqueComboAposBaixa(
+        lojaId: lojaId,
+        produtosBox: produtosBox,
+        produtoIdsDebitadosNaVenda: {'x'},
+      );
+
+      expect(cap, isEmpty);
+      expect(combo.quantidade, 3);
+      expect(await fsComboData(idCombo), isNull);
     });
   });
 }

@@ -48,6 +48,12 @@ class EstoqueTransactionResult {
   final Map<String, int>? estoquePorTamanhoAtualizado;
   final int quantidadeTotalAtualizada;
 
+  /// Ajuste de teto combo feito só no Hive (SKU ausente na nuvem); ver [ComboKitStockService].
+  final bool ajusteCapComboSomenteHive;
+
+  /// Quantidade cadastrada antes do recálculo local (rollback pré-Hive).
+  final int? quantidadeComboAntesAjusteLocal;
+
   EstoqueTransactionResult({
     required this.produtoId,
     required this.produtoNome,
@@ -56,6 +62,8 @@ class EstoqueTransactionResult {
     this.variacoesAtualizadas,
     this.estoquePorTamanhoAtualizado,
     required this.quantidadeTotalAtualizada,
+    this.ajusteCapComboSomenteHive = false,
+    this.quantidadeComboAntesAjusteLocal,
   });
 }
 

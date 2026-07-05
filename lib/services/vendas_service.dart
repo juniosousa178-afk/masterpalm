@@ -300,7 +300,7 @@ class VendasService {
   ) {
     return [
       for (final r in results)
-        if (r.quantidadeDebitada > 0)
+        if (r.quantidadeDebitada > 0 && !r.ajusteCapComboSomenteHive)
           {
             'productId': r.produtoId,
             if (r.produtoSlug != null && r.produtoSlug!.trim().isNotEmpty)
@@ -324,6 +324,13 @@ class VendasService {
       ...txItems,
       ..._itensDevolucaoComboCap(txResultsComboCap),
     ];
+
+    await ComboKitStockService.reverterAjusteCapComboSomenteHive(
+      lojaId: lojaId,
+      produtosBox: produtosBox,
+      results: txResultsComboCap,
+    );
+
     if (itensDevolucao.isEmpty) return;
 
     final forcarFalha = debugForcarFalhaEstornoPreHiveRollback;

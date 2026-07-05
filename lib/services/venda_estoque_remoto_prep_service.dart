@@ -42,6 +42,14 @@ class VendaEstoqueRemotoPrepService {
     required String lojaId,
     required Produto produto,
   }) async {
+    return produtoExisteNoEstoqueRemoto(lojaId: lojaId, produto: produto);
+  }
+
+  /// API pública — usada por manutenção de combo e prep de venda.
+  static Future<bool> produtoExisteNoEstoqueRemoto({
+    required String lojaId,
+    required Produto produto,
+  }) async {
     final col = _db.collection('lojas').doc(lojaId).collection(FSPaths.estoqueProdutosCol);
     final docId = estoqueDocIdCanonico(produto);
     if (docId.isNotEmpty) {

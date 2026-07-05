@@ -11,6 +11,10 @@ import '../core/logger.dart';
 import '../core/produto_variacao_extra.dart';
 import '../models/produto.dart';
 import 'estoque_transaction_service.dart';
+import 'produto_exclusao_tombstone_service.dart';
+import 'produtos_firestore_service.dart';
+import 'sync_queue_service.dart';
+import 'venda_estoque_remoto_prep_service.dart';
 
 /// Após venda de componentes avulsos (ou combo), garante que a quantidade do SKU combo
 /// não exceda o que os componentes ainda permitem montar.
@@ -176,7 +180,8 @@ class ComboKitStockService {
       combosAlvo = filtrados;
     }
 
-    final ajustes = <Map<String, dynamic>>[];
+    final ajustesRemotos = <Map<String, dynamic>>[];
+    final combosSomenteHive = <({Produto combo, int k, int qtdAnterior, int delta})>[];
 
     for (final combo in combosAlvo) {
       if (combo.lojaId != lojaId || !combo.ehCombo) continue;
@@ -202,24 +207,52 @@ class ComboKitStockService {
         '(baixa adicional de $delta no SKU combo)',
       );
 
-      ajustes.add({
-        'nome': combo.nome,
-        'quantidade': delta,
-        'tamanho': '',
-        'cor': '',
-        if (combo.idFirebase.trim().isNotEmpty) 'productId': combo.idFirebase,
-        if (combo.slug.trim().isNotEmpty) 'slug': combo.slug,
-      });
+      final existeRemoto =
+          await VendaEstoqueRemotoPrepService.produtoExisteNoEstoqueRemoto(
+        lojaId: lojaId,
+        produto: combo,
+      );
+      if (existeRemoto) {
+        ajustesRemotos.add({
+          'nome': combo.nome,
+          'quantidade': delta,
+          'tamanho': '',
+          'cor': '',
+          if (combo.idFirebase.trim().isNotEmpty) 'productId': combo.idFirebase,
+          if (combo.slug.trim().isNotEmpty) 'slug': combo.slug,
+        });
+      } else {
+        combosSomenteHive.add((
+          combo: combo,
+          k: k,
+          qtdAnterior: combo.quantidade,
+          delta: delta,
+        ));
+      }
     }
 
-    if (ajustes.isEmpty) return [];
+    final results = <EstoqueTransactionResult>[];
 
-    final results = await EstoqueTransactionService.baixarEstoqueTransactionBatch(
+    for (final item in combosSomenteHive) {
+      final r = await _aplicarTetoLocalComboSomenteHive(
+        lojaId: lojaId,
+        combo: item.combo,
+        tetoK: item.k,
+        quantidadeAnterior: item.qtdAnterior,
+        delta: item.delta,
+      );
+      if (r != null) results.add(r);
+    }
+
+    if (ajustesRemotos.isEmpty) return results;
+
+    final remotos = await EstoqueTransactionService.baixarEstoqueTransactionBatch(
       lojaId: lojaId,
-      itens: ajustes,
+      itens: ajustesRemotos,
     );
+    results.addAll(remotos);
 
-    for (final result in results) {
+    for (final result in remotos) {
       await EstoqueTransactionService.atualizarHiveAposTransacao(
         produtosBox: produtosBox,
         lojaId: lojaId,
@@ -228,10 +261,133 @@ class ComboKitStockService {
     }
     await EstoqueTransactionService.removerDoCatalogoSeEstoqueZerado(
       lojaId,
-      results,
+      remotos,
     );
     return results;
   }
+
+  /// Recalcula teto absoluto no Hive e enfileira sync eventual (combo ausente na nuvem).
+  static Future<EstoqueTransactionResult?> _aplicarTetoLocalComboSomenteHive({
+    required String lojaId,
+    required Produto combo,
+    required int tetoK,
+    required int quantidadeAnterior,
+    required int delta,
+  }) async {
+    final docId = combo.idFirebase.trim();
+    await ProdutoExclusaoTombstoneService.ensureHydratedForLoja(lojaId);
+    if (docId.isNotEmpty &&
+        await ProdutoExclusaoTombstoneService.isProdutoBloqueadoRemoto(
+          lojaId: lojaId,
+          estoqueDocId: docId,
+        )) {
+      logW(
+        '[COMBO_CONVERGE] tombstone — não ressuscita combo $docId',
+        tag: 'COMBO_TETO',
+      );
+      return null;
+    }
+
+    debugPrint(
+      '[COMBO_CAP_LOCAL] ${combo.nome}: $quantidadeAnterior → teto K=$tetoK '
+      '(somente Hive; sync eventual)',
+    );
+
+    combo.quantidade = tetoK;
+    combo.updatedAt = DateTime.now();
+    await combo.save();
+
+    await _enfileirarConvergenciaComboEventual(lojaId: lojaId, combo: combo);
+
+    return EstoqueTransactionResult(
+      produtoId: docId.isNotEmpty ? docId : combo.slug.trim(),
+      produtoNome: combo.nome,
+      produtoSlug: combo.slug.trim().isEmpty ? null : combo.slug.trim(),
+      quantidadeDebitada: delta,
+      quantidadeTotalAtualizada: tetoK,
+      ajusteCapComboSomenteHive: true,
+      quantidadeComboAntesAjusteLocal: quantidadeAnterior,
+    );
+  }
+
+  /// Sync eventual via pipeline existente; falha vira fila [SyncQueueService].
+  static Future<void> _enfileirarConvergenciaComboEventual({
+    required String lojaId,
+    required Produto combo,
+  }) async {
+    final hook = debugEnfileirarConvergenciaComboOverride;
+    if (hook != null) {
+      await hook(lojaId: lojaId, combo: combo);
+      return;
+    }
+    try {
+      await ProdutosFirestoreService.syncProdutoComStatus(
+        combo,
+        lojaId: lojaId,
+        enqueueOnFailure: true,
+        bumpHiveTimestamp: false,
+        writeOrigin: 'combo_cap_pos_venda',
+      );
+    } catch (e, st) {
+      logW(
+        '[COMBO_CONVERGE] falha sync imediato — tentando fila | $e',
+        tag: 'COMBO_TETO',
+      );
+      assert(() {
+        debugPrint('[COMBO_CONVERGE] st=$st');
+        return true;
+      }());
+      final key = combo.key;
+      final boxName = combo.box?.name;
+      if (key == null || boxName == null) return;
+      final parsedKey = key is int ? key : int.tryParse(key.toString());
+      if (parsedKey == null) return;
+      await SyncQueueService.enqueue(
+        type: SyncOperationType.upsertProduto,
+        lojaId: lojaId,
+        boxName: boxName,
+        entityKey: parsedKey,
+        lastError: formatDartErrorForUser(e),
+      );
+    }
+  }
+
+  /// Rollback pré-Hive: restaura quantidade local de combos ajustados só no Hive.
+  static Future<void> reverterAjusteCapComboSomenteHive({
+    required String lojaId,
+    required Box<Produto> produtosBox,
+    required List<EstoqueTransactionResult> results,
+  }) async {
+    for (final r in results) {
+      if (!r.ajusteCapComboSomenteHive) continue;
+      final qtdAnt = r.quantidadeComboAntesAjusteLocal;
+      if (qtdAnt == null) continue;
+      final pid = r.produtoId.trim();
+      Produto? combo;
+      if (pid.isNotEmpty) {
+        combo = produtosBox.values.firstWhereOrNull(
+          (p) => p.lojaId == lojaId && p.idFirebase.trim() == pid,
+        );
+      }
+      combo ??= produtosBox.values.firstWhereOrNull(
+        (p) =>
+            p.lojaId == lojaId &&
+            p.nome.trim().toLowerCase() == r.produtoNome.trim().toLowerCase(),
+      );
+      if (combo == null) continue;
+      combo.quantidade = qtdAnt;
+      await combo.save();
+      debugPrint(
+        '[COMBO_CAP_LOCAL] rollback ${combo.nome}: restaurado para $qtdAnt',
+      );
+    }
+  }
+
+  @visibleForTesting
+  static Future<void> Function({
+    required String lojaId,
+    required Produto combo,
+  })? debugEnfileirarConvergenciaComboOverride;
 
   /// Teto do SKU combo após baixa dos componentes — **manutenção secundária**.
   ///
