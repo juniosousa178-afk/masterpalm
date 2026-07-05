@@ -1966,10 +1966,9 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       }
 
       final guard = LimitsGuard();
-      final podeVenda = await guard.canAddVenda(lojaId);
-      if (!podeVenda) {
-        const msg =
-            'Limite de vendas do mês atingido no plano Free. Faça upgrade para registrar mais vendas.';
+      final limite = await guard.checkVendaLimit(lojaId);
+      if (!limite.canAdd) {
+        final msg = limite.userMessage();
         onErro?.call(msg);
         return (false, null, msg);
       }

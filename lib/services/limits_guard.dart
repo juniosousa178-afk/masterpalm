@@ -1,18 +1,83 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 
 import '../core/logger.dart';
+import '../core/master_plan_admin_messages.dart';
 import '../core/plan_matrix.dart';
 
 import 'firestore_paths.dart';
 import 'planos_service.dart';
 
+/// Resultado explícito da checagem de limite mensal de vendas.
+enum VendaLimitStatus {
+  allowed,
+  blockedAtLimit,
+  checkFailed,
+}
+
+class VendaLimitCheckResult {
+  const VendaLimitCheckResult({
+    required this.status,
+    this.planId,
+    this.vendasNoMes,
+    this.limiteMensal,
+  });
+
+  final VendaLimitStatus status;
+  final String? planId;
+  final int? vendasNoMes;
+  final int? limiteMensal;
+
+  bool get canAdd => status == VendaLimitStatus.allowed;
+
+  String userMessage() {
+    switch (status) {
+      case VendaLimitStatus.allowed:
+        return '';
+      case VendaLimitStatus.blockedAtLimit:
+        final planLabel = masterPlanIdLabel(planId);
+        final limite = limiteMensal ?? 0;
+        return 'Limite de vendas do mês atingido no plano $planLabel '
+            '($limite/mês). Faça upgrade para registrar mais vendas.';
+      case VendaLimitStatus.checkFailed:
+        return 'Não foi possível verificar o limite de vendas do plano. '
+            'Verifique a conexão e tente novamente em instantes.';
+    }
+  }
+}
+
 /// Guarda de limites por plano.
 /// Integrado com PlanosService: free_limited (após trial) e freelight têm restrições.
 class LimitsGuard {
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  @visibleForTesting
+  static FirebaseFirestore? debugFirestoreOverride;
+
+  @visibleForTesting
+  static Future<String?> Function()? debugEffectivePlanIdOverride;
+
+  FirebaseFirestore get _db =>
+      debugFirestoreOverride ?? FirebaseFirestore.instance;
 
   // ---------- Helpers ----------
+
+  /// IDs canônicos reconhecidos para gate de vendas/mês (inclui legado freelight).
+  static const _canonicalPlanIds = {
+    PlanId.freeTrial30d,
+    PlanId.freeTrial90d,
+    PlanId.freeLimited,
+    'freelight',
+    PlanId.basicMonthly,
+    PlanId.intermediateMonthly,
+    PlanId.proMonthly,
+    PlanId.proYearly,
+    PlanId.lifetime,
+  };
+
+  static bool _isCanonicalPlanId(String? planId) {
+    final p = PlanosService.normalizePlanId(planId);
+    return _canonicalPlanIds.contains(p);
+  }
 
   /// Planos com limites aplicados (trial, free limitado, paid com teto de imagens/banners)
   static const _limitedPlans = [
@@ -54,6 +119,9 @@ class LimitsGuard {
 
   /// Obtém o planId efetivo do usuário (gates e limites — cortesia incluída).
   Future<String?> _effectivePlanIdForLimits() async {
+    if (debugEffectivePlanIdOverride != null) {
+      return debugEffectivePlanIdOverride!();
+    }
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return null;
     try {
@@ -64,6 +132,17 @@ class LimitsGuard {
     } catch (_) {
       return null;
     }
+  }
+
+  Future<String?> _resolvePlanIdForVendaLimit({String? planId}) async {
+    if (planId != null) {
+      final raw = planId.trim();
+      if (raw.isEmpty) return null;
+      return PlanosService.normalizePlanId(raw);
+    }
+    final efetivo = await _effectivePlanIdForLimits();
+    if (efetivo == null || efetivo.trim().isEmpty) return null;
+    return PlanosService.normalizePlanId(efetivo);
   }
 
   // ---------- Regras ----------
@@ -156,15 +235,21 @@ class LimitsGuard {
     }
   }
 
-  /// Verifica se pode adicionar venda neste mês.
-  Future<bool> canAddVenda(
+  /// Checagem detalhada — distingue limite real de falha de consulta/plano.
+  Future<VendaLimitCheckResult> checkVendaLimit(
     String lojaId, {
     String? planId,
   }) async {
     try {
-      final p = planId ?? await _effectivePlanIdForLimits();
-      if (!hasLimits(p)) return true;
+      final p = await _resolvePlanIdForVendaLimit(planId: planId);
+      if (p == null || !_isCanonicalPlanId(p)) {
+        return const VendaLimitCheckResult(status: VendaLimitStatus.checkFailed);
+      }
+      if (!hasLimits(p)) {
+        return const VendaLimitCheckResult(status: VendaLimitStatus.allowed);
+      }
 
+      final limite = _limitFor(p, 'vendasMes');
       final now = DateTime.now();
       final first = DateTime(now.year, now.month, 1);
       final lastExclusive = DateTime(now.year, now.month + 1, 1);
@@ -178,11 +263,34 @@ class LimitsGuard {
             .where('createdAt', isLessThan: lastExclusive),
       );
 
-      return totalMes < _limitFor(p, 'vendasMes');
+      if (totalMes < limite) {
+        return VendaLimitCheckResult(
+          status: VendaLimitStatus.allowed,
+          planId: p,
+          vendasNoMes: totalMes,
+          limiteMensal: limite,
+        );
+      }
+
+      return VendaLimitCheckResult(
+        status: VendaLimitStatus.blockedAtLimit,
+        planId: p,
+        vendasNoMes: totalMes,
+        limiteMensal: limite,
+      );
     } catch (e, st) {
-      logE('[LimitsGuard] canAddVenda erro (type=${e.runtimeType})', error: e, st: st);
-      return false;
+      logE('[LimitsGuard] checkVendaLimit erro (type=${e.runtimeType})', error: e, st: st);
+      return const VendaLimitCheckResult(status: VendaLimitStatus.checkFailed);
     }
+  }
+
+  /// Verifica se pode adicionar venda neste mês.
+  Future<bool> canAddVenda(
+    String lojaId, {
+    String? planId,
+  }) async {
+    final result = await checkVendaLimit(lojaId, planId: planId);
+    return result.canAdd;
   }
 
   // ---------- Retrocompatibilidade (userStatus) ----------
