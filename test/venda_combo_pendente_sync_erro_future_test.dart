@@ -7,6 +7,7 @@ import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:master_palm/core/dart_error_unwrap.dart';
+import 'package:master_palm/core/loja_ativa_resolver.dart';
 import 'package:master_palm/models/cliente.dart';
 import 'package:master_palm/models/produto.dart';
 import 'package:master_palm/models/venda.dart';
@@ -518,6 +519,8 @@ void main() {
     setUp(() async {
       SharedPreferences.setMockInitialValues({});
       ProdutoExclusaoTombstoneService.resetCacheForTests();
+      LojaAtivaResolver.debugResolveOverride =
+          ({String origem = 'app'}) async => lojaId;
       firestore = FakeFirebaseFirestore();
       EstoqueTransactionService.debugFirestoreOverride = firestore;
       ProdutosFirestoreService.debugFirestoreOverride = firestore;
@@ -530,6 +533,7 @@ void main() {
 
     tearDown(() async {
       ProdutoExclusaoTombstoneService.resetCacheForTests();
+      LojaAtivaResolver.debugResolveOverride = null;
       EstoqueTransactionService.debugFirestoreOverride = null;
       ProdutosFirestoreService.debugFirestoreOverride = null;
       await produtosBox.close();
