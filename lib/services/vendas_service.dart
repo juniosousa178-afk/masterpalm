@@ -2,6 +2,8 @@
 //
 // Serviço de vendas para a tela "Nova Venda"
 // ATUALIZADO: Agora sincroniza estoque no Firestore após baixar variações
+import 'dart:async';
+
 import 'package:collection/collection.dart'; // firstWhereOrNull
 import 'package:flutter/foundation.dart'; // debugPrint
 import 'package:hive/hive.dart';
@@ -70,6 +72,61 @@ class VendasService {
     required String vendaIdVinculo,
     required int? vendaHiveKey,
   })? debugPersistirContasReceberNaBoxOverride;
+
+  /// Somente testes — barreira determinística imediatamente antes da baixa remota.
+  @visibleForTesting
+  static Future<void> Function()? debugAntesBaixaEstoqueBarrier;
+
+  static final Map<String, Future<Venda>> _registrarVendaCoalesce = {};
+
+  @visibleForTesting
+  static void debugOperacoesEmAndamentoClearForTests() {
+    _registrarVendaCoalesce.clear();
+  }
+
+  static String _chaveCoalesceRegistrarVenda({
+    String? lojaId,
+    required String clienteNome,
+    required List<VendaItem> itens,
+    required double dinheiro,
+    required double pix,
+    required double cartao,
+    required double frete,
+    required double descontoPct,
+    required String observacao,
+    required bool isFiado,
+    String? idFirebaseToReuse,
+    required int quantidadeParcelasFiado,
+    Map<int, List<Map<String, dynamic>>>? itensComboSelecaoPorIndice,
+  }) {
+    final reuse = (idFirebaseToReuse ?? '').trim();
+    if (reuse.isNotEmpty) return 'reuse:$reuse';
+
+    final linhas = itens
+        .map((it) {
+          final pid = (it.productId ?? '').trim();
+          return '$pid|${it.produtoNome.trim()}|${it.quantidade}|'
+              '${it.precoUnitario}|${it.tamanho.trim()}|${it.cor.trim()}';
+        })
+        .toList()
+      ..sort();
+    final comboJson =
+        VendaComboEstoqueExpansion.serializeItensComboSelecaoPorIndice(
+      itensComboSelecaoPorIndice,
+    );
+    return [
+      'loja:${(lojaId ?? '').trim()}',
+      'cli:${clienteNome.trim()}',
+      'pay:$dinheiro,$pix,$cartao',
+      'frete:$frete',
+      'desc:$descontoPct',
+      'fiado:$isFiado',
+      'parc:$quantidadeParcelasFiado',
+      'obs:${observacao.trim()}',
+      if (comboJson != null && comboJson.isNotEmpty) 'combo:$comboJson',
+      'itens:${linhas.join(';')}',
+    ].join('|');
+  }
 
   // ---------------------------
   // Helpers
@@ -1396,6 +1453,88 @@ class VendasService {
     String observacao = '',
     double frete = 0.0,
     double descontoPct = 0.0,
+    String? lojaId,
+    Cliente? clienteExistente,
+    String? idFirebaseToReuse,
+    void Function(String message)? onSyncError,
+    bool isFiado = false,
+    DateTime? dataVencimentoFiado,
+    int quantidadeParcelasFiado = 1,
+    int intervaloParcelasDias = 30,
+    Map<int, List<Map<String, dynamic>>>? itensComboSelecaoPorIndice,
+    void Function(String? numeroSorte)? onNumeroSorteGerado,
+  }) {
+    final chave = _chaveCoalesceRegistrarVenda(
+      lojaId: lojaId,
+      clienteNome: clienteExistente?.nome ?? clienteNome,
+      itens: itens,
+      dinheiro: dinheiro,
+      pix: pix,
+      cartao: cartao,
+      frete: frete,
+      descontoPct: descontoPct,
+      observacao: observacao,
+      isFiado: isFiado,
+      idFirebaseToReuse: idFirebaseToReuse,
+      quantidadeParcelasFiado: quantidadeParcelasFiado,
+      itensComboSelecaoPorIndice: itensComboSelecaoPorIndice,
+    );
+
+    final placeholder = Completer<Venda>();
+    final promessa = placeholder.future;
+    final existente = _registrarVendaCoalesce.putIfAbsent(chave, () => promessa);
+    if (!identical(existente, promessa)) return existente;
+
+    (() async {
+      try {
+        final venda = await _registrarVendaMultiCorpo(
+          produtosBox: produtosBox,
+          clientesBox: clientesBox,
+          vendasBox: vendasBox,
+          clienteNome: clienteNome,
+          itens: itens,
+          dinheiro: dinheiro,
+          pix: pix,
+          cartao: cartao,
+          vendedor: vendedor,
+          observacao: observacao,
+          frete: frete,
+          descontoPct: descontoPct,
+          lojaId: lojaId,
+          clienteExistente: clienteExistente,
+          idFirebaseToReuse: idFirebaseToReuse,
+          onSyncError: onSyncError,
+          isFiado: isFiado,
+          dataVencimentoFiado: dataVencimentoFiado,
+          quantidadeParcelasFiado: quantidadeParcelasFiado,
+          intervaloParcelasDias: intervaloParcelasDias,
+          itensComboSelecaoPorIndice: itensComboSelecaoPorIndice,
+          onNumeroSorteGerado: onNumeroSorteGerado,
+        );
+        if (!placeholder.isCompleted) placeholder.complete(venda);
+      } catch (e, st) {
+        if (!placeholder.isCompleted) placeholder.completeError(e, st);
+      } finally {
+        _registrarVendaCoalesce.remove(chave);
+      }
+    }());
+
+    return promessa;
+  }
+
+  static Future<Venda> _registrarVendaMultiCorpo({
+    required Box<Produto> produtosBox,
+    required Box<Cliente> clientesBox,
+    required Box<Venda> vendasBox,
+    required String clienteNome,
+    required List<VendaItem> itens,
+    double dinheiro = 0.0,
+    double pix = 0.0,
+    double cartao = 0.0,
+    String vendedor = 'App',
+    String observacao = '',
+    double frete = 0.0,
+    double descontoPct = 0.0,
     String? lojaId, // 🔹 multi-loja
     Cliente? clienteExistente, // 🔹 quando já identificado (evita matching errado)
     String? idFirebaseToReuse, // 🔹 em edição: reutiliza o id da venda antiga (evita duplicata)
@@ -1534,6 +1673,8 @@ class VendasService {
       lojaId: lojaEfetiva,
       produtos: produtosEncontrados,
     );
+
+    await debugAntesBaixaEstoqueBarrier?.call();
 
     txResults = await EstoqueTransactionService.baixarEstoqueTransactionBatch(
       lojaId: lojaEfetiva,
