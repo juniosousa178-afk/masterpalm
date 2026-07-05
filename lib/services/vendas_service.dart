@@ -5,6 +5,7 @@
 import 'package:collection/collection.dart'; // firstWhereOrNull
 import 'package:flutter/foundation.dart'; // debugPrint
 import 'package:hive/hive.dart';
+import 'package:uuid/uuid.dart';
 
 import '../models/cliente.dart';
 import '../models/produto.dart';
@@ -33,7 +34,43 @@ import 'conta_receber_service.dart';
 import 'conta_receber_firestore_service.dart';
 import 'conta_receber_venda_backfill.dart';
 
+/// Persistência Hive falhou e o estorno pré-Hive do estoque remoto também falhou.
+class VendaPersistenciaInconsistenciaCritica implements Exception {
+  const VendaPersistenciaInconsistenciaCritica({
+    required this.erroPersistencia,
+    required this.erroEstorno,
+  });
+
+  final Object erroPersistencia;
+  final Object erroEstorno;
+
+  @override
+  String toString() =>
+      'Falha ao persistir venda local e falha ao restaurar estoque remoto. '
+      'Persistência: $erroPersistencia. '
+      'Estorno: $erroEstorno. '
+      'Verifique o estoque na nuvem antes de tentar novamente.';
+}
+
 class VendasService {
+  @visibleForTesting
+  static Future<dynamic> Function(Box<Venda> box, Venda venda)?
+      debugVendasBoxAddOverride;
+
+  /// Somente testes — simula falha em [estornarBaixaPosFalhaAntesDePersistirVendaHive].
+  @visibleForTesting
+  static Future<void> Function()? debugForcarFalhaEstornoPreHiveRollback;
+
+  /// Somente testes — substitui [_persistirContasReceberNaBox] para simular falha fiado.
+  @visibleForTesting
+  static Future<void> Function({
+    required Box<ContaReceber> crBox,
+    required List<ContaReceber> contas,
+    required String lojaId,
+    required String vendaIdVinculo,
+    required int? vendaHiveKey,
+  })? debugPersistirContasReceberNaBoxOverride;
+
   // ---------------------------
   // Helpers
   // ---------------------------
@@ -201,6 +238,57 @@ class VendasService {
     venda.idFirebase = VendasFirestoreService.resolveFirestoreVendaDocId(venda);
   }
 
+  static List<Map<String, dynamic>> _itensDevolucaoComboCap(
+    List<EstoqueTransactionResult> results,
+  ) {
+    return [
+      for (final r in results)
+        if (r.quantidadeDebitada > 0)
+          {
+            'productId': r.produtoId,
+            if (r.produtoSlug != null && r.produtoSlug!.trim().isNotEmpty)
+              'slug': r.produtoSlug,
+            'nome': r.produtoNome,
+            'quantidade': r.quantidadeDebitada,
+          },
+    ];
+  }
+
+  /// Estorna baixa remota quando a venda ainda não foi persistida no Hive.
+  @visibleForTesting
+  static Future<void> estornarBaixaPosFalhaAntesDePersistirVendaHive({
+    required String lojaId,
+    required Box<Produto> produtosBox,
+    required String vendaIdEstorno,
+    required List<Map<String, dynamic>> txItems,
+    required List<EstoqueTransactionResult> txResultsComboCap,
+  }) async {
+    final itensDevolucao = <Map<String, dynamic>>[
+      ...txItems,
+      ..._itensDevolucaoComboCap(txResultsComboCap),
+    ];
+    if (itensDevolucao.isEmpty) return;
+
+    final forcarFalha = debugForcarFalhaEstornoPreHiveRollback;
+    if (forcarFalha != null) {
+      await forcarFalha();
+    }
+
+    final results = await EstoqueTransactionService.devolverEstoqueTransactionBatch(
+      lojaId: lojaId,
+      itens: itensDevolucao,
+      vendaIdParaIdempotencia: vendaIdEstorno,
+      estornoOrigemCatalogo: 'venda_persistencia_falhou',
+    );
+    for (final result in results) {
+      await EstoqueTransactionService.atualizarHiveAposTransacao(
+        produtosBox: produtosBox,
+        lojaId: lojaId,
+        result: result,
+      );
+    }
+  }
+
   static bool _podeVincularContaReceberAVenda({
     required int? vendaHiveKey,
     required String vendaIdEstavel,
@@ -275,6 +363,18 @@ class VendasService {
     required String vendaIdVinculo,
     required int? vendaHiveKey,
   }) async {
+    final dbg = debugPersistirContasReceberNaBoxOverride;
+    if (dbg != null) {
+      await dbg(
+        crBox: crBox,
+        contas: contas,
+        lojaId: lojaId,
+        vendaIdVinculo: vendaIdVinculo,
+        vendaHiveKey: vendaHiveKey,
+      );
+      return;
+    }
+
     var falhasFirestore = 0;
     for (var i = 0; i < contas.length; i++) {
       final conta = contas[i];
@@ -1415,15 +1515,31 @@ class VendasService {
       produtosEncontrados: produtosEncontrados,
     );
 
+    final idFirebaseReservado = (idFirebaseToReuse?.trim().isNotEmpty == true)
+        ? idFirebaseToReuse!.trim()
+        : const Uuid().v4();
+    List<EstoqueTransactionResult> txResults = [];
+    List<EstoqueTransactionResult> txResultsComboCap = [];
+    var baixaEstoqueConcluida = false;
+    late final Venda venda;
+    late final dynamic addedKey;
+    late final double subtotal;
+    late final double total;
+    late final double totalPagoAgora;
+    late final double saldoFiado;
+    late final String formasPagamentoTexto;
+
+    try {
     await VendaEstoqueRemotoPrepService.garantirProdutosProntosParaBaixa(
       lojaId: lojaEfetiva,
       produtos: produtosEncontrados,
     );
 
-    final txResults = await EstoqueTransactionService.baixarEstoqueTransactionBatch(
+    txResults = await EstoqueTransactionService.baixarEstoqueTransactionBatch(
       lojaId: lojaEfetiva,
       itens: txItems,
     );
+    baixaEstoqueConcluida = true;
 
     await EstoqueTransactionService.removerDoCatalogoSeEstoqueZerado(lojaEfetiva, txResults);
 
@@ -1435,7 +1551,7 @@ class VendasService {
       );
     }
 
-    final txResultsComboCap =
+    txResultsComboCap =
         await ComboKitStockService.aplicarTetoEstoqueComboAposBaixaSemAbortarVenda(
       lojaId: lojaEfetiva,
       produtosBox: produtosBox,
@@ -1475,11 +1591,11 @@ class VendasService {
     }
 
     // 4) subtotal / total
-    final subtotal = itens.fold<double>(
+    subtotal = itens.fold<double>(
       0.0,
       (acc, it) => acc + (it.precoUnitario * it.quantidade),
     );
-    final total = subtotal * (1 - descontoPct / 100) + frete;
+    total = subtotal * (1 - descontoPct / 100) + frete;
 
     // 5) custo de mercadoria (custo real) e taxa legado APK — separados; combo = só componentes
     final custoProdutos = VendaCustoMercadoria.somarCustoReal(
@@ -1523,8 +1639,8 @@ class VendasService {
       dinheiro = total;
     }
 
-    final totalPagoAgora = dinheiro + pix + cartao;
-    final saldoFiado = isFiado
+    totalPagoAgora = dinheiro + pix + cartao;
+    saldoFiado = isFiado
         ? calcularSaldoFiado(total: total, totalPagoAgora: totalPagoAgora)
         : 0.0;
 
@@ -1563,10 +1679,10 @@ class VendasService {
     } else if (isFiado && linhasPagamento.isEmpty) {
       linhasPagamento.add('Fiado - R\$ ${_fmt2(total)}. $vencStr');
     }
-    final formasPagamentoTexto = linhasPagamento.join('\n');
+    formasPagamentoTexto = linhasPagamento.join('\n');
 
     // 8) cria venda (com todos os itens + clienteId estável)
-    final venda = Venda(
+    venda = Venda(
       clienteNome: cliente.nome,
       produtosDescricao: "$produtosDescricao\n$formasPagamentoTexto",
       quantidade: itens.length,
@@ -1598,13 +1714,44 @@ class VendasService {
     // Em edição: reutiliza idFirebase da venda antiga (evita duplicata no Firestore)
     _garantirIdFirebaseVendaAntesDeSalvar(
       venda: venda,
-      idFirebaseToReuse: idFirebaseToReuse,
+      idFirebaseToReuse: idFirebaseReservado,
     );
 
     debugPrint('💾 [VENDAS-SERVICE] Salvando venda - Dinheiro: R\$ ${_fmt2(dinheiro)}, Pix: R\$ ${_fmt2(pix)}, Cartão: R\$ ${_fmt2(cartao)}, Total: R\$ ${_fmt2(total)}');
     debugPrint('📤 [SYNC-DEBUG] VendasService.salvarVenda → lojaId=$lojaEfetiva | cliente=${cliente.nome} | total=R\$ ${_fmt2(total)}');
 
-    final addedKey = await vendasBox.add(venda);
+    addedKey = debugVendasBoxAddOverride != null
+        ? await debugVendasBoxAddOverride!(vendasBox, venda)
+        : await vendasBox.add(venda);
+    } catch (e, st) {
+      if (baixaEstoqueConcluida) {
+        Object? erroEstorno;
+        try {
+          await estornarBaixaPosFalhaAntesDePersistirVendaHive(
+            lojaId: lojaEfetiva,
+            produtosBox: produtosBox,
+            vendaIdEstorno: idFirebaseReservado,
+            txItems: txItems,
+            txResultsComboCap: txResultsComboCap,
+          );
+        } catch (estE) {
+          erroEstorno = estE;
+          debugPrint(
+            '[VENDAS-SERVICE] Estorno pós-falha antes de Hive: $estE',
+          );
+        }
+        if (erroEstorno != null) {
+          Error.throwWithStackTrace(
+            VendaPersistenciaInconsistenciaCritica(
+              erroPersistencia: e,
+              erroEstorno: erroEstorno,
+            ),
+            st,
+          );
+        }
+      }
+      rethrow;
+    }
     try {
       await venda.save();
     } catch (_) {}

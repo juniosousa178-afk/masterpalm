@@ -3,6 +3,7 @@
 // Prioridade: sessão Hive alinhada ao Auth → loja do usuário (StoreResolverService).
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
 import '../services/public_store_link_helper.dart';
@@ -18,8 +19,16 @@ const String kErroSemLojaAtiva =
 class LojaAtivaResolver {
   LojaAtivaResolver._();
 
+  /// Somente testes — nunca acionado em runtime normal.
+  @visibleForTesting
+  static Future<String?> Function({String origem})? debugResolveOverride;
+
   /// Prioridade operacional: sessão/config (mesmo usuário) → owner store (Firestore).
   static Future<String?> resolve({String origem = 'app'}) async {
+    final override = debugResolveOverride;
+    if (override != null) {
+      return override(origem: origem);
+    }
     final user = FirebaseAuth.instance.currentUser;
     final email = (user?.email ?? '').trim().toLowerCase();
     final perfil = RoleUtils.isRootEmail(email)
@@ -54,6 +63,14 @@ class LojaAtivaResolver {
 
   /// Exige loja operacional; usado em venda fiada/financeiro.
   static Future<String> requireActive({String origem = 'app'}) async {
+    final override = debugResolveOverride;
+    if (override != null) {
+      final id = await override(origem: origem);
+      if (id == null || id.trim().isEmpty) {
+        throw StateError(kErroSemLojaAtiva);
+      }
+      return id.trim();
+    }
     final id = await resolve(origem: origem);
     if (id == null || id.trim().isEmpty) {
       throw StateError(kErroSemLojaAtiva);

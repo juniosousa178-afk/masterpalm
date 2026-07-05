@@ -45,6 +45,7 @@ function Get-M1P0FlowAllowlist {
     )
     pdv_venda           = @(
       'test/vendas_service_test.dart'
+      'test/venda_persistencia_consistencia_test.dart'
     )
     pdv_venda_variacao  = @(
       'test/venda_validacao_variacao_tamanho_cor_test.dart'
@@ -174,7 +175,7 @@ function Get-FlowSuggestion {
     switch ($FlowId) {
       'produto_simples' { return 'Revisar produto_cadastro_persistencia_test.dart e servicos de persistencia Hive/Firestore.' }
     'produto_variacao' { return 'Revisar persistencia de variacoes e grade canonica no cadastro.' }
-    'pdv_venda' { return 'Revisar VendasService e resolucao de produto no PDV.' }
+    'pdv_venda' { return 'Revisar VendasService, resolucao de produto e persistencia/rollback pre-Hive.' }
     'pdv_venda_variacao' { return 'Revisar validacao de variacao obrigatoria e baixa de estoque por variacao.' }
     'fiado' { return 'Revisar criacao de conta a receber e exibicao de fiado em contas_receber.' }
     'baixa_parcial' { return 'Revisar baixa parcial e estorno parcial de saldo em financeiro.' }
