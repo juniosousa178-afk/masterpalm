@@ -6,10 +6,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 
 import '../core/logger.dart';
+import '../core/pre_pedido_sale_intent.dart';
 import '../repositories/pedido_status_publico_repository.dart';
 
 /// Tela pública para visualizar o status do pedido
 /// Acessível via: https://app.mastepalm.com.br/pedido/{prePedidoId}
+///
+/// Coordenação M3.2-D: confirmação (código legado comentado) usa
+/// [PrePedidoSaleIntent.saleIntentIdForPedido] + [PrePedidoSaleIntent.origin].
 class PedidoPublicoScreen extends StatefulWidget {
   final String lojaId;
   final String prePedidoId;
@@ -362,6 +366,8 @@ class _PedidoPublicoScreenState extends State<PedidoPublicoScreen> {
         descontoPct: 0,
         observacao: pedido['observacao'] ?? '',
         lojaId: widget.lojaId,
+        saleIntentId: PrePedidoSaleIntent.saleIntentIdForPedido(widget.prePedidoId),
+        saleIntentOrigin: PrePedidoSaleIntent.origin,
       );
 
       debugPrint('');
