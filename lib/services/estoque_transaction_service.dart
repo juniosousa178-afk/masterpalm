@@ -1013,7 +1013,6 @@ class EstoqueTransactionService {
   }
 
   /// Hash determinístico do efeito de estoque solicitado (entrada txItems).
-  @visibleForTesting
   static String computeTxItemsHashForIdempotencia(
     List<Map<String, dynamic>> itens,
   ) {

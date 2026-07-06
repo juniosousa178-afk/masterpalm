@@ -7,7 +7,6 @@ import 'dart:async';
 import 'package:collection/collection.dart'; // firstWhereOrNull
 import 'package:flutter/foundation.dart'; // debugPrint
 import 'package:hive/hive.dart';
-import 'package:uuid/uuid.dart';
 
 import '../models/cliente.dart';
 import '../models/produto.dart';
@@ -32,6 +31,7 @@ import 'venda_combo_estoque_expansion.dart';
 import 'venda_custo_mercadoria.dart';
 import 'venda_edicao_estoque_diff.dart';
 import 'venda_estoque_remoto_prep_service.dart';
+import 'venda_operation_journal_service.dart';
 import 'conta_receber_service.dart';
 import 'conta_receber_firestore_service.dart';
 import 'conta_receber_venda_backfill.dart';
@@ -76,6 +76,10 @@ class VendasService {
   /// Somente testes — barreira determinística imediatamente antes da baixa remota.
   @visibleForTesting
   static Future<void> Function()? debugAntesBaixaEstoqueBarrier;
+
+  /// Somente testes — simula crash após baixa remota e antes de vendasBox.add.
+  @visibleForTesting
+  static Future<void> Function()? debugAfterRemoteStockAppliedBeforeHivePersist;
 
   static final Map<String, Future<Venda>> _registrarVendaCoalesce = {};
 
@@ -1661,9 +1665,20 @@ class VendasService {
       produtosEncontrados: produtosEncontrados,
     );
 
-    final idFirebaseReservado = (idFirebaseToReuse?.trim().isNotEmpty == true)
-        ? idFirebaseToReuse!.trim()
-        : const Uuid().v4();
+    final stockEffectHash =
+        EstoqueTransactionService.computeTxItemsHashForIdempotencia(txItems);
+    final operationKey = VendaOperationJournalService.buildOperationKey(
+      lojaId: lojaEfetiva,
+      stockEffectHash: stockEffectHash,
+    );
+
+    final journalEntry = await VendaOperationJournalService.reserveOrRecover(
+      lojaId: lojaEfetiva,
+      operationKey: operationKey,
+      stockEffectHash: stockEffectHash,
+      explicitOperationId: idFirebaseToReuse?.trim(),
+    );
+    final idFirebaseReservado = journalEntry.operationId;
     List<EstoqueTransactionResult> txResults = [];
     List<EstoqueTransactionResult> txResultsComboCap = [];
     var baixaEstoqueConcluida = false;
@@ -1873,10 +1888,20 @@ class VendasService {
     debugPrint('💾 [VENDAS-SERVICE] Salvando venda - Dinheiro: R\$ ${_fmt2(dinheiro)}, Pix: R\$ ${_fmt2(pix)}, Cartão: R\$ ${_fmt2(cartao)}, Total: R\$ ${_fmt2(total)}');
     debugPrint('📤 [SYNC-DEBUG] VendasService.salvarVenda → lojaId=$lojaEfetiva | cliente=${cliente.nome} | total=R\$ ${_fmt2(total)}');
 
+    await debugAfterRemoteStockAppliedBeforeHivePersist?.call();
+
     addedKey = debugVendasBoxAddOverride != null
         ? await debugVendasBoxAddOverride!(vendasBox, venda)
         : await vendasBox.add(venda);
+
+    await VendaOperationJournalService.complete(
+      lojaId: lojaEfetiva,
+      operationKey: operationKey,
+    );
     } catch (e, st) {
+      if (e is VendaOperationInterruptedException) {
+        rethrow;
+      }
       if (baixaEstoqueConcluida && baixaEstoqueAplicadaNestaExecucao) {
         Object? erroEstorno;
         try {
@@ -1894,6 +1919,10 @@ class VendasService {
           );
         }
         if (erroEstorno != null) {
+          await VendaOperationJournalService.markCritical(
+            lojaId: lojaEfetiva,
+            operationKey: operationKey,
+          );
           Error.throwWithStackTrace(
             VendaPersistenciaInconsistenciaCritica(
               erroPersistencia: e,
@@ -1902,6 +1931,10 @@ class VendasService {
             st,
           );
         }
+        await VendaOperationJournalService.revert(
+          lojaId: lojaEfetiva,
+          operationKey: operationKey,
+        );
       }
       rethrow;
     }

@@ -44,4 +44,8 @@ class HiveBoxNames {
 
   /// Fila compra → precificação → estoque (por loja).
   static String compraItemPipeline(String lojaId) => 'compra_item_pipeline_$lojaId';
+
+  /// Journal local de operationId pendente (recovery pré-Hive) — por loja.
+  static String vendaOperationJournal(String lojaId) =>
+      'venda_operation_journal_$lojaId';
 }
