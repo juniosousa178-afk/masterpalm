@@ -1,7 +1,7 @@
 // lib/screens/nova_venda_modal.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:collection/collection.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -11,6 +11,7 @@ import '../core/logger.dart';
 import '../core/produto_variacao_extra.dart';
 import '../core/strict_product_resolution.dart';
 import '../core/venda_finalizacao_reentrada_guard.dart';
+import '../core/pdv_sale_intent_lifecycle.dart';
 import '../core/venda_metrics_filter.dart';
 import 'package:hive/hive.dart';
 
@@ -111,6 +112,11 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
   int _pendenteIntervaloParcelasDias = 30;
 
   final _finalizacaoReentradaGuard = VendaFinalizacaoReentradaGuard();
+  final _pdvSaleIntentLifecycle = PdvSaleIntentLifecycle();
+
+  @visibleForTesting
+  PdvSaleIntentLifecycle get debugPdvSaleIntentLifecycle =>
+      _pdvSaleIntentLifecycle;
 
   /// produtos: produto, preço, qtd, tamanho, cor, extraValor (técnico), variacaoExtraResumo (exibição)
   List<Map<String, dynamic>> produtosSelecionados = [
@@ -1890,10 +1896,14 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         quantidadeParcelasFiado: _pendenteQtdParcelasFiado,
         intervaloParcelasDias: _pendenteIntervaloParcelasDias,
         vendaParaEditar: vendaParaEditarRef,
+        saleIntentId: vendaParaEditarRef == null
+            ? _pdvSaleIntentLifecycle.ensureForAttempt()
+            : null,
       );
       _pendenteFiado = false;
       if (!mounted) return;
       if (ok) {
+        _pdvSaleIntentLifecycle.clearOnSuccess();
         // Mostrar dialog com número da sorte (CampaignEngine já envia WhatsApp/Email)
         if (numeroSorte != null && numeroSorte.isNotEmpty) {
           await _mostrarDialogNumeroSorte(numeroSorte, nomeClienteFinal);
@@ -1939,6 +1949,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     int quantidadeParcelasFiado = 1,
     int intervaloParcelasDias = 30,
     Venda? vendaParaEditar,
+    String? saleIntentId,
   }) async {
     try {
       if (vendaParaEditar != null) {
@@ -2005,6 +2016,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         intervaloParcelasDias: intervaloParcelasDias,
         itensComboSelecaoPorIndice: itensComboSelecaoPorIndice,
         onNumeroSorteGerado: (n) => numeroSorteRecebido = n,
+        saleIntentId: saleIntentId,
       );
 
       return (true, numeroSorteRecebido, null);

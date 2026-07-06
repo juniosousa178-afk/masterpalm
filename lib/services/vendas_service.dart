@@ -32,6 +32,7 @@ import 'venda_custo_mercadoria.dart';
 import 'venda_edicao_estoque_diff.dart';
 import 'venda_estoque_remoto_prep_service.dart';
 import 'venda_operation_journal_service.dart';
+import 'sale_intent_service.dart';
 import 'conta_receber_service.dart';
 import 'conta_receber_firestore_service.dart';
 import 'conta_receber_venda_backfill.dart';
@@ -81,6 +82,10 @@ class VendasService {
   @visibleForTesting
   static Future<void> Function()? debugAfterRemoteStockAppliedBeforeHivePersist;
 
+  /// Somente testes — simula crash após Hive persistido e antes de complete remoto.
+  @visibleForTesting
+  static Future<void> Function()? debugAfterHiveSalePersistedBeforeSaleIntentComplete;
+
   static final Map<String, Future<Venda>> _registrarVendaCoalesce = {};
 
   @visibleForTesting
@@ -100,9 +105,13 @@ class VendasService {
     required String observacao,
     required bool isFiado,
     String? idFirebaseToReuse,
+    String? saleIntentId,
     required int quantidadeParcelasFiado,
     Map<int, List<Map<String, dynamic>>>? itensComboSelecaoPorIndice,
   }) {
+    final intent = (saleIntentId ?? '').trim();
+    if (intent.isNotEmpty) return 'intent:$intent';
+
     final reuse = (idFirebaseToReuse ?? '').trim();
     if (reuse.isNotEmpty) return 'reuse:$reuse';
 
@@ -297,6 +306,91 @@ class VendasService {
     }
     if (idVendaEstavelParaVinculo(venda).isNotEmpty) return;
     venda.idFirebase = VendasFirestoreService.resolveFirestoreVendaDocId(venda);
+  }
+
+  static Venda? _findVendaHivePorIdFirebase(
+    Box<Venda> vendasBox,
+    String operationId,
+    String lojaId,
+  ) {
+    final id = operationId.trim();
+    if (id.isEmpty) return null;
+    for (final v in vendasBox.values) {
+      if (v.lojaId == lojaId && (v.idFirebase ?? '').trim() == id) {
+        return v;
+      }
+    }
+    return null;
+  }
+
+  static Future<void> _coordinatedSaleIntentRevertBestEffort({
+    required String lojaId,
+    required String saleIntentId,
+    required String operationId,
+  }) async {
+    try {
+      await SaleIntentService.revert(
+        lojaId: lojaId,
+        saleIntentId: saleIntentId,
+        operationId: operationId,
+      );
+    } catch (e) {
+      debugPrint('[VENDAS-SERVICE] sale intent revert best-effort: $e');
+    }
+  }
+
+  static Future<void> _coordinatedSaleIntentCriticalBestEffort({
+    required String lojaId,
+    required String saleIntentId,
+    required String operationId,
+  }) async {
+    try {
+      await SaleIntentService.markCritical(
+        lojaId: lojaId,
+        saleIntentId: saleIntentId,
+        operationId: operationId,
+      );
+    } catch (e) {
+      debugPrint('[VENDAS-SERVICE] sale intent critical best-effort: $e');
+    }
+  }
+
+  static Future<SaleIntentStatus> _coordinatedSaleIntentAdvance({
+    required String lojaId,
+    required String saleIntentId,
+    required String operationId,
+    required SaleIntentStatus current,
+    required SaleIntentStatus target,
+  }) async {
+    if (current == target || current.isTerminal) return current;
+    try {
+      final SaleIntentReservation updated;
+      switch (target) {
+        case SaleIntentStatus.stockApplied:
+          updated = await SaleIntentService.markStockApplied(
+            lojaId: lojaId,
+            saleIntentId: saleIntentId,
+            operationId: operationId,
+          );
+        case SaleIntentStatus.salePersisted:
+          updated = await SaleIntentService.markSalePersisted(
+            lojaId: lojaId,
+            saleIntentId: saleIntentId,
+            operationId: operationId,
+          );
+        case SaleIntentStatus.completed:
+          updated = await SaleIntentService.complete(
+            lojaId: lojaId,
+            saleIntentId: saleIntentId,
+            operationId: operationId,
+          );
+        default:
+          return current;
+      }
+      return updated.status;
+    } on SaleIntentInvalidStateTransitionException {
+      return current;
+    }
   }
 
   static List<Map<String, dynamic>> _itensDevolucaoComboCap(
@@ -1474,6 +1568,7 @@ class VendasService {
     int intervaloParcelasDias = 30,
     Map<int, List<Map<String, dynamic>>>? itensComboSelecaoPorIndice,
     void Function(String? numeroSorte)? onNumeroSorteGerado,
+    String? saleIntentId,
   }) {
     final chave = _chaveCoalesceRegistrarVenda(
       lojaId: lojaId,
@@ -1487,6 +1582,7 @@ class VendasService {
       observacao: observacao,
       isFiado: isFiado,
       idFirebaseToReuse: idFirebaseToReuse,
+      saleIntentId: saleIntentId,
       quantidadeParcelasFiado: quantidadeParcelasFiado,
       itensComboSelecaoPorIndice: itensComboSelecaoPorIndice,
     );
@@ -1521,6 +1617,7 @@ class VendasService {
           intervaloParcelasDias: intervaloParcelasDias,
           itensComboSelecaoPorIndice: itensComboSelecaoPorIndice,
           onNumeroSorteGerado: onNumeroSorteGerado,
+          saleIntentId: saleIntentId,
         );
         if (!placeholder.isCompleted) placeholder.complete(venda);
       } catch (e, st) {
@@ -1556,6 +1653,7 @@ class VendasService {
     int intervaloParcelasDias = 30, // 🔹 intervalo em dias entre parcelas
     Map<int, List<Map<String, dynamic>>>? itensComboSelecaoPorIndice, // 🔹 seleção do cliente para combos
     void Function(String? numeroSorte)? onNumeroSorteGerado,
+    String? saleIntentId,
   }) async {
     if (itens.isEmpty) {
       throw Exception('Nenhum item informado.');
@@ -1672,18 +1770,52 @@ class VendasService {
       stockEffectHash: stockEffectHash,
     );
 
+    final coordinatedIntentId = (saleIntentId ?? '').trim();
+    final isCoordinatedPdv = coordinatedIntentId.isNotEmpty;
+    SaleIntentReservation? saleIntentReservation;
+    var saleIntentStatus = SaleIntentStatus.reserved;
+
+    if (isCoordinatedPdv) {
+      saleIntentReservation = await SaleIntentService.reserveOrJoin(
+        lojaId: lojaEfetiva,
+        saleIntentId: coordinatedIntentId,
+        origin: SaleIntentOrigins.pdvManual,
+        stockEffectHash: stockEffectHash,
+      );
+      saleIntentStatus = saleIntentReservation.status;
+
+      final earlyOpId = saleIntentReservation.operationId;
+      final vendaJaPersistida = _findVendaHivePorIdFirebase(
+        vendasBox,
+        earlyOpId,
+        lojaEfetiva,
+      );
+      if (saleIntentStatus == SaleIntentStatus.completed &&
+          vendaJaPersistida != null) {
+        return vendaJaPersistida;
+      }
+    }
+
     final journalEntry = await VendaOperationJournalService.reserveOrRecover(
       lojaId: lojaEfetiva,
       operationKey: operationKey,
       stockEffectHash: stockEffectHash,
-      explicitOperationId: idFirebaseToReuse?.trim(),
+      requiredOperationId:
+          isCoordinatedPdv ? saleIntentReservation!.operationId : null,
+      explicitOperationId:
+          isCoordinatedPdv ? null : idFirebaseToReuse?.trim(),
     );
     final idFirebaseReservado = journalEntry.operationId;
+    assert(
+      !isCoordinatedPdv ||
+          idFirebaseReservado == saleIntentReservation!.operationId,
+      'journal deve usar operationId remoto oficial',
+    );
     List<EstoqueTransactionResult> txResults = [];
     List<EstoqueTransactionResult> txResultsComboCap = [];
     var baixaEstoqueConcluida = false;
     var baixaEstoqueAplicadaNestaExecucao = false;
-    late final Venda venda;
+    late Venda venda;
     late final dynamic addedKey;
     late final double subtotal;
     late final double total;
@@ -1708,6 +1840,16 @@ class VendasService {
     txResults = baixaOp.transactionResults;
     baixaEstoqueConcluida = true;
     baixaEstoqueAplicadaNestaExecucao = baixaOp.baixaAplicadaNestaExecucao;
+
+    if (isCoordinatedPdv && saleIntentStatus == SaleIntentStatus.reserved) {
+      saleIntentStatus = await _coordinatedSaleIntentAdvance(
+        lojaId: lojaEfetiva,
+        saleIntentId: coordinatedIntentId,
+        operationId: idFirebaseReservado,
+        current: saleIntentStatus,
+        target: SaleIntentStatus.stockApplied,
+      );
+    }
 
     await EstoqueTransactionService.removerDoCatalogoSeEstoqueZerado(lojaEfetiva, txResults);
 
@@ -1890,9 +2032,40 @@ class VendasService {
 
     await debugAfterRemoteStockAppliedBeforeHivePersist?.call();
 
-    addedKey = debugVendasBoxAddOverride != null
-        ? await debugVendasBoxAddOverride!(vendasBox, venda)
-        : await vendasBox.add(venda);
+    final vendaExistentePorOpId = _findVendaHivePorIdFirebase(
+      vendasBox,
+      idFirebaseReservado,
+      lojaEfetiva,
+    );
+    if (vendaExistentePorOpId != null) {
+      venda = vendaExistentePorOpId;
+      addedKey = venda.key;
+      if (isCoordinatedPdv &&
+          saleIntentStatus == SaleIntentStatus.stockApplied) {
+        saleIntentStatus = await _coordinatedSaleIntentAdvance(
+          lojaId: lojaEfetiva,
+          saleIntentId: coordinatedIntentId,
+          operationId: idFirebaseReservado,
+          current: saleIntentStatus,
+          target: SaleIntentStatus.salePersisted,
+        );
+      }
+    } else {
+      addedKey = debugVendasBoxAddOverride != null
+          ? await debugVendasBoxAddOverride!(vendasBox, venda)
+          : await vendasBox.add(venda);
+
+      if (isCoordinatedPdv &&
+          saleIntentStatus == SaleIntentStatus.stockApplied) {
+        saleIntentStatus = await _coordinatedSaleIntentAdvance(
+          lojaId: lojaEfetiva,
+          saleIntentId: coordinatedIntentId,
+          operationId: idFirebaseReservado,
+          current: saleIntentStatus,
+          target: SaleIntentStatus.salePersisted,
+        );
+      }
+    }
 
     await VendaOperationJournalService.complete(
       lojaId: lojaEfetiva,
@@ -1923,6 +2096,13 @@ class VendasService {
             lojaId: lojaEfetiva,
             operationKey: operationKey,
           );
+          if (isCoordinatedPdv) {
+            await _coordinatedSaleIntentCriticalBestEffort(
+              lojaId: lojaEfetiva,
+              saleIntentId: coordinatedIntentId,
+              operationId: idFirebaseReservado,
+            );
+          }
           Error.throwWithStackTrace(
             VendaPersistenciaInconsistenciaCritica(
               erroPersistencia: e,
@@ -1935,6 +2115,13 @@ class VendasService {
           lojaId: lojaEfetiva,
           operationKey: operationKey,
         );
+        if (isCoordinatedPdv) {
+          await _coordinatedSaleIntentRevertBestEffort(
+            lojaId: lojaEfetiva,
+            saleIntentId: coordinatedIntentId,
+            operationId: idFirebaseReservado,
+          );
+        }
       }
       rethrow;
     }
@@ -2095,6 +2282,13 @@ class VendasService {
           );
         }
         await _excluirVendaHiveSeguro(vendasBox, venda, vendaHiveKey);
+        if (isCoordinatedPdv) {
+          await _coordinatedSaleIntentRevertBestEffort(
+            lojaId: lojaEfetiva,
+            saleIntentId: coordinatedIntentId,
+            operationId: idFirebaseReservado,
+          );
+        }
         if (VendaComboEstoqueExpansion.isErroVariacaoObrigatoria(e)) {
           rethrow;
         }
@@ -2106,6 +2300,25 @@ class VendasService {
           }
         }
         throw ArgumentError(msgUsuario);
+      }
+    }
+
+    await debugAfterHiveSalePersistedBeforeSaleIntentComplete?.call();
+
+    if (isCoordinatedPdv &&
+        saleIntentStatus == SaleIntentStatus.salePersisted) {
+      try {
+        saleIntentStatus = await _coordinatedSaleIntentAdvance(
+          lojaId: lojaEfetiva,
+          saleIntentId: coordinatedIntentId,
+          operationId: idFirebaseReservado,
+          current: saleIntentStatus,
+          target: SaleIntentStatus.completed,
+        );
+      } catch (e) {
+        debugPrint(
+          '[VENDAS-SERVICE] sale intent complete best-effort falhou: $e',
+        );
       }
     }
 

@@ -107,7 +107,11 @@ abstract final class SaleIntentService {
   @visibleForTesting
   static void debugClearOverride() {
     debugFirestoreOverride = null;
+    debugThrowOnComplete = false;
   }
+
+  @visibleForTesting
+  static bool debugThrowOnComplete = false;
 
   static FirebaseFirestore get _db =>
       debugFirestoreOverride ?? FirebaseFirestore.instance;
@@ -391,13 +395,17 @@ abstract final class SaleIntentService {
     required String lojaId,
     required String saleIntentId,
     required String operationId,
-  }) =>
-      _transition(
-        lojaId: lojaId,
-        saleIntentId: saleIntentId,
-        expectedOperationId: operationId,
-        targetStatus: SaleIntentStatus.completed,
-      );
+  }) async {
+    if (debugThrowOnComplete) {
+      throw Exception('sale intent complete simulado para teste');
+    }
+    return _transition(
+      lojaId: lojaId,
+      saleIntentId: saleIntentId,
+      expectedOperationId: operationId,
+      targetStatus: SaleIntentStatus.completed,
+    );
+  }
 
   static Future<SaleIntentReservation> revert({
     required String lojaId,

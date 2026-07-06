@@ -14,6 +14,16 @@ class VendaOperationInterruptedException implements Exception {
   String toString() => 'VendaOperationInterruptedException';
 }
 
+/// Journal incompatível com operationId ou hash exigido (M3.2-B).
+class VendaOperationJournalIdentityConflictException implements Exception {
+  VendaOperationJournalIdentityConflictException(this.message);
+  final String message;
+
+  @override
+  String toString() =>
+      'VendaOperationJournalIdentityConflictException: $message';
+}
+
 /// Entrada pendente no journal local (privacy-minimal).
 class VendaOperationJournalEntry {
   const VendaOperationJournalEntry({
@@ -116,6 +126,7 @@ abstract final class VendaOperationJournalService {
     required String operationKey,
     required String stockEffectHash,
     String? explicitOperationId,
+    String? requiredOperationId,
   }) async {
     final loja = lojaId.trim();
     final key = operationKey.trim();
@@ -126,6 +137,44 @@ abstract final class VendaOperationJournalService {
 
     final box = await _openBox(loja);
     final now = DateTime.now();
+
+    final required = (requiredOperationId ?? '').trim();
+    if (required.isNotEmpty) {
+      final existing = VendaOperationJournalEntry.fromMap(box.get(key));
+      if (existing != null) {
+        if (existing.stockEffectHash != hash || existing.lojaId != loja) {
+          throw VendaOperationJournalIdentityConflictException(
+            'stockEffectHash divergente no journal para operationKey=$key.',
+          );
+        }
+        if (existing.operationId != required) {
+          throw VendaOperationJournalIdentityConflictException(
+            'operationId divergente no journal para operationKey=$key.',
+          );
+        }
+        final touched = VendaOperationJournalEntry(
+          operationId: existing.operationId,
+          lojaId: existing.lojaId,
+          operationKey: existing.operationKey,
+          stockEffectHash: existing.stockEffectHash,
+          createdAt: existing.createdAt,
+          updatedAt: now,
+          critical: existing.critical,
+        );
+        await box.put(key, touched.toMap());
+        return touched;
+      }
+      final entry = VendaOperationJournalEntry(
+        operationId: required,
+        lojaId: loja,
+        operationKey: key,
+        stockEffectHash: hash,
+        createdAt: now,
+        updatedAt: now,
+      );
+      await box.put(key, entry.toMap());
+      return entry;
+    }
 
     final explicit = (explicitOperationId ?? '').trim();
     if (explicit.isNotEmpty) {
