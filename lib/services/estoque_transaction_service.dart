@@ -7,7 +7,10 @@
 // Após sucesso, atualizar Hive local para consistência.
 
 import 'dart:async';
+import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -65,6 +68,60 @@ class EstoqueTransactionResult {
     this.ajusteCapComboSomenteHive = false,
     this.quantidadeComboAntesAjusteLocal,
   });
+}
+
+/// Resultado da baixa idempotente por [operationId] (PDV manual).
+enum EstoqueBaixaOperationStatus {
+  applied,
+  alreadyApplied,
+}
+
+class EstoqueBaixaOperationResult {
+  const EstoqueBaixaOperationResult({
+    required this.status,
+    required this.transactionResults,
+  });
+
+  final EstoqueBaixaOperationStatus status;
+  final List<EstoqueTransactionResult> transactionResults;
+
+  bool get baixaAplicadaNestaExecucao =>
+      status == EstoqueBaixaOperationStatus.applied;
+
+  bool get baixaJaAplicadaAnteriormente =>
+      status == EstoqueBaixaOperationStatus.alreadyApplied;
+}
+
+/// Mesmo [operationId] com efeito de estoque diferente — fail-closed.
+class EstoqueBaixaOperationIdentityConflictException implements Exception {
+  EstoqueBaixaOperationIdentityConflictException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => 'EstoqueBaixaOperationIdentityConflictException: $message';
+}
+
+class _PdvBaixaIdempotencyContext {
+  const _PdvBaixaIdempotencyContext({
+    required this.operationId,
+    required this.txItemsHash,
+    required this.snapshotHash,
+  });
+
+  final String operationId;
+  final String txItemsHash;
+  final String snapshotHash;
+}
+
+class _TransacaoBaixaBatchOutcome {
+  const _TransacaoBaixaBatchOutcome({
+    required this.alreadyApplied,
+    required this.results,
+  });
+
+  final bool alreadyApplied;
+  final List<EstoqueTransactionResult> results;
 }
 
 /// Serviço de baixa de estoque atômica via Firestore Transaction
@@ -951,26 +1008,126 @@ class EstoqueTransactionService {
     }).toList();
   }
 
-  /// Baixa estoque de múltiplos itens em uma única transação (evita rollback parcial)
-  static Future<List<EstoqueTransactionResult>> baixarEstoqueTransactionBatch({
+  static String _sha256HexUtf8(String input) {
+    return sha256.convert(utf8.encode(input)).toString();
+  }
+
+  /// Hash determinístico do efeito de estoque solicitado (entrada txItems).
+  @visibleForTesting
+  static String computeTxItemsHashForIdempotencia(
+    List<Map<String, dynamic>> itens,
+  ) {
+    final lines = <Map<String, dynamic>>[];
+    for (final item in itens) {
+      final quantidade = (item['quantidade'] as num?)?.toInt() ??
+          (item['qty'] as num?)?.toInt() ??
+          0;
+      if (quantidade <= 0) continue;
+      lines.add({
+        'productId': (item['productId'] ??
+                item['produtosId'] ??
+                item['id'] ??
+                '')
+            .toString()
+            .trim(),
+        'slug': (item['slug'] ?? '').toString().trim(),
+        'quantidade': quantidade,
+        'tamanho': (item['tamanho'] ?? item['size'] ?? '').toString().trim(),
+        'cor': (item['cor'] ?? item['color'] ?? '').toString().trim(),
+        'extraValor': (item['extraValor'] ?? item['variacaoExtra'] ?? '')
+            .toString()
+            .trim(),
+      });
+    }
+    lines.sort((a, b) {
+      for (final key in [
+        'productId',
+        'slug',
+        'tamanho',
+        'cor',
+        'extraValor',
+        'quantidade',
+      ]) {
+        final cmp = a[key].toString().compareTo(b[key].toString());
+        if (cmp != 0) return cmp;
+      }
+      return 0;
+    });
+    return _sha256HexUtf8(jsonEncode(lines));
+  }
+
+  /// Hash do efeito resolvido (documentos Firestore + variação).
+  @visibleForTesting
+  static String computeSnapshotHashFromResolvedBaixa(
+    List<({
+      DocumentReference<Map<String, dynamic>> ref,
+      int quantidade,
+      String tamanho,
+      String cor,
+      String variacaoExtra,
+    })> resolvedItems,
+  ) {
+    final lines = resolvedItems
+        .map(
+          (r) => {
+            'docId': r.ref.id,
+            'quantidade': r.quantidade,
+            'tamanho': r.tamanho,
+            'cor': r.cor,
+            'variacaoExtra': r.variacaoExtra,
+          },
+        )
+        .toList()
+      ..sort((a, b) {
+        for (final key in [
+          'docId',
+          'tamanho',
+          'cor',
+          'variacaoExtra',
+          'quantidade',
+        ]) {
+          final cmp = a[key].toString().compareTo(b[key].toString());
+          if (cmp != 0) return cmp;
+        }
+        return 0;
+      });
+    return _sha256HexUtf8(jsonEncode(lines));
+  }
+
+  static void _assertMarkerIdentityCompativel({
+    required Map<String, dynamic> data,
     required String lojaId,
-    required List<Map<String, dynamic>> itens,
+    required String operationId,
+    required String txItemsHash,
+    required String snapshotHash,
+  }) {
+    final op = (data['operationId'] ?? '').toString().trim();
+    final sale = (data['saleId'] ?? '').toString().trim();
+    final loja = (data['lojaId'] ?? '').toString().trim();
+    if (op != operationId || sale != operationId || loja != lojaId) {
+      throw EstoqueBaixaOperationIdentityConflictException(
+        'Marcador incompatível com operationId=$operationId.',
+      );
+    }
+    final storedTx = (data['txItemsHash'] ?? '').toString().trim();
+    final storedSnap = (data['snapshotHash'] ?? '').toString().trim();
+    if (storedTx != txItemsHash || storedSnap != snapshotHash) {
+      throw EstoqueBaixaOperationIdentityConflictException(
+        'operationId=$operationId já aplicado com efeito de estoque diferente.',
+      );
+    }
+  }
+
+  static Future<void> _validarTombstonesBaixa({
+    required String lojaId,
+    required List<({
+      DocumentReference<Map<String, dynamic>> ref,
+      int quantidade,
+      String tamanho,
+      String cor,
+      String variacaoExtra,
+    })> resolvedItems,
   }) async {
-    if (itens.length > _maxItensPorTransacao) {
-      throw Exception(
-        'Venda com muitos itens (${itens.length}). '
-        'Divida em vendas menores (máx. $_maxItensPorTransacao itens por venda).',
-      );
-    }
-
-    final resolvedItems = await _resolverItensMescladosBaixa(lojaId, itens);
-
-    if (resolvedItems.isEmpty) {
-      throw Exception(
-        'Nenhum item válido para baixa de estoque (quantidade ou produto inválido).',
-      );
-    }
-
     await ProdutoExclusaoTombstoneService.ensureHydratedForLoja(lojaId);
     for (final r in resolvedItems) {
       if (await ProdutoExclusaoTombstoneService.isProdutoBloqueadoRemoto(
@@ -991,9 +1148,82 @@ class EstoqueTransactionService {
         );
       }
     }
+  }
 
-    Future<List<EstoqueTransactionResult>> executarTransacao() {
-      return _db.runTransaction<List<EstoqueTransactionResult>>((transaction) async {
+  /// Baixa estoque de múltiplos itens em uma única transação (evita rollback parcial)
+  static Future<List<EstoqueTransactionResult>> baixarEstoqueTransactionBatch({
+    required String lojaId,
+    required List<Map<String, dynamic>> itens,
+  }) async {
+    if (itens.length > _maxItensPorTransacao) {
+      throw Exception(
+        'Venda com muitos itens (${itens.length}). '
+        'Divida em vendas menores (máx. $_maxItensPorTransacao itens por venda).',
+      );
+    }
+
+    final resolvedItems = await _resolverItensMescladosBaixa(lojaId, itens);
+
+    if (resolvedItems.isEmpty) {
+      throw Exception(
+        'Nenhum item válido para baixa de estoque (quantidade ou produto inválido).',
+      );
+    }
+
+    await _validarTombstonesBaixa(lojaId: lojaId, resolvedItems: resolvedItems);
+
+    final outcome = await _executarBaixaBatchInterno(
+      lojaId: lojaId,
+      resolvedItems: resolvedItems,
+    );
+    return outcome.results;
+  }
+
+  static Future<_TransacaoBaixaBatchOutcome> _executarBaixaBatchInterno({
+    required String lojaId,
+    required List<({
+      DocumentReference<Map<String, dynamic>> ref,
+      int quantidade,
+      String tamanho,
+      String cor,
+      String variacaoExtra,
+    })> resolvedItems,
+    _PdvBaixaIdempotencyContext? idempotency,
+  }) async {
+    Future<_TransacaoBaixaBatchOutcome> executarTransacao([
+      _PdvBaixaIdempotencyContext? idempotency,
+    ]) {
+      return _db.runTransaction<_TransacaoBaixaBatchOutcome>((transaction) async {
+      if (idempotency != null) {
+        final markerRef =
+            _baixaPagamentoRef(lojaId, idempotency.operationId);
+        final markerSnap = await transaction.get(markerRef);
+        if (markerSnap.exists) {
+          final markerData = markerSnap.data() ?? {};
+          if (markerData['baixaAplicada'] == true) {
+            if (markerData['estornoAplicado'] == true) {
+              throw EstoqueBaixaOperationIdentityConflictException(
+                'Baixa já estornada para operationId=${idempotency.operationId}.',
+              );
+            }
+            _assertMarkerIdentityCompativel(
+              data: markerData,
+              lojaId: lojaId,
+              operationId: idempotency.operationId,
+              txItemsHash: idempotency.txItemsHash,
+              snapshotHash: idempotency.snapshotHash,
+            );
+            debugPrint(
+              '[ESTOQUE-TX] Baixa idempotente replay operationId=${idempotency.operationId}',
+            );
+            return const _TransacaoBaixaBatchOutcome(
+              alreadyApplied: true,
+              results: [],
+            );
+          }
+        }
+      }
+
       // FASE 1: Todas as leituras antes de qualquer escrita (regra do Firestore)
       final updates = <({DocumentReference<Map<String, dynamic>> ref, DocumentReference<Map<String, dynamic>>? estoqueRef, Map<String, dynamic> updateData, EstoqueTransactionResult result})>[];
 
@@ -1208,8 +1438,24 @@ class EstoqueTransactionService {
         transaction.set(produtosRef, u.updateData, SetOptions(merge: true));
       }
 
+      if (idempotency != null) {
+        transaction.set(
+          _baixaPagamentoRef(lojaId, idempotency.operationId),
+          {
+            'protocolVersion': 1,
+            'origem': 'pdv',
+            'operationId': idempotency.operationId,
+            'saleId': idempotency.operationId,
+            'lojaId': lojaId,
+            'baixaAplicada': true,
+            'snapshotHash': idempotency.snapshotHash,
+            'txItemsHash': idempotency.txItemsHash,
+          },
+        );
+      }
+
       final results = updates.map((u) => u.result).toList();
-      return results;
+      return _TransacaoBaixaBatchOutcome(alreadyApplied: false, results: results);
       }).timeout(
         const Duration(seconds: 25),
         onTimeout: () => throw TimeoutException(
@@ -1219,7 +1465,8 @@ class EstoqueTransactionService {
     }
 
     try {
-      return await executarTransacao();
+      final outcome = await executarTransacao(idempotency);
+      return outcome;
     } catch (e) {
       final docId = _extrairDocIdProdutosNotFound(e, lojaId);
       if (docId == null) rethrow;
@@ -1234,8 +1481,57 @@ class EstoqueTransactionService {
         );
       }
       debugPrint('[ESTOQUE-TX] 🔁 Retry batch após reparar produtos/$docId');
-      return executarTransacao();
+      final retryOutcome = await executarTransacao(idempotency);
+      return retryOutcome;
     }
+  }
+
+  /// Baixa idempotente por [operationId] — marker V1 + estoque na mesma transação.
+  static Future<EstoqueBaixaOperationResult>
+      baixarEstoqueTransactionBatchIdempotente({
+    required String lojaId,
+    required List<Map<String, dynamic>> itens,
+    required String operationId,
+  }) async {
+    final opId = operationId.trim();
+    if (opId.isEmpty) {
+      throw ArgumentError.value(operationId, 'operationId', 'não pode ser vazio');
+    }
+
+    if (itens.length > _maxItensPorTransacao) {
+      throw Exception(
+        'Venda com muitos itens (${itens.length}). '
+        'Divida em vendas menores (máx. $_maxItensPorTransacao itens por venda).',
+      );
+    }
+
+    final resolvedItems = await _resolverItensMescladosBaixa(lojaId, itens);
+    if (resolvedItems.isEmpty) {
+      throw Exception(
+        'Nenhum item válido para baixa de estoque (quantidade ou produto inválido).',
+      );
+    }
+
+    await _validarTombstonesBaixa(lojaId: lojaId, resolvedItems: resolvedItems);
+
+    final idempotency = _PdvBaixaIdempotencyContext(
+      operationId: opId,
+      txItemsHash: computeTxItemsHashForIdempotencia(itens),
+      snapshotHash: computeSnapshotHashFromResolvedBaixa(resolvedItems),
+    );
+
+    final outcome = await _executarBaixaBatchInterno(
+      lojaId: lojaId,
+      resolvedItems: resolvedItems,
+      idempotency: idempotency,
+    );
+
+    return EstoqueBaixaOperationResult(
+      status: outcome.alreadyApplied
+          ? EstoqueBaixaOperationStatus.alreadyApplied
+          : EstoqueBaixaOperationStatus.applied,
+      transactionResults: outcome.results,
+    );
   }
 
   /// Key Hive usada no pós-pagamento catálogo (`estoque_baixa_pagamento/{vendaId}`).

@@ -51,7 +51,7 @@ void main() {
   group('ordem e rollback documentados no código', () {
     test('registrarVendaMulti: baixa antes de vendasBox.add', () {
       final src = _vendasServiceSource();
-      final iBaixa = src.indexOf('baixarEstoqueTransactionBatch');
+      final iBaixa = src.indexOf('baixarEstoqueTransactionBatchIdempotente');
       final iAdd = src.indexOf('vendasBox.add(venda)');
       expect(iBaixa, greaterThan(-1));
       expect(iAdd, greaterThan(iBaixa));

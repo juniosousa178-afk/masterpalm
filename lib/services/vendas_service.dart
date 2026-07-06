@@ -1667,6 +1667,7 @@ class VendasService {
     List<EstoqueTransactionResult> txResults = [];
     List<EstoqueTransactionResult> txResultsComboCap = [];
     var baixaEstoqueConcluida = false;
+    var baixaEstoqueAplicadaNestaExecucao = false;
     late final Venda venda;
     late final dynamic addedKey;
     late final double subtotal;
@@ -1683,11 +1684,15 @@ class VendasService {
 
     await debugAntesBaixaEstoqueBarrier?.call();
 
-    txResults = await EstoqueTransactionService.baixarEstoqueTransactionBatch(
+    final baixaOp =
+        await EstoqueTransactionService.baixarEstoqueTransactionBatchIdempotente(
       lojaId: lojaEfetiva,
       itens: txItems,
+      operationId: idFirebaseReservado,
     );
+    txResults = baixaOp.transactionResults;
     baixaEstoqueConcluida = true;
+    baixaEstoqueAplicadaNestaExecucao = baixaOp.baixaAplicadaNestaExecucao;
 
     await EstoqueTransactionService.removerDoCatalogoSeEstoqueZerado(lojaEfetiva, txResults);
 
@@ -1872,7 +1877,7 @@ class VendasService {
         ? await debugVendasBoxAddOverride!(vendasBox, venda)
         : await vendasBox.add(venda);
     } catch (e, st) {
-      if (baixaEstoqueConcluida) {
+      if (baixaEstoqueConcluida && baixaEstoqueAplicadaNestaExecucao) {
         Object? erroEstorno;
         try {
           await estornarBaixaPosFalhaAntesDePersistirVendaHive(
