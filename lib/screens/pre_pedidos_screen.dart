@@ -18,6 +18,7 @@ import '../services/pre_pedido_service.dart';
 import '../services/shipping_preorder_service.dart';
 import '../services/catalog_cart_item_snapshot.dart';
 import '../services/catalogo_pedido_historico_service.dart';
+import '../services/catalogo_venda_side_effects_secundarios_service.dart';
 import '../services/pos_pagamento_service.dart';
 import '../services/vendas_service.dart';
 import '../utils/cleanup_cancelled_orders.dart';
@@ -2913,6 +2914,19 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
         observacao: (prePedido['observacao'] ?? '').toString(),
         cupom: prePedido['cupom'] as Map<String, dynamic>?,
         premioRoletaRaw: prePedido['premioRoleta'] as Map<String, dynamic>?,
+      );
+
+      await CatalogoVendaSideEffectsSecundariosService()
+          .aplicarAposVendaCatalogoAdmin(
+        lojaId: widget.lojaId,
+        venda: venda,
+        vendaId: vendaId,
+        customer: clienteMap,
+        items: itensParaVenda,
+        produtosBox: produtosBox,
+        total: totalPago,
+        premioRoletaRaw: prePedido['premioRoleta'] as Map<String, dynamic>?,
+        vendedorNome: prePedido['vendedorRef']?.toString(),
       );
 
       await PrePedidoService.confirmarPrePedido(

@@ -476,11 +476,15 @@ void main() {
       final iHistorico = src.indexOf(
         'CatalogoPedidoHistoricoService().garantirDocumentoPedidosHistorico',
       );
+      final iSide = src.indexOf('CatalogoVendaSideEffectsSecundariosService');
+      final iSideMethod = src.indexOf('aplicarAposVendaCatalogoAdmin');
       final iConfirmar = src.indexOf('PrePedidoService.confirmarPrePedido');
       final iPos = src.indexOf('PosPagamentoService.processarConfirmacaoPagamento');
       expect(iVenda, greaterThan(0));
       expect(iHistorico, greaterThan(iVenda));
-      expect(iConfirmar, greaterThan(iHistorico));
+      expect(iSide, greaterThan(iHistorico));
+      expect(iSideMethod, greaterThan(iSide));
+      expect(iConfirmar, greaterThan(iSideMethod));
       expect(iPos, greaterThan(iConfirmar));
       expect(src, contains('PrePedidoSaleIntent.saleIntentIdForPedido'));
       expect(src, contains('estoqueJaBaixado: true'));
