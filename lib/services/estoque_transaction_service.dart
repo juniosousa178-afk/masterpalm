@@ -1201,24 +1201,32 @@ class EstoqueTransactionService {
           final markerData = markerSnap.data() ?? {};
           if (markerData['baixaAplicada'] == true) {
             if (markerData['estornoAplicado'] == true) {
-              throw EstoqueBaixaOperationIdentityConflictException(
-                'Baixa já estornada para operationId=${idempotency.operationId}.',
+              _assertMarkerIdentityCompativel(
+                data: markerData,
+                lojaId: lojaId,
+                operationId: idempotency.operationId,
+                txItemsHash: idempotency.txItemsHash,
+                snapshotHash: idempotency.snapshotHash,
+              );
+              debugPrint(
+                '[ESTOQUE-TX] Re-baixa pós-estorno operationId=${idempotency.operationId}',
+              );
+            } else {
+              _assertMarkerIdentityCompativel(
+                data: markerData,
+                lojaId: lojaId,
+                operationId: idempotency.operationId,
+                txItemsHash: idempotency.txItemsHash,
+                snapshotHash: idempotency.snapshotHash,
+              );
+              debugPrint(
+                '[ESTOQUE-TX] Baixa idempotente replay operationId=${idempotency.operationId}',
+              );
+              return const _TransacaoBaixaBatchOutcome(
+                alreadyApplied: true,
+                results: [],
               );
             }
-            _assertMarkerIdentityCompativel(
-              data: markerData,
-              lojaId: lojaId,
-              operationId: idempotency.operationId,
-              txItemsHash: idempotency.txItemsHash,
-              snapshotHash: idempotency.snapshotHash,
-            );
-            debugPrint(
-              '[ESTOQUE-TX] Baixa idempotente replay operationId=${idempotency.operationId}',
-            );
-            return const _TransacaoBaixaBatchOutcome(
-              alreadyApplied: true,
-              results: [],
-            );
           }
         }
       }
@@ -1447,6 +1455,9 @@ class EstoqueTransactionService {
             'saleId': idempotency.operationId,
             'lojaId': lojaId,
             'baixaAplicada': true,
+            'estornoAplicado': false,
+            'estornoAplicadoAt': FieldValue.delete(),
+            'estornoOrigem': FieldValue.delete(),
             'snapshotHash': idempotency.snapshotHash,
             'txItemsHash': idempotency.txItemsHash,
           },

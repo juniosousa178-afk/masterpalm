@@ -64,6 +64,10 @@ class VendasService {
   @visibleForTesting
   static Future<void> Function()? debugForcarFalhaEstornoPreHiveRollback;
 
+  /// Somente testes — simula falha em [devolverEstoqueParaVendaRemovida] no rollback fiado.
+  @visibleForTesting
+  static Future<void> Function()? debugForcarFalhaEstornoPosFiadoRollback;
+
   /// Somente testes — substitui [_persistirContasReceberNaBox] para simular falha fiado.
   @visibleForTesting
   static Future<void> Function({
@@ -2041,7 +2045,8 @@ class VendasService {
       venda = vendaExistentePorOpId;
       addedKey = venda.key;
       if (isCoordinatedPdv &&
-          saleIntentStatus == SaleIntentStatus.stockApplied) {
+          saleIntentStatus == SaleIntentStatus.stockApplied &&
+          !(isFiado && saldoFiado > 0.01)) {
         saleIntentStatus = await _coordinatedSaleIntentAdvance(
           lojaId: lojaEfetiva,
           saleIntentId: coordinatedIntentId,
@@ -2056,7 +2061,8 @@ class VendasService {
           : await vendasBox.add(venda);
 
       if (isCoordinatedPdv &&
-          saleIntentStatus == SaleIntentStatus.stockApplied) {
+          saleIntentStatus == SaleIntentStatus.stockApplied &&
+          !(isFiado && saldoFiado > 0.01)) {
         saleIntentStatus = await _coordinatedSaleIntentAdvance(
           lojaId: lojaEfetiva,
           saleIntentId: coordinatedIntentId,
@@ -2243,6 +2249,16 @@ class VendasService {
           vendaIdVinculo: vendaIdVinculo,
           vendaHiveKey: vendaHiveKey,
         );
+        if (isCoordinatedPdv &&
+            saleIntentStatus == SaleIntentStatus.stockApplied) {
+          saleIntentStatus = await _coordinatedSaleIntentAdvance(
+            lojaId: lojaEfetiva,
+            saleIntentId: coordinatedIntentId,
+            operationId: idFirebaseReservado,
+            current: saleIntentStatus,
+            target: SaleIntentStatus.salePersisted,
+          );
+        }
       } catch (e, st) {
         final detalheErro = _mensagemErroContaReceberSegura(e);
         _logContaReceberFiado(
@@ -2270,15 +2286,35 @@ class VendasService {
             ? detalheErro
             : 'Não foi possível gerar a conta a receber. $detalheErro';
         onSyncError?.call(msgUsuario);
+        Object? erroEstorno;
         try {
+          final forcar = debugForcarFalhaEstornoPosFiadoRollback;
+          if (forcar != null) await forcar();
           await devolverEstoqueParaVendaRemovida(
             venda: venda,
             produtosBox: produtosBox,
             lojaId: lojaEfetiva,
           );
         } catch (estE) {
+          erroEstorno = estE;
           debugPrint(
             '⚠️ [VENDAS-SERVICE] Falha ao estornar estoque após erro no fiado: $estE',
+          );
+        }
+        if (erroEstorno != null) {
+          if (isCoordinatedPdv) {
+            await _coordinatedSaleIntentCriticalBestEffort(
+              lojaId: lojaEfetiva,
+              saleIntentId: coordinatedIntentId,
+              operationId: idFirebaseReservado,
+            );
+          }
+          Error.throwWithStackTrace(
+            VendaPersistenciaInconsistenciaCritica(
+              erroPersistencia: e,
+              erroEstorno: erroEstorno,
+            ),
+            st,
           );
         }
         await _excluirVendaHiveSeguro(vendasBox, venda, vendaHiveKey);

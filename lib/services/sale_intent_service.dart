@@ -275,12 +275,28 @@ abstract final class SaleIntentService {
         origin: originNorm,
         stockEffectHash: hashNorm,
       );
-      return _parseReservation(
+      final parsed = _parseReservation(
         data: data,
         lojaId: loja,
         saleIntentId: intentId,
         reserveStatus: SaleIntentReserveStatus.joined,
       );
+      if (parsed.status == SaleIntentStatus.reverted) {
+        transaction.update(ref, {
+          'status': SaleIntentStatus.reserved.wireValue,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+        return SaleIntentReservation(
+          saleIntentId: intentId,
+          operationId: parsed.operationId,
+          stockEffectHash: hashNorm,
+          origin: originNorm,
+          status: SaleIntentStatus.reserved,
+          reserveStatus: SaleIntentReserveStatus.joined,
+          lojaId: loja,
+        );
+      }
+      return parsed;
     });
   }
 
