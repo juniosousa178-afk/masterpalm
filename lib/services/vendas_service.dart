@@ -1573,6 +1573,7 @@ class VendasService {
     Map<int, List<Map<String, dynamic>>>? itensComboSelecaoPorIndice,
     void Function(String? numeroSorte)? onNumeroSorteGerado,
     String? saleIntentId,
+    String? saleIntentOrigin,
   }) {
     final chave = _chaveCoalesceRegistrarVenda(
       lojaId: lojaId,
@@ -1622,6 +1623,7 @@ class VendasService {
           itensComboSelecaoPorIndice: itensComboSelecaoPorIndice,
           onNumeroSorteGerado: onNumeroSorteGerado,
           saleIntentId: saleIntentId,
+          saleIntentOrigin: saleIntentOrigin,
         );
         if (!placeholder.isCompleted) placeholder.complete(venda);
       } catch (e, st) {
@@ -1658,6 +1660,7 @@ class VendasService {
     Map<int, List<Map<String, dynamic>>>? itensComboSelecaoPorIndice, // 🔹 seleção do cliente para combos
     void Function(String? numeroSorte)? onNumeroSorteGerado,
     String? saleIntentId,
+    String? saleIntentOrigin,
   }) async {
     if (itens.isEmpty) {
       throw Exception('Nenhum item informado.');
@@ -1776,6 +1779,7 @@ class VendasService {
 
     final coordinatedIntentId = (saleIntentId ?? '').trim();
     final isCoordinatedPdv = coordinatedIntentId.isNotEmpty;
+    final coordinatedOrigin = (saleIntentOrigin ?? SaleIntentOrigins.pdvManual).trim();
     SaleIntentReservation? saleIntentReservation;
     var saleIntentStatus = SaleIntentStatus.reserved;
 
@@ -1783,7 +1787,7 @@ class VendasService {
       saleIntentReservation = await SaleIntentService.reserveOrJoin(
         lojaId: lojaEfetiva,
         saleIntentId: coordinatedIntentId,
-        origin: SaleIntentOrigins.pdvManual,
+        origin: coordinatedOrigin,
         stockEffectHash: stockEffectHash,
       );
       saleIntentStatus = saleIntentReservation.status;

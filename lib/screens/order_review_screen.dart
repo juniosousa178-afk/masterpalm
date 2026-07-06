@@ -15,6 +15,7 @@ import '../debug/bootstrap_diagnostics.dart' show FirebaseGuard;
 
 import '../core/hive_box_names.dart';
 import '../core/logger.dart';
+import '../core/order_review_sale_intent.dart';
 import '../repositories/pedido_repository.dart';
 import '../services/loja_id_service.dart';
 import '../services/pedido_collection_resolver.dart';
@@ -24,6 +25,7 @@ import '../models/cliente.dart';
 import '../models/venda.dart';
 import '../models/venda_item.dart';
 import '../services/vendas_service.dart';
+import '../services/sale_intent_service.dart';
 
 class OrderReviewScreen extends StatefulWidget {
   final String orderId;
@@ -47,6 +49,7 @@ class _OrderReviewScreenState extends State<OrderReviewScreen> {
   Box<Venda>? _vendas;
   Box? _config;
   bool _loading = true;
+  bool _finalizando = false;
 
   @override
   void initState() {
@@ -266,6 +269,7 @@ class _OrderReviewScreenState extends State<OrderReviewScreen> {
 
   Future<void> _finalizar() async {
     if (_order == null || _produtos == null || _clientes == null || _vendas == null || _config == null) return;
+    if (_finalizando) return;
 
     // ❌ Bloqueia finalização se faltar estoque
     if (_temEstoqueInsuficiente) {
@@ -273,6 +277,8 @@ class _OrderReviewScreenState extends State<OrderReviewScreen> {
       return;
     }
 
+    setState(() => _finalizando = true);
+    try {
     final items =
         List<Map<String, dynamic>>.from((_order!['items'] as List?) ?? []);
     final pagamento = _order!['pagamento']?.toString() ?? 'Dinheiro';
@@ -361,6 +367,8 @@ class _OrderReviewScreenState extends State<OrderReviewScreen> {
         frete: freteVal,
         descontoPct: 0,
         lojaId: lojaId,
+        saleIntentId: OrderReviewSaleIntent.saleIntentIdForOrder(widget.orderId),
+        saleIntentOrigin: SaleIntentOrigins.orderReview,
       );
     } catch (e) {
       debugPrint('OrderReviewScreen: erro ao registrar venda (type=${e.runtimeType})');
@@ -452,6 +460,9 @@ class _OrderReviewScreenState extends State<OrderReviewScreen> {
       const SnackBar(content: Text('Venda finalizada e estoque atualizado!')),
     );
     Navigator.pop(context);
+    } finally {
+      if (mounted) setState(() => _finalizando = false);
+    }
   }
 
   Future<void> _cancelar() async {
@@ -599,8 +610,14 @@ class _OrderReviewScreenState extends State<OrderReviewScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: ElevatedButton(
-                  onPressed: temFalta ? null : _finalizar,
-                  child: const Text('Finalizar venda'),
+                  onPressed: (temFalta || _finalizando) ? null : _finalizar,
+                  child: _finalizando
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Finalizar venda'),
                 ),
               ),
             ],
