@@ -17,6 +17,7 @@ import '../models/venda_item.dart';
 import '../services/pre_pedido_service.dart';
 import '../services/shipping_preorder_service.dart';
 import '../services/catalog_cart_item_snapshot.dart';
+import '../services/catalogo_pedido_historico_service.dart';
 import '../services/pos_pagamento_service.dart';
 import '../services/vendas_service.dart';
 import '../utils/cleanup_cancelled_orders.dart';
@@ -2890,6 +2891,29 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
       );
 
       final vendaId = venda.key.toString();
+
+      final subtotalPedido = (prePedido['subtotal'] as num?)?.toDouble() ??
+          itensParaVenda.fold<double>(
+            0,
+            (acc, item) =>
+                acc +
+                ((item['precoUnitario'] as num?)?.toDouble() ?? 0) *
+                    ((item['quantidade'] as num?)?.toInt() ?? 1),
+          );
+
+      await CatalogoPedidoHistoricoService().garantirDocumentoPedidosHistorico(
+        lojaId: widget.lojaId,
+        vendaId: vendaId,
+        customer: clienteMap,
+        items: itensParaVenda,
+        entrega: freteMap,
+        pagamento: pagamento,
+        subtotal: subtotalPedido,
+        total: totalPago,
+        observacao: (prePedido['observacao'] ?? '').toString(),
+        cupom: prePedido['cupom'] as Map<String, dynamic>?,
+        premioRoletaRaw: prePedido['premioRoleta'] as Map<String, dynamic>?,
+      );
 
       await PrePedidoService.confirmarPrePedido(
         lojaId: widget.lojaId,

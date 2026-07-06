@@ -473,10 +473,14 @@ void main() {
       final src =
           File('lib/screens/pre_pedidos_screen.dart').readAsStringSync();
       final iVenda = src.indexOf('VendasService.registrarVendaMulti');
+      final iHistorico = src.indexOf(
+        'CatalogoPedidoHistoricoService().garantirDocumentoPedidosHistorico',
+      );
       final iConfirmar = src.indexOf('PrePedidoService.confirmarPrePedido');
       final iPos = src.indexOf('PosPagamentoService.processarConfirmacaoPagamento');
       expect(iVenda, greaterThan(0));
-      expect(iConfirmar, greaterThan(iVenda));
+      expect(iHistorico, greaterThan(iVenda));
+      expect(iConfirmar, greaterThan(iHistorico));
       expect(iPos, greaterThan(iConfirmar));
       expect(src, contains('PrePedidoSaleIntent.saleIntentIdForPedido'));
       expect(src, contains('estoqueJaBaixado: true'));
