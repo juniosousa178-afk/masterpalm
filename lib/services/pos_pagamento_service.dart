@@ -59,6 +59,9 @@ class PosPagamentoService {
     required String formaPagamento,
     String? cupomRoletaCodigo,
     double? cupomRoletaDesconto,
+    /// Quando true, estoque já foi baixado (ex.: via [VendasService.registrarVendaMulti]
+    /// coordenado com Sale Intent). Grava marcador e pula nova baixa.
+    bool estoqueJaBaixado = false,
   }) async {
     ultimaFalhaProcessamento = null;
     try {
@@ -94,6 +97,20 @@ class PosPagamentoService {
         debugPrint(
           'ℹ️ [ESTOQUE_BAIXA] Baixa já aplicada anteriormente; pulando nova baixa. lojaId=$lojaId, vendaId=$vendaId',
         );
+      } else if (estoqueJaBaixado) {
+        debugPrint(
+          'ℹ️ [ESTOQUE_BAIXA] Estoque já baixado via venda coordenada; gravando marcador sem nova baixa. '
+          'lojaId=$lojaId, vendaId=$vendaId',
+        );
+        await baixaRef.set({
+          'baixaAplicada': true,
+          'lojaId': lojaId,
+          'vendaId': vendaId,
+          'origem': 'pos_pagamento_estoque_ja_baixado',
+          'valorTotal': valorTotal,
+          'quantidadeItens': items.length,
+          'createdAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
       } else {
         debugPrint(
           '[CATALOGO_POS_PAGAMENTO_BAIXA_START] vendaId=$vendaId lojaId=$lojaId itens=${items.length}',

@@ -6,13 +6,19 @@ import 'package:hive/hive.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../core/combo_configuravel_resumo.dart';
+import '../core/hive_box_names.dart';
 import '../core/logger.dart';
+import '../core/pre_pedido_sale_intent.dart';
 import '../core/produto_variacao_extra.dart';
+import '../models/cliente.dart';
+import '../models/produto.dart';
+import '../models/venda.dart';
+import '../models/venda_item.dart';
 import '../services/pre_pedido_service.dart';
 import '../services/shipping_preorder_service.dart';
 import '../services/catalog_cart_item_snapshot.dart';
-import '../services/catalogo_venda_service.dart';
 import '../services/pos_pagamento_service.dart';
+import '../services/vendas_service.dart';
 import '../utils/cleanup_cancelled_orders.dart';
 import '../utils/limpar_firestore.dart';
 import '../services/ai_loja_service.dart';
@@ -56,6 +62,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
   String _ordenacao = 'recente'; // recente | antigo | valor_maior | valor_menor
   bool _isOffline = false;
   bool _initialPedidoHighlightShown = false;
+  bool _confirmandoPedido = false;
 
   @override
   void initState() {
@@ -2704,8 +2711,15 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
     );
 
     if (confirmar != true) return;
+    if (_confirmandoPedido) return;
 
+    _confirmandoPedido = true;
     try {
+      final prePedidoId = prePedido['id']?.toString().trim() ?? '';
+      if (prePedidoId.isEmpty) {
+        throw Exception('Pré-pedido sem identificador.');
+      }
+
       final itensParaVenda = (prePedido['itens'] as List).map((item) {
         final precoUnit = (item['precoUnitario'] as num?)?.toDouble() ?? 0.0;
         logD('[PRE-PEDIDO] Processando item: ${item['nome']}');
@@ -2769,87 +2783,170 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
       logD(
           '[PRE-PEDIDO] Total de itens para venda: ${itensParaVenda.length}');
 
-      // ✅ Usar total e subtotal do pre_pedido (já inclui desconto PIX/cupom)
-      final subtotalPedido = (prePedido['subtotal'] as num?)?.toDouble();
       final totalPedido = (prePedido['total'] as num?)?.toDouble();
+      final freteMap =
+          prePedido['frete'] as Map<String, dynamic>? ?? <String, dynamic>{};
+      final freteGratis = freteMap['freteGratis'] == true;
+      final freteValor = freteGratis
+          ? 0.0
+          : (freteMap['valor'] as num?)?.toDouble() ?? 0.0;
+      final pagamento = (prePedido['pagamento'] ?? 'PIX').toString();
+      final totalPago = totalPedido ??
+          itensParaVenda.fold<double>(
+            0,
+            (acc, item) =>
+                acc +
+                ((item['precoUnitario'] as num?)?.toDouble() ?? 0) *
+                    ((item['quantidade'] as num?)?.toInt() ?? 1),
+          ) +
+              freteValor;
 
-      final vendaId = await CatalogoVendaService.registrarVendaCatalogo(
+      double dinheiro = 0, pix = 0, cartao = 0;
+      switch (pagamento.toUpperCase()) {
+        case 'PIX':
+          pix = totalPago;
+          break;
+        case 'CARTÃO':
+        case 'CARTAO':
+        case 'MERCADO PAGO':
+          cartao = totalPago;
+          break;
+        case 'DINHEIRO':
+          dinheiro = totalPago;
+          break;
+        default:
+          pix = totalPago;
+      }
+
+      final vendaItens = <VendaItem>[
+        for (final item in itensParaVenda)
+          VendaItem(
+            produtoNome: (item['nome'] ?? '').toString(),
+            quantidade: (item['quantidade'] as int?) ??
+                (item['qty'] as int?) ??
+                1,
+            precoUnitario: (item['precoUnitario'] as num?)?.toDouble() ??
+                (item['preco'] as num?)?.toDouble() ??
+                0,
+            tamanho: (item['tamanho'] ?? '').toString(),
+            cor: (item['cor'] ?? '').toString(),
+            lojaId: widget.lojaId,
+            productId: () {
+              final pid = (item['productId'] ?? '').toString().trim();
+              return pid.isNotEmpty ? pid : null;
+            }(),
+            variacaoExtraResumo:
+                (item['variacaoExtraResumo'] ?? '').toString().trim(),
+          ),
+      ];
+
+      Map<int, List<Map<String, dynamic>>>? itensComboSelecaoPorIndice;
+      for (var i = 0; i < itensParaVenda.length; i++) {
+        final raw = itensParaVenda[i]['itensComboComSelecao'];
+        if (raw is! List || raw.isEmpty) continue;
+        final copies = <Map<String, dynamic>>[];
+        for (final e in raw) {
+          if (e is Map) {
+            copies.add(
+              Map<String, dynamic>.from(
+                e.map((k, v) => MapEntry(k.toString(), v)),
+              ),
+            );
+          }
+        }
+        if (copies.isNotEmpty) {
+          itensComboSelecaoPorIndice ??= {};
+          itensComboSelecaoPorIndice[i] = copies;
+        }
+      }
+
+      final produtosBox =
+          await Hive.openBox<Produto>(HiveBoxNames.produtos(widget.lojaId));
+      final clientesBox =
+          await Hive.openBox<Cliente>(HiveBoxNames.clientes(widget.lojaId));
+      final vendasBox =
+          await Hive.openBox<Venda>(HiveBoxNames.vendas(widget.lojaId));
+
+      final clienteMap =
+          prePedido['cliente'] as Map<String, dynamic>? ?? <String, dynamic>{};
+
+      final venda = await VendasService.registrarVendaMulti(
+        produtosBox: produtosBox,
+        clientesBox: clientesBox,
+        vendasBox: vendasBox,
+        clienteNome: (clienteMap['nome'] ?? 'Cliente').toString(),
+        itens: vendaItens,
+        dinheiro: dinheiro,
+        pix: pix,
+        cartao: cartao,
+        vendedor: 'Loja online',
+        observacao: (prePedido['observacao'] ?? '').toString(),
+        frete: freteValor,
+        descontoPct: 0,
         lojaId: widget.lojaId,
-        customer: prePedido['cliente'],
-        items: itensParaVenda,
-        entrega: prePedido['frete'],
-        pagamento: prePedido['pagamento'],
-        observacao: prePedido['observacao'] ?? '',
-        cupomCodigo: prePedido['cupom']?['codigo'],
-        desconto: (prePedido['cupom']?['desconto'] as num?)?.toDouble() ?? 0.0,
-        cupomRoletaCodigo: prePedido['premioRoleta']?['codigo'],
-        cupomRoletaDesconto:
-            (prePedido['premioRoleta']?['valor'] as num?)?.toDouble(),
-        premioRoletaDescricao: prePedido['premioRoleta']?['descricao'],
-        totalOverride: totalPedido,
-        subtotalOverride: subtotalPedido,
-        baixarEstoque: false, // Baixa centralizada no PosPagamentoService
+        itensComboSelecaoPorIndice: itensComboSelecaoPorIndice,
+        saleIntentId: PrePedidoSaleIntent.saleIntentIdForPedido(prePedidoId),
+        saleIntentOrigin: PrePedidoSaleIntent.origin,
       );
 
-      if (vendaId != null) {
-        await PrePedidoService.confirmarPrePedido(
-          lojaId: widget.lojaId,
-          prePedidoId: prePedido['id'],
-          vendaId: vendaId,
-        );
+      final vendaId = venda.key.toString();
 
-        // Gerar número da sorte e enviar por email e WhatsApp ao cliente
-        final cliente = prePedido['cliente'] as Map<String, dynamic>? ?? {};
-        final itens = prePedido['itens'] as List<dynamic>? ?? [];
-        double valorTotal = (prePedido['total'] as num?)?.toDouble() ?? 0.0;
-        if (valorTotal <= 0 && itens.isNotEmpty) {
-          for (final e in itens) {
-            final m = e as Map<String, dynamic>;
-            valorTotal += ((m['precoUnitario'] as num?)?.toDouble() ?? 0) *
-                ((m['quantidade'] as num?)?.toInt() ?? 1);
-          }
-        }
-        final posPagamentoOk = await PosPagamentoService.processarConfirmacaoPagamento(
-          lojaId: widget.lojaId,
-          vendaId: vendaId,
-          customer: {
-            'nome': cliente['nome'] ?? '',
-            'email': cliente['email'] ?? '',
-            'telefone': cliente['telefone'] ?? cliente['tel'] ?? '',
-            'id': cliente['id'] ?? cliente['clienteId'],
-          },
-          items: itensParaVenda,
-          valorTotal: valorTotal,
-          formaPagamento: (prePedido['pagamento'] ?? '').toString(),
-          cupomRoletaCodigo: prePedido['premioRoleta']?['codigo']?.toString(),
-          cupomRoletaDesconto:
-              (prePedido['premioRoleta']?['valor'] as num?)?.toDouble(),
-        );
+      await PrePedidoService.confirmarPrePedido(
+        lojaId: widget.lojaId,
+        prePedidoId: prePedidoId,
+        vendaId: vendaId,
+      );
 
-        if (mounted) {
-          if (posPagamentoOk) {
-            _showModernSnackBar(
-              'Pedido confirmado e venda registrada! Número da sorte enviado por email e WhatsApp.',
-            );
-          } else {
-            final detalhe = PosPagamentoService.ultimaFalhaProcessamento ?? '';
-            final lower = detalhe.toLowerCase();
-            final msg = lower.contains('estoque insuficiente')
-                ? 'Pagamento confirmado, mas o estoque é insuficiente: $detalhe'
-                : lower.contains('informe o tamanho') ||
-                        lower.contains('variação de tamanho') ||
-                        lower.contains('tamanho e cor')
-                    ? 'Pagamento confirmado, mas falta tamanho/cor no pedido: $detalhe'
-                    : detalhe.isNotEmpty
-                        ? 'Pagamento confirmado, mas houve falha no pós-pagamento: $detalhe'
-                        : 'Pagamento confirmado, mas houve falha ao processar o pós-pagamento (baixa de estoque ou notificações). Tente novamente.';
-            _showModernSnackBar(msg, isError: true);
-          }
+      // Gerar número da sorte e enviar por email e WhatsApp ao cliente
+      final cliente = clienteMap;
+      final itens = prePedido['itens'] as List<dynamic>? ?? [];
+      var valorTotal = totalPago;
+      if (valorTotal <= 0 && itens.isNotEmpty) {
+        valorTotal = 0;
+        for (final e in itens) {
+          final m = e as Map<String, dynamic>;
+          valorTotal += ((m['precoUnitario'] as num?)?.toDouble() ?? 0) *
+              ((m['quantidade'] as num?)?.toInt() ?? 1);
         }
-      } else {
-        throw Exception(
-            'Falha ao registrar venda. Verifique se todos os produtos têm estoque disponível '
-            'e se as variações (tamanho/cor) foram selecionadas corretamente.');
+      }
+      final posPagamentoOk =
+          await PosPagamentoService.processarConfirmacaoPagamento(
+        lojaId: widget.lojaId,
+        vendaId: vendaId,
+        customer: {
+          'nome': cliente['nome'] ?? '',
+          'email': cliente['email'] ?? '',
+          'telefone': cliente['telefone'] ?? cliente['tel'] ?? '',
+          'id': cliente['id'] ?? cliente['clienteId'],
+        },
+        items: itensParaVenda,
+        valorTotal: valorTotal,
+        formaPagamento: pagamento,
+        cupomRoletaCodigo: prePedido['premioRoleta']?['codigo']?.toString(),
+        cupomRoletaDesconto:
+            (prePedido['premioRoleta']?['valor'] as num?)?.toDouble(),
+        estoqueJaBaixado: true,
+      );
+
+      if (mounted) {
+        if (posPagamentoOk) {
+          _showModernSnackBar(
+            'Pedido confirmado e venda registrada! Número da sorte enviado por email e WhatsApp.',
+          );
+        } else {
+          final detalhe = PosPagamentoService.ultimaFalhaProcessamento ?? '';
+          final lower = detalhe.toLowerCase();
+          final msg = lower.contains('estoque insuficiente')
+              ? 'Pagamento confirmado, mas o estoque é insuficiente: $detalhe'
+              : lower.contains('informe o tamanho') ||
+                      lower.contains('variação de tamanho') ||
+                      lower.contains('tamanho e cor')
+                  ? 'Pagamento confirmado, mas falta tamanho/cor no pedido: $detalhe'
+                  : detalhe.isNotEmpty
+                      ? 'Pagamento confirmado, mas houve falha no pós-pagamento: $detalhe'
+                      : 'Pagamento confirmado, mas houve falha ao processar o pós-pagamento (notificações). Tente novamente.';
+          _showModernSnackBar(msg, isError: true);
+        }
       }
     } catch (e, st) {
       logE('[PRE-PEDIDO] ❌ ERRO ao confirmar pedido (type=${e.runtimeType})', error: e, st: st);
@@ -2857,6 +2954,8 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
       if (mounted) {
         _showModernSnackBar('Erro ao confirmar pedido: $e', isError: true);
       }
+    } finally {
+      _confirmandoPedido = false;
     }
   }
 
