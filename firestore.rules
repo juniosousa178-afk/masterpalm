@@ -168,6 +168,93 @@ service cloud.firestore {
         && hasValidV1MarkerIdentity(lojaId, markerId);
     }
 
+    // M3.2-A — sale_intents (coordenação remota de intenção de venda)
+    function isSaleIntentAllowedOrigin(origin) {
+      return origin in ['pdv_manual', 'order_review', 'pre_pedido'];
+    }
+
+    function hasExactSaleIntentV1CreateKeys() {
+      return request.resource.data.keys().hasOnly([
+        'protocolVersion',
+        'saleIntentId',
+        'lojaId',
+        'origin',
+        'operationId',
+        'status',
+        'stockEffectHash',
+        'createdAt',
+        'updatedAt',
+      ]);
+    }
+
+    function isSaleIntentV1Create(lojaId, saleIntentId) {
+      let d = request.resource.data;
+      return isStoreMember(lojaId)
+        && d.protocolVersion == 1
+        && hasExactSaleIntentV1CreateKeys()
+        && d.saleIntentId == saleIntentId
+        && d.lojaId == lojaId
+        && isSaleIntentAllowedOrigin(d.origin)
+        && d.operationId is string
+        && d.operationId.size() > 0
+        && d.operationId.size() <= 128
+        && d.stockEffectHash is string
+        && d.stockEffectHash.size() > 0
+        && d.stockEffectHash.size() <= 256
+        && d.status == 'reserved'
+        && d.createdAt is timestamp
+        && d.updatedAt is timestamp;
+    }
+
+    function saleIntentImmutableFieldsUnchanged() {
+      return request.resource.data.protocolVersion == resource.data.protocolVersion
+        && request.resource.data.saleIntentId == resource.data.saleIntentId
+        && request.resource.data.lojaId == resource.data.lojaId
+        && request.resource.data.origin == resource.data.origin
+        && request.resource.data.operationId == resource.data.operationId
+        && request.resource.data.stockEffectHash == resource.data.stockEffectHash
+        && request.resource.data.createdAt == resource.data.createdAt;
+    }
+
+    function isAllowedSaleIntentStatusTransition() {
+      let from = resource.data.status;
+      let to = request.resource.data.status;
+      return (from == 'reserved' && to in ['stock_applied', 'reverted', 'critical'])
+        || (from == 'stock_applied' && to in ['sale_persisted', 'reverted', 'critical'])
+        || (from == 'sale_persisted' && to in ['completed', 'critical']);
+    }
+
+    function hasValidSaleIntentUpdateKeys() {
+      let keys = request.resource.data.keys();
+      let base = [
+        'protocolVersion',
+        'saleIntentId',
+        'lojaId',
+        'origin',
+        'operationId',
+        'status',
+        'stockEffectHash',
+        'createdAt',
+        'updatedAt',
+      ];
+      return (keys.hasOnly(base) && request.resource.data.status != 'completed')
+        || (keys.hasOnly(base.concat(['completedAt']))
+          && request.resource.data.status == 'completed');
+    }
+
+    function isSaleIntentV1Update(lojaId) {
+      return isStoreMember(lojaId)
+        && resource.data.protocolVersion == 1
+        && saleIntentImmutableFieldsUnchanged()
+        && hasValidSaleIntentUpdateKeys()
+        && isAllowedSaleIntentStatusTransition()
+        && request.resource.data.updatedAt is timestamp
+        && (
+          request.resource.data.status != 'completed'
+          || request.resource.data.completedAt is timestamp
+        );
+    }
+
     // Dono / admin da loja (não inclui vendedor): pode editar docs em lojas/{id}/config/* (ex.: payments).
     function canManageStoreConfig(lojaId) {
       return isSignedIn()
@@ -1090,6 +1177,17 @@ service cloud.firestore {
           && isLegacyMarkerUpdate();
 
         allow delete: if isAdminOrSystem() && isLegacyMarkerDelete();
+      }
+
+      // M3.2-A — coordenação remota de intenção de venda (saleIntentId).
+      match /sale_intents/{saleIntentId} {
+        allow read: if isStoreMember(lojaId);
+
+        allow create: if isSaleIntentV1Create(lojaId, saleIntentId);
+
+        allow update: if isSaleIntentV1Update(lojaId);
+
+        allow delete: if false;
       }
 
       // Pedidos pendentes: catalogo com combos (itens.itensComboComSelecao)
