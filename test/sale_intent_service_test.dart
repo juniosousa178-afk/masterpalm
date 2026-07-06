@@ -280,5 +280,114 @@ void main() {
       expect(r.saleIntentId, intentId);
       expect(r.stockEffectHash, _hashX);
     });
+
+    test('SIT-R1 reverted → reserveOrJoin mesmo intent → reserved + mesmo operationId',
+        () async {
+      const id = 'intent-sit-r1';
+      final created = await reserve(intentId: id);
+      final op = created.operationId;
+      await SaleIntentService.markStockApplied(
+        lojaId: _loja,
+        saleIntentId: id,
+        operationId: op,
+      );
+      await SaleIntentService.revert(
+        lojaId: _loja,
+        saleIntentId: id,
+        operationId: op,
+      );
+      final retry = await reserve(intentId: id);
+      expect(retry.reserveStatus, SaleIntentReserveStatus.joined);
+      expect(retry.status, SaleIntentStatus.reserved);
+      expect(retry.operationId, op);
+      final snap = await firestore
+          .collection('lojas')
+          .doc(_loja)
+          .collection('sale_intents')
+          .doc(id)
+          .get();
+      expect(snap.data()?['status'], 'reserved');
+    });
+
+    test('SIT-R2 reverted → reserveOrJoin hash diferente → conflito', () async {
+      const id = 'intent-sit-r2';
+      final created = await reserve(intentId: id, hash: _hashX);
+      await SaleIntentService.revert(
+        lojaId: _loja,
+        saleIntentId: id,
+        operationId: created.operationId,
+      );
+      await expectLater(
+        reserve(intentId: id, hash: _hashY),
+        throwsA(isA<SaleIntentIdentityConflictException>()),
+      );
+    });
+
+    test('SIT-R3 reverted → reserveOrJoin origin diferente → conflito', () async {
+      const id = 'intent-sit-r3';
+      final created = await reserve(intentId: id, origin: SaleIntentOrigins.pdvManual);
+      await SaleIntentService.revert(
+        lojaId: _loja,
+        saleIntentId: id,
+        operationId: created.operationId,
+      );
+      await expectLater(
+        reserve(intentId: id, origin: SaleIntentOrigins.orderReview),
+        throwsA(isA<SaleIntentIdentityConflictException>()),
+      );
+    });
+
+    test('SIT-R4 critical → reserveOrJoin → falha', () async {
+      const id = 'intent-sit-r4';
+      final created = await reserve(intentId: id);
+      await SaleIntentService.markCritical(
+        lojaId: _loja,
+        saleIntentId: id,
+        operationId: created.operationId,
+      );
+      await expectLater(
+        reserve(intentId: id),
+        throwsA(isA<SaleIntentCriticalStateException>()),
+      );
+    });
+
+    test('SIT-R5 completed → reserveOrJoin → completed, não reserved', () async {
+      const id = 'intent-sit-r5';
+      final created = await reserve(intentId: id);
+      final op = created.operationId;
+      await SaleIntentService.markStockApplied(
+        lojaId: _loja,
+        saleIntentId: id,
+        operationId: op,
+      );
+      await SaleIntentService.markSalePersisted(
+        lojaId: _loja,
+        saleIntentId: id,
+        operationId: op,
+      );
+      await SaleIntentService.complete(
+        lojaId: _loja,
+        saleIntentId: id,
+        operationId: op,
+      );
+      final joined = await reserve(intentId: id);
+      expect(joined.status, SaleIntentStatus.completed);
+      expect(joined.operationId, op);
+    });
+
+    test('SIT-R6 reverted retry não gera novo operationId', () async {
+      const id = 'intent-sit-r6';
+      final created = await reserve(intentId: id);
+      final op = created.operationId;
+      await SaleIntentService.revert(
+        lojaId: _loja,
+        saleIntentId: id,
+        operationId: op,
+      );
+      final r1 = await reserve(intentId: id);
+      final r2 = await reserve(intentId: id);
+      expect(r1.operationId, op);
+      expect(r2.operationId, op);
+    });
   });
 }

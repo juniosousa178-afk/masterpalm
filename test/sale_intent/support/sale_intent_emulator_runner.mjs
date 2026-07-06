@@ -128,6 +128,17 @@ async function reserveOrJoinJs(db, { lojaId, saleIntentId, origin, stockEffectHa
     if (data.status === "critical") {
       throw new Error("CRITICAL_STATE");
     }
+    if (data.status === "reverted") {
+      transaction.update(ref, {
+        status: "reserved",
+        updatedAt: Timestamp.now(),
+      });
+      return {
+        reserveStatus: "joined",
+        operationId: data.operationId,
+        status: "reserved",
+      };
+    }
     return {
       reserveStatus: "joined",
       operationId: data.operationId,
@@ -361,6 +372,197 @@ async function main() {
       const snap = await refT15.get();
       if (snap.data()?.status === "reserved") {
         throw new Error("regressão silenciosa para reserved");
+      }
+    });
+
+    console.log("EM-R — retry reverted → reserved (M3.2-B.2)");
+    const hashRetry = "hash-em-r-retry";
+    const opEmR1 = randomUUID();
+
+    async function seedRevertedIntent(intentId, { operationId = opEmR1 } = {}) {
+      await intentRef(owner, LOJA, intentId).set(
+        validCreatePayload(LOJA, intentId, {
+          operationId,
+          stockEffectHash: hashRetry,
+        }),
+      );
+      await intentRef(owner, LOJA, intentId).update({
+        status: "reverted",
+        updatedAt: Timestamp.now(),
+      });
+    }
+
+    const intentEmR1 = `intent-em-r1-${Date.now()}`;
+    await seedRevertedIntent(intentEmR1);
+    await check(
+      "EM-R1 reverted → reserved permitido (identidade imutável)",
+      assertSucceeds(
+        intentRef(owner, LOJA, intentEmR1).update({
+          status: "reserved",
+          updatedAt: Timestamp.now(),
+        }),
+      ),
+    );
+    await check("EM-R1 status final reserved", async () => {
+      const snap = await intentRef(owner, LOJA, intentEmR1).get();
+      if (snap.data()?.status !== "reserved") {
+        throw new Error(`status=${snap.data()?.status}`);
+      }
+      if (snap.data()?.operationId !== opEmR1) {
+        throw new Error("operationId mudou");
+      }
+    });
+
+    const intentEmR2 = `intent-em-r2-${Date.now()}`;
+    await seedRevertedIntent(intentEmR2);
+    await check(
+      "EM-R2 nega reserved se operationId mudar",
+      assertFails(
+        intentRef(owner, LOJA, intentEmR2).update({
+          operationId: randomUUID(),
+          status: "reserved",
+          updatedAt: Timestamp.now(),
+        }),
+      ),
+    );
+
+    const intentEmR3 = `intent-em-r3-${Date.now()}`;
+    await seedRevertedIntent(intentEmR3);
+    await check(
+      "EM-R3 nega reserved se stockEffectHash mudar",
+      assertFails(
+        intentRef(owner, LOJA, intentEmR3).update({
+          stockEffectHash: "hash-outro",
+          status: "reserved",
+          updatedAt: Timestamp.now(),
+        }),
+      ),
+    );
+
+    const intentEmR4 = `intent-em-r4-${Date.now()}`;
+    await seedRevertedIntent(intentEmR4);
+    await check(
+      "EM-R4 nega reserved se origin mudar",
+      assertFails(
+        intentRef(owner, LOJA, intentEmR4).update({
+          origin: "order_review",
+          status: "reserved",
+          updatedAt: Timestamp.now(),
+        }),
+      ),
+    );
+
+    const intentEmR5 = `intent-em-r5-${Date.now()}`;
+    const opEmR5 = randomUUID();
+    await intentRef(owner, LOJA, intentEmR5).set(
+      validCreatePayload(LOJA, intentEmR5, { operationId: opEmR5 }),
+    );
+    await intentRef(owner, LOJA, intentEmR5).update({
+      status: "critical",
+      updatedAt: Timestamp.now(),
+    });
+    await check(
+      "EM-R5 critical → reserved negado",
+      assertFails(
+        intentRef(owner, LOJA, intentEmR5).update({
+          status: "reserved",
+          updatedAt: Timestamp.now(),
+        }),
+      ),
+    );
+
+    const intentEmR6 = `intent-em-r6-${Date.now()}`;
+    const opEmR6 = randomUUID();
+    await intentRef(owner, LOJA, intentEmR6).set(
+      validCreatePayload(LOJA, intentEmR6, { operationId: opEmR6 }),
+    );
+    await intentRef(owner, LOJA, intentEmR6).update({
+      status: "stock_applied",
+      updatedAt: Timestamp.now(),
+    });
+    await intentRef(owner, LOJA, intentEmR6).update({
+      status: "sale_persisted",
+      updatedAt: Timestamp.now(),
+    });
+    await intentRef(owner, LOJA, intentEmR6).update({
+      status: "completed",
+      completedAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+    });
+    await check(
+      "EM-R6 completed → reserved negado",
+      assertFails(
+        intentRef(owner, LOJA, intentEmR6).update({
+          status: "reserved",
+          updatedAt: Timestamp.now(),
+        }),
+      ),
+    );
+
+    const intentEmR7 = `intent-em-r7-${Date.now()}`;
+    await seedRevertedIntent(intentEmR7);
+    await check(
+      "EM-R7 campo arbitrário negado em reverted→reserved",
+      assertFails(
+        intentRef(owner, LOJA, intentEmR7).update({
+          extraCampo: "x",
+          status: "reserved",
+          updatedAt: Timestamp.now(),
+        }),
+      ),
+    );
+
+    const intentEmR8 = `intent-em-r8-${Date.now()}`;
+    await seedRevertedIntent(intentEmR8);
+    await check(
+      "EM-R8 delete continua negado",
+      assertFails(intentRef(owner, LOJA, intentEmR8).delete()),
+    );
+
+    const intentEmR9 = `intent-em-r9-${Date.now()}`;
+    const opEmR9 = randomUUID();
+    await intentRef(owner, LOJA, intentEmR9).set(
+      validCreatePayload(LOJA, intentEmR9, { operationId: opEmR9 }),
+    );
+    await check(
+      "EM-R9 reserved→stock_applied ainda permitido",
+      assertSucceeds(
+        intentRef(owner, LOJA, intentEmR9).update({
+          status: "stock_applied",
+          updatedAt: Timestamp.now(),
+        }),
+      ),
+    );
+
+    const intentEmR10 = `intent-em-r10-${Date.now()}`;
+    await check(
+      "EM-R10 cross-loja create negado",
+      assertFails(
+        intentRef(owner, "loja-outra-md2", intentEmR10).set(
+          validCreatePayload("loja-outra-md2", intentEmR10),
+        ),
+      ),
+    );
+
+    const intentEmRJoin = `intent-em-r-join-${Date.now()}`;
+    const opEmRJoin = randomUUID();
+    await seedRevertedIntent(intentEmRJoin, { operationId: opEmRJoin });
+    let joinRetry;
+    await check("EM-R join reserveOrJoin reverted→reserved", async () => {
+      joinRetry = await reserveOrJoinJs(dbOwner, {
+        lojaId: LOJA,
+        saleIntentId: intentEmRJoin,
+        origin: "pdv_manual",
+        stockEffectHash: hashRetry,
+      });
+      if (joinRetry.status !== "reserved") {
+        throw new Error(`status=${joinRetry.status}`);
+      }
+    });
+    await check("EM-R join preserva operationId", async () => {
+      const snap = await intentRef(owner, LOJA, intentEmRJoin).get();
+      if (joinRetry.operationId !== snap.data()?.operationId) {
+        throw new Error("operationId divergente no join");
       }
     });
 

@@ -221,7 +221,8 @@ service cloud.firestore {
       let to = request.resource.data.status;
       return (from == 'reserved' && to in ['stock_applied', 'reverted', 'critical'])
         || (from == 'stock_applied' && to in ['sale_persisted', 'reverted', 'critical'])
-        || (from == 'sale_persisted' && to in ['completed', 'critical']);
+        || (from == 'sale_persisted' && to in ['completed', 'critical'])
+        || (from == 'reverted' && to == 'reserved');
     }
 
     function hasValidSaleIntentUpdateKeys() {
