@@ -10,7 +10,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class SorteioNumeroService {
   SorteioNumeroService._();
 
-  static final FirebaseFirestore _db = FirebaseFirestore.instance;
+  /// Apenas testes — injeta FakeFirebaseFirestore.
+  static FirebaseFirestore? debugFirestoreOverride;
+
+  static FirebaseFirestore get _db =>
+      debugFirestoreOverride ?? FirebaseFirestore.instance;
 
   // =====================================================================
   // 🔹 1) Gerar número único de 5 dígitos para cada compra
@@ -62,6 +66,15 @@ class SorteioNumeroService {
 
       if (valorCompra < minimo) continue;
 
+      if (vendaIdOuPedidoId != null &&
+          vendaIdOuPedidoId.isNotEmpty &&
+          await _jaParticipaNaCampanha(
+            campanhaRef: doc.reference,
+            vendaIdOuPedidoId: vendaIdOuPedidoId,
+          )) {
+        continue;
+      }
+
       await doc.reference.collection('participantes').add({
         'clienteId': clienteId,
         'clienteNome': clienteNome,
@@ -82,6 +95,26 @@ class SorteioNumeroService {
     }
 
     return registrouEmAlguma;
+  }
+
+  /// Idempotência por campanha+vendaId (alinhado a CampaignEngine e mpWebhookPromo).
+  static Future<bool> _jaParticipaNaCampanha({
+    required DocumentReference<Map<String, dynamic>> campanhaRef,
+    required String vendaIdOuPedidoId,
+  }) async {
+    var participantes = await campanhaRef
+        .collection('participantes')
+        .where('pedidoId', isEqualTo: vendaIdOuPedidoId)
+        .limit(1)
+        .get();
+    if (participantes.docs.isNotEmpty) return true;
+
+    participantes = await campanhaRef
+        .collection('participantes')
+        .where('vendaId', isEqualTo: vendaIdOuPedidoId)
+        .limit(1)
+        .get();
+    return participantes.docs.isNotEmpty;
   }
 
   // =====================================================================
