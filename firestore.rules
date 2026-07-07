@@ -256,6 +256,66 @@ service cloud.firestore {
         );
     }
 
+    // M3.4.2 / M3.7.1 — markers idempotentes side-effects secundários catálogo (admin pré-pedidos).
+    function hasOnlyCatalogoSideEffectsKeys() {
+      return request.resource.data.keys().hasOnly([
+        'denormAplicado',
+        'notificacaoAdminEnviada',
+        'cupomSalvo',
+        'campanhaRegistrada',
+        'updatedAt',
+      ]);
+    }
+
+    function catalogoSideEffectsMarkerIsTrueOrAbsent(field) {
+      return !(field in request.resource.data)
+        || (request.resource.data[field] is bool && request.resource.data[field] == true);
+    }
+
+    function allCatalogoSideEffectsMarkersValid() {
+      return catalogoSideEffectsMarkerIsTrueOrAbsent('denormAplicado')
+        && catalogoSideEffectsMarkerIsTrueOrAbsent('notificacaoAdminEnviada')
+        && catalogoSideEffectsMarkerIsTrueOrAbsent('cupomSalvo')
+        && catalogoSideEffectsMarkerIsTrueOrAbsent('campanhaRegistrada');
+    }
+
+    function hasCatalogoSideEffectsMarkerSet() {
+      return request.resource.data.keys().hasAny([
+        'denormAplicado',
+        'notificacaoAdminEnviada',
+        'cupomSalvo',
+        'campanhaRegistrada',
+      ]);
+    }
+
+    function catalogoSideEffectsMarkersMonotonic() {
+      return (!('denormAplicado' in resource.data) || resource.data.denormAplicado != true
+          || request.resource.data.get('denormAplicado', false) == true)
+        && (!('notificacaoAdminEnviada' in resource.data) || resource.data.notificacaoAdminEnviada != true
+          || request.resource.data.get('notificacaoAdminEnviada', false) == true)
+        && (!('cupomSalvo' in resource.data) || resource.data.cupomSalvo != true
+          || request.resource.data.get('cupomSalvo', false) == true)
+        && (!('campanhaRegistrada' in resource.data) || resource.data.campanhaRegistrada != true
+          || request.resource.data.get('campanhaRegistrada', false) == true);
+    }
+
+    function isCatalogoSideEffectsSecundariosWrite(lojaId) {
+      return isStoreMember(lojaId)
+        && hasOnlyCatalogoSideEffectsKeys()
+        && allCatalogoSideEffectsMarkersValid()
+        && request.resource.data.updatedAt is timestamp
+        && hasCatalogoSideEffectsMarkerSet();
+    }
+
+    function isCatalogoSideEffectsSecundariosCreate(lojaId) {
+      return isCatalogoSideEffectsSecundariosWrite(lojaId);
+    }
+
+    function isCatalogoSideEffectsSecundariosUpdate(lojaId) {
+      return isCatalogoSideEffectsSecundariosWrite(lojaId)
+        && catalogoSideEffectsMarkersMonotonic();
+    }
+
     // Dono / admin da loja (não inclui vendedor): pode editar docs em lojas/{id}/config/* (ex.: payments).
     function canManageStoreConfig(lojaId) {
       return isSignedIn()
@@ -1187,6 +1247,17 @@ service cloud.firestore {
         allow create: if isSaleIntentV1Create(lojaId, saleIntentId);
 
         allow update: if isSaleIntentV1Update(lojaId);
+
+        allow delete: if false;
+      }
+
+      // M3.4.2 / M3.7.1 — idempotência side-effects secundários catálogo (admin pré-pedidos).
+      match /catalogo_side_effects_secundarios/{vendaId} {
+        allow read: if isStoreMember(lojaId);
+
+        allow create: if isCatalogoSideEffectsSecundariosCreate(lojaId);
+
+        allow update: if isCatalogoSideEffectsSecundariosUpdate(lojaId);
 
         allow delete: if false;
       }
