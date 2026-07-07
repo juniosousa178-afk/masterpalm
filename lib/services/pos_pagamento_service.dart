@@ -20,6 +20,7 @@ import 'venda_combo_estoque_expansion.dart';
 import 'firestore_paths.dart';
 import 'pedido_collection_resolver.dart';
 import 'sorteio_numero_service.dart';
+import 'campaign_engine_service.dart';
 
 /// Serviço para processar ações após confirmação de pagamento
 ///
@@ -31,6 +32,18 @@ import 'sorteio_numero_service.dart';
 /// - Integração com cupom da roleta
 class PosPagamentoService {
   static final PedidoRepository _pedidoRepository = PedidoRepository();
+
+  /// Apenas testes — injeta FakeFirebaseFirestore.
+  static FirebaseFirestore? debugFirestoreOverride;
+
+  /// Apenas testes — substitui [CampaignEngineService.buscarPorVendaId].
+  static Future<Participacao?> Function({
+    required String lojaId,
+    required String vendaId,
+  })? debugBuscarParticipacaoOverride;
+
+  static FirebaseFirestore get _firestore =>
+      debugFirestoreOverride ?? FirebaseFirestore.instance;
 
   /// Última falha de [processarConfirmacaoPagamento] (para mensagem específica na UI).
   static String? ultimaFalhaProcessamento;
@@ -140,8 +153,13 @@ class PosPagamentoService {
       // 2. Atualizar status da venda para "pago"
       await _atualizarStatusVenda(lojaId, vendaId);
 
-      // 3. Gerar número da sorte (não bloqueante para confirmação do pagamento)
-      final numeroSorte = _gerarNumeroSorte();
+      // 3. Número da sorte: reutiliza participação canônica do CampaignEngine no admin.
+      final numeroResolvido = await resolverNumeroSorteParaPosPagamento(
+        lojaId: lojaId,
+        vendaId: vendaId,
+        estoqueJaBaixado: estoqueJaBaixado,
+      );
+      final numeroSorte = numeroResolvido.numero;
       try {
         await _salvarNumeroSorte(
           lojaId: lojaId,
@@ -149,6 +167,7 @@ class PosPagamentoService {
           numeroSorte: numeroSorte,
           customer: customer,
           valorTotal: valorTotal,
+          pularColecaoNumerosSorte: numeroResolvido.canonico,
         );
       } catch (e) {
         debugPrint(
@@ -417,6 +436,36 @@ class PosPagamentoService {
     return numero.toString();
   }
 
+  /// No fluxo admin (`estoqueJaBaixado`), reutiliza número já registrado em
+  /// `participantes` pelo CampaignEngine em vez de gerar outro.
+  @visibleForTesting
+  static Future<({String numero, bool canonico})> resolverNumeroSorteParaPosPagamento({
+    required String lojaId,
+    required String vendaId,
+    required bool estoqueJaBaixado,
+  }) async {
+    if (estoqueJaBaixado) {
+      final participacao = debugBuscarParticipacaoOverride != null
+          ? await debugBuscarParticipacaoOverride!(
+              lojaId: lojaId,
+              vendaId: vendaId,
+            )
+          : await CampaignEngineService.buscarPorVendaId(
+              lojaId: lojaId,
+              vendaId: vendaId,
+            );
+      final canonico = participacao?.numero ?? '';
+      if (canonico.isNotEmpty) {
+        debugPrint(
+          'ℹ️ [PÓS-PAGAMENTO] Número canônico reutilizado da campanha: $canonico '
+          '| lojaId=$lojaId | vendaId=$vendaId',
+        );
+        return (numero: canonico, canonico: true);
+      }
+    }
+    return (numero: _gerarNumeroSorte(), canonico: false);
+  }
+
   /// Salva o número da sorte no Firestore
   static Future<void> _salvarNumeroSorte({
     required String lojaId,
@@ -424,27 +473,32 @@ class PosPagamentoService {
     required String numeroSorte,
     required Map<String, dynamic> customer,
     required double valorTotal,
+    bool pularColecaoNumerosSorte = false,
   }) async {
     try {
-      final firestore = FirebaseFirestore.instance;
-
-      // Salvar número da sorte
-      await firestore
-          .collection('lojas')
-          .doc(lojaId)
-          .collection('numerosSorte')
-          .add({
-        'numero': numeroSorte,
-        'vendaId': vendaId,
-        'cliente': {
-          'nome': customer['nome'],
-          'email': customer['email'],
-          'telefone': customer['telefone'],
-        },
-        'valorCompra': valorTotal,
-        'dataGeracao': FieldValue.serverTimestamp(),
-        'ativo': true,
-      });
+      if (!pularColecaoNumerosSorte) {
+        await _firestore
+            .collection('lojas')
+            .doc(lojaId)
+            .collection('numerosSorte')
+            .add({
+          'numero': numeroSorte,
+          'vendaId': vendaId,
+          'cliente': {
+            'nome': customer['nome'],
+            'email': customer['email'],
+            'telefone': customer['telefone'],
+          },
+          'valorCompra': valorTotal,
+          'dataGeracao': FieldValue.serverTimestamp(),
+          'ativo': true,
+        });
+      } else {
+        debugPrint(
+          'ℹ️ [PÓS-PAGAMENTO] Coleção numerosSorte omitida; participantes é canônico. '
+          'vendaId=$vendaId',
+        );
+      }
 
       // Atualizar o pedido com o número da sorte
       final pedidoRef = await _pedidoRepository.findFirstRefByField(
