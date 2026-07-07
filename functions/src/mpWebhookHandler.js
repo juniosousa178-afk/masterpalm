@@ -23,6 +23,10 @@ import {
   registrarPromocaoPosPagamentoMpRecovery,
 } from "./mpWebhookPromo.js";
 import {
+  ativarPremioRoletaPosPagamentoMp,
+  ativarPremioRoletaPosPagamentoMpRecovery,
+} from "./mpWebhookPremioRoleta.js";
+import {
   orderTotalToCents,
   validateMpPaymentAgainstOrder,
 } from "./catalogMpOrderHelpers.js";
@@ -275,6 +279,15 @@ export async function processMpWebhook(paymentId, mailOpts = {}) {
         } catch (re) {
           console.error("[PROMO-ERROR] recovery após processed", re && re.message);
         }
+        try {
+          await ativarPremioRoletaPosPagamentoMpRecovery(getDb(), {
+            lojaId: pdata.lojaId,
+            orderId: pdata.orderId,
+            paymentId,
+          });
+        } catch (re) {
+          console.error("[PREMIO-ERROR] recovery após processed", re && re.message);
+        }
       } else {
         console.log("[PROMO-SKIP] recovery: _mp_webhook_processed sem orderId/lojaId");
       }
@@ -437,6 +450,15 @@ export async function processMpWebhook(paymentId, mailOpts = {}) {
         });
       } catch (e) {
         console.error("[PROMO-ERROR] already_paid recovery", e && e.message);
+      }
+      try {
+        await ativarPremioRoletaPosPagamentoMpRecovery(getDb(), {
+          lojaId: resolvedLojaId,
+          orderId,
+          paymentId,
+        });
+      } catch (e) {
+        console.error("[PREMIO-ERROR] already_paid recovery", e && e.message);
       }
     }
     return true;
@@ -634,6 +656,18 @@ export async function processMpWebhook(paymentId, mailOpts = {}) {
     });
   } catch (promoErr) {
     console.error("[PROMO-ERROR] pós-transação principal", promoErr && promoErr.message);
+  }
+
+  try {
+    await ativarPremioRoletaPosPagamentoMp(getDb(), {
+      lojaId: resolvedLojaId,
+      orderId,
+      paymentId,
+      orderData: order,
+      orderRef: orderRefToUse,
+    });
+  } catch (premioErr) {
+    console.error("[PREMIO-ERROR] pós-transação principal", premioErr && premioErr.message);
   }
 
   // Catálogo: pre_pedidos + pedidos_pendentes → mesma venda idempotente em estoque_vendas
