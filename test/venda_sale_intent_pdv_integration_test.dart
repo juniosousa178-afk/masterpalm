@@ -344,6 +344,7 @@ void main() {
       final key = VendaOperationJournalService.buildOperationKey(
         lojaId: _lojaId,
         stockEffectHash: hash,
+        saleIntentId: intentId,
       );
       await journalBox.put(key, {
         'operationId': '00000000-0000-4000-8000-000000000099',

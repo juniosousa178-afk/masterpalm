@@ -93,9 +93,14 @@ abstract final class VendaOperationJournalService {
   static String buildOperationKey({
     required String lojaId,
     required String stockEffectHash,
+    String? saleIntentId,
   }) {
     final loja = lojaId.trim();
     final hash = stockEffectHash.trim();
+    final intent = (saleIntentId ?? '').trim();
+    if (intent.isNotEmpty) {
+      return '$loja|$hash|$intent';
+    }
     return '$loja|$hash';
   }
 

@@ -1772,13 +1772,14 @@ class VendasService {
 
     final stockEffectHash =
         EstoqueTransactionService.computeTxItemsHashForIdempotencia(txItems);
+    final coordinatedIntentId = (saleIntentId ?? '').trim();
+    final isCoordinatedPdv = coordinatedIntentId.isNotEmpty;
     final operationKey = VendaOperationJournalService.buildOperationKey(
       lojaId: lojaEfetiva,
       stockEffectHash: stockEffectHash,
+      saleIntentId: isCoordinatedPdv ? coordinatedIntentId : null,
     );
 
-    final coordinatedIntentId = (saleIntentId ?? '').trim();
-    final isCoordinatedPdv = coordinatedIntentId.isNotEmpty;
     final coordinatedOrigin = (saleIntentOrigin ?? SaleIntentOrigins.pdvManual).trim();
     SaleIntentReservation? saleIntentReservation;
     var saleIntentStatus = SaleIntentStatus.reserved;
