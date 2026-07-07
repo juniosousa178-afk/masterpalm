@@ -14,6 +14,7 @@
 
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../core/logger.dart';
@@ -142,7 +143,31 @@ class ParticipacaoResult {
 class CampaignEngineService {
   CampaignEngineService._();
 
-  static final FirebaseFirestore _db = FirebaseFirestore.instance;
+  /// Apenas testes — injeta FakeFirebaseFirestore.
+  static FirebaseFirestore? debugFirestoreOverride;
+
+  /// Apenas testes — substitui envio real de WhatsApp.
+  static Future<void> Function({
+    required String telefone,
+    required String clienteNome,
+    required String numero,
+    required String campanhaNome,
+    DateTime? dataSorteio,
+    required String nomeLoja,
+  })? debugEnviarWhatsAppOverride;
+
+  /// Apenas testes — substitui envio real de email.
+  static Future<void> Function({
+    required String email,
+    required String clienteNome,
+    required String numero,
+    required String campanhaNome,
+    DateTime? dataSorteio,
+    required String nomeLoja,
+  })? debugEnviarEmailOverride;
+
+  static FirebaseFirestore get _db =>
+      debugFirestoreOverride ?? FirebaseFirestore.instance;
 
   // ============================================================
   // MÉTODO PRINCIPAL: Chamado quando uma venda é concluída
@@ -477,62 +502,163 @@ class CampaignEngineService {
     DateTime? dataSorteio,
     required String nomeLoja,
   }) async {
-    // Não bloqueia o fluxo principal
-    Future.microtask(() async {
-      bool whatsappEnviado = false;
-      bool emailEnviado = false;
+    Future.microtask(
+      () => executarEnvioMensagensParticipacao(
+        lojaId: lojaId,
+        campanhaId: campanhaId,
+        participacaoId: participacaoId,
+        numero: numero,
+        clienteNome: clienteNome,
+        telefone: telefone,
+        email: email,
+        campanhaNome: campanhaNome,
+        dataSorteio: dataSorteio,
+        nomeLoja: nomeLoja,
+      ),
+    );
+  }
 
-      // Enviar WhatsApp
-      if (telefone != null && telefone.isNotEmpty) {
-        try {
-          await _enviarWhatsApp(
-            telefone: telefone,
-            clienteNome: clienteNome,
-            numero: numero,
-            campanhaNome: campanhaNome,
-            dataSorteio: dataSorteio,
-            nomeLoja: nomeLoja,
-          );
-          whatsappEnviado = true;
-        } catch (e, st) {
-          logE('⚠️ [CampaignEngine] Erro ao enviar WhatsApp (type=${e.runtimeType})', error: e, st: st);
-        }
-      }
+  /// Resolve quais canais ainda devem ser notificados (idempotência por participante).
+  @visibleForTesting
+  static ({bool enviarWhatsapp, bool enviarEmail}) resolverCanaisNotificacaoParticipacao({
+    required bool mensagemEnviadaWhatsApp,
+    required bool mensagemEnviadaEmail,
+    required bool temTelefone,
+    required bool temEmail,
+  }) {
+    return (
+      enviarWhatsapp: temTelefone && !mensagemEnviadaWhatsApp,
+      enviarEmail: temEmail && !mensagemEnviadaEmail,
+    );
+  }
 
-      // Enviar Email
-      if (email != null && email.isNotEmpty) {
-        try {
-          await _enviarEmail(
-            email: email,
-            clienteNome: clienteNome,
-            numero: numero,
-            campanhaNome: campanhaNome,
-            dataSorteio: dataSorteio,
-            nomeLoja: nomeLoja,
-          );
-          emailEnviado = true;
-        } catch (e, st) {
-          logE('⚠️ [CampaignEngine] Erro ao enviar Email (type=${e.runtimeType})', error: e, st: st);
-        }
-      }
+  /// Envio idempotente por canal usando flags do participante canônico.
+  @visibleForTesting
+  static Future<void> executarEnvioMensagensParticipacao({
+    required String lojaId,
+    required String campanhaId,
+    required String participacaoId,
+    required String numero,
+    required String clienteNome,
+    String? telefone,
+    String? email,
+    required String campanhaNome,
+    DateTime? dataSorteio,
+    required String nomeLoja,
+  }) async {
+    final participanteRef = _db
+        .collection('lojas')
+        .doc(lojaId)
+        .collection('campanhas_sorteio')
+        .doc(campanhaId)
+        .collection('participantes')
+        .doc(participacaoId);
 
-      // Atualizar status de envio
+    var mensagemEnviadaWhatsApp = false;
+    var mensagemEnviadaEmail = false;
+
+    try {
+      final snap = await participanteRef.get();
+      final data = snap.data() ?? {};
+      mensagemEnviadaWhatsApp = data['mensagemEnviadaWhatsApp'] == true;
+      mensagemEnviadaEmail = data['mensagemEnviadaEmail'] == true;
+    } catch (e, st) {
+      logE(
+        '⚠️ [CampaignEngine] Erro ao ler flags de notificação (type=${e.runtimeType})',
+        error: e,
+        st: st,
+      );
+    }
+
+    final canais = resolverCanaisNotificacaoParticipacao(
+      mensagemEnviadaWhatsApp: mensagemEnviadaWhatsApp,
+      mensagemEnviadaEmail: mensagemEnviadaEmail,
+      temTelefone: telefone != null && telefone.isNotEmpty,
+      temEmail: email != null && email.isNotEmpty,
+    );
+
+    var whatsappEnviado = mensagemEnviadaWhatsApp;
+    var emailEnviado = mensagemEnviadaEmail;
+
+    if (canais.enviarWhatsapp) {
       try {
-        await _db
-            .collection('lojas')
-            .doc(lojaId)
-            .collection('campanhas_sorteio')
-            .doc(campanhaId)
-            .collection('participantes')
-            .doc(participacaoId)
-            .update({
-          'mensagemEnviadaWhatsApp': whatsappEnviado,
-          'mensagemEnviadaEmail': emailEnviado,
-        });
+        if (debugEnviarWhatsAppOverride != null) {
+          await debugEnviarWhatsAppOverride!(
+            telefone: telefone!,
+            clienteNome: clienteNome,
+            numero: numero,
+            campanhaNome: campanhaNome,
+            dataSorteio: dataSorteio,
+            nomeLoja: nomeLoja,
+          );
+        } else {
+          await _enviarWhatsApp(
+            telefone: telefone!,
+            clienteNome: clienteNome,
+            numero: numero,
+            campanhaNome: campanhaNome,
+            dataSorteio: dataSorteio,
+            nomeLoja: nomeLoja,
+          );
+        }
+        whatsappEnviado = true;
       } catch (e, st) {
-        logE('⚠️ [CampaignEngine] Erro ao atualizar status de envio (type=${e.runtimeType})', error: e, st: st);
+        logE(
+          '⚠️ [CampaignEngine] Erro ao enviar WhatsApp (type=${e.runtimeType})',
+          error: e,
+          st: st,
+        );
       }
-    });
+    }
+
+    if (canais.enviarEmail) {
+      try {
+        if (debugEnviarEmailOverride != null) {
+          await debugEnviarEmailOverride!(
+            email: email!,
+            clienteNome: clienteNome,
+            numero: numero,
+            campanhaNome: campanhaNome,
+            dataSorteio: dataSorteio,
+            nomeLoja: nomeLoja,
+          );
+        } else {
+          await _enviarEmail(
+            email: email!,
+            clienteNome: clienteNome,
+            numero: numero,
+            campanhaNome: campanhaNome,
+            dataSorteio: dataSorteio,
+            nomeLoja: nomeLoja,
+          );
+        }
+        emailEnviado = true;
+      } catch (e, st) {
+        logE(
+          '⚠️ [CampaignEngine] Erro ao enviar Email (type=${e.runtimeType})',
+          error: e,
+          st: st,
+        );
+      }
+    }
+
+    if (whatsappEnviado == mensagemEnviadaWhatsApp &&
+        emailEnviado == mensagemEnviadaEmail) {
+      return;
+    }
+
+    try {
+      await participanteRef.update({
+        'mensagemEnviadaWhatsApp': whatsappEnviado,
+        'mensagemEnviadaEmail': emailEnviado,
+      });
+    } catch (e, st) {
+      logE(
+        '⚠️ [CampaignEngine] Erro ao atualizar status de envio (type=${e.runtimeType})',
+        error: e,
+        st: st,
+      );
+    }
   }
 
   /// Gera e abre mensagem WhatsApp
