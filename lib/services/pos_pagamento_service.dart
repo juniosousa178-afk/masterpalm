@@ -202,6 +202,18 @@ class PosPagamentoService {
       );
 
       // 5. Enviar notificações (Email e WhatsApp)
+      final incluirNumeroSorte = deveOmitirNumeroSorteNotificacaoCliente(
+        participacaoCanonica: numeroResolvido.canonico,
+      )
+          ? false
+          : true;
+      if (!incluirNumeroSorte) {
+        debugPrint(
+          'ℹ️ [PÓS-PAGAMENTO] Número de sorte omitido da notificação; '
+          'participação canônica já registrada pelo CampaignEngine. '
+          'vendaId=$vendaId | lojaId=$lojaId',
+        );
+      }
       await _enviarNotificacoes(
         lojaId: lojaId,
         vendaId: vendaId,
@@ -210,6 +222,7 @@ class PosPagamentoService {
         cupomRoletaCodigo: cupomRoletaCodigo,
         cupomRoletaDesconto: cupomRoletaDesconto,
         valorTotal: valorTotal,
+        incluirNumeroSorte: incluirNumeroSorte,
       );
 
       try {
@@ -521,6 +534,14 @@ class PosPagamentoService {
     }
   }
 
+  /// Quando há participação canônica (CampaignEngine), o cliente já recebe
+  /// a mensagem de campanha por aquele owner; PosPagamento preserva só o operacional.
+  @visibleForTesting
+  static bool deveOmitirNumeroSorteNotificacaoCliente({
+    required bool participacaoCanonica,
+  }) =>
+      participacaoCanonica;
+
   /// Envia notificações por Email e WhatsApp
   static Future<void> _enviarNotificacoes({
     required String lojaId,
@@ -530,6 +551,7 @@ class PosPagamentoService {
     String? cupomRoletaCodigo,
     double? cupomRoletaDesconto,
     required double valorTotal,
+    bool incluirNumeroSorte = true,
   }) async {
     try {
       final email = customer['email']?.toString();
@@ -554,13 +576,16 @@ class PosPagamentoService {
       if (email != null && email.isNotEmpty) {
         await _enviarEmail(
           destinatario: email,
-          assunto: '🎉 Parabéns! Você está concorrendo - $lojaNome',
+          assunto: incluirNumeroSorte
+              ? '🎉 Parabéns! Você está concorrendo - $lojaNome'
+              : '✅ Pedido confirmado - $lojaNome',
           nome: nome,
           lojaNome: lojaNome,
           numeroSorte: numeroSorte,
           cupomRoletaCodigo: cupomRoletaCodigo,
           cupomRoletaDesconto: cupomRoletaDesconto,
           valorTotal: valorTotal,
+          incluirNumeroSorte: incluirNumeroSorte,
         );
       }
 
@@ -576,6 +601,7 @@ class PosPagamentoService {
           cupomRoletaCodigo: cupomRoletaCodigo,
           cupomRoletaDesconto: cupomRoletaDesconto,
           valorTotal: valorTotal,
+          incluirNumeroSorte: incluirNumeroSorte,
         );
       }
 
@@ -596,16 +622,18 @@ class PosPagamentoService {
     String? cupomRoletaCodigo,
     double? cupomRoletaDesconto,
     required double valorTotal,
+    bool incluirNumeroSorte = true,
   }) async {
     try {
       // Montar HTML do email
-      final htmlBody = _montarEmailHtml(
+      final htmlBody = montarEmailHtmlNotificacaoCliente(
         nome: nome,
         lojaNome: lojaNome,
         numeroSorte: numeroSorte,
         cupomRoletaCodigo: cupomRoletaCodigo,
         cupomRoletaDesconto: cupomRoletaDesconto,
         valorTotal: valorTotal,
+        incluirNumeroSorte: incluirNumeroSorte,
       );
 
       // Enviar via Cloud Function ou serviço de email
@@ -630,14 +658,16 @@ class PosPagamentoService {
     }
   }
 
-  /// Monta o HTML do email
-  static String _montarEmailHtml({
+  /// Monta o HTML do email de confirmação ao cliente.
+  @visibleForTesting
+  static String montarEmailHtmlNotificacaoCliente({
     required String nome,
     required String lojaNome,
     required String numeroSorte,
     String? cupomRoletaCodigo,
     double? cupomRoletaDesconto,
     required double valorTotal,
+    bool incluirNumeroSorte = true,
   }) {
     final temCupom = cupomRoletaCodigo != null && cupomRoletaCodigo.isNotEmpty;
 
@@ -663,11 +693,12 @@ class PosPagamentoService {
 <body>
   <div class="container">
     <div class="header">
-      <h1>🎉 Parabéns, $nome!</h1>
+      <h1>${incluirNumeroSorte ? '🎉 Parabéns' : '✅ Pedido confirmado'}, $nome!</h1>
     </div>
     <div class="content">
       <p>Obrigado por sua compra de <strong>R\$ ${valorTotal.toStringAsFixed(2)}</strong> na <strong>$lojaNome</strong>!</p>
 
+      ${incluirNumeroSorte ? '''
       <div class="numero-sorte">
         <h2>🎲 Seu Número da Sorte:</h2>
         <div class="numero">$numeroSorte</div>
@@ -678,6 +709,9 @@ class PosPagamentoService {
       </p>
 
       <p>Seu número da sorte foi registrado e você está concorrendo a prêmios incríveis. Fique de olho no sorteio!</p>
+      ''' : '''
+      <p>Seu pedido foi confirmado com sucesso. Em breve você receberá as atualizações do andamento.</p>
+      '''}
 
       ${temCupom ? '''
       <div class="cupom">
@@ -717,9 +751,18 @@ class PosPagamentoService {
     String? cupomRoletaCodigo,
     double? cupomRoletaDesconto,
     required double valorTotal,
+    bool incluirNumeroSorte = true,
   }) async {
     try {
       final temCupom = cupomRoletaCodigo != null && cupomRoletaCodigo.isNotEmpty;
+      final blocoSorteio = incluirNumeroSorte
+          ? '''
+
+---
+🎲 *Seu Número da Sorte:* *$numeroSorte*
+✅ Você está participando da nossa promoção!
+'''
+          : '';
 
       // Tentar buscar pedido para montar mensagem de confirmação completa (formato tipo DELIGELI)
       String mensagem = '';
@@ -767,10 +810,7 @@ $itensLinhas
 *Local de entrega:* ${endereco.isEmpty ? 'Não informado' : endereco}
 
 *Total do pedido:* R\$ ${total.toStringAsFixed(2).replaceAll('.', ',')}
-
----
-🎲 *Seu Número da Sorte:* *$numeroSorte*
-✅ Você está participando da nossa promoção!
+$blocoSorteio
 ${temCupom ? '''
 🎁 *Cupom da Roleta:* *$cupomRoletaCodigo* (${cupomRoletaDesconto?.toStringAsFixed(0)}% OFF) - Válido por 60 dias.
 ''' : ''}
@@ -785,7 +825,8 @@ Obrigado por comprar conosco! 💜
 
       if (mensagem.isEmpty) {
         // Fallback: mensagem apenas com número da sorte (comportamento anterior)
-        mensagem = '''
+        mensagem = incluirNumeroSorte
+            ? '''
 🎉 *Parabéns, $nome!*
 
 Obrigado por sua compra na *$lojaNome*!
@@ -794,6 +835,24 @@ Obrigado por sua compra na *$lojaNome*!
 *$numeroSorte*
 
 ✅ Você está participando da nossa promoção!
+
+${temCupom ? '''
+🎁 *Você também ganhou na Roleta da Sorte!*
+
+Cupom de *${cupomRoletaDesconto?.toStringAsFixed(0)}% OFF* para sua próxima compra:
+
+*$cupomRoletaCodigo*
+
+📅 Válido por 60 dias
+🔄 Use na próxima compra
+''' : ''}
+
+Obrigado por comprar conosco! 💜
+'''
+            : '''
+✅ *Pedido confirmado, $nome!*
+
+Obrigado por sua compra na *$lojaNome*!
 
 ${temCupom ? '''
 🎁 *Você também ganhou na Roleta da Sorte!*
