@@ -15,6 +15,7 @@ $ErrorActionPreference = 'Stop'
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $ScriptDir 'qa_parser.ps1')
+. (Join-Path $ScriptDir 'tracked_credentials_gate.ps1')
 $RepoRoot = (Resolve-Path (Join-Path $ScriptDir '..\..')).Path
 $MatrixPath = Join-Path $ScriptDir 'flow_matrix.json'
 $RenderScript = Join-Path $ScriptDir 'render_report.ps1'
@@ -708,6 +709,23 @@ $risks = [System.Collections.Generic.List[object]]::new()
 
 $preflight = Invoke-Preflight
 
+$trackedCredentialsPreflight = [ordered]@{
+  passed   = $true
+  exitCode = 0
+  detail   = 'nao executado (modo M0)'
+}
+
+if ($M1P0 -and $preflight.passed) {
+  $credCheckScript = Join-Path $ScriptDir 'check_tracked_credentials.ps1'
+  $trackedCredentialsPreflight = Invoke-TrackedCredentialsGate `
+    -RepoRoot $RepoRoot `
+    -CredCheckScript $credCheckScript
+  if (-not $trackedCredentialsPreflight.passed) {
+    $preflight.passed = $false
+    $preflight.blockers += 'check_tracked_credentials.ps1 falhou - credencial tracked detectada.'
+  }
+}
+
 if ($M1P0) {
   $m1Config = $matrix.m1P0Execution
   if ($null -eq $m1Config) {
@@ -769,7 +787,8 @@ if ($M1P0) {
     repoRoot         = $RepoRoot
     branch           = $branch
     head             = $head
-    preflight        = $preflight
+    preflight                 = $preflight
+    trackedCredentialsPreflight = $trackedCredentialsPreflight
     smoke            = $null
     flowExecutions   = @($flowExecutionsArtifact)
     parserIntegrity  = $parserIntegrity

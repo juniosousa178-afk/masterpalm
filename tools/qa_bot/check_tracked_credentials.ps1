@@ -4,6 +4,9 @@
   Preflight read-only: detecta credenciais Google service account em arquivos TRACKED.
   Nunca imprime private_key nem JSON integral.
 #>
+param(
+  [string]$RepoRoot = ''
+)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
@@ -38,7 +41,7 @@ function Test-ShouldScanTrackedPath {
 
   $normalized = $RelPath.Trim().Trim('"').Replace('\', '/').ToLowerInvariant()
   if ($normalized -match '\.(json|pem|p12|key)$') { return $true }
-  if ($normalized -match 'serviceaccount|credentials|/sa\.json|adminsdk') { return $true }
+  if ($normalized -eq 'tools/sa.json') { return $true }
   return $false
 }
 
@@ -101,7 +104,11 @@ function Invoke-TrackedCredentialsPreflight {
 # Execução direta (não quando dot-sourced)
 if ($MyInvocation.InvocationName -ne '.') {
   $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-  $RepoRoot = (Resolve-Path (Join-Path $ScriptDir '..\..')).Path
+  if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
+    $RepoRoot = (Resolve-Path (Join-Path $ScriptDir '..\..')).Path
+  } else {
+    $RepoRoot = (Resolve-Path -LiteralPath $RepoRoot).Path
+  }
   $exitCode = Invoke-TrackedCredentialsPreflight -RepoRoot $RepoRoot
   exit $exitCode
 }
