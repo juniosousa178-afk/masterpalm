@@ -41,3 +41,4 @@ google-services.json
 GoogleService-Info.plist
 firebase-adminsdk*.json
 serviceAccountKey.json
+tools/sa.json
