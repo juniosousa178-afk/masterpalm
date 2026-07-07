@@ -14,6 +14,7 @@ import '../models/cliente.dart';
 import '../models/produto.dart';
 import '../models/venda.dart';
 import '../models/venda_item.dart';
+import '../services/pre_pedido_confirmacao_eligibility.dart';
 import '../services/pre_pedido_service.dart';
 import '../services/shipping_preorder_service.dart';
 import '../services/catalog_cart_item_snapshot.dart';
@@ -2722,7 +2723,22 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
         throw Exception('Pré-pedido sem identificador.');
       }
 
-      final itensParaVenda = (prePedido['itens'] as List).map((item) {
+      final eligibility =
+          await PrePedidoConfirmacaoEligibilityService().loadAndEvaluate(
+        lojaId: widget.lojaId,
+        prePedidoId: prePedidoId,
+      );
+      if (!eligibility.isEligible) {
+        if (mounted) {
+          _showModernSnackBar(eligibility.userMessage, isError: true);
+        }
+        return;
+      }
+
+      final prePedidoAtual =
+          eligibility.data ?? Map<String, dynamic>.from(prePedido);
+
+      final itensParaVenda = (prePedidoAtual['itens'] as List).map((item) {
         final precoUnit = (item['precoUnitario'] as num?)?.toDouble() ?? 0.0;
         logD('[PRE-PEDIDO] Processando item: ${item['nome']}');
         logD('[PRE-PEDIDO]   - precoUnitario: $precoUnit');
@@ -2785,14 +2801,14 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
       logD(
           '[PRE-PEDIDO] Total de itens para venda: ${itensParaVenda.length}');
 
-      final totalPedido = (prePedido['total'] as num?)?.toDouble();
+      final totalPedido = (prePedidoAtual['total'] as num?)?.toDouble();
       final freteMap =
-          prePedido['frete'] as Map<String, dynamic>? ?? <String, dynamic>{};
+          prePedidoAtual['frete'] as Map<String, dynamic>? ?? <String, dynamic>{};
       final freteGratis = freteMap['freteGratis'] == true;
       final freteValor = freteGratis
           ? 0.0
           : (freteMap['valor'] as num?)?.toDouble() ?? 0.0;
-      final pagamento = (prePedido['pagamento'] ?? 'PIX').toString();
+      final pagamento = (prePedidoAtual['pagamento'] ?? 'PIX').toString();
       final totalPago = totalPedido ??
           itensParaVenda.fold<double>(
             0,
@@ -2870,7 +2886,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
           await Hive.openBox<Venda>(HiveBoxNames.vendas(widget.lojaId));
 
       final clienteMap =
-          prePedido['cliente'] as Map<String, dynamic>? ?? <String, dynamic>{};
+          prePedidoAtual['cliente'] as Map<String, dynamic>? ?? <String, dynamic>{};
 
       final venda = await VendasService.registrarVendaMulti(
         produtosBox: produtosBox,
@@ -2882,7 +2898,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
         pix: pix,
         cartao: cartao,
         vendedor: 'Loja online',
-        observacao: (prePedido['observacao'] ?? '').toString(),
+        observacao: (prePedidoAtual['observacao'] ?? '').toString(),
         frete: freteValor,
         descontoPct: 0,
         lojaId: widget.lojaId,
@@ -2893,7 +2909,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
 
       final vendaId = venda.key.toString();
 
-      final subtotalPedido = (prePedido['subtotal'] as num?)?.toDouble() ??
+      final subtotalPedido = (prePedidoAtual['subtotal'] as num?)?.toDouble() ??
           itensParaVenda.fold<double>(
             0,
             (acc, item) =>
@@ -2911,9 +2927,9 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
         pagamento: pagamento,
         subtotal: subtotalPedido,
         total: totalPago,
-        observacao: (prePedido['observacao'] ?? '').toString(),
-        cupom: prePedido['cupom'] as Map<String, dynamic>?,
-        premioRoletaRaw: prePedido['premioRoleta'] as Map<String, dynamic>?,
+        observacao: (prePedidoAtual['observacao'] ?? '').toString(),
+        cupom: prePedidoAtual['cupom'] as Map<String, dynamic>?,
+        premioRoletaRaw: prePedidoAtual['premioRoleta'] as Map<String, dynamic>?,
       );
 
       await CatalogoVendaSideEffectsSecundariosService()
@@ -2925,8 +2941,8 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
         items: itensParaVenda,
         produtosBox: produtosBox,
         total: totalPago,
-        premioRoletaRaw: prePedido['premioRoleta'] as Map<String, dynamic>?,
-        vendedorNome: prePedido['vendedorRef']?.toString(),
+        premioRoletaRaw: prePedidoAtual['premioRoleta'] as Map<String, dynamic>?,
+        vendedorNome: prePedidoAtual['vendedorRef']?.toString(),
       );
 
       await PrePedidoService.confirmarPrePedido(
@@ -2937,7 +2953,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
 
       // Gerar número da sorte e enviar por email e WhatsApp ao cliente
       final cliente = clienteMap;
-      final itens = prePedido['itens'] as List<dynamic>? ?? [];
+      final itens = prePedidoAtual['itens'] as List<dynamic>? ?? [];
       var valorTotal = totalPago;
       if (valorTotal <= 0 && itens.isNotEmpty) {
         valorTotal = 0;
@@ -2960,9 +2976,9 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
         items: itensParaVenda,
         valorTotal: valorTotal,
         formaPagamento: pagamento,
-        cupomRoletaCodigo: prePedido['premioRoleta']?['codigo']?.toString(),
+        cupomRoletaCodigo: prePedidoAtual['premioRoleta']?['codigo']?.toString(),
         cupomRoletaDesconto:
-            (prePedido['premioRoleta']?['valor'] as num?)?.toDouble(),
+            (prePedidoAtual['premioRoleta']?['valor'] as num?)?.toDouble(),
         estoqueJaBaixado: true,
       );
 
