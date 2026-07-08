@@ -463,15 +463,6 @@ class EstoqueTransactionService {
       // Usar set+merge evita abortar a venda quando coleção espelho não existe.
       transaction.set(estoqueRef, updateData, SetOptions(merge: true));
 
-      // Propagar para produtos (catálogo web)
-      final produtosRef = _db
-          .collection('lojas')
-          .doc(lojaId)
-          .collection('produtos')
-          .doc(docId);
-      // Coleção de catálogo pode não ter o doc publicado; manter espelho sem falhar.
-      transaction.set(produtosRef, updateData, SetOptions(merge: true));
-
       debugPrint('[ESTOQUE-TX] ✅ Baixa atômica: $produtoNome -$quantidade');
 
       final slugVal = (data['slug'] ?? '').toString().trim();
@@ -1115,7 +1106,6 @@ class EstoqueTransactionService {
       'saleId': operationId,
       'lojaId': lojaId,
       'baixaAplicada': true,
-      'estornoAplicado': false,
       'snapshotHash': snapshotHash,
       'txItemsHash': txItemsHash,
     };
@@ -1603,13 +1593,6 @@ class EstoqueTransactionService {
         if (u.estoqueRef != null) {
           transaction.set(u.estoqueRef!, u.updateData, SetOptions(merge: true));
         }
-        // Propagar para produtos (catálogo web) — doc pode não existir se não publicado
-        final produtosRef = _db
-            .collection('lojas')
-            .doc(lojaId)
-            .collection('produtos')
-            .doc(u.result.produtoId);
-        transaction.set(produtosRef, u.updateData, SetOptions(merge: true));
       }
 
       if (idempotency != null) {
@@ -2062,8 +2045,6 @@ class EstoqueTransactionService {
         if (u.estoqueRef != null) {
           transaction.set(u.estoqueRef!, u.updateData, SetOptions(merge: true));
         }
-        final produtosRef = _db.collection('lojas').doc(lojaId).collection('produtos').doc(u.result.produtoId);
-        transaction.set(produtosRef, u.updateData, SetOptions(merge: true));
       }
 
       return updates.map((u) => u.result).toList();

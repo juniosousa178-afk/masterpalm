@@ -22,7 +22,7 @@ void main() {
       expect(p, isA<Map<String, dynamic>>());
       expect(p['protocolVersion'], 1);
       expect(p['baixaAplicada'], isTrue);
-      expect(p['estornoAplicado'], isFalse);
+      expect(p.containsKey('estornoAplicado'), isFalse);
       expect(p.containsKey('estornoAplicadoAt'), isFalse);
       expect(p.containsKey('estornoOrigem'), isFalse);
     });
