@@ -300,7 +300,7 @@ class EstoqueTransactionService {
       final estoquePorTamanhoRaw = data['estoquePorTamanho'];
       final quantidadeTotal = (data['quantidade'] as num?)?.toInt() ?? 0;
 
-      final variacoes = firestoreStringDynamicMapOrEmpty(variacoesRaw);
+      final variacoes = firestoreStringDynamicMapDeepOrEmpty(variacoesRaw);
       final estoquePorTamanho = _parseMapStringInt(estoquePorTamanhoRaw);
 
         final usaVariacoes = variacoes.isNotEmpty;
@@ -788,7 +788,7 @@ class EstoqueTransactionService {
         'Estoque insuficiente para "$produtoNome" $erroCtx. Disponível: 0, solicitado: $quantidade.',
       );
     }
-    final mapa = Map<String, dynamic>.from(mapaCor);
+    final mapa = firestoreStringDynamicMapOrEmpty(mapaCor);
     final corResolvida = _resolverChaveNoMapa(mapa, corKey) ?? corKey;
     final cell = mapa[corResolvida];
     if (ProdutoVariacaoExtra.celulaTemExtrasNaoVazios(cell) &&
@@ -829,7 +829,7 @@ class EstoqueTransactionService {
   }) {
     final mapaCor = variacoes[chaveTamanho];
     final mapa = mapaCor != null && mapaCor is Map
-        ? Map<String, dynamic>.from(mapaCor)
+        ? firestoreStringDynamicMapOrEmpty(mapaCor)
         : <String, dynamic>{};
     final cell = mapa[corKey];
     mapa[corKey] =
@@ -1265,7 +1265,7 @@ class EstoqueTransactionService {
         final variacoesRaw = data['variacoes'];
         final estoquePorTamanhoRaw = data['estoquePorTamanho'];
 
-        final variacoes = firestoreStringDynamicMapOrEmpty(variacoesRaw);
+        final variacoes = firestoreStringDynamicMapDeepOrEmpty(variacoesRaw);
         final estoquePorTamanho = _parseMapStringInt(estoquePorTamanhoRaw);
 
         final usaVariacoes = variacoes.isNotEmpty;
@@ -1791,7 +1791,7 @@ class EstoqueTransactionService {
 
         final variacoesRaw = data['variacoes'];
         final estoquePorTamanhoRaw = data['estoquePorTamanho'];
-        final variacoes = firestoreStringDynamicMapOrEmpty(variacoesRaw);
+        final variacoes = firestoreStringDynamicMapDeepOrEmpty(variacoesRaw);
         final estoquePorTamanho = _parseMapStringInt(estoquePorTamanhoRaw);
 
         final usaVariacoes = variacoes.isNotEmpty;

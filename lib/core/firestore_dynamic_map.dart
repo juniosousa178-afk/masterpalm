@@ -14,6 +14,22 @@ Map<String, dynamic>? firestoreStringDynamicMapOrNull(dynamic raw) {
 Map<String, dynamic> firestoreStringDynamicMapOrEmpty(dynamic raw) =>
     firestoreStringDynamicMapOrNull(raw) ?? <String, dynamic>{};
 
+/// Normalização recursiva para mapas aninhados (tam → cor → célula).
+/// [firestoreStringDynamicMapOrEmpty] só normaliza o nível superior.
+Map<String, dynamic> firestoreStringDynamicMapDeepOrEmpty(dynamic raw) {
+  final top = firestoreStringDynamicMapOrEmpty(raw);
+  final out = <String, dynamic>{};
+  for (final e in top.entries) {
+    final v = e.value;
+    if (v is Map) {
+      out[e.key] = firestoreStringDynamicMapDeepOrEmpty(v);
+    } else {
+      out[e.key] = v;
+    }
+  }
+  return out;
+}
+
 /// Reproduz o cast legado que falha no web com mapas [Map<String, Object?>].
 @visibleForTesting
 Map<String, dynamic>? legacyUnsafeFirestoreVariacoesCast(dynamic raw) =>
