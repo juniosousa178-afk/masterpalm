@@ -129,6 +129,27 @@ class EstoqueTransactionService {
   @visibleForTesting
   static FirebaseFirestore? debugFirestoreOverride;
 
+  /// Atraso artificial dentro do callback da transação batch (somente testes).
+  @visibleForTesting
+  static Duration? debugBatchTransactionDelay;
+
+  /// Quando true, aplica timeout legado (somente testes RED).
+  @visibleForTesting
+  static bool debugEnforceLegacyBatchTransactionTimeout = false;
+
+  /// Duração do timeout legado em testes (default 25s em produção simulada).
+  @visibleForTesting
+  static Duration debugLegacyBatchTransactionTimeoutDuration =
+      const Duration(seconds: 25);
+
+  @visibleForTesting
+  static void debugClearOverrides() {
+    debugFirestoreOverride = null;
+    debugBatchTransactionDelay = null;
+    debugEnforceLegacyBatchTransactionTimeout = false;
+    debugLegacyBatchTransactionTimeoutDuration = const Duration(seconds: 25);
+  }
+
   static FirebaseFirestore get _db =>
       debugFirestoreOverride ?? FirebaseFirestore.instance;
 
@@ -1192,7 +1213,8 @@ class EstoqueTransactionService {
     Future<_TransacaoBaixaBatchOutcome> executarTransacao([
       _PdvBaixaIdempotencyContext? idempotency,
     ]) {
-      return _db.runTransaction<_TransacaoBaixaBatchOutcome>((transaction) async {
+      Future<_TransacaoBaixaBatchOutcome> run() {
+        return _db.runTransaction<_TransacaoBaixaBatchOutcome>((transaction) async {
       if (idempotency != null) {
         final markerRef =
             _baixaPagamentoRef(lojaId, idempotency.operationId);
@@ -1464,14 +1486,31 @@ class EstoqueTransactionService {
         );
       }
 
+      final delay = debugBatchTransactionDelay;
+      if (delay != null && delay > Duration.zero) {
+        await Future<void>.delayed(delay);
+      }
+
       final results = updates.map((u) => u.result).toList();
       return _TransacaoBaixaBatchOutcome(alreadyApplied: false, results: results);
-      }).timeout(
-        const Duration(seconds: 25),
-        onTimeout: () => throw TimeoutException(
-          'Transação de estoque demorou muito. Tente novamente.',
-        ),
-      );
+        });
+      }
+
+      final sw = Stopwatch()..start();
+      final future = run();
+      if (debugEnforceLegacyBatchTransactionTimeout) {
+        return future.timeout(
+          debugLegacyBatchTransactionTimeoutDuration,
+          onTimeout: () => throw TimeoutException(
+            'Transação de estoque demorou muito. Tente novamente.',
+          ),
+        );
+      }
+      return future.whenComplete(() {
+        debugPrint(
+          '[ESTOQUE-TX] batch transaction elapsedMs=${sw.elapsedMilliseconds}',
+        );
+      });
     }
 
     try {
