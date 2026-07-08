@@ -15,6 +15,7 @@ import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/dart_error_unwrap.dart';
+import '../core/firestore_dynamic_map.dart';
 import '../core/produto_variacao_extra.dart';
 import '../core/strict_product_resolution.dart';
 import '../models/produto.dart';
@@ -306,13 +307,11 @@ class EstoqueTransactionService {
       final docId = produtoSnap.reference.id;
       final produtoNome = (data['nome'] ?? '').toString();
 
-      final variacoesRaw = data['variacoes'] as Map<String, dynamic>?;
+      final variacoesRaw = data['variacoes'];
       final estoquePorTamanhoRaw = data['estoquePorTamanho'];
       final quantidadeTotal = (data['quantidade'] as num?)?.toInt() ?? 0;
 
-      final variacoes = variacoesRaw != null
-          ? Map<String, dynamic>.from(variacoesRaw)
-          : <String, dynamic>{};
+      final variacoes = firestoreStringDynamicMapOrEmpty(variacoesRaw);
       final estoquePorTamanho = _parseMapStringInt(estoquePorTamanhoRaw);
 
         final usaVariacoes = variacoes.isNotEmpty;
@@ -1274,12 +1273,10 @@ class EstoqueTransactionService {
         final cor = resolved.cor;
         final extraTrim = resolved.variacaoExtra;
 
-        final variacoesRaw = data['variacoes'] as Map<String, dynamic>?;
+        final variacoesRaw = data['variacoes'];
         final estoquePorTamanhoRaw = data['estoquePorTamanho'];
 
-        final variacoes = variacoesRaw != null
-            ? Map<String, dynamic>.from(variacoesRaw)
-            : <String, dynamic>{};
+        final variacoes = firestoreStringDynamicMapOrEmpty(variacoesRaw);
         final estoquePorTamanho = _parseMapStringInt(estoquePorTamanhoRaw);
 
         final usaVariacoes = variacoes.isNotEmpty;
@@ -1801,9 +1798,9 @@ class EstoqueTransactionService {
         final cor = resolved.cor;
         final extraTrim = resolved.variacaoExtra;
 
-        final variacoesRaw = data['variacoes'] as Map<String, dynamic>?;
+        final variacoesRaw = data['variacoes'];
         final estoquePorTamanhoRaw = data['estoquePorTamanho'];
-        final variacoes = variacoesRaw != null ? Map<String, dynamic>.from(variacoesRaw) : <String, dynamic>{};
+        final variacoes = firestoreStringDynamicMapOrEmpty(variacoesRaw);
         final estoquePorTamanho = _parseMapStringInt(estoquePorTamanhoRaw);
 
         final usaVariacoes = variacoes.isNotEmpty;
