@@ -1785,6 +1785,10 @@ class VendasService {
     var saleIntentStatus = SaleIntentStatus.reserved;
 
     if (isCoordinatedPdv) {
+      debugPrint(
+        '[H1-TRACE] stage=before_sale_intent_reserve '
+        'lojaId=$lojaEfetiva intentId=$coordinatedIntentId',
+      );
       saleIntentReservation = await SaleIntentService.reserveOrJoin(
         lojaId: lojaEfetiva,
         saleIntentId: coordinatedIntentId,
@@ -1792,6 +1796,11 @@ class VendasService {
         stockEffectHash: stockEffectHash,
       );
       saleIntentStatus = saleIntentReservation.status;
+      debugPrint(
+        '[H1-TRACE] stage=after_sale_intent_reserve '
+        'status=${saleIntentStatus.wireValue} '
+        'opId=${saleIntentReservation.operationId}',
+      );
 
       final earlyOpId = saleIntentReservation.operationId;
       final vendaJaPersistida = _findVendaHivePorIdFirebase(
@@ -1815,6 +1824,10 @@ class VendasService {
           isCoordinatedPdv ? null : idFirebaseToReuse?.trim(),
     );
     final idFirebaseReservado = journalEntry.operationId;
+    debugPrint(
+      '[H1-TRACE] stage=after_journal_reserve '
+      'opId=$idFirebaseReservado key=$operationKey',
+    );
     assert(
       !isCoordinatedPdv ||
           idFirebaseReservado == saleIntentReservation!.operationId,
@@ -1833,10 +1846,15 @@ class VendasService {
     late final String formasPagamentoTexto;
 
     try {
+    debugPrint(
+      '[H1-TRACE] stage=before_prep_remoto lojaId=$lojaEfetiva '
+      'produtos=${produtosEncontrados.length}',
+    );
     await VendaEstoqueRemotoPrepService.garantirProdutosProntosParaBaixa(
       lojaId: lojaEfetiva,
       produtos: produtosEncontrados,
     );
+    debugPrint('[H1-TRACE] stage=after_prep_remoto lojaId=$lojaEfetiva');
 
     await debugAntesBaixaEstoqueBarrier?.call();
 

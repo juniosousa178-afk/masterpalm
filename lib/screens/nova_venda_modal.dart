@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import '../core/combo_configuravel_resumo.dart';
 import '../core/dart_error_unwrap.dart';
+import '../core/nova_venda_pos_save_ui_policy.dart';
 import '../core/logger.dart';
 import '../core/produto_variacao_extra.dart';
 import '../core/strict_product_resolution.dart';
@@ -1873,6 +1874,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       final vendaParaEditarRef = widget.vendaParaEditar;
       final onVendaFinalizadaRef = widget.onVendaFinalizada;
 
+      debugPrint('[H1-TRACE] stage=ui_before_salvar_venda_background');
       // Só fecha o modal após o salvamento principal ter sido concluído com sucesso.
       final (ok, numeroSorte, mensagemErro) = await _salvarVendaEmBackground(
         produtosBox: produtosBox,
@@ -1901,22 +1903,48 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
             : null,
       );
       _pendenteFiado = false;
-      if (!mounted) return;
-      if (ok) {
-        _pdvSaleIntentLifecycle.clearOnSuccess();
-        // Mostrar dialog com número da sorte (CampaignEngine já envia WhatsApp/Email)
-        if (numeroSorte != null && numeroSorte.isNotEmpty) {
-          await _mostrarDialogNumeroSorte(numeroSorte, nomeClienteFinal);
-        }
-        if (!mounted) return;
-        await _mostrarSucessoVenda();
-        if (!mounted) return;
-        onVendaFinalizadaRef();
-        Navigator.of(context).pop(true);
-      } else if (mensagemErro != null && mensagemErro.isNotEmpty) {
-        await _mostrarErro(
-          'A venda não foi salva.\n\n$mensagemErro',
-        );
+      debugPrint(
+        '[H1-TRACE] stage=ui_after_salvar_venda_background '
+        'ok=$ok mounted=$mounted '
+        'hasMsg=${mensagemErro != null && mensagemErro.trim().isNotEmpty}',
+      );
+      final posSave = decideNovaVendaPosSaveUi(
+        ok: ok,
+        mensagemErro: mensagemErro,
+        mounted: mounted,
+      );
+      switch (posSave.action) {
+        case NovaVendaPosSaveUiAction.notifyParentError:
+          debugPrint(
+            '[H1-TRACE] stage=ui_notify_parent_error '
+            'mounted=$mounted ok=$ok',
+          );
+          if (posSave.errorMessage != null) {
+            onErro?.call(posSave.errorMessage!);
+          }
+          return;
+        case NovaVendaPosSaveUiAction.showErrorDialog:
+          await _mostrarErro(
+            'A venda não foi salva.\n\n${posSave.errorMessage}',
+          );
+          return;
+        case NovaVendaPosSaveUiAction.showSuccess:
+          _pdvSaleIntentLifecycle.clearOnSuccess();
+          if (numeroSorte != null && numeroSorte.isNotEmpty) {
+            await _mostrarDialogNumeroSorte(numeroSorte, nomeClienteFinal);
+          }
+          if (!mounted) {
+            debugPrint('[H1-TRACE] stage=ui_success_unmounted_after_sorte');
+            onErro?.call(
+              'A venda pode ter sido concluída, mas a tela foi atualizada. '
+              'Verifique o histórico de vendas.',
+            );
+            return;
+          }
+          await _mostrarSucessoVenda();
+          if (!mounted) return;
+          onVendaFinalizadaRef();
+          Navigator.of(context).pop(true);
       }
     } catch (e, stackTrace) {
       if (!mounted) return;
