@@ -544,7 +544,7 @@ class EstoqueTransactionService {
 
     if (variacoesNovas != null) {
       final sanitized = ProdutoVariacaoExtra.sanitizeVariacoesMapForFirestore(
-        Map<String, dynamic>.from(variacoesNovas),
+        firestoreStringDynamicMapDeepOrEmpty(variacoesNovas),
       );
       updateData['variacoes'] = sanitized;
       _adicionarDeletesMapaVariacoes(
@@ -788,7 +788,7 @@ class EstoqueTransactionService {
         'Estoque insuficiente para "$produtoNome" $erroCtx. Disponível: 0, solicitado: $quantidade.',
       );
     }
-    final mapa = firestoreStringDynamicMapOrEmpty(mapaCor);
+    final mapa = firestoreStringDynamicMapDeepOrEmpty(mapaCor);
     final corResolvida = _resolverChaveNoMapa(mapa, corKey) ?? corKey;
     final cell = mapa[corResolvida];
     if (ProdutoVariacaoExtra.celulaTemExtrasNaoVazios(cell) &&
@@ -811,7 +811,7 @@ class EstoqueTransactionService {
     } else {
       mapa[corResolvida] = r.newCell;
     }
-    final novasVariacoes = Map<String, dynamic>.from(variacoes);
+    final novasVariacoes = firestoreStringDynamicMapDeepOrEmpty(variacoes);
     if (mapa.isEmpty) {
       novasVariacoes.remove(tamResolvido);
     } else {
@@ -829,12 +829,12 @@ class EstoqueTransactionService {
   }) {
     final mapaCor = variacoes[chaveTamanho];
     final mapa = mapaCor != null && mapaCor is Map
-        ? firestoreStringDynamicMapOrEmpty(mapaCor)
+        ? firestoreStringDynamicMapDeepOrEmpty(mapaCor)
         : <String, dynamic>{};
     final cell = mapa[corKey];
     mapa[corKey] =
         ProdutoVariacaoExtra.devolverCelula(cell, extraTrim, quantidade);
-    final novasVariacoes = Map<String, dynamic>.from(variacoes);
+    final novasVariacoes = firestoreStringDynamicMapDeepOrEmpty(variacoes);
     novasVariacoes[chaveTamanho] = mapa;
     return novasVariacoes;
   }
@@ -1126,6 +1126,27 @@ class EstoqueTransactionService {
     }
   }
 
+  static void _txStageLog(
+    String stage, {
+    int? index,
+    String? productId,
+    String? branch,
+    String? operationId,
+    String? runtimeType,
+  }) {
+    final op = operationId != null && operationId.length > 8
+        ? '${operationId.substring(0, 8)}…'
+        : operationId;
+    debugPrint(
+      '[H1-TX-STAGE] stage=$stage'
+      '${index != null ? ' index=$index' : ''}'
+      '${productId != null ? ' productId=$productId' : ''}'
+      '${branch != null ? ' branch=$branch' : ''}'
+      '${op != null ? ' operationId=$op' : ''}'
+      '${runtimeType != null ? ' runtimeType=$runtimeType' : ''}',
+    );
+  }
+
   static Future<void> _validarTombstonesBaixa({
     required String lojaId,
     required List<({
@@ -1206,9 +1227,19 @@ class EstoqueTransactionService {
       if (idempotency != null) {
         final markerRef =
             _baixaPagamentoRef(lojaId, idempotency.operationId);
+        _txStageLog(
+          'tx_stage_01_marker_before_get',
+          operationId: idempotency.operationId,
+        );
         final markerSnap = await transaction.get(markerRef);
+        _txStageLog(
+          'tx_stage_02_marker_after_get',
+          operationId: idempotency.operationId,
+          runtimeType: markerSnap.data()?.runtimeType.toString(),
+        );
         if (markerSnap.exists) {
-          final markerData = markerSnap.data() ?? {};
+          final markerData =
+              firestoreStringDynamicMapOrEmpty(markerSnap.data());
           if (markerData['baixaAplicada'] == true) {
             if (markerData['estornoAplicado'] == true) {
               _assertMarkerIdentityCompativel(
@@ -1244,17 +1275,53 @@ class EstoqueTransactionService {
       // FASE 1: Todas as leituras antes de qualquer escrita (regra do Firestore)
       final updates = <({DocumentReference<Map<String, dynamic>> ref, DocumentReference<Map<String, dynamic>>? estoqueRef, Map<String, dynamic> updateData, EstoqueTransactionResult result})>[];
 
-      for (final resolved in resolvedItems) {
-        final produtoSnap = await transaction.get(resolved.ref);
-
-        if (!produtoSnap.exists) {
-          throw Exception(
-            'Produto não encontrado no servidor: ${resolved.ref.id}. '
-            'Verifique se o produto foi sincronizado ou sua conexão com a internet.',
+      for (var itemIndex = 0; itemIndex < resolvedItems.length; itemIndex++) {
+        final resolved = resolvedItems[itemIndex];
+        try {
+          _txStageLog(
+            'tx_stage_03_item_begin',
+            index: itemIndex,
+            productId: resolved.ref.id,
+            operationId: idempotency?.operationId,
           );
-        }
+          _txStageLog(
+            'tx_stage_04_product_before_get',
+            index: itemIndex,
+            productId: resolved.ref.id,
+          );
+          final produtoSnap = await transaction.get(resolved.ref);
+          _txStageLog(
+            'tx_stage_05_product_after_get',
+            index: itemIndex,
+            productId: resolved.ref.id,
+            runtimeType: produtoSnap.data()?.runtimeType.toString(),
+          );
 
-        final data = produtoSnap.data()!;
+          if (!produtoSnap.exists) {
+            throw Exception(
+              'Produto não encontrado no servidor: ${resolved.ref.id}. '
+              'Verifique se o produto foi sincronizado ou sua conexão com a internet.',
+            );
+          }
+
+          final rawData = produtoSnap.data();
+          if (rawData == null) {
+            throw Exception(
+              'Produto sem dados no servidor: ${resolved.ref.id}.',
+            );
+          }
+          _txStageLog(
+            'tx_stage_06_data_normalize_before',
+            index: itemIndex,
+            productId: resolved.ref.id,
+          );
+          final data = firestoreStringDynamicMapDeepOrEmpty(rawData);
+          _txStageLog(
+            'tx_stage_07_data_normalize_after',
+            index: itemIndex,
+            productId: resolved.ref.id,
+            runtimeType: data.runtimeType.toString(),
+          );
         final docId = produtoSnap.reference.id;
         final produtoNome = (data['nome'] ?? '').toString();
         final quantidade = resolved.quantidade;
@@ -1265,7 +1332,19 @@ class EstoqueTransactionService {
         final variacoesRaw = data['variacoes'];
         final estoquePorTamanhoRaw = data['estoquePorTamanho'];
 
+        _txStageLog(
+          'tx_stage_09_variacoes_before',
+          index: itemIndex,
+          productId: docId,
+          runtimeType: variacoesRaw?.runtimeType.toString(),
+        );
         final variacoes = firestoreStringDynamicMapDeepOrEmpty(variacoesRaw);
+        _txStageLog(
+          'tx_stage_10_variacoes_after',
+          index: itemIndex,
+          productId: docId,
+          runtimeType: variacoes.runtimeType.toString(),
+        );
         final estoquePorTamanho = _parseMapStringInt(estoquePorTamanhoRaw);
 
         final usaVariacoes = variacoes.isNotEmpty;
@@ -1309,8 +1388,16 @@ class EstoqueTransactionService {
         Map<String, dynamic>? novasVariacoes;
         Map<String, int>? novoEstoquePorTamanho;
         int novaQuantidadeTotal;
+        var stockBranch = 'simple';
 
         if (temVariacaoSoloCor && cor.isNotEmpty) {
+          stockBranch = 'variation';
+          _txStageLog(
+            'tx_stage_11_stock_compute_before',
+            index: itemIndex,
+            productId: docId,
+            branch: stockBranch,
+          );
           novasVariacoes = _mapaAposDebitoVariacao(
             variacoes: variacoes,
             chaveTamanho: 'sem-tamanho',
@@ -1322,6 +1409,13 @@ class EstoqueTransactionService {
           );
           novaQuantidadeTotal = _somarVariacoes(novasVariacoes);
         } else if (usaVariacoes && tamanho.isNotEmpty) {
+          stockBranch = 'variation';
+          _txStageLog(
+            'tx_stage_11_stock_compute_before',
+            index: itemIndex,
+            productId: docId,
+            branch: stockBranch,
+          );
           final tamResolvidoVar = _resolverChaveNoMapa(variacoes, tamanho);
           final mapaTamVar = tamResolvidoVar != null
               ? variacoes[tamResolvidoVar]
@@ -1329,6 +1423,7 @@ class EstoqueTransactionService {
           final celulaVarExiste = mapaTamVar is Map && mapaTamVar.isNotEmpty;
 
           if (!celulaVarExiste && temEstoquePorTamanho) {
+            stockBranch = 'grade';
             final tamResolvido =
                 _resolverChaveNoMapa(estoquePorTamanho, tamanho) ?? tamanho;
             final disponivel = estoquePorTamanho[tamResolvido] ?? 0;
@@ -1367,6 +1462,13 @@ class EstoqueTransactionService {
             novaQuantidadeTotal = _somarVariacoes(novasVariacoes);
           }
         } else if (temEstoquePorTamanho && tamanho.isNotEmpty) {
+          stockBranch = 'grade';
+          _txStageLog(
+            'tx_stage_11_stock_compute_before',
+            index: itemIndex,
+            productId: docId,
+            branch: stockBranch,
+          );
           final tamResolvido =
               _resolverChaveNoMapa(estoquePorTamanho, tamanho) ?? tamanho;
           final disponivel = estoquePorTamanho[tamResolvido] ?? 0;
@@ -1387,7 +1489,14 @@ class EstoqueTransactionService {
           novaQuantidadeTotal =
               novoEstoquePorTamanho.values.fold(0, (a, b) => a + b);
         } else {
-          final quantidadeTotal = (data['quantidade'] as num?)?.toInt() ?? 0;
+          stockBranch = 'simple';
+          _txStageLog(
+            'tx_stage_11_stock_compute_before',
+            index: itemIndex,
+            productId: docId,
+            branch: stockBranch,
+          );
+          final quantidadeTotal = firestoreIntFieldOrZero(data['quantidade']);
 
           if (quantidadeTotal < quantidade) {
             throw Exception(
@@ -1398,6 +1507,18 @@ class EstoqueTransactionService {
 
           novaQuantidadeTotal = quantidadeTotal - quantidade;
         }
+        _txStageLog(
+          'tx_stage_08_branch_resolved',
+          index: itemIndex,
+          productId: docId,
+          branch: stockBranch,
+        );
+        _txStageLog(
+          'tx_stage_12_stock_compute_after',
+          index: itemIndex,
+          productId: docId,
+          branch: stockBranch,
+        );
 
         Map<String, int>? estoquePorTamanhoParaVariacao;
         if (novasVariacoes != null) {
@@ -1405,6 +1526,11 @@ class EstoqueTransactionService {
               _estoquePorTamanhoAgregadoDeVariacoes(novasVariacoes);
         }
 
+        _txStageLog(
+          'tx_stage_13_product_write_before',
+          index: itemIndex,
+          productId: docId,
+        );
         final updateData = buildEstoqueUpdateDataComDeletes(
           novaQuantidadeTotal: novaQuantidadeTotal,
           variacoesAnteriores: variacoes,
@@ -1436,6 +1562,20 @@ class EstoqueTransactionService {
             quantidadeTotalAtualizada: novaQuantidadeTotal,
           ),
         ));
+        _txStageLog(
+          'tx_stage_14_product_write_after',
+          index: itemIndex,
+          productId: docId,
+        );
+        } catch (e, st) {
+          debugPrint(
+            '[H1-TX-STAGE] stage=tx_error_stage index=$itemIndex '
+            'productId=${resolved.ref.id} errorRuntimeType=${e.runtimeType} '
+            'error=$e',
+          );
+          debugPrint('$st');
+          rethrow;
+        }
       }
 
       // FASE 2: Todas as escritas (após todas as leituras)
@@ -1454,6 +1594,10 @@ class EstoqueTransactionService {
       }
 
       if (idempotency != null) {
+        _txStageLog(
+          'tx_stage_15_marker_write_before',
+          operationId: idempotency.operationId,
+        );
         transaction.set(
           _baixaPagamentoRef(lojaId, idempotency.operationId),
           {
@@ -1470,6 +1614,10 @@ class EstoqueTransactionService {
             'txItemsHash': idempotency.txItemsHash,
           },
         );
+        _txStageLog(
+          'tx_stage_16_marker_write_after',
+          operationId: idempotency.operationId,
+        );
       }
 
       final delay = debugBatchTransactionDelay;
@@ -1478,6 +1626,7 @@ class EstoqueTransactionService {
       }
 
       final results = updates.map((u) => u.result).toList();
+      _txStageLog('tx_stage_17_callback_return');
       return _TransacaoBaixaBatchOutcome(alreadyApplied: false, results: results);
         });
       }

@@ -30,6 +30,14 @@ Map<String, dynamic> firestoreStringDynamicMapDeepOrEmpty(dynamic raw) {
   return out;
 }
 
+/// Coerção segura de campos numéricos do Firestore (evita `as num?` no web).
+int firestoreIntFieldOrZero(dynamic raw) {
+  if (raw == null) return 0;
+  if (raw is int) return raw;
+  if (raw is num) return raw.toInt();
+  return int.tryParse(raw.toString().trim()) ?? 0;
+}
+
 /// Reproduz o cast legado que falha no web com mapas [Map<String, Object?>].
 @visibleForTesting
 Map<String, dynamic>? legacyUnsafeFirestoreVariacoesCast(dynamic raw) =>
