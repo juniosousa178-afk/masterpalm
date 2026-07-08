@@ -134,21 +134,10 @@ class EstoqueTransactionService {
   @visibleForTesting
   static Duration? debugBatchTransactionDelay;
 
-  /// Quando true, aplica timeout legado (somente testes RED).
-  @visibleForTesting
-  static bool debugEnforceLegacyBatchTransactionTimeout = false;
-
-  /// Duração do timeout legado em testes (default 25s em produção simulada).
-  @visibleForTesting
-  static Duration debugLegacyBatchTransactionTimeoutDuration =
-      const Duration(seconds: 25);
-
   @visibleForTesting
   static void debugClearOverrides() {
     debugFirestoreOverride = null;
     debugBatchTransactionDelay = null;
-    debugEnforceLegacyBatchTransactionTimeout = false;
-    debugLegacyBatchTransactionTimeoutDuration = const Duration(seconds: 25);
   }
 
   static FirebaseFirestore get _db =>
@@ -1494,16 +1483,18 @@ class EstoqueTransactionService {
       }
 
       final sw = Stopwatch()..start();
-      final future = run();
-      if (debugEnforceLegacyBatchTransactionTimeout) {
-        return future.timeout(
-          debugLegacyBatchTransactionTimeoutDuration,
-          onTimeout: () => throw TimeoutException(
-            'Transação de estoque demorou muito. Tente novamente.',
-          ),
+      final itemCount = resolvedItems.length;
+      final idempotent = idempotency != null;
+      debugPrint(
+        '[H1-TRACE] stage=batch_before_runTransaction '
+        'lojaId=$lojaId itemCount=$itemCount idempotent=$idempotent',
+      );
+      return run().whenComplete(() {
+        debugPrint(
+          '[H1-TRACE] stage=batch_after_runTransaction '
+          'lojaId=$lojaId elapsedMs=${sw.elapsedMilliseconds} '
+          'stockPath=batch_idempotent',
         );
-      }
-      return future.whenComplete(() {
         debugPrint(
           '[ESTOQUE-TX] batch transaction elapsedMs=${sw.elapsedMilliseconds}',
         );

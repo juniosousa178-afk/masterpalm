@@ -13,6 +13,8 @@ import 'package:master_palm/services/produto_exclusao_tombstone_service.dart';
 import 'package:master_palm/services/produtos_firestore_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/legacy_stock_batch_timeout_test_support.dart';
+
 const _lojaId = 'loja-stockto';
 const _opId = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
 
@@ -126,25 +128,26 @@ void main() {
       expect(await _markerBaixa(firestore, _opId), isTrue);
     });
 
-    test('STOCKTO-2 RED: timeout legado 25s reproduz mensagem H1', () async {
+    test('STOCKTO-2 RED: timeout legado 25s reproduz mensagem H1 (test-only)', () async {
       const pid = 'p-slow-red';
       await _seedSimples(firestore, pid, 5);
       EstoqueTransactionService.debugBatchTransactionDelay =
           const Duration(milliseconds: 200);
-      EstoqueTransactionService.debugEnforceLegacyBatchTransactionTimeout = true;
-      EstoqueTransactionService.debugLegacyBatchTransactionTimeoutDuration =
-          const Duration(milliseconds: 50);
 
       expect(
-        EstoqueTransactionService.baixarEstoqueTransactionBatchIdempotente(
-          lojaId: _lojaId,
-          itens: _item(pid: pid),
-          operationId: 'op-red-${DateTime.now().microsecondsSinceEpoch}',
+        LegacyStockBatchTimeoutTestSupport.withLegacyBatchTimeout(
+          EstoqueTransactionService.baixarEstoqueTransactionBatchIdempotente(
+            lojaId: _lojaId,
+            itens: _item(pid: pid),
+            operationId: 'op-red-${DateTime.now().microsecondsSinceEpoch}',
+          ),
+          duration: const Duration(milliseconds: 50),
         ),
         throwsA(
           predicate<Object>((e) =>
               e is TimeoutException &&
-              e.message == 'Transação de estoque demorou muito. Tente novamente.'),
+              e.message ==
+                  LegacyStockBatchTimeoutTestSupport.legacyUserMessage),
         ),
       );
     });
@@ -287,15 +290,15 @@ void main() {
       await _seedSimples(firestore, pid, 6);
       EstoqueTransactionService.debugBatchTransactionDelay =
           const Duration(milliseconds: 200);
-      EstoqueTransactionService.debugEnforceLegacyBatchTransactionTimeout = true;
-      EstoqueTransactionService.debugLegacyBatchTransactionTimeoutDuration =
-          const Duration(milliseconds: 30);
 
       try {
-        await EstoqueTransactionService.baixarEstoqueTransactionBatchIdempotente(
-          lojaId: _lojaId,
-          itens: _item(pid: pid),
-          operationId: op,
+        await LegacyStockBatchTimeoutTestSupport.withLegacyBatchTimeout(
+          EstoqueTransactionService.baixarEstoqueTransactionBatchIdempotente(
+            lojaId: _lojaId,
+            itens: _item(pid: pid),
+            operationId: op,
+          ),
+          duration: const Duration(milliseconds: 30),
         );
         fail('esperava TimeoutException');
       } on TimeoutException {

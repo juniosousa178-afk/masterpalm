@@ -1840,11 +1840,21 @@ class VendasService {
 
     await debugAntesBaixaEstoqueBarrier?.call();
 
+    debugPrint(
+      '[H1-TRACE] stage=before_batch_idempotent '
+      'lojaId=$lojaEfetiva itemCount=${txItems.length} '
+      'coordinated=$isCoordinatedPdv stockPath=batch_idempotent',
+    );
     final baixaOp =
         await EstoqueTransactionService.baixarEstoqueTransactionBatchIdempotente(
       lojaId: lojaEfetiva,
       itens: txItems,
       operationId: idFirebaseReservado,
+    );
+    debugPrint(
+      '[H1-TRACE] stage=after_batch_idempotent '
+      'lojaId=$lojaEfetiva opId=$idFirebaseReservado '
+      'baixaAplicada=${baixaOp.baixaAplicadaNestaExecucao}',
     );
     txResults = baixaOp.transactionResults;
     baixaEstoqueConcluida = true;
