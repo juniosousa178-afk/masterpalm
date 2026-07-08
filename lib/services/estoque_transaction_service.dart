@@ -1102,6 +1102,25 @@ class EstoqueTransactionService {
     return _sha256HexUtf8(jsonEncode(lines));
   }
 
+  static Map<String, dynamic> buildMarkerBaixaPdvPayload({
+    required String lojaId,
+    required String operationId,
+    required String snapshotHash,
+    required String txItemsHash,
+  }) {
+    return <String, dynamic>{
+      'protocolVersion': 1,
+      'origem': 'pdv',
+      'operationId': operationId,
+      'saleId': operationId,
+      'lojaId': lojaId,
+      'baixaAplicada': true,
+      'estornoAplicado': false,
+      'snapshotHash': snapshotHash,
+      'txItemsHash': txItemsHash,
+    };
+  }
+
   static void _assertMarkerIdentityCompativel({
     required Map<String, dynamic> data,
     required String lojaId,
@@ -1598,22 +1617,43 @@ class EstoqueTransactionService {
           'tx_stage_15_marker_write_before',
           operationId: idempotency.operationId,
         );
-        transaction.set(
-          _baixaPagamentoRef(lojaId, idempotency.operationId),
-          {
-            'protocolVersion': 1,
-            'origem': 'pdv',
-            'operationId': idempotency.operationId,
-            'saleId': idempotency.operationId,
-            'lojaId': lojaId,
-            'baixaAplicada': true,
-            'estornoAplicado': false,
-            'estornoAplicadoAt': FieldValue.delete(),
-            'estornoOrigem': FieldValue.delete(),
-            'snapshotHash': idempotency.snapshotHash,
-            'txItemsHash': idempotency.txItemsHash,
-          },
-        );
+        try {
+          _txStageLog(
+            'tx_stage_15a_marker_payload_before',
+            operationId: idempotency.operationId,
+          );
+          final markerPayload = buildMarkerBaixaPdvPayload(
+            lojaId: lojaId,
+            operationId: idempotency.operationId,
+            snapshotHash: idempotency.snapshotHash,
+            txItemsHash: idempotency.txItemsHash,
+          );
+          _txStageLog(
+            'tx_stage_15b_marker_payload_after',
+            operationId: idempotency.operationId,
+            runtimeType: markerPayload.runtimeType.toString(),
+          );
+          _txStageLog(
+            'tx_stage_15c_marker_set_before',
+            operationId: idempotency.operationId,
+          );
+          transaction.set(
+            _baixaPagamentoRef(lojaId, idempotency.operationId),
+            markerPayload,
+          );
+          _txStageLog(
+            'tx_stage_15d_marker_set_after',
+            operationId: idempotency.operationId,
+          );
+        } catch (e, st) {
+          debugPrint(
+            '[H1-TX-STAGE] stage=tx_error_stage marker_write '
+            'operationId=${idempotency.operationId.length > 8 ? '${idempotency.operationId.substring(0, 8)}…' : idempotency.operationId} '
+            'errorRuntimeType=${e.runtimeType} error=$e',
+          );
+          debugPrint('$st');
+          rethrow;
+        }
         _txStageLog(
           'tx_stage_16_marker_write_after',
           operationId: idempotency.operationId,
