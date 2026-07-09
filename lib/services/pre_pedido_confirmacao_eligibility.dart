@@ -158,8 +158,8 @@ class PrePedidoConfirmacaoEligibilityService {
     }
 
     final data = <String, dynamic>{
-      'id': snap.id,
       ...?snap.data(),
+      'id': snap.id,
     };
     return PrePedidoConfirmacaoEligibility.evaluateMap(data);
   }

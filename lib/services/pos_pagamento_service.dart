@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:http/http.dart' as http;
 import '../repositories/pedido_repository.dart';
+import '../core/firestore_dynamic_map.dart';
 import '../core/hive_box_names.dart';
 import '../models/venda.dart';
 import '../models/produto.dart';
@@ -778,14 +779,18 @@ class PosPagamentoService {
           final numeroPedido = pedido['id'].toString();
           final cliente = pedido['cliente'] as Map<String, dynamic>? ?? {};
           final itens = (pedido['itens'] as List<dynamic>?) ?? [];
-          final formaPagamento = (pedido['pagamento'] ?? '') as String;
+          final formaPagamento = (pedido['pagamento'] ?? '').toString();
           final total = (pedido['total'] as num?)?.toDouble() ?? valorTotal;
-          final endereco = (cliente['enderecoFormatado'] ?? cliente['endereco'] ?? '') as String;
+          final endereco =
+              (cliente['enderecoFormatado'] ?? cliente['endereco'] ?? '')
+                  .toString();
 
           final itensLinhas = itens.map<String>((e) {
-            final map = e as Map<String, dynamic>;
+            final map = e is Map
+                ? Map<String, dynamic>.from(e)
+                : <String, dynamic>{};
             final qtd = (map['quantidade'] as num?)?.toInt() ?? 1;
-            final nomeItem = (map['nome'] ?? map['name'] ?? '') as String;
+            final nomeItem = (map['nome'] ?? map['name'] ?? '').toString();
             return '➡ ${qtd}x $nomeItem';
           }).join('\n');
 
@@ -919,7 +924,8 @@ Obrigado por comprar conosco! 💜
       }
 
       final pedidoData = (await pedidoRef.get()).data() ?? {};
-      final premioRoleta = pedidoData['premioRoleta'] as Map<String, dynamic>?;
+      final premioRoleta =
+          firestoreStringDynamicMapOrNull(pedidoData['premioRoleta']);
 
       if (premioRoleta == null) {
         debugPrint('ℹ️ Pedido não tem prêmio da roleta');

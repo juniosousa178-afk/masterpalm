@@ -237,7 +237,14 @@ class CampaignEngineService {
         return ParticipacaoResult.semCampanha();
       }
 
-      final campanhaId = campanha['id'] as String;
+      final campanhaId = campanha['id']?.toString().trim() ?? '';
+      if (campanhaId.isEmpty) {
+        logW('⚠️ [CampaignEngine] Campanha ativa sem id resolvível');
+        return ParticipacaoResult(
+          sucesso: false,
+          erro: 'Campanha ativa sem identificador',
+        );
+      }
       final campanhaNome = campanha['nome']?.toString() ?? campanha['titulo']?.toString() ?? 'Campanha';
       final valorMinimo = (campanha['valorMinimo'] as num?)?.toDouble() ?? 0.0;
       final dataSorteio = (campanha['dataSorteio'] as Timestamp?)?.toDate() ??
@@ -367,8 +374,8 @@ class CampaignEngineService {
         if (dentroDoInicio && dentroDoFim) {
           logD('✅ [CampaignEngine] Campanha ativa encontrada: ${doc.id} - ${data['nome'] ?? data['titulo']}');
           return {
-            'id': doc.id,
             ...data,
+            'id': doc.id,
           };
         }
       }

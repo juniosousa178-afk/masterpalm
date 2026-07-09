@@ -27,6 +27,13 @@ import '../models/venda.dart';
 import 'vendas_service.dart';
 import 'package:hive/hive.dart';
 
+/// Coerção segura de campos string do Firestore (evita `as String?` no web).
+String? _firestoreStringFieldOrNull(dynamic raw) {
+  if (raw == null) return null;
+  final s = raw.toString().trim();
+  return s.isEmpty ? null : s;
+}
+
 /// Serviço para gerenciar pré-pedidos do catálogo
 /// Pré-pedidos são enviados via WhatsApp e aguardam confirmação do vendedor
 class PrePedidoService {
@@ -711,7 +718,7 @@ class PrePedidoService {
       final prePedidoDoc = await _prePedidosRef(lojaId).doc(prePedidoId).get();
 
       final prePedidoData = prePedidoDoc.data();
-      final vendedorRef = prePedidoData?['vendedorRef'] as String?;
+      final vendedorRef = _firestoreStringFieldOrNull(prePedidoData?['vendedorRef']);
       final clienteData = prePedidoData?['cliente'] as Map?;
       final clienteNome =
           (clienteData)?['nome'] ?? 'Cliente';
@@ -784,7 +791,7 @@ class PrePedidoService {
       final prePedidoDoc = await _prePedidosRef(lojaId).doc(prePedidoId).get();
 
       final prePedidoData = prePedidoDoc.data();
-      final vendedorRef = prePedidoData?['vendedorRef'] as String?;
+      final vendedorRef = _firestoreStringFieldOrNull(prePedidoData?['vendedorRef']);
       final clienteData = prePedidoData?['cliente'] as Map?;
       final clienteNome =
           (clienteData)?['nome'] ?? 'Cliente';

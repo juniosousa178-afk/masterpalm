@@ -6,6 +6,7 @@ import 'package:hive/hive.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../core/combo_configuravel_resumo.dart';
+import '../core/firestore_dynamic_map.dart';
 import '../core/hive_box_names.dart';
 import '../core/logger.dart';
 import '../core/pre_pedido_sale_intent.dart';
@@ -2803,7 +2804,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
 
       final totalPedido = (prePedidoAtual['total'] as num?)?.toDouble();
       final freteMap =
-          prePedidoAtual['frete'] as Map<String, dynamic>? ?? <String, dynamic>{};
+          firestoreStringDynamicMapOrEmpty(prePedidoAtual['frete']);
       final freteGratis = freteMap['freteGratis'] == true;
       final freteValor = freteGratis
           ? 0.0
@@ -2886,7 +2887,7 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
           await Hive.openBox<Venda>(HiveBoxNames.vendas(widget.lojaId));
 
       final clienteMap =
-          prePedidoAtual['cliente'] as Map<String, dynamic>? ?? <String, dynamic>{};
+          firestoreStringDynamicMapOrEmpty(prePedidoAtual['cliente']);
 
       final venda = await VendasService.registrarVendaMulti(
         produtosBox: produtosBox,
@@ -2928,8 +2929,9 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
         subtotal: subtotalPedido,
         total: totalPago,
         observacao: (prePedidoAtual['observacao'] ?? '').toString(),
-        cupom: prePedidoAtual['cupom'] as Map<String, dynamic>?,
-        premioRoletaRaw: prePedidoAtual['premioRoleta'] as Map<String, dynamic>?,
+        cupom: firestoreStringDynamicMapOrNull(prePedidoAtual['cupom']),
+        premioRoletaRaw:
+            firestoreStringDynamicMapOrNull(prePedidoAtual['premioRoleta']),
       );
 
       await CatalogoVendaSideEffectsSecundariosService()
@@ -2941,7 +2943,8 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
         items: itensParaVenda,
         produtosBox: produtosBox,
         total: totalPago,
-        premioRoletaRaw: prePedidoAtual['premioRoleta'] as Map<String, dynamic>?,
+        premioRoletaRaw:
+            firestoreStringDynamicMapOrNull(prePedidoAtual['premioRoleta']),
         vendedorNome: prePedidoAtual['vendedorRef']?.toString(),
       );
 
