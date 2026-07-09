@@ -624,6 +624,7 @@ class CampaignEngineService {
 
     if (canais.enviarEmail) {
       try {
+        late final bool enviado;
         if (debugEnviarEmailOverride != null) {
           await debugEnviarEmailOverride!(
             email: email!,
@@ -633,8 +634,9 @@ class CampaignEngineService {
             dataSorteio: dataSorteio,
             nomeLoja: nomeLoja,
           );
+          enviado = true;
         } else {
-          await _enviarEmail(
+          enviado = await _enviarEmail(
             email: email!,
             clienteNome: clienteNome,
             numero: numero,
@@ -643,7 +645,7 @@ class CampaignEngineService {
             nomeLoja: nomeLoja,
           );
         }
-        emailEnviado = true;
+        if (enviado) emailEnviado = true;
       } catch (e, st) {
         logE(
           '⚠️ [CampaignEngine] Erro ao enviar Email (type=${e.runtimeType})',
@@ -767,22 +769,35 @@ Desejamos boa sorte! Qualquer duvida, estamos a disposicao.
     }
   }
 
-  /// Envia email com o número da sorte
-  static Future<void> _enviarEmail({
-    required String email,
+  /// Payload HTTP para Cloud Function `sendEmail` (contrato PosPagamento).
+  @visibleForTesting
+  static Map<String, String> montarPayloadSendEmailCf({
+    required String to,
+    required String subject,
+    required String html,
+  }) =>
+      {
+        'to': to,
+        'subject': subject,
+        'html': html,
+      };
+
+  /// Monta assunto + HTML do e-mail de participação na campanha.
+  @visibleForTesting
+  static ({String assunto, String html, String textoPlano}) montarConteudoEmailParticipacao({
     required String clienteNome,
     required String numero,
     required String campanhaNome,
     DateTime? dataSorteio,
     required String nomeLoja,
-  }) async {
+  }) {
     final primeiroNome = clienteNome.split(' ').first;
     final dataFormatada = dataSorteio != null
         ? '${dataSorteio.day.toString().padLeft(2, '0')}/${dataSorteio.month.toString().padLeft(2, '0')}/${dataSorteio.year}'
         : 'Em breve';
 
     final assunto = 'Confirmacao de participacao - Campanha $campanhaNome';
-    final corpo = '''
+    final textoPlano = '''
 Ola $primeiroNome,
 
 Sua participacao na campanha "$campanhaNome" foi registrada com sucesso!
@@ -801,7 +816,7 @@ Atenciosamente,
 Equipe $nomeLoja
 ''';
 
-    final htmlBody = '''
+    final html = '''
 <!DOCTYPE html><html><body style="font-family:Arial,sans-serif;">
 <h2>Participacao registrada</h2>
 <p>Ola $primeiroNome,</p>
@@ -812,6 +827,26 @@ Equipe $nomeLoja
 <p>Desejamos boa sorte!</p>
 </body></html>''';
 
+    return (assunto: assunto, html: html, textoPlano: textoPlano);
+  }
+
+  /// Envia email com o número da sorte. Retorna true somente se CF ou SMTP entregou.
+  static Future<bool> _enviarEmail({
+    required String email,
+    required String clienteNome,
+    required String numero,
+    required String campanhaNome,
+    DateTime? dataSorteio,
+    required String nomeLoja,
+  }) async {
+    final conteudo = montarConteudoEmailParticipacao(
+      clienteNome: clienteNome,
+      numero: numero,
+      campanhaNome: campanhaNome,
+      dataSorteio: dataSorteio,
+      nomeLoja: nomeLoja,
+    );
+
     try {
       final projectId = Firebase.app().options.projectId;
       final response = await http.post(
@@ -819,18 +854,20 @@ Equipe $nomeLoja
           'https://southamerica-east1-$projectId.cloudfunctions.net/sendEmail',
         ),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'to': email,
-          'subject': assunto,
-          'html': htmlBody,
-        }),
+        body: jsonEncode(
+          montarPayloadSendEmailCf(
+            to: email,
+            subject: conteudo.assunto,
+            html: conteudo.html,
+          ),
+        ),
       );
       if (response.statusCode == 200) {
         logD('✅ [CampaignEngine] Email CF enviado para $email');
-        return;
+        return true;
       }
       logW(
-        '⚠️ [CampaignEngine] CF email status ${response.statusCode}; tentando SMTP',
+        '⚠️ [CampaignEngine] CF email status ${response.statusCode} body=${response.body}; tentando SMTP',
       );
     } catch (e, st) {
       logE(
@@ -843,14 +880,14 @@ Equipe $nomeLoja
     try {
       final enviado = await EmailService.enviarEmail(
         destinatario: email,
-        assunto: assunto,
-        mensagem: corpo,
+        assunto: conteudo.assunto,
+        mensagem: conteudo.textoPlano,
       );
       if (enviado) {
         logD('✅ [CampaignEngine] Email SMTP enviado para $email');
-      } else {
-        logW('⚠️ [CampaignEngine] Falha ao enviar email via SMTP');
+        return true;
       }
+      logW('⚠️ [CampaignEngine] Falha ao enviar email via SMTP');
     } catch (e, st) {
       logE(
         '⚠️ [CampaignEngine] EmailService indisponivel (type=${e.runtimeType})',
@@ -858,6 +895,7 @@ Equipe $nomeLoja
         st: st,
       );
     }
+    return false;
   }
 
   // ============================================================

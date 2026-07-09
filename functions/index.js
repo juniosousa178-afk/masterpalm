@@ -4555,6 +4555,63 @@ export const sendWhatsAppOrderConfirmation = onRequest(
   })
 );
 
+// HTTP: envio de e-mail genérico (web admin / PosPagamento / CampaignEngine).
+// Contrato: { to, subject, html } — SMTP servidor (navegador não envia SMTP).
+export const sendEmail = onRequest(
+  {
+    cors: true,
+    timeoutSeconds: 30,
+    memory: "256MiB",
+    secrets: [S_SMTP_EMAIL, S_SMTP_PASSWORD],
+  },
+  corsWrap(async (req, res) => {
+    try {
+      if (req.method !== "POST") return res.status(405).send("Method not allowed");
+
+      const body = req.body || {};
+      const to = String(body.to || body.destinatario || body.email || "").trim();
+      const subject = String(body.subject || body.assunto || "").trim();
+      const html = body.html != null ? String(body.html) : "";
+      const text = body.text != null ? String(body.text) : "";
+
+      if (!to || !subject || (!html && !text)) {
+        return res.status(400).json({
+          error: "Parâmetros obrigatórios: to, subject, html ou text",
+        });
+      }
+
+      const identifier = getClientIdentifier(req);
+      await checkRateLimit("sendEmail", identifier);
+
+      const smtpUser = ((await S_SMTP_EMAIL.value()) || process.env.SMTP_EMAIL || "").trim();
+      const smtpPass = ((await S_SMTP_PASSWORD.value()) || process.env.SMTP_PASSWORD || "").trim();
+      if (!smtpUser || !smtpPass) {
+        return res.status(503).json({ error: "SMTP não configurado no servidor" });
+      }
+
+      const transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: { user: smtpUser, pass: smtpPass },
+      });
+
+      await transporter.sendMail({
+        from: `"MasterPalm" <${smtpUser}>`,
+        to,
+        subject,
+        html: html || undefined,
+        text: text || undefined,
+      });
+
+      return res.status(200).json({ ok: true, message: "Email enviado" });
+    } catch (e) {
+      console.error("[sendEmail] error:", e);
+      return res.status(500).json({
+        error: e.message || "Erro ao enviar email",
+      });
+    }
+  }),
+);
+
 // ============================== CLIENTE CATÁLOGO (LEITURA SEGURA) ==============================
 /**
  * Callable: busca dados mínimos do cliente para catálogo (perfil, carrinho, favoritos, portalToken).
