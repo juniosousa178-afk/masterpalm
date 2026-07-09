@@ -2,11 +2,14 @@
 import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
 class CampanhasSorteioService {
   CampanhasSorteioService._();
 
-  static final FirebaseFirestore _db = FirebaseFirestore.instance;
+  static FirebaseFirestore? debugFirestoreOverride;
+  static FirebaseFirestore get _db =>
+      debugFirestoreOverride ?? FirebaseFirestore.instance;
 
   // ============================================================
   // REFERÊNCIAS FIRESTORE
@@ -45,23 +48,73 @@ class CampanhasSorteioService {
   // CAMPANHAS ATIVAS (só permite uma por vez)
   // ============================================================
 
+  /// Status que não bloqueiam criação de nova campanha ativa.
+  static const Set<String> _statusCampanhaEncerrada = {
+    'sorteada',
+    'finalizada',
+    'pausada',
+  };
+
   /// Retorna campanhas ativas (ativa=true e dentro do período dataInicio–dataFim).
   /// Exclui a campanha com [excluirId] se informado (para permitir edição).
+  /// Ignora status encerrado (ex.: sorteada com ativa=true legado).
   static Future<List<Map<String, dynamic>>> listarCampanhasAtivas({
     required String lojaId,
     String? excluirId,
   }) async {
     final agora = Timestamp.fromDate(DateTime.now());
-    final snap = await campanhasRef(lojaId)
-        .where('ativa', isEqualTo: true)
-        .where('dataInicio', isLessThanOrEqualTo: agora)
-        .where('dataFim', isGreaterThanOrEqualTo: agora)
-        .get();
+    try {
+      final snap = await campanhasRef(lojaId)
+          .where('ativa', isEqualTo: true)
+          .where('dataInicio', isLessThanOrEqualTo: agora)
+          .where('dataFim', isGreaterThanOrEqualTo: agora)
+          .get();
+      return _filtrarCampanhasAtivas(
+        snap.docs,
+        excluirId: excluirId,
+      );
+    } on FirebaseException catch (e) {
+      if (e.code != 'failed-precondition') rethrow;
+      // Fallback quando índice composto não está deployado: filtra em memória.
+      final snap = await campanhasRef(lojaId)
+          .where('ativa', isEqualTo: true)
+          .get();
+      return _filtrarCampanhasAtivas(
+        snap.docs,
+        excluirId: excluirId,
+        agora: agora,
+      );
+    }
+  }
 
+  @visibleForTesting
+  static List<Map<String, dynamic>> filtrarCampanhasAtivasParaTeste(
+    Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> docs, {
+    String? excluirId,
+    Timestamp? agora,
+  }) {
+    return _filtrarCampanhasAtivas(docs, excluirId: excluirId, agora: agora);
+  }
+
+  static List<Map<String, dynamic>> _filtrarCampanhasAtivas(
+    Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> docs, {
+    String? excluirId,
+    Timestamp? agora,
+  }) {
+    final now = agora ?? Timestamp.fromDate(DateTime.now());
     final list = <Map<String, dynamic>>[];
-    for (final doc in snap.docs) {
+    for (final doc in docs) {
       if (excluirId != null && doc.id == excluirId) continue;
-      list.add({'id': doc.id, ...doc.data()});
+      final data = doc.data();
+      final status = (data['status'] ?? 'aberta').toString();
+      if (_statusCampanhaEncerrada.contains(status)) continue;
+
+      final inicio = data['dataInicio'] as Timestamp?;
+      final fim = data['dataFim'] as Timestamp?;
+      if (inicio != null && inicio.compareTo(now) > 0) continue;
+      if (fim != null && fim.compareTo(now) < 0) continue;
+
+      list.add({'id': doc.id, ...data});
     }
     return list;
   }
