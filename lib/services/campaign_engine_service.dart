@@ -12,9 +12,12 @@
 // - Evitar duplicidade (usa vendaId como chave de idempotência)
 // - Disparar envio de WhatsApp e Email
 
+import 'dart:convert';
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../core/logger.dart';
@@ -600,6 +603,7 @@ class CampaignEngineService {
           );
         } else {
           await _enviarWhatsApp(
+            lojaId: lojaId,
             telefone: telefone!,
             clienteNome: clienteNome,
             numero: numero,
@@ -668,22 +672,23 @@ class CampaignEngineService {
     }
   }
 
-  /// Gera e abre mensagem WhatsApp
-  static Future<void> _enviarWhatsApp({
-    required String telefone,
+  /// Texto da mensagem de participação (WhatsApp / fallback).
+  @visibleForTesting
+  static String montarMensagemWhatsAppParticipacao({
     required String clienteNome,
     required String numero,
     required String campanhaNome,
     DateTime? dataSorteio,
     required String nomeLoja,
-  }) async {
+  }) {
     final primeiroNome = clienteNome.split(' ').first;
     final dataFormatada = dataSorteio != null
         ? '${dataSorteio.day.toString().padLeft(2, '0')}/${dataSorteio.month.toString().padLeft(2, '0')}/${dataSorteio.year}'
         : 'Em breve';
-    final dataParticipacao = '${DateTime.now().day.toString().padLeft(2, '0')}/${DateTime.now().month.toString().padLeft(2, '0')}/${DateTime.now().year}';
+    final dataParticipacao =
+        '${DateTime.now().day.toString().padLeft(2, '0')}/${DateTime.now().month.toString().padLeft(2, '0')}/${DateTime.now().year}';
 
-    final mensagem = '''
+    return '''
 Ola, $primeiroNome!
 
 Sua participacao na campanha $campanhaNome foi registrada com sucesso.
@@ -698,16 +703,65 @@ Loja: $nomeLoja
 
 Desejamos boa sorte! Qualquer duvida, estamos a disposicao.
 ''';
+  }
 
-    // Limpar telefone
+  /// Envio automático via Cloud Function; fallback wa.me só se CF falhar.
+  static Future<void> _enviarWhatsApp({
+    required String lojaId,
+    required String telefone,
+    required String clienteNome,
+    required String numero,
+    required String campanhaNome,
+    DateTime? dataSorteio,
+    required String nomeLoja,
+  }) async {
+    final mensagem = montarMensagemWhatsAppParticipacao(
+      clienteNome: clienteNome,
+      numero: numero,
+      campanhaNome: campanhaNome,
+      dataSorteio: dataSorteio,
+      nomeLoja: nomeLoja,
+    );
+
     final telefoneLimpo = telefone.replaceAll(RegExp(r'[^\d]'), '');
-    final telefoneFormatado = telefoneLimpo.startsWith('55') ? telefoneLimpo : '55$telefoneLimpo';
 
-    final uri = Uri.parse('https://wa.me/$telefoneFormatado?text=${Uri.encodeComponent(mensagem)}');
+    try {
+      final projectId = Firebase.app().options.projectId;
+      final response = await http.post(
+        Uri.parse(
+          'https://southamerica-east1-$projectId.cloudfunctions.net/sendWhatsAppOrderConfirmation',
+        ),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'lojaId': lojaId,
+          'phone': telefone,
+          'message': mensagem,
+        }),
+      );
+      if (response.statusCode == 200) {
+        logD('✅ [CampaignEngine] WhatsApp CF enviado para $telefoneLimpo');
+        return;
+      }
+      logW(
+        '⚠️ [CampaignEngine] CF WhatsApp status ${response.statusCode}; tentando wa.me',
+      );
+    } catch (e, st) {
+      logE(
+        '⚠️ [CampaignEngine] CF WhatsApp falhou; tentando wa.me (type=${e.runtimeType})',
+        error: e,
+        st: st,
+      );
+    }
+
+    final telefoneFormatado =
+        telefoneLimpo.startsWith('55') ? telefoneLimpo : '55$telefoneLimpo';
+    final uri = Uri.parse(
+      'https://wa.me/$telefoneFormatado?text=${Uri.encodeComponent(mensagem)}',
+    );
 
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
-      logD('✅ [CampaignEngine] WhatsApp aberto para $telefoneLimpo');
+      logD('✅ [CampaignEngine] WhatsApp wa.me aberto para $telefoneLimpo');
     } else {
       logW('⚠️ [CampaignEngine] Não foi possível abrir WhatsApp');
     }
@@ -747,7 +801,45 @@ Atenciosamente,
 Equipe $nomeLoja
 ''';
 
-    // Tentar usar EmailService se existir
+    final htmlBody = '''
+<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;">
+<h2>Participacao registrada</h2>
+<p>Ola $primeiroNome,</p>
+<p>Sua participacao na campanha <strong>$campanhaNome</strong> foi registrada com sucesso!</p>
+<p style="font-size:28px;font-weight:bold;letter-spacing:4px;">$numero</p>
+<p>Data do sorteio: $dataFormatada</p>
+<p>Loja: $nomeLoja</p>
+<p>Desejamos boa sorte!</p>
+</body></html>''';
+
+    try {
+      final projectId = Firebase.app().options.projectId;
+      final response = await http.post(
+        Uri.parse(
+          'https://southamerica-east1-$projectId.cloudfunctions.net/sendEmail',
+        ),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'to': email,
+          'subject': assunto,
+          'html': htmlBody,
+        }),
+      );
+      if (response.statusCode == 200) {
+        logD('✅ [CampaignEngine] Email CF enviado para $email');
+        return;
+      }
+      logW(
+        '⚠️ [CampaignEngine] CF email status ${response.statusCode}; tentando SMTP',
+      );
+    } catch (e, st) {
+      logE(
+        '⚠️ [CampaignEngine] CF email falhou; tentando SMTP (type=${e.runtimeType})',
+        error: e,
+        st: st,
+      );
+    }
+
     try {
       final enviado = await EmailService.enviarEmail(
         destinatario: email,
@@ -755,13 +847,16 @@ Equipe $nomeLoja
         mensagem: corpo,
       );
       if (enviado) {
-        logD('✅ [CampaignEngine] Email enviado para $email');
+        logD('✅ [CampaignEngine] Email SMTP enviado para $email');
       } else {
-        logW('⚠️ [CampaignEngine] Falha ao enviar email');
+        logW('⚠️ [CampaignEngine] Falha ao enviar email via SMTP');
       }
     } catch (e, st) {
-      logE('⚠️ [CampaignEngine] EmailService não disponível ou erro (type=${e.runtimeType})', error: e, st: st);
-      // Fallback: salvar para envio posterior
+      logE(
+        '⚠️ [CampaignEngine] EmailService indisponivel (type=${e.runtimeType})',
+        error: e,
+        st: st,
+      );
     }
   }
 

@@ -535,8 +535,8 @@ class PosPagamentoService {
     }
   }
 
-  /// Quando há participação canônica (CampaignEngine), o cliente já recebe
-  /// a mensagem de campanha por aquele owner; PosPagamento preserva só o operacional.
+  /// Quando há participação canônica (CampaignEngine), o número da sorte
+  /// é enviado pelo owner da campanha (CF). PosPagamento preserva só o operacional.
   @visibleForTesting
   static bool deveOmitirNumeroSorteNotificacaoCliente({
     required bool participacaoCanonica,
