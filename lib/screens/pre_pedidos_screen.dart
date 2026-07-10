@@ -27,6 +27,7 @@ import '../utils/cleanup_cancelled_orders.dart';
 import '../utils/limpar_firestore.dart';
 import '../services/ai_loja_service.dart';
 import '../services/ia_uso_limite_service.dart';
+import '../widgets/premio_roleta_vendedor_card.dart';
 import '../services/loja_id_service.dart';
 import 'pre_pedidos/pre_pedido_operacional.dart';
 import '../widgets/app_help_icon_button.dart';
@@ -1809,6 +1810,8 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                       _buildSectionTitle(Icons.payment, 'Pagamento'),
                       const SizedBox(height: 8),
                       _buildDetalhePagamento(dados),
+
+                      PremioRoletaVendedorCard(premioRaw: dados['premioRoleta']),
 
                       const SizedBox(height: 24),
 

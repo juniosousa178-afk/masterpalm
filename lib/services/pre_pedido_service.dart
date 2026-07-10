@@ -6,6 +6,7 @@ import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../core/premio_roleta_snapshot.dart';
 import '../core/combo_configuravel_resumo.dart';
 import '../core/logger.dart';
 import '../core/produto_variacao_extra.dart';
@@ -414,22 +415,15 @@ class PrePedidoService {
             pagamento), // pendente | aprovado | rejeitado
         'observacao': observacao,
 
-        // ✅ Prêmio da Roleta (se houver)
-        'premioRoleta': premioRoletaDescricao != null ||
-                cupomRoletaCodigo != null
-            ? {
-                'descricao': premioRoletaDescricao ?? '',
-                'tipo': determinarTipoPremio(premioRoletaDescricao,
-                    cupomRoletaCodigo, cupomRoletaDesconto),
-                'valor': cupomRoletaDesconto ?? 0.0,
-                'codigo': cupomRoletaCodigo,
-                'status': 'pendente', // pendente | ativo | usado
-                'dataGanho': FieldValue.serverTimestamp(),
-                'dataAtivacao':
-                    null, // será preenchido após confirmação de pagamento
-                'valido': false, // só fica true após confirmação de pagamento
-              }
-            : null,
+        // ✅ Prêmio da Roleta (snapshot canônico V1)
+        'premioRoleta': () {
+          final snap = PremioRoletaSnapshot.fromCheckoutInputs(
+            descricao: premioRoletaDescricao,
+            codigo: cupomRoletaCodigo,
+            valorLegado: cupomRoletaDesconto,
+          );
+          return snap?.toFirestoreMap();
+        }(),
 
         // ✅ Vendedor (para comissão - link com ?ref=vendedorId)
         'vendedorRef': vendedorRef,
@@ -1135,27 +1129,16 @@ class PrePedidoService {
       }
     }
 
-    // ✅ Prêmio da Roleta (se houver)
-    final premioRoleta = prePedido['premioRoleta'] as Map<String, dynamic>?;
-    if (premioRoleta != null) {
-      final tipo = premioRoleta['tipo']?.toString() ?? '';
-      final descricao = premioRoleta['descricao']?.toString() ?? '';
-
-      buffer.writeln('');
-      buffer.writeln('🎁 PRÊMIO DA ROLETA:');
-
-      if (tipo == 'brinde' && descricao.isNotEmpty) {
-        buffer.writeln('   Brinde: $descricao');
-        buffer.writeln('   ⚠️ Será entregue junto com o pedido');
-      } else if (tipo == 'desconto') {
-        final valor = (premioRoleta['valor'] as num?)?.toDouble() ?? 0.0;
-        buffer.writeln('   Cupom de $valor% OFF');
-        buffer.writeln(
-            '   ⚠️ Válido para a próxima compra após pagamento confirmado');
-      } else if (tipo == 'frete_gratis') {
-        buffer.writeln('   Frete Grátis');
-        buffer.writeln(
-            '   ⚠️ Válido para a próxima compra após pagamento confirmado');
+    // ✅ Prêmio da Roleta (se houver) — helper canônico
+    final snapPremio = premioRoletaFromFirestoreMap(prePedido['premioRoleta']);
+    if (snapPremio != null) {
+      final linha = PremioRoletaFormatter.linhaMensagemVendedor(snapPremio);
+      final nota = PremioRoletaFormatter.notaMensagemVendedor(snapPremio);
+      if (linha.isNotEmpty) {
+        buffer.writeln('');
+        buffer.writeln('🎁 PRÊMIO DA ROLETA:');
+        buffer.writeln('   $linha');
+        if (nota.isNotEmpty) buffer.writeln(nota);
       }
     }
 
