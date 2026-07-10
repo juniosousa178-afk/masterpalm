@@ -18,6 +18,7 @@ import 'package:diacritic/diacritic.dart';
 
 import 'package:flutter/services.dart';
 
+import '../../../core/catalogo_cupom_visitante_policy.dart';
 import '../../../core/combo_configuravel_resumo.dart';
 import '../../../core/logger.dart';
 import '../../../core/safe_cast.dart';
@@ -1255,22 +1256,44 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
       return;
     }
 
-    // 1) Tenta cupom normal da loja (Firestore/config)
+    // 1) Cupom público embutido na config do catálogo
     Map<String, dynamic>? found;
     for (final c in widget.cupons) {
       final cod =
           (c['codigo'] ?? c['code'] ?? '').toString().toUpperCase().trim();
       final ativo = c['ativo'] != false;
-      if (ativo && cod == code) {
+      if (ativo && cod == code && catalogoCupomConfigEhPublico(c)) {
         found = c;
         break;
       }
     }
 
-    // 2) Cupom roleta: clientes_catalogo (USO ESPECÍFICO, complemento)
+    final clienteLogado = await ClienteAuthService.getClienteLogado();
+    final temLogin = clienteLogado != null;
+
+    // 1.5) Cupom público da collection Firestore (funciona sem login)
     if (found == null) {
-      final clienteLogado = await ClienteAuthService.getClienteLogado();
-      if (clienteLogado != null) {
+      final cLoja =
+          await CupomDescontoService().buscarPorCodigo(widget.lojaId, code);
+      final resolver = resolverCupomPublicoFirestore(
+        cupom: cLoja,
+        clienteLogado: temLogin,
+      );
+      if (resolver.status ==
+          CatalogoCupomResolverStatus.bloqueadoPessoalSemLogin) {
+        widget.showSnack(
+          resolver.mensagem ?? catalogoCupomPessoalExigeLoginMsg,
+        );
+        return;
+      }
+      if (resolver.status == CatalogoCupomResolverStatus.encontradoPublico) {
+        found = resolver.cupomMap;
+      }
+    }
+
+    // 2) Cupom roleta: clientes_catalogo (pessoal — exige login)
+    if (found == null) {
+      if (temLogin) {
         final email = (clienteLogado['email'] ?? '').toString().trim();
         if (email.isNotEmpty) {
           final cuponsRoleta = await ClienteAuthService.getCuponsRoleta(
@@ -1297,12 +1320,14 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
             }
           }
         }
+      } else if (catalogoCupomCodigoParecePessoal(code)) {
+        widget.showSnack(catalogoCupomPessoalExigeLoginMsg);
+        return;
       }
     }
 
-    // 3) Cupom de indicação (cupons_clientes) – destinatário ganha na 1ª compra, usa na próxima
+    // 3) Cupom de indicação (cupons_clientes) – pessoal, exige login
     if (found == null) {
-      final clienteLogado = await ClienteAuthService.getClienteLogado();
       final clienteIdCatalogo =
           (clienteLogado?['clienteId'] ?? '').toString().trim();
       if (clienteIdCatalogo.isNotEmpty) {
@@ -1334,13 +1359,16 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     }
 
     if (found == null) {
-      widget.showSnack('Cupom inválido, inativo ou expirado.');
+      widget.showSnack(
+        mensagemCupomNaoEncontradoVisitante(clienteLogado: temLogin),
+      );
       return;
     }
 
     var merged = Map<String, dynamic>.from(found);
     if (merged['origem'] != 'roleta_sorte' &&
-        merged['origem'] != 'cupom_cliente') {
+        merged['origem'] != 'cupom_cliente' &&
+        merged['origem'] != 'cupom_publico_loja') {
       final cLoja =
           await CupomDescontoService().buscarPorCodigo(widget.lojaId, code);
       if (cLoja != null) {
