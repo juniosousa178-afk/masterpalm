@@ -637,6 +637,7 @@ class CampaignEngineService {
           enviado = true;
         } else {
           enviado = await _enviarEmail(
+            lojaId: lojaId,
             email: email!,
             clienteNome: clienteNome,
             numero: numero,
@@ -775,11 +776,13 @@ Desejamos boa sorte! Qualquer duvida, estamos a disposicao.
     required String to,
     required String subject,
     required String html,
+    required String lojaId,
   }) =>
       {
         'to': to,
         'subject': subject,
         'html': html,
+        'lojaId': lojaId,
       };
 
   /// Monta assunto + HTML do e-mail de participação na campanha.
@@ -832,6 +835,7 @@ Equipe $nomeLoja
 
   /// Envia email com o número da sorte. Retorna true somente se CF ou SMTP entregou.
   static Future<bool> _enviarEmail({
+    required String lojaId,
     required String email,
     required String clienteNome,
     required String numero,
@@ -859,6 +863,7 @@ Equipe $nomeLoja
             to: email,
             subject: conteudo.assunto,
             html: conteudo.html,
+            lojaId: lojaId,
           ),
         ),
       );

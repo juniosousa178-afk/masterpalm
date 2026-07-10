@@ -36,9 +36,10 @@ void main() {
         to: 'lara@test.com',
         subject: conteudo.assunto,
         html: conteudo.html,
+        lojaId: _lojaId,
       );
 
-      expect(payload.keys.toSet(), equals({'to', 'subject', 'html'}));
+      expect(payload.keys.toSet(), equals({'to', 'subject', 'html', 'lojaId'}));
       expect(posPagamentoSrc, contains("'to': destinatario"));
       expect(posPagamentoSrc, contains("'subject': assunto"));
       expect(posPagamentoSrc, contains("'html': htmlBody"));

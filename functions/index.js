@@ -4573,6 +4573,7 @@ export const sendEmail = onRequest(
       const subject = String(body.subject || body.assunto || "").trim();
       const html = body.html != null ? String(body.html) : "";
       const text = body.text != null ? String(body.text) : "";
+      const lojaId = String(body.lojaId || body.loja_id || "").trim();
 
       if (!to || !subject || (!html && !text)) {
         return res.status(400).json({
@@ -4589,13 +4590,28 @@ export const sendEmail = onRequest(
         return res.status(503).json({ error: "SMTP não configurado no servidor" });
       }
 
+      // Nome visível: somente server-side via lojaId (nunca confiar fromName do cliente).
+      let displayName = "MasterPalm";
+      if (lojaId) {
+        try {
+          const lojaSnap = await getFirestore().collection(COLLECTION_LOJAS).doc(lojaId).get();
+          if (lojaSnap.exists) {
+            const lojaData = lojaSnap.data() || {};
+            const nome = String(lojaData.nome || lojaData.name || "").trim();
+            if (nome) displayName = nome;
+          }
+        } catch (e) {
+          console.warn("[sendEmail] falha ao resolver nome da loja:", lojaId, e?.message || e);
+        }
+      }
+
       const transporter = nodemailer.createTransport({
         service: "gmail",
         auth: { user: smtpUser, pass: smtpPass },
       });
 
       await transporter.sendMail({
-        from: `"MasterPalm" <${smtpUser}>`,
+        from: `"${displayName}" <${smtpUser}>`,
         to,
         subject,
         html: html || undefined,
