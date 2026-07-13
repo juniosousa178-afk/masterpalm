@@ -40,6 +40,7 @@ import '../services/conta_receber_service.dart';
 
 // ✅ tela fretes/cupons
 import '../screens/fretes_cupons_screen.dart';
+import '../screens/carrinhos_abandonados_screen.dart';
 
 // ✅ canais meta (WhatsApp, Instagram, Messenger)
 import 'configuracoes/canais_meta_screen.dart';
@@ -2191,6 +2192,23 @@ class _HomeScreenState extends State<HomeScreen>
         ),
       );
 
+      currentChildren.add(
+        _menuTileWithPlanGate(
+          '🛒 Carrinhos Abandonados',
+          Icons.shopping_cart_outlined,
+          '/carrinhos_abandonados',
+          pushWidget: CarrinhosAbandonadosScreen(
+            lojaId: _lojaIdInterno.isNotEmpty ? _lojaIdInterno : null,
+          ),
+          iconBgColor: const Color(0xFFF59E0B).withOpacity(0.12),
+          color: const Color(0xFFF59E0B),
+          sidebarMode: sidebarMode,
+          applyPlanGate: applyPlanGate,
+          menuPlanTier: menuPlanTier,
+          planFeature: PlanGateFeature.carrinhosAbandonados,
+        ),
+      );
+
       // ✅ CANAIS META (WhatsApp, Instagram, Messenger)
       currentChildren.add(
         _menuTileWithPlanGate(
@@ -2621,6 +2639,23 @@ class _HomeScreenState extends State<HomeScreen>
         subtitle: 'Histórico',
       ));
     }
+
+    // 4b. Carrinhos abandonados (módulo próprio — fora de Fretes & Cupons)
+    cards.add(
+      _mainCardWithPlanGate(
+        Icons.shopping_cart_outlined,
+        'Carrinhos Abandonados',
+        '/carrinhos_abandonados',
+        pushWidget: CarrinhosAbandonadosScreen(
+          lojaId: _lojaIdInterno.isNotEmpty ? _lojaIdInterno : null,
+        ),
+        color: const Color(0xFFF59E0B),
+        subtitle: 'Recuperação',
+        applyPlanGate: applyPlanGate,
+        menuPlanTier: menuPlanTier,
+        planFeature: PlanGateFeature.carrinhosAbandonados,
+      ),
+    );
 
     // 5. Fornecedores
     if (combinadas['fornecedores'] == true) {

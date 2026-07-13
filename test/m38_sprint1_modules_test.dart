@@ -8,6 +8,7 @@ import 'package:master_palm/core/pedido_cliente_snapshot_helpers.dart';
 import 'package:master_palm/core/pedido_timeline_builder.dart';
 import 'package:master_palm/models/venda.dart';
 import 'package:master_palm/models/venda_item.dart';
+import 'package:master_palm/services/carrinho_abandonado_service.dart';
 import 'package:master_palm/services/customer_metrics_service.dart';
 import 'package:master_palm/services/vendas_period_metrics_service.dart';
 
@@ -102,6 +103,39 @@ void main() {
       expect(m.bruto, 120);
       expect(m.lucro, 55); // 100 - 40 - 5
       expect(m.ticketMedio, 100);
+    });
+
+    test('agrega período anual', () {
+      final vendas = [
+        _venda(cliente: 'A', total: 100, data: DateTime(2026, 1, 15)),
+        _venda(cliente: 'B', total: 50, data: DateTime(2026, 6, 1)),
+        _venda(cliente: 'C', total: 20, data: DateTime(2025, 12, 31)),
+      ];
+      final ano = agregarVendasPeriodo(
+        vendas,
+        inicio: DateTime(2026, 1, 1),
+        fimExclusivo: DateTime(2027, 1, 1),
+        lojaId: 'loja-t',
+      );
+      expect(ano.quantidade, 2);
+      expect(ano.liquido, 150);
+    });
+  });
+
+  group('M3.8 S1 — Template e-mail abandonado', () {
+    test('template inclui link e itens', () {
+      final tpl = CarrinhoAbandonadoService.montarTemplateLembrete(
+        nomeCliente: 'Ana',
+        link: 'https://exemplo.com/c?cart=1',
+        nomeLoja: 'Loja Teste',
+        produtos: [
+          {'nome': 'Anel', 'quantidade': 2, 'cor': 'rose', 'tamanho': '16'},
+        ],
+      );
+      expect(tpl.texto, contains('Ana'));
+      expect(tpl.texto, contains('Anel'));
+      expect(tpl.texto, contains('https://exemplo.com/c?cart=1'));
+      expect(tpl.html, contains('<br>'));
     });
   });
 

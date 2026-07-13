@@ -165,10 +165,7 @@ class CarrinhoAbandonadoDetailsPanel extends StatelessWidget {
                 _actionChip(
                   icon: enviandoEmail ? null : Icons.email_outlined,
                   label: enviandoEmail ? 'Enviando…' : 'E-mail',
-                  onPressed: item.clienteEmail.trim().contains('@') &&
-                          !enviandoEmail
-                      ? (onEmail ?? () {})
-                      : null,
+                  onPressed: !enviandoEmail && onEmail != null ? onEmail : null,
                   loading: enviandoEmail,
                 ),
                 _actionChip(

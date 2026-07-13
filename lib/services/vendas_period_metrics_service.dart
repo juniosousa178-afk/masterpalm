@@ -1,4 +1,4 @@
-// Métricas de vendas por período (hoje / mês) — bruto, líquido, descontos, lucro.
+// Métricas de vendas por período (hoje / mês / ano) — bruto, líquido, descontos, lucro.
 // Reutiliza incluirVendaEmMetricas. Não altera engine de venda nem financeiro.
 
 import 'package:hive/hive.dart';
@@ -38,10 +38,12 @@ class VendasPeriodMetricsBundle {
   const VendasPeriodMetricsBundle({
     required this.hoje,
     required this.mes,
+    required this.ano,
   });
 
   final VendasPeriodMetrics hoje;
   final VendasPeriodMetrics mes;
+  final VendasPeriodMetrics ano;
 }
 
 /// Desconto absoluto de uma venda (somente leitura de campos existentes).
@@ -100,6 +102,7 @@ class VendasPeriodMetricsService {
       return const VendasPeriodMetricsBundle(
         hoje: VendasPeriodMetrics.zero,
         mes: VendasPeriodMetrics.zero,
+        ano: VendasPeriodMetrics.zero,
       );
     }
     lojaId = StoreAccessGuard.requireLojaId(
@@ -111,6 +114,8 @@ class VendasPeriodMetricsService {
     final amanha = hojeInicio.add(const Duration(days: 1));
     final mesInicio = DateTime(now.year, now.month, 1);
     final proxMes = DateTime(now.year, now.month + 1, 1);
+    final anoInicio = DateTime(now.year, 1, 1);
+    final proxAno = DateTime(now.year + 1, 1, 1);
 
     try {
       final boxName = HiveBoxNames.vendas(lojaId);
@@ -135,11 +140,18 @@ class VendasPeriodMetricsService {
           fimExclusivo: proxMes,
           lojaId: lojaId,
         ),
+        ano: agregarVendasPeriodo(
+          values,
+          inicio: anoInicio,
+          fimExclusivo: proxAno,
+          lojaId: lojaId,
+        ),
       );
     } catch (_) {
       return const VendasPeriodMetricsBundle(
         hoje: VendasPeriodMetrics.zero,
         mes: VendasPeriodMetrics.zero,
+        ano: VendasPeriodMetrics.zero,
       );
     }
   }

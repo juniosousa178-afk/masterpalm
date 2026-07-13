@@ -1,13 +1,30 @@
 // lib/services/carrinho_abandonado_service.dart
 // Recuperação de carrinho abandonado: listar e enviar lembrete por e-mail/WhatsApp.
 
+import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 
 import 'ai_loja_service.dart';
 import 'catalog_public_url_service.dart';
 import 'email_service.dart';
+
+/// Resultado do envio de lembrete por e-mail (nunca marca enviado se [ok] for false).
+class EnvioLembreteEmailResultado {
+  const EnvioLembreteEmailResultado({
+    required this.ok,
+    required this.mensagem,
+    this.emailUsado = '',
+  });
+
+  final bool ok;
+  final String mensagem;
+  final String emailUsado;
+}
 
 /// Configuração da recuperação de carrinho (salva em lojas/{lojaId}/config/config.carrinhoAbandonado)
 class CarrinhoAbandonadoConfig {
@@ -308,69 +325,301 @@ class CarrinhoAbandonadoService {
     return 'Olá, $nomeCliente! Você deixou itens no carrinho. Que tal finalizar sua compra? Acesse: $link';
   }
 
-  /// Envia lembrete por e-mail e marca no Firestore que foi enviado.
-  static Future<bool> enviarLembreteEmail({
+  /// Template com itens (texto plano + HTML) para e-mail de recuperação.
+  static ({String texto, String html}) montarTemplateLembrete({
+    required String nomeCliente,
+    required String link,
+    String? nomeLoja,
+    List<Map<String, dynamic>>? produtos,
+  }) {
+    final nome = nomeCliente.trim().isEmpty ? 'cliente' : nomeCliente.trim();
+    final loja = (nomeLoja ?? 'nossa loja').trim().isEmpty
+        ? 'nossa loja'
+        : nomeLoja!.trim();
+    final buf = StringBuffer();
+    buf.writeln('Olá, $nome!');
+    buf.writeln('');
+    buf.writeln(
+        'Você deixou itens no carrinho da $loja. Que tal finalizar sua compra?');
+    buf.writeln('');
+    if (produtos != null && produtos.isNotEmpty) {
+      buf.writeln('Itens:');
+      for (final p in produtos) {
+        final n = (p['nome'] ?? p['name'] ?? 'Produto').toString();
+        final q = (p['quantidade'] as num?)?.toInt() ?? 1;
+        final cor = (p['cor'] ?? '').toString().trim();
+        final tam = (p['tamanho'] ?? '').toString().trim();
+        final extras = [
+          if (cor.isNotEmpty) 'cor $cor',
+          if (tam.isNotEmpty) 'tam $tam',
+        ].join(', ');
+        buf.writeln(extras.isEmpty ? '  • ${q}x $n' : '  • ${q}x $n ($extras)');
+      }
+      buf.writeln('');
+    }
+    buf.writeln('Acesse seu carrinho: $link');
+    buf.writeln('');
+    buf.writeln('Se já finalizou a compra, ignore este e-mail.');
+    final texto = buf.toString();
+    final escaped = texto
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('\n', '<br>');
+    final html =
+        '<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;font-size:14px;color:#333;line-height:1.5;">$escaped</body></html>';
+    return (texto: texto, html: html);
+  }
+
+  static String? _normalizarEmail(String? raw) {
+    final e = (raw ?? '').trim().toLowerCase();
+    if (e.isEmpty || !e.contains('@') || e.startsWith('@') || e.endsWith('@')) {
+      return null;
+    }
+    return e;
+  }
+
+  static String _digits(String s) => s.replaceAll(RegExp(r'[^0-9]'), '');
+
+  /// Localiza e-mail do cliente: campo direto → doc clientes da loja (tel/id) → raw do carrinho.
+  static Future<String?> resolverEmailCliente({
+    required String lojaId,
+    String? emailDireto,
+    String? clienteId,
+    String? telefone,
+    String? whatsapp,
+    Map<String, dynamic>? rawCarrinho,
+  }) async {
+    final direto = _normalizarEmail(emailDireto);
+    if (direto != null) return direto;
+
+    if (rawCarrinho != null) {
+      final fromRaw = _normalizarEmail(
+        (rawCarrinho['clienteEmail'] ??
+                rawCarrinho['email'] ??
+                rawCarrinho['cliente_email'])
+            ?.toString(),
+      );
+      if (fromRaw != null) return fromRaw;
+    }
+
+    if (lojaId.trim().isEmpty) return null;
+
+    try {
+      final col = _db.collection('lojas').doc(lojaId).collection('clientes');
+      if (clienteId != null && clienteId.trim().isNotEmpty) {
+        final doc = await col.doc(clienteId.trim()).get();
+        if (doc.exists) {
+          final fromId = _normalizarEmail(doc.data()?['email']?.toString());
+          if (fromId != null) return fromId;
+        }
+      }
+
+      final telCandidates = <String>{
+        _digits(telefone ?? ''),
+        _digits(whatsapp ?? ''),
+        if (rawCarrinho != null)
+          _digits((rawCarrinho['clienteTelefone'] ??
+                  rawCarrinho['telefone'] ??
+                  rawCarrinho['whatsapp'] ??
+                  '')
+              .toString()),
+      }.where((t) => t.length >= 10).toSet();
+
+      if (telCandidates.isEmpty) return null;
+
+      final snap = await col.get();
+      for (final doc in snap.docs) {
+        final d = doc.data();
+        final t = _digits((d['telefone'] ?? d['whatsapp'] ?? '').toString());
+        if (t.length < 10) continue;
+        final match = telCandidates.any(
+          (c) => t == c || t.endsWith(c) || c.endsWith(t),
+        );
+        if (!match) continue;
+        final found = _normalizarEmail(d['email']?.toString());
+        if (found != null) return found;
+      }
+    } catch (e) {
+      debugPrint('⚠️ [CARRINHO-ABANDONADO] resolverEmailCliente: $e');
+    }
+    return null;
+  }
+
+  /// Envia via Cloud Function `sendEmail` (web) com fallback SMTP nativo.
+  /// Não grava marcação — caller só marca se [EnvioLembreteEmailResultado.ok].
+  static Future<bool> _entregarEmail({
+    required String lojaId,
+    required String destinatario,
+    required String assunto,
+    required String texto,
+    required String html,
+    String? remetenteNome,
+  }) async {
+    try {
+      final projectId = Firebase.app().options.projectId;
+      final response = await http.post(
+        Uri.parse(
+          'https://southamerica-east1-$projectId.cloudfunctions.net/sendEmail',
+        ),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'to': destinatario,
+          'subject': assunto,
+          'html': html,
+          'text': texto,
+          'lojaId': lojaId,
+        }),
+      );
+      if (response.statusCode == 200) {
+        debugPrint('✅ [CARRINHO-ABANDONADO] Email CF OK → $destinatario');
+        return true;
+      }
+      debugPrint(
+        '⚠️ [CARRINHO-ABANDONADO] CF email ${response.statusCode}: ${response.body}',
+      );
+    } catch (e) {
+      debugPrint(
+        '⚠️ [CARRINHO-ABANDONADO] CF email falhou (type=${e.runtimeType})',
+      );
+    }
+
+    // SMTP direto não funciona no navegador; evita falso negativo silencioso.
+    if (kIsWeb) return false;
+
+    try {
+      return await EmailService.enviarEmail(
+        destinatario: destinatario,
+        assunto: assunto,
+        mensagem: texto,
+        remetenteNome: remetenteNome ?? 'Loja',
+      );
+    } catch (e) {
+      debugPrint('⚠️ [CARRINHO-ABANDONADO] SMTP falhou (type=${e.runtimeType})');
+      return false;
+    }
+  }
+
+  /// Envia lembrete por e-mail (cliente da loja) e marca no Firestore só se entregue.
+  static Future<EnvioLembreteEmailResultado> enviarLembreteEmail({
     required String lojaId,
     required String clienteId,
     required String emailDestino,
     required String nomeCliente,
     String? nomeLoja,
+    String? telefone,
+    List<Map<String, dynamic>>? itens,
   }) async {
-    if (emailDestino.trim().isEmpty) return false;
+    final email = await resolverEmailCliente(
+      lojaId: lojaId,
+      emailDireto: emailDestino,
+      clienteId: clienteId,
+      telefone: telefone,
+    );
+    if (email == null) {
+      return const EnvioLembreteEmailResultado(
+        ok: false,
+        mensagem: 'E-mail do cliente não encontrado ou inválido',
+      );
+    }
     final link =
         await CatalogPublicUrlService.montarUrlCatalogoPublicoAsync(lojaId);
     final assunto =
         'Você deixou itens no carrinho${nomeLoja != null && nomeLoja.isNotEmpty ? ' - $nomeLoja' : ''}';
-    final corpo = mensagemLembrete(nomeCliente, link);
+    final tpl = montarTemplateLembrete(
+      nomeCliente: nomeCliente,
+      link: link,
+      nomeLoja: nomeLoja,
+      produtos: itens,
+    );
     try {
-      final ok = await EmailService.enviarEmail(
-        destinatario: emailDestino.trim(),
+      final ok = await _entregarEmail(
+        lojaId: lojaId,
+        destinatario: email,
         assunto: assunto,
-        mensagem: corpo,
-        remetenteNome: nomeLoja ?? 'Loja',
+        texto: tpl.texto,
+        html: tpl.html,
+        remetenteNome: nomeLoja,
       );
-      if (ok) {
-        await _db
-            .collection('lojas')
-            .doc(lojaId)
-            .collection('clientes')
-            .doc(clienteId)
-            .update(
-                {'lembreteCarrinhoEnviadoEm': FieldValue.serverTimestamp()});
+      if (!ok) {
+        return EnvioLembreteEmailResultado(
+          ok: false,
+          mensagem: 'Falha ao enviar e-mail para $email',
+          emailUsado: email,
+        );
       }
-      return ok;
+      await _db
+          .collection('lojas')
+          .doc(lojaId)
+          .collection('clientes')
+          .doc(clienteId)
+          .update({'lembreteCarrinhoEnviadoEm': FieldValue.serverTimestamp()});
+      return EnvioLembreteEmailResultado(
+        ok: true,
+        mensagem: 'E-mail enviado para $email',
+        emailUsado: email,
+      );
     } catch (e) {
       debugPrint('⚠️ [CARRINHO-ABANDONADO] Erro ao enviar email: $e');
-      return false;
+      return EnvioLembreteEmailResultado(
+        ok: false,
+        mensagem: 'Erro ao enviar e-mail',
+        emailUsado: email,
+      );
     }
   }
 
-  /// E-mail de lembrete para carrinho do catálogo (collection carrinhos_abandonados).
-  static Future<bool> enviarLembreteEmailCatalogo({
+  /// E-mail de lembrete para carrinho do catálogo. Só marca enviado se CF/SMTP OK.
+  static Future<EnvioLembreteEmailResultado> enviarLembreteEmailCatalogo({
     required String lojaId,
     required String cartId,
     required String emailDestino,
     required String nomeCliente,
     required String linkRecuperacao,
     String? nomeLoja,
+    String? telefone,
+    String? whatsapp,
+    List<Map<String, dynamic>>? produtos,
+    Map<String, dynamic>? raw,
   }) async {
-    final email = emailDestino.trim();
-    if (email.isEmpty || !email.contains('@')) {
-      debugPrint('⚠️ [CARRINHO-ABANDONADO] e-mail inválido para catálogo');
-      return false;
+    final email = await resolverEmailCliente(
+      lojaId: lojaId,
+      emailDireto: emailDestino,
+      telefone: telefone,
+      whatsapp: whatsapp,
+      rawCarrinho: raw,
+    );
+    if (email == null) {
+      return const EnvioLembreteEmailResultado(
+        ok: false,
+        mensagem: 'E-mail do cliente não encontrado ou inválido',
+      );
     }
     final assunto =
         'Você deixou itens no carrinho${nomeLoja != null && nomeLoja.isNotEmpty ? ' - $nomeLoja' : ''}';
-    final nome = nomeCliente.trim().isEmpty ? 'cliente' : nomeCliente.trim();
-    final corpo = mensagemLembrete(nome, linkRecuperacao);
+    final tpl = montarTemplateLembrete(
+      nomeCliente: nomeCliente,
+      link: linkRecuperacao,
+      nomeLoja: nomeLoja,
+      produtos: produtos,
+    );
     try {
-      final ok = await EmailService.enviarEmail(
+      final ok = await _entregarEmail(
+        lojaId: lojaId,
         destinatario: email,
         assunto: assunto,
-        mensagem: corpo,
-        remetenteNome: nomeLoja ?? 'Loja',
+        texto: tpl.texto,
+        html: tpl.html,
+        remetenteNome: nomeLoja,
       );
-      if (ok && cartId.trim().isNotEmpty) {
+      if (!ok) {
+        return EnvioLembreteEmailResultado(
+          ok: false,
+          mensagem: 'Falha ao enviar e-mail para $email',
+          emailUsado: email,
+        );
+      }
+      if (cartId.trim().isNotEmpty) {
         await _db
             .collection('lojas')
             .doc(lojaId)
@@ -379,12 +628,21 @@ class CarrinhoAbandonadoService {
             .set({
           'lembreteEmailEnviadoEm': FieldValue.serverTimestamp(),
           'lembreteEmailDestino': email,
+          if (_normalizarEmail(emailDestino) == null) 'clienteEmail': email,
         }, SetOptions(merge: true));
       }
-      return ok;
+      return EnvioLembreteEmailResultado(
+        ok: true,
+        mensagem: 'E-mail enviado para $email',
+        emailUsado: email,
+      );
     } catch (e) {
       debugPrint('⚠️ [CARRINHO-ABANDONADO] Erro email catálogo: $e');
-      return false;
+      return EnvioLembreteEmailResultado(
+        ok: false,
+        mensagem: 'Erro ao enviar e-mail',
+        emailUsado: email,
+      );
     }
   }
 

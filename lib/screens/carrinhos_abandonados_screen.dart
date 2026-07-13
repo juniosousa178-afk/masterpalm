@@ -386,25 +386,20 @@ class _CarrinhosAbandonadosScreenState
 
   Future<void> _enviarEmail(CarrinhoAbandonadoItem item) async {
     if (_lojaId == null) return;
-    if (!item.email.trim().contains('@')) {
-      _snack('E-mail do cliente inválido ou ausente', ok: false);
-      return;
-    }
     setState(() => _enviando = true);
-    final ok = await CarrinhoAbandonadoService.enviarLembreteEmail(
+    final result = await CarrinhoAbandonadoService.enviarLembreteEmail(
       lojaId: _lojaId!,
       clienteId: item.clienteId,
       emailDestino: item.email,
       nomeCliente: item.nome,
       nomeLoja: _lojaNome.isNotEmpty ? _lojaNome : null,
+      telefone: item.telefone,
+      itens: item.itens,
     );
     if (mounted) {
       setState(() => _enviando = false);
-      _snack(
-        ok ? 'E-mail enviado para ${item.email}' : 'Falha ao enviar e-mail',
-        ok: ok,
-      );
-      if (ok) _carregar();
+      _snack(result.mensagem, ok: result.ok);
+      if (result.ok) _carregar();
     }
   }
 
@@ -413,31 +408,26 @@ class _CarrinhosAbandonadosScreenState
     void Function(void Function())? setModal,
   }) async {
     if (_lojaId == null) return;
-    if (!item.clienteEmail.trim().contains('@')) {
-      _snack('E-mail do cliente inválido ou ausente', ok: false);
-      return;
-    }
     setState(() => _enviandoEmailCartId = item.cartId);
     setModal?.call(() {});
     final link = _linkRecuperacaoCatalogo(item.cartId);
-    final ok = await CarrinhoAbandonadoService.enviarLembreteEmailCatalogo(
+    final result = await CarrinhoAbandonadoService.enviarLembreteEmailCatalogo(
       lojaId: _lojaId!,
       cartId: item.cartId,
       emailDestino: item.clienteEmail,
       nomeCliente: item.clienteNome,
       linkRecuperacao: link,
       nomeLoja: _lojaNome.isNotEmpty ? _lojaNome : null,
+      telefone: item.clienteTelefone,
+      whatsapp: item.clienteWhatsapp,
+      produtos: item.produtos,
+      raw: item.raw,
     );
     if (mounted) {
       setState(() => _enviandoEmailCartId = null);
       setModal?.call(() {});
-      _snack(
-        ok
-            ? 'E-mail enviado para ${item.clienteEmail}'
-            : 'Falha ao enviar e-mail',
-        ok: ok,
-      );
-      if (ok) _carregar();
+      _snack(result.mensagem, ok: result.ok);
+      if (result.ok) _carregar();
     }
   }
 
@@ -808,8 +798,7 @@ class _CarrinhosAbandonadosScreenState
                 children: [
                   if (item.telefone.trim().length >= 10)
                     _miniAction('WhatsApp', Icons.chat, () => _abrirWhatsApp(item)),
-                  if (item.email.trim().contains('@'))
-                    _miniAction('E-mail', Icons.email_outlined, () => _enviarEmail(item)),
+                  _miniAction('E-mail', Icons.email_outlined, () => _enviarEmail(item)),
                   _miniAction('Detalhes', Icons.info_outline,
                       () => _abrirDetalheCliente(item)),
                 ],
@@ -912,9 +901,7 @@ class _CarrinhosAbandonadosScreenState
                   _miniAction(
                     'E-mail',
                     Icons.email_outlined,
-                    item.clienteEmail.trim().contains('@')
-                        ? () => _enviarEmailCatalogo(item)
-                        : null,
+                    () => _enviarEmailCatalogo(item),
                   ),
                   _miniAction(
                       'Copiar link', Icons.link, () => _copiarTexto(link, 'Link copiado')),

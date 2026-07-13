@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/vendas_period_metrics_service.dart';
 
-/// Bottom sheet discreto com resumo Hoje / Mês (tela Vendas).
+/// Bottom sheet discreto com resumo Hoje / Mês / Ano (tela Vendas).
 class VendasResumoSheet extends StatelessWidget {
   const VendasResumoSheet({super.key, required this.lojaId});
 
@@ -21,7 +21,7 @@ class VendasResumoSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.72,
+        maxHeight: MediaQuery.of(context).size.height * 0.85,
       ),
       decoration: const BoxDecoration(
         color: Colors.white,
@@ -74,6 +74,8 @@ class VendasResumoSheet extends StatelessWidget {
                       _PeriodBlock(title: 'HOJE', metrics: b.hoje),
                       const SizedBox(height: 14),
                       _PeriodBlock(title: 'MÊS', metrics: b.mes),
+                      const SizedBox(height: 14),
+                      _PeriodBlock(title: 'ANO', metrics: b.ano),
                     ],
                   ),
                 );

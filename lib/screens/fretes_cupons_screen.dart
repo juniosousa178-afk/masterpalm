@@ -22,8 +22,6 @@ import '../models/cliente.dart';
 import '../services/indicacao_config_service.dart';
 import '../services/superfrete_integration_service.dart';
 import '../services/melhor_envio_integration_service.dart';
-import '../services/carrinho_abandonado_service.dart';
-import 'carrinhos_abandonados_screen.dart';
 import '../models/cupom.dart';
 import '../widgets/app_help_icon_button.dart';
 
@@ -76,11 +74,6 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
       TextEditingController(text: '60');
   bool _indicacaoSalvando = false;
 
-  // Recuperação de carrinho abandonado
-  bool _carrinhoAbandonadoAtivo = false;
-  final TextEditingController _carrinhoAbandonadoHorasCtrl =
-      TextEditingController(text: '24');
-  bool _carrinhoAbandonadoSalvando = false;
   final TextEditingController _correiosUserCtrl = TextEditingController();
   final TextEditingController _correiosSenhaCtrl = TextEditingController();
   final TextEditingController _frenetTokenCtrl = TextEditingController();
@@ -167,7 +160,6 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
     _superFreteTokenCtrl.dispose();
     _indicacaoValorCtrl.dispose();
     _indicacaoValidadeCtrl.dispose();
-    _carrinhoAbandonadoHorasCtrl.dispose();
     _embalagemNomeCtrl.dispose();
     _embalagemPesoCtrl.dispose();
     _embalagemTamanhoCtrl.dispose();
@@ -266,7 +258,6 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
       await _loadSuperFreteStatus(_slug!);
       await _loadMelhorEnvioStatus(_slug!);
       await _loadIndicacaoConfig(_slug!);
-      await _loadCarrinhoAbandonadoConfig(_slug!);
     }
 
     if (mounted) setState(() {});
@@ -316,39 +307,6 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
       if (mounted) _snack('❌ Erro ao salvar: $e');
     } finally {
       if (mounted) setState(() => _indicacaoSalvando = false);
-    }
-  }
-
-  Future<void> _loadCarrinhoAbandonadoConfig(String lojaId) async {
-    try {
-      final config = await CarrinhoAbandonadoService.getConfig(lojaId);
-      if (mounted) {
-        setState(() {
-          _carrinhoAbandonadoAtivo = config.ativo;
-          _carrinhoAbandonadoHorasCtrl.text = '${config.horasAbandono}';
-        });
-      }
-    } catch (_) {}
-  }
-
-  Future<void> _salvarCarrinhoAbandonadoConfig() async {
-    if (_slug == null) return;
-    setState(() => _carrinhoAbandonadoSalvando = true);
-    try {
-      final horas = int.tryParse(_carrinhoAbandonadoHorasCtrl.text) ?? 24;
-      await CarrinhoAbandonadoService.setConfig(
-        _slug!,
-        CarrinhoAbandonadoConfig(
-          ativo: _carrinhoAbandonadoAtivo,
-          horasAbandono: horas.clamp(1, 168),
-          enviarEmail: true,
-        ),
-      );
-      if (mounted) _snack('✅ Configuração de carrinho abandonado salva.');
-    } catch (e) {
-      if (mounted) _snack('❌ Erro ao salvar: $e');
-    } finally {
-      if (mounted) setState(() => _carrinhoAbandonadoSalvando = false);
     }
   }
 
@@ -2498,8 +2456,6 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
           children: [
             _buildCardIndicacao(),
             const SizedBox(height: 16),
-            _buildCardCarrinhoAbandonado(),
-            const SizedBox(height: 16),
             _buildCardCriarCupom(),
             const SizedBox(height: 16),
             _buildCardListaCupons(cupons),
@@ -2633,121 +2589,6 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
               style: ElevatedButton.styleFrom(
                   backgroundColor: _successColor,
                   foregroundColor: Colors.white),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCardCarrinhoAbandonado() {
-    return Card(
-      elevation: 0,
-      color: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: _warningColor.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.shopping_cart_outlined,
-                      color: _warningColor, size: 24),
-                ),
-                const SizedBox(width: 16),
-                const Expanded(
-                  child: Text(
-                    'Recuperação de carrinho abandonado',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                ),
-                Switch(
-                  value: _carrinhoAbandonadoAtivo,
-                  onChanged: (v) =>
-                      setState(() => _carrinhoAbandonadoAtivo = v),
-                  thumbColor: MaterialStateProperty.resolveWith((s) =>
-                      s.contains(MaterialState.selected)
-                          ? _primaryColor
-                          : null),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Listar carrinhos não finalizados e enviar lembrete por e-mail ou WhatsApp.',
-              style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
-            ),
-            const SizedBox(height: 16),
-            Wrap(
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 12,
-              runSpacing: 10,
-              children: [
-                const Text(
-                  'Considerar abandonado após (horas):',
-                  style: TextStyle(fontWeight: FontWeight.w600),
-                ),
-                SizedBox(
-                  width: 80,
-                  child: TextField(
-                    controller: _carrinhoAbandonadoHorasCtrl,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                  ),
-                ),
-                Text(
-                  '(1 a 168)',
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 12,
-              runSpacing: 10,
-              children: [
-                ElevatedButton.icon(
-                  onPressed: _carrinhoAbandonadoSalvando
-                      ? null
-                      : _salvarCarrinhoAbandonadoConfig,
-                  icon: _carrinhoAbandonadoSalvando
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.save, size: 20),
-                  label: Text(
-                      _carrinhoAbandonadoSalvando ? 'Salvando...' : 'Salvar'),
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: _warningColor,
-                      foregroundColor: Colors.white),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _slug == null
-                      ? null
-                      : () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) =>
-                                  CarrinhosAbandonadosScreen(lojaId: _slug!),
-                            ),
-                          );
-                        },
-                  icon: const Icon(Icons.list_alt, size: 20),
-                  label: const Text('Ver carrinhos abandonados'),
-                ),
-              ],
             ),
           ],
         ),
