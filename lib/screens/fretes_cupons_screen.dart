@@ -16,6 +16,9 @@ import '../services/catalog_publish_service.dart';
 import '../services/store_resolver_facade.dart';
 import '../services/cupom_desconto_service.dart';
 import '../services/clientes_firestore_service.dart';
+import '../core/cupom_pessoal_cliente_busca.dart';
+import '../core/hive_box_names.dart';
+import '../models/cliente.dart';
 import '../services/indicacao_config_service.dart';
 import '../services/superfrete_integration_service.dart';
 import '../services/melhor_envio_integration_service.dart';
@@ -3167,17 +3170,67 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
     Map<String, dynamic>? clienteSelecionado;
     List<Map<String, dynamic>> clientesBusca = [];
     bool buscandoClientes = false;
+    bool buscaClienteExecutada = false;
+
+    Future<List<Map<String, dynamic>>> clientesLocaisHive() async {
+      if (_slug == null || _slug!.isEmpty) return const [];
+      final boxName = HiveBoxNames.clientes(_slug!);
+      try {
+        final Box<Cliente> box = Hive.isBoxOpen(boxName)
+            ? Hive.box<Cliente>(boxName)
+            : await Hive.openBox<Cliente>(boxName);
+        return box.values.map((c) {
+          final idFirebase = (c.idFirebase ?? '').trim();
+          final hiveKey = c.key?.toString() ?? '';
+          final id = idFirebase.isNotEmpty ? idFirebase : hiveKey;
+          return <String, dynamic>{
+            if (id.isNotEmpty) 'id': id,
+            if (id.isNotEmpty) 'clienteId': id,
+            'idFirebase': idFirebase.isNotEmpty ? idFirebase : null,
+            'nome': c.nome,
+            'email': c.email ?? '',
+            'telefone': c.telefone,
+          };
+        }).where((m) {
+          final nome = (m['nome'] ?? '').toString().trim();
+          final email = (m['email'] ?? '').toString().trim();
+          final tel = (m['telefone'] ?? '').toString().trim();
+          return nome.isNotEmpty || email.isNotEmpty || tel.isNotEmpty;
+        }).toList();
+      } catch (_) {
+        return const [];
+      }
+    }
 
     Future<void> buscarClientesDialog(
       void Function(void Function()) setDialogState,
     ) async {
       final q = buscaClienteCtrl.text.trim();
-      if (q.length < 2 || _slug == null) return;
-      setDialogState(() => buscandoClientes = true);
-      final lista = await ClientesFirestoreService.searchClientes(
-        q,
-        lojaId: _slug,
-      );
+      if (q.length < 2 || _slug == null) {
+        setDialogState(() {
+          clientesBusca = [];
+          buscaClienteExecutada = q.isNotEmpty;
+          buscandoClientes = false;
+        });
+        return;
+      }
+      setDialogState(() {
+        buscandoClientes = true;
+        buscaClienteExecutada = true;
+      });
+
+      // 1) Hive local (fonte do admin / PDV) — case-insensitive
+      final locais = await clientesLocaisHive();
+      var lista = filtrarClientesCupomPessoal(clientes: locais, query: q);
+
+      // 2) Fallback Firestore (já case-insensitive após fix)
+      if (lista.isEmpty) {
+        lista = await ClientesFirestoreService.searchClientes(
+          q,
+          lojaId: _slug,
+        );
+      }
+
       setDialogState(() {
         clientesBusca = lista;
         buscandoClientes = false;
@@ -3253,6 +3306,8 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                       tipoAcesso = s.first;
                       if (tipoAcesso == 'publico') {
                         clienteSelecionado = null;
+                        clientesBusca = [];
+                        buscaClienteExecutada = false;
                       }
                     }),
                   ),
@@ -3262,6 +3317,7 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                       controller: buscaClienteCtrl,
                       decoration: InputDecoration(
                         labelText: 'Cliente (nome, e-mail ou telefone)',
+                        helperText: 'Digite ao menos 2 caracteres e busque',
                         prefixIcon: const Icon(Icons.person_search),
                         suffixIcon: IconButton(
                           icon: const Icon(Icons.search),
@@ -3271,12 +3327,33 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
+                      onChanged: (v) {
+                        if (v.trim().length >= 2) {
+                          buscarClientesDialog(setDialogState);
+                        } else {
+                          setDialogState(() {
+                            clientesBusca = [];
+                            buscaClienteExecutada = false;
+                          });
+                        }
+                      },
                       onSubmitted: (_) => buscarClientesDialog(setDialogState),
                     ),
                     if (buscandoClientes)
                       const Padding(
                         padding: EdgeInsets.only(top: 8),
                         child: LinearProgressIndicator(),
+                      ),
+                    if (!buscandoClientes &&
+                        buscaClienteExecutada &&
+                        clientesBusca.isEmpty &&
+                        clienteSelecionado == null)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 8),
+                        child: Text(
+                          'Nenhum cliente encontrado. Verifique o cadastro em Clientes.',
+                          style: TextStyle(color: Colors.orange, fontSize: 13),
+                        ),
                       ),
                     if (clientesBusca.isNotEmpty)
                       ...clientesBusca.map(
@@ -3287,18 +3364,23 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                             (c['email'] ?? c['telefone'] ?? '').toString(),
                           ),
                           onTap: () => setDialogState(() {
-                            clienteSelecionado = c;
+                            clienteSelecionado =
+                                normalizarClienteSelecionadoCupom(c);
                             clientesBusca = [];
+                            buscaClienteCtrl.text =
+                                (clienteSelecionado!['nome'] ?? '').toString();
                           }),
                         ),
                       ),
                     if (clienteSelecionado != null)
                       Chip(
+                        avatar: const Icon(Icons.check_circle, size: 18),
                         label: Text(
                           'Cliente: ${clienteSelecionado!['nome'] ?? clienteSelecionado!['email'] ?? ''}',
                         ),
                         onDeleted: () => setDialogState(() {
                           clienteSelecionado = null;
+                          buscaClienteCtrl.clear();
                         }),
                       ),
                   ],
@@ -3473,7 +3555,19 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
               child: const Text('Cancelar'),
             ),
             ElevatedButton.icon(
-              onPressed: () => Navigator.pop(ctx, true),
+              onPressed: () {
+                if (tipoAcesso == 'pessoal' && clienteSelecionado == null) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Selecione um cliente para cupom pessoal.',
+                      ),
+                    ),
+                  );
+                  return;
+                }
+                Navigator.pop(ctx, true);
+              },
               icon: const Icon(Icons.check),
               label: const Text('Criar Cupom'),
               style: ElevatedButton.styleFrom(
@@ -3507,10 +3601,19 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
       }
 
       final clienteId = clienteSelecionado != null
-          ? (clienteSelecionado!['id'] ?? clienteSelecionado!['clienteId'])
+          ? (clienteSelecionado!['id'] ??
+                  clienteSelecionado!['clienteId'] ??
+                  clienteSelecionado!['idFirebase'])
               ?.toString()
           : null;
       final ownerEmail = clienteSelecionado?['email']?.toString();
+
+      if (tipoAcesso == 'pessoal' &&
+          (clienteId == null || clienteId.trim().isEmpty) &&
+          (ownerEmail == null || ownerEmail.trim().isEmpty)) {
+        _snack('⚠️ Cupom pessoal exige cliente com id ou e-mail');
+        return;
+      }
 
       try {
         await CupomDescontoService().criarCupom(

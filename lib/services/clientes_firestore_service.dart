@@ -3,6 +3,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../core/hive_box_names.dart';
+import '../core/cupom_pessoal_cliente_busca.dart';
 import 'firestore_paths.dart';
 import '../core/logger.dart';
 import 'package:hive/hive.dart';
@@ -317,8 +318,11 @@ class ClientesFirestoreService {
     }
   }
 
-  /// Busca clientes por nome ou telefone.
+  /// Busca clientes por nome, e-mail ou telefone (case-insensitive).
   /// FASE 3: Unificado — usa estoque_clientes (mesma coleção de sync).
+  ///
+  /// Nota: não usa range prefix lowercased em `nome` (quebrava Title Case).
+  /// Carrega um lote limitado e filtra localmente — adequado ao admin.
   static Future<List<Map<String, dynamic>>> searchClientes(
     String query, {
     String? lojaId,
@@ -327,54 +331,21 @@ class ClientesFirestoreService {
       final storeId = lojaId ?? await StoreResolverFacade.resolveForAdminApp();
       if (storeId == null || storeId.isEmpty) return [];
 
-      final queryLower = query.toLowerCase();
+      final q = query.trim().toLowerCase();
+      if (q.length < 2) return [];
 
-      // Busca por nome
-      final nomeQuery = await _db
+      final snap = await _db
           .collection('lojas')
           .doc(storeId)
           .collection(FSPaths.estoqueClientesCol)
-          .where('nome', isGreaterThanOrEqualTo: queryLower)
-          .where('nome', isLessThanOrEqualTo: '$queryLower\uf8ff')
-          .limit(10)
+          .limit(300)
           .get();
 
-      // Busca por telefone
-      final telefoneQuery = await _db
-          .collection('lojas')
-          .doc(storeId)
-          .collection(FSPaths.estoqueClientesCol)
-          .where('telefone', isGreaterThanOrEqualTo: query)
-          .where('telefone', isLessThanOrEqualTo: '$query\uf8ff')
-          .limit(10)
-          .get();
+      final all = snap.docs
+          .map((doc) => <String, dynamic>{...doc.data(), 'id': doc.id})
+          .toList();
 
-      final resultados = <String, Map<String, dynamic>>{};
-
-      for (final doc in nomeQuery.docs) {
-        resultados[doc.id] = {...doc.data(), 'id': doc.id};
-      }
-
-      for (final doc in telefoneQuery.docs) {
-        resultados[doc.id] = {...doc.data(), 'id': doc.id};
-      }
-
-      if (query.contains('@')) {
-        final emailLower = queryLower;
-        final emailQuery = await _db
-            .collection('lojas')
-            .doc(storeId)
-            .collection(FSPaths.estoqueClientesCol)
-            .where('email', isGreaterThanOrEqualTo: emailLower)
-            .where('email', isLessThanOrEqualTo: '$emailLower\uf8ff')
-            .limit(10)
-            .get();
-        for (final doc in emailQuery.docs) {
-          resultados[doc.id] = {...doc.data(), 'id': doc.id};
-        }
-      }
-
-      return resultados.values.toList();
+      return filtrarClientesCupomPessoal(clientes: all, query: q, limit: 10);
     } catch (e, st) {
       logE('❌ [CLIENTES-SYNC] Erro ao buscar clientes (type=${e.runtimeType})', error: e, st: st);
       return [];
