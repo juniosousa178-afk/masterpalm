@@ -44,12 +44,21 @@ class _CarrinhosAbandonadosScreenState
 
   String _filtroStatus = 'todos';
   String _filtroTexto = '';
+  String _filtroPeriodo = kCarrinhoFiltroPeriodoTodos;
+  String _filtroValor = kCarrinhoFiltroValorTodos;
   String _ordenacao = 'recente';
+  final TextEditingController _buscaCtrl = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _init();
+  }
+
+  @override
+  void dispose() {
+    _buscaCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _init() async {
@@ -111,25 +120,80 @@ class _CarrinhosAbandonadosScreenState
   }
 
   List<CarrinhoAbandonadoCatalogoItem> get _catalogoFiltrado {
-    var list = List<CarrinhoAbandonadoCatalogoItem>.from(_listaCatalogo);
-    final q = _filtroTexto.trim().toLowerCase();
-    if (q.isNotEmpty) {
-      list = list
-          .where((e) =>
-              e.clienteNome.toLowerCase().contains(q) ||
-              e.clienteTelefone.contains(q) ||
-              e.clienteWhatsapp.contains(q) ||
-              e.clienteEmail.toLowerCase().contains(q) ||
-              e.clienteCpf.contains(q) ||
-              e.cartId.toLowerCase().contains(q))
-          .toList();
-    }
-    if (_filtroStatus != 'todos') {
-      list = list
-          .where((e) =>
-              normalizarStatusCarrinhoAbandonado(e.status) == _filtroStatus)
-          .toList();
-    }
+    var list = _listaCatalogo.where((e) {
+      final valor = e.totalOverride ??
+          (totalCarrinhoProdutos(e.produtos) + e.frete - e.desconto);
+      return carrinhoPassaFiltrosCombinados(
+        query: _filtroTexto,
+        filtroStatus: _filtroStatus,
+        filtroPeriodo: _filtroPeriodo,
+        filtroValor: _filtroValor,
+        statusRaw: e.status,
+        dataRef: e.ultimoUpdate ?? e.criadoEm,
+        valor: valor,
+        nome: e.clienteNome,
+        telefone: e.clienteTelefone,
+        whatsapp: e.clienteWhatsapp,
+        email: e.clienteEmail,
+        cpf: e.clienteCpf,
+        idExtra: e.cartId,
+      );
+    }).toList();
+    _ordenarCatalogo(list);
+    return list;
+  }
+
+  List<CarrinhoAbandonadoItem> get _lojaFiltrado {
+    var list = _lista.where((e) {
+      return carrinhoPassaFiltrosCombinados(
+        query: _filtroTexto,
+        filtroStatus: _filtroStatus,
+        filtroPeriodo: _filtroPeriodo,
+        filtroValor: _filtroValor,
+        statusRaw: kCarrinhoStatusAbandonado,
+        dataRef: e.ultimaAtualizacao,
+        valor: totalCarrinhoProdutos(e.itens),
+        nome: e.nome,
+        telefone: e.telefone,
+        whatsapp: e.telefone,
+        email: e.email,
+        idExtra: e.clienteId,
+      );
+    }).toList();
+    list.sort((a, b) {
+      final ta = totalCarrinhoProdutos(a.itens);
+      final tb = totalCarrinhoProdutos(b.itens);
+      final da = a.ultimaAtualizacao ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final db = b.ultimaAtualizacao ?? DateTime.fromMillisecondsSinceEpoch(0);
+      switch (_ordenacao) {
+        case 'valor':
+          return tb.compareTo(ta);
+        case 'antigo':
+          return da.compareTo(db);
+        case 'score':
+          final sa = calcularProbabilidadeRecuperacao(
+            tempoAbandonado: DateTime.now().difference(da),
+            valorCarrinho: ta,
+            quantidadeItens: a.totalItens,
+            temWhatsapp: a.telefone.trim().length >= 10,
+            temEmail: a.email.trim().contains('@'),
+          );
+          final sb = calcularProbabilidadeRecuperacao(
+            tempoAbandonado: DateTime.now().difference(db),
+            valorCarrinho: tb,
+            quantidadeItens: b.totalItens,
+            temWhatsapp: b.telefone.trim().length >= 10,
+            temEmail: b.email.trim().contains('@'),
+          );
+          return sb.pontos.compareTo(sa.pontos);
+        default:
+          return db.compareTo(da);
+      }
+    });
+    return list;
+  }
+
+  void _ordenarCatalogo(List<CarrinhoAbandonadoCatalogoItem> list) {
     list.sort((a, b) {
       final ta = totalCarrinhoProdutos(a.produtos);
       final tb = totalCarrinhoProdutos(b.produtos);
@@ -150,7 +214,6 @@ class _CarrinhosAbandonadosScreenState
           return db.compareTo(da);
       }
     });
-    return list;
   }
 
   Future<void> _abrirDetalheCatalogo(CarrinhoAbandonadoCatalogoItem item) async {
@@ -543,6 +606,12 @@ class _CarrinhosAbandonadosScreenState
     }
 
     final catalogo = _catalogoFiltrado;
+    final loja = _lojaFiltrado;
+    final temBase = _lista.isNotEmpty || _listaCatalogo.isNotEmpty;
+    final temFiltroAtivo = _filtroTexto.trim().isNotEmpty ||
+        _filtroStatus != 'todos' ||
+        _filtroPeriodo != kCarrinhoFiltroPeriodoTodos ||
+        _filtroValor != kCarrinhoFiltroValorTodos;
 
     return Scaffold(
       backgroundColor: _backgroundColor,
@@ -558,7 +627,7 @@ class _CarrinhosAbandonadosScreenState
           ),
         ],
       ),
-      body: _lista.isEmpty && _listaCatalogo.isEmpty
+      body: !temBase
           ? Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -579,23 +648,36 @@ class _CarrinhosAbandonadosScreenState
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  if (_lista.isNotEmpty) ...[
-                    _sectionTitle('Carrinhos da loja (venda)'),
-                    ..._lista.map(_cardCliente),
+                  if (_metricasCatalogo != null &&
+                      _metricasCatalogo!.total > 0)
+                    _metricasCard(),
+                  _filtrosCatalogo(),
+                  if (loja.isEmpty && catalogo.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 32),
+                      child: Text(
+                        temFiltroAtivo
+                            ? 'Nenhum carrinho com os filtros atuais.'
+                            : 'Nenhum carrinho abandonado no momento.',
+                        style: TextStyle(color: Colors.grey.shade600),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  if (loja.isNotEmpty) ...[
+                    _sectionTitle(
+                        'Carrinhos da loja (venda) · ${loja.length}'),
+                    ...loja.map(_cardCliente),
                     const SizedBox(height: 12),
                   ],
-                  if (_listaCatalogo.isNotEmpty ||
-                      _metricasCatalogo != null) ...[
-                    if (_metricasCatalogo != null &&
-                        _metricasCatalogo!.total > 0)
-                      _metricasCard(),
-                    _sectionTitle('Carrinhos do catálogo'),
-                    _filtrosCatalogo(),
+                  if (catalogo.isNotEmpty ||
+                      (_listaCatalogo.isNotEmpty && temFiltroAtivo)) ...[
+                    _sectionTitle(
+                        'Carrinhos do catálogo · ${catalogo.length}'),
                     if (catalogo.isEmpty)
                       Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 24),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
                         child: Text(
-                          'Nenhum carrinho com os filtros atuais.',
+                          'Nenhum carrinho do catálogo com os filtros atuais.',
                           style: TextStyle(color: Colors.grey.shade600),
                           textAlign: TextAlign.center,
                         ),
@@ -652,10 +734,20 @@ class _CarrinhosAbandonadosScreenState
       child: Column(
         children: [
           TextField(
+            controller: _buscaCtrl,
             decoration: InputDecoration(
               isDense: true,
               prefixIcon: const Icon(Icons.search, size: 20),
-              labelText: 'Pesquisar nome, telefone, e-mail, CPF',
+              suffixIcon: _filtroTexto.isEmpty
+                  ? null
+                  : IconButton(
+                      icon: const Icon(Icons.clear, size: 18),
+                      onPressed: () {
+                        _buscaCtrl.clear();
+                        setState(() => _filtroTexto = '');
+                      },
+                    ),
+              labelText: 'Pesquisar nome, telefone, WhatsApp, e-mail',
               filled: true,
               fillColor: Colors.white,
               border: OutlineInputBorder(
@@ -670,9 +762,10 @@ class _CarrinhosAbandonadosScreenState
               Expanded(
                 child: DropdownButtonFormField<String>(
                   value: _filtroStatus,
+                  isExpanded: true,
                   decoration: InputDecoration(
                     isDense: true,
-                    labelText: 'Filtro status',
+                    labelText: 'Status',
                     filled: true,
                     fillColor: Colors.white,
                     border: OutlineInputBorder(
@@ -698,7 +791,74 @@ class _CarrinhosAbandonadosScreenState
               const SizedBox(width: 8),
               Expanded(
                 child: DropdownButtonFormField<String>(
+                  value: _filtroPeriodo,
+                  isExpanded: true,
+                  decoration: InputDecoration(
+                    isDense: true,
+                    labelText: 'Data',
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                        value: kCarrinhoFiltroPeriodoTodos,
+                        child: Text('Todas')),
+                    DropdownMenuItem(
+                        value: kCarrinhoFiltroPeriodoHoje, child: Text('Hoje')),
+                    DropdownMenuItem(
+                        value: kCarrinhoFiltroPeriodo7d,
+                        child: Text('Últimos 7 dias')),
+                    DropdownMenuItem(
+                        value: kCarrinhoFiltroPeriodo30d,
+                        child: Text('Últimos 30 dias')),
+                  ],
+                  onChanged: (v) => setState(
+                      () => _filtroPeriodo = v ?? kCarrinhoFiltroPeriodoTodos),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  value: _filtroValor,
+                  isExpanded: true,
+                  decoration: InputDecoration(
+                    isDense: true,
+                    labelText: 'Valor',
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                        value: kCarrinhoFiltroValorTodos, child: Text('Todos')),
+                    DropdownMenuItem(
+                        value: kCarrinhoFiltroValorAte100,
+                        child: Text('Até R\$ 100')),
+                    DropdownMenuItem(
+                        value: kCarrinhoFiltroValor100a300,
+                        child: Text('R\$ 100–300')),
+                    DropdownMenuItem(
+                        value: kCarrinhoFiltroValorAcima300,
+                        child: Text('Acima de R\$ 300')),
+                  ],
+                  onChanged: (v) => setState(
+                      () => _filtroValor = v ?? kCarrinhoFiltroValorTodos),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: DropdownButtonFormField<String>(
                   value: _ordenacao,
+                  isExpanded: true,
                   decoration: InputDecoration(
                     isDense: true,
                     labelText: 'Ordenação',

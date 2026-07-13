@@ -198,6 +198,157 @@ void main() {
     });
   });
 
+  group('M3.8 S1 — Filtros locais carrinhos (R4)', () {
+    test('busca contains case/acento/espaço em nome', () {
+      expect(
+        carrinhoCorrespondeBusca(query: 'Maria', nome: 'Maria Silva'),
+        isTrue,
+      );
+      expect(
+        carrinhoCorrespondeBusca(query: 'maria', nome: 'Maria Silva'),
+        isTrue,
+      );
+      expect(
+        carrinhoCorrespondeBusca(query: 'MARIA', nome: 'Maria Silva'),
+        isTrue,
+      );
+      expect(
+        carrinhoCorrespondeBusca(query: 'Mari', nome: 'Maria Silva'),
+        isTrue,
+      );
+      expect(
+        carrinhoCorrespondeBusca(query: 'Silva', nome: 'Maria Silva'),
+        isTrue,
+      );
+      expect(
+        carrinhoCorrespondeBusca(query: 'josé', nome: 'Jose  Souza'),
+        isTrue,
+      );
+      expect(
+        carrinhoCorrespondeBusca(query: '  maria   silva ', nome: 'Maria Silva'),
+        isTrue,
+      );
+      expect(
+        carrinhoCorrespondeBusca(query: 'Pedro', nome: 'Maria Silva'),
+        isFalse,
+      );
+    });
+
+    test('busca telefone/whatsapp/email contains e só dígitos', () {
+      expect(
+        carrinhoCorrespondeBusca(
+          query: '9988',
+          nome: 'Ana',
+          telefone: '(11) 99988-7766',
+        ),
+        isTrue,
+      );
+      expect(
+        carrinhoCorrespondeBusca(
+          query: '9988',
+          nome: 'Ana',
+          whatsapp: '5511999887766',
+        ),
+        isTrue,
+      );
+      expect(
+        carrinhoCorrespondeBusca(
+          query: 'gmail',
+          nome: 'Ana',
+          email: 'ana.silva@gmail.com',
+        ),
+        isTrue,
+      );
+      expect(
+        carrinhoCorrespondeBusca(
+          query: 'ana.silva',
+          nome: 'X',
+          email: 'ana.silva@gmail.com',
+        ),
+        isTrue,
+      );
+    });
+
+    test('filtros combinados status + busca + período + valor (AND)', () {
+      final agora = DateTime(2026, 7, 13, 18);
+      expect(
+        carrinhoPassaFiltrosCombinados(
+          query: 'Maria',
+          filtroStatus: kCarrinhoUiAbandonado,
+          filtroPeriodo: kCarrinhoFiltroPeriodoHoje,
+          filtroValor: kCarrinhoFiltroValor100a300,
+          statusRaw: 'ativo',
+          dataRef: DateTime(2026, 7, 13, 10),
+          valor: 180,
+          nome: 'Maria Santos',
+          email: 'm@x.com',
+          agora: agora,
+        ),
+        isTrue,
+      );
+      // Status recuperado exclui abandonado
+      expect(
+        carrinhoPassaFiltrosCombinados(
+          query: 'Maria',
+          filtroStatus: kCarrinhoUiAbandonado,
+          filtroPeriodo: kCarrinhoFiltroPeriodoTodos,
+          filtroValor: kCarrinhoFiltroValorTodos,
+          statusRaw: 'recuperado',
+          dataRef: DateTime(2026, 7, 13),
+          valor: 180,
+          nome: 'Maria Santos',
+          agora: agora,
+        ),
+        isFalse,
+      );
+      // Busca não bate
+      expect(
+        carrinhoPassaFiltrosCombinados(
+          query: 'Maria',
+          filtroStatus: kCarrinhoUiAbandonado,
+          filtroPeriodo: kCarrinhoFiltroPeriodoTodos,
+          filtroValor: kCarrinhoFiltroValorTodos,
+          statusRaw: 'abandonado',
+          dataRef: DateTime(2026, 7, 13),
+          valor: 180,
+          nome: 'João Pedro',
+          agora: agora,
+        ),
+        isFalse,
+      );
+      // Valor fora da faixa
+      expect(
+        carrinhoPassaFiltrosCombinados(
+          query: 'Maria',
+          filtroStatus: kCarrinhoUiAbandonado,
+          filtroPeriodo: kCarrinhoFiltroPeriodoTodos,
+          filtroValor: kCarrinhoFiltroValorAte100,
+          statusRaw: 'abandonado',
+          dataRef: DateTime(2026, 7, 13),
+          valor: 180,
+          nome: 'Maria',
+          agora: agora,
+        ),
+        isFalse,
+      );
+      // Período fora (ontem com filtro hoje)
+      expect(
+        carrinhoPassaFiltrosCombinados(
+          query: 'Maria',
+          filtroStatus: kCarrinhoUiAbandonado,
+          filtroPeriodo: kCarrinhoFiltroPeriodoHoje,
+          filtroValor: kCarrinhoFiltroValorTodos,
+          statusRaw: 'abandonado',
+          dataRef: DateTime(2026, 7, 12, 10),
+          valor: 50,
+          nome: 'Maria',
+          agora: agora,
+        ),
+        isFalse,
+      );
+    });
+  });
+
   group('M3.8 S1 — Timeline', () {
     test('marca só eventos reais; não inventa pagamento', () {
       final ev = buildPedidoTimeline({
