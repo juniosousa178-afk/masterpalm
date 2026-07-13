@@ -2903,6 +2903,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       } else {
         final copy = Map<String, dynamic>.from(item);
         copy['quantidade'] = addQty;
+        freezeCatalogCartLineSnapshotOnAdd(copy);
         _cart.add(copy);
       }
       _clearPrePedidoReuseSession();

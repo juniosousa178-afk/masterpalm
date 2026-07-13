@@ -51,6 +51,8 @@ CatalogPrePedidoMoneySnapshot computeCatalogPrePedidoMoneySnapshot({
     final storedItem = <String, dynamic>{
       'productId': productId,
       'id': productId,
+      'firestoreDocId':
+          (item['firestoreDocId'] ?? productId).toString().trim(),
       'produtosId': item['produtosId'] ?? productId,
       'nome': nomeSnap,
       'nomeSnapshot': nomeSnap,
@@ -59,9 +61,19 @@ CatalogPrePedidoMoneySnapshot computeCatalogPrePedidoMoneySnapshot({
       'precoUnitarioSnapshot': precoEfetivo,
       'tamanho': item['tamanho'] ?? item['size'] ?? '',
       'cor': item['cor'] ?? item['color'] ?? '',
-      'imagem': item['imageUrl'] ?? item['url_foto'] ?? item['image'] ?? '',
+      'imagem': item['imagemSnapshot'] ??
+          item['imageUrl'] ??
+          item['url_foto'] ??
+          item['image'] ??
+          '',
+      'imagemSnapshot': item['imagemSnapshot'] ??
+          item['imageUrl'] ??
+          item['url_foto'] ??
+          item['image'] ??
+          '',
       'slug': item['slug'] ?? '',
       'total': itemTotal,
+      'schemaVersion': item['schemaVersion'] ?? catalogCartItemSchemaVersion,
     };
     if (isPix) {
       storedItem['precoPixSnapshot'] = precoEfetivo;
