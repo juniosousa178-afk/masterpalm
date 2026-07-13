@@ -28,6 +28,9 @@ import '../utils/limpar_firestore.dart';
 import '../services/ai_loja_service.dart';
 import '../services/ia_uso_limite_service.dart';
 import '../widgets/premio_roleta_vendedor_card.dart';
+import '../widgets/pedido_cliente_snapshot_panel.dart';
+import '../widgets/pedido_timeline_widget.dart';
+import '../widgets/communication_history_panel.dart';
 import '../services/loja_id_service.dart';
 import 'pre_pedidos/pre_pedido_operacional.dart';
 import '../widgets/app_help_icon_button.dart';
@@ -1786,7 +1789,24 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
 
                       _buildSectionTitle(Icons.person, 'Cliente'),
                       const SizedBox(height: 8),
-                      _buildDetalheCliente(dados['cliente']),
+                      PedidoClienteSnapshotPanel(
+                        cliente: dados['cliente'] is Map
+                            ? Map<String, dynamic>.from(dados['cliente'] as Map)
+                            : null,
+                        lojaId: widget.lojaId,
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      PedidoTimelineWidget(
+                        pedidoData: Map<String, dynamic>.from(dados),
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      CommunicationHistoryPanel(
+                        pedidoData: Map<String, dynamic>.from(dados),
+                      ),
 
                       const SizedBox(height: 24),
 
@@ -2006,38 +2026,6 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
             _buildDetalheRow(Icons.account_balance, 'MP status', mpStatus),
           if (paidAt != null)
             _buildDetalheRow(Icons.schedule, 'Pago em', paidAtStr),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDetalheCliente(Map<String, dynamic>? cliente) {
-    if (cliente == null) {
-      return Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.grey[100],
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: const Text('Não informado'),
-      );
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: _surfaceColor,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildDetalheRow(
-              Icons.person_outline, 'Nome', cliente['nome'] ?? '-'),
-          _buildDetalheRow(Icons.phone, 'Telefone', cliente['telefone'] ?? '-'),
-          _buildDetalheRow(Icons.email, 'Email', cliente['email'] ?? '-'),
-          _buildDetalheRow(Icons.location_on, 'Endereço',
-              cliente['enderecoFormatado'] ?? '-'),
         ],
       ),
     );

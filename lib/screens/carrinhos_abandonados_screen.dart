@@ -5,7 +5,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../core/carrinho_abandonado_ui.dart';
+import '../widgets/carrinho_abandonado_details_panel.dart';
 import '../services/carrinho_abandonado_service.dart';
 import '../services/catalog_public_url_service.dart';
 import '../services/loja_id_service.dart';
@@ -47,6 +50,10 @@ class _CarrinhosAbandonadosScreenState
 
   /// URL pública do catálogo (hosted ou domínio próprio), carregada após resolver a loja.
   String? _catalogPublicBaseUrl;
+
+  String _filtroStatus = 'todos';
+  String _filtroTexto = '';
+  String _ordenacao = 'recente';
 
   @override
   void initState() {
@@ -92,6 +99,64 @@ class _CarrinhosAbandonadosScreenState
     final b = _catalogBaseOrFallback();
     final sep = b.contains('?') ? '&' : '?';
     return '$b${sep}cart=${Uri.encodeComponent(cartId)}';
+  }
+
+  String _money(double v) => 'R\$ ${v.toStringAsFixed(2)}';
+
+  List<CarrinhoAbandonadoCatalogoItem> get _catalogoFiltrado {
+    var list = List<CarrinhoAbandonadoCatalogoItem>.from(_listaCatalogo);
+    final q = _filtroTexto.trim().toLowerCase();
+    if (q.isNotEmpty) {
+      list = list
+          .where((e) =>
+              e.clienteNome.toLowerCase().contains(q) ||
+              e.clienteTelefone.contains(q) ||
+              e.cartId.toLowerCase().contains(q))
+          .toList();
+    }
+    if (_filtroStatus != 'todos') {
+      list = list
+          .where((e) =>
+              normalizarStatusCarrinhoAbandonado(e.status) == _filtroStatus)
+          .toList();
+    }
+    list.sort((a, b) {
+      final ta = totalCarrinhoProdutos(a.produtos);
+      final tb = totalCarrinhoProdutos(b.produtos);
+      final da = a.ultimoUpdate ?? a.criadoEm ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final db = b.ultimoUpdate ?? b.criadoEm ?? DateTime.fromMillisecondsSinceEpoch(0);
+      switch (_ordenacao) {
+        case 'valor':
+          return tb.compareTo(ta);
+        case 'antigo':
+          return da.compareTo(db);
+        default:
+          return db.compareTo(da);
+      }
+    });
+    return list;
+  }
+
+  void _abrirDetalheCatalogo(CarrinhoAbandonadoCatalogoItem item) {
+    final link = _linkRecuperacaoCatalogo(item.cartId);
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.85,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        builder: (_, __) => CarrinhoAbandonadoDetailsPanel(
+          item: item,
+          linkCatalogo: link,
+          onOpenCatalog: () async {
+            final uri = Uri.parse(link);
+            await launchUrl(uri, mode: LaunchMode.externalApplication);
+          },
+        ),
+      ),
+    );
   }
 
   Future<void> _carregarConfig() async {
@@ -532,7 +597,82 @@ class _CarrinhosAbandonadosScreenState
                                 color: Colors.grey.shade700),
                           ),
                         ),
-                        ..._listaCatalogo.map((item) {
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: Column(
+                            children: [
+                              TextField(
+                                decoration: const InputDecoration(
+                                  isDense: true,
+                                  prefixIcon: Icon(Icons.search, size: 20),
+                                  labelText: 'Filtrar cliente / telefone',
+                                  border: OutlineInputBorder(),
+                                ),
+                                onChanged: (v) =>
+                                    setState(() => _filtroTexto = v),
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: DropdownButtonFormField<String>(
+                                      value: _filtroStatus,
+                                      decoration: const InputDecoration(
+                                        isDense: true,
+                                        labelText: 'Status',
+                                        border: OutlineInputBorder(),
+                                      ),
+                                      items: const [
+                                        DropdownMenuItem(
+                                            value: 'todos',
+                                            child: Text('Todos')),
+                                        DropdownMenuItem(
+                                            value: kCarrinhoUiAbandonado,
+                                            child: Text('Abandonado')),
+                                        DropdownMenuItem(
+                                            value: kCarrinhoUiRecuperado,
+                                            child: Text('Recuperado')),
+                                        DropdownMenuItem(
+                                            value: kCarrinhoUiVirouPedido,
+                                            child: Text('Virou Pedido')),
+                                        DropdownMenuItem(
+                                            value: kCarrinhoUiVirouVenda,
+                                            child: Text('Virou Venda')),
+                                      ],
+                                      onChanged: (v) => setState(
+                                          () => _filtroStatus = v ?? 'todos'),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: DropdownButtonFormField<String>(
+                                      value: _ordenacao,
+                                      decoration: const InputDecoration(
+                                        isDense: true,
+                                        labelText: 'Ordenar',
+                                        border: OutlineInputBorder(),
+                                      ),
+                                      items: const [
+                                        DropdownMenuItem(
+                                            value: 'recente',
+                                            child: Text('Mais recente')),
+                                        DropdownMenuItem(
+                                            value: 'antigo',
+                                            child: Text('Mais antigo')),
+                                        DropdownMenuItem(
+                                            value: 'valor',
+                                            child: Text('Maior valor')),
+                                      ],
+                                      onChanged: (v) => setState(
+                                          () => _ordenacao = v ?? 'recente'),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        ..._catalogoFiltrado.map((item) {
                           final link = _lojaId != null
                               ? _linkRecuperacaoCatalogo(item.cartId)
                               : '';
@@ -592,10 +732,24 @@ class _CarrinhosAbandonadosScreenState
                                   ),
                                   const SizedBox(height: 8),
                                   Text(
-                                    '${item.totalItens} item(ns) · Última atualização: $ultimaStr · ${item.status}',
+                                    '${item.totalItens} item(ns) · '
+                                    '${_money(totalCarrinhoProdutos(item.produtos))} · '
+                                    'Última: $ultimaStr · '
+                                    '${labelStatusCarrinhoAbandonado(item.status)}',
                                     style: TextStyle(
                                         fontSize: 12,
                                         color: Colors.grey.shade600),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: OutlinedButton.icon(
+                                      onPressed: () =>
+                                          _abrirDetalheCatalogo(item),
+                                      icon: const Icon(Icons.open_in_new,
+                                          size: 16),
+                                      label: const Text('Abrir detalhe'),
+                                    ),
                                   ),
                                   if (link.isNotEmpty)
                                     Padding(
