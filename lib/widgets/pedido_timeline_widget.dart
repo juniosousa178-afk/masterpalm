@@ -13,7 +13,8 @@ class PedidoTimelineWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final events = buildPedidoTimeline(pedidoData);
+    // Fail-closed: só eventos realmente ocorridos (nada de checklist fake).
+    final events = buildPedidoTimelineOcorridos(pedidoData);
     final df = DateFormat('dd/MM/yyyy HH:mm');
 
     return Container(
@@ -32,67 +33,71 @@ class PedidoTimelineWidget extends StatelessWidget {
             style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
           ),
           const SizedBox(height: 10),
-          ...List.generate(events.length, (i) {
-            final e = events[i];
-            final last = i == events.length - 1;
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Column(
-                  children: [
-                    Icon(
-                      e.occurred ? Icons.check_circle : Icons.radio_button_unchecked,
-                      size: 18,
-                      color: e.occurred
-                          ? const Color(0xFF22C55E)
-                          : Colors.grey[400],
-                    ),
-                    if (!last)
-                      Container(
-                        width: 2,
-                        height: 28,
-                        color: Colors.grey[300],
+          if (events.isEmpty)
+            Text(
+              'Nenhum evento registrado neste pedido.',
+              style: TextStyle(color: Colors.grey[600], fontSize: 13),
+            )
+          else
+            ...List.generate(events.length, (i) {
+              final e = events[i];
+              final last = i == events.length - 1;
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Column(
+                    children: [
+                      const Icon(
+                        Icons.check_circle,
+                        size: 18,
+                        color: Color(0xFF22C55E),
                       ),
-                  ],
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Padding(
-                    padding: EdgeInsets.only(bottom: last ? 0 : 8),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          e.label,
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13,
-                            color: e.occurred ? Colors.black87 : Colors.grey,
-                          ),
+                      if (!last)
+                        Container(
+                          width: 2,
+                          height: 28,
+                          color: const Color(0xFFBBF7D0),
                         ),
-                        if (e.at != null)
+                    ],
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.only(bottom: last ? 0 : 8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                           Text(
-                            df.format(e.at!),
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.grey[600],
+                            e.label,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                              color: Colors.black87,
                             ),
                           ),
-                        if ((e.detail ?? '').trim().isNotEmpty)
-                          Text(
-                            e.detail!,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey[700],
+                          if (e.at != null)
+                            Text(
+                              df.format(e.at!),
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey[600],
+                              ),
                             ),
-                          ),
-                      ],
+                          if ((e.detail ?? '').trim().isNotEmpty)
+                            Text(
+                              e.detail!,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[700],
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              ],
-            );
-          }),
+                ],
+              );
+            }),
         ],
       ),
     );

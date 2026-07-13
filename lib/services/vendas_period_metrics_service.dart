@@ -1,5 +1,5 @@
-// Métricas de vendas por período (hoje / mês) — bruto, líquido, descontos.
-// Reutiliza incluirVendaEmMetricas. Não altera engine de venda.
+// Métricas de vendas por período (hoje / mês) — bruto, líquido, descontos, lucro.
+// Reutiliza incluirVendaEmMetricas. Não altera engine de venda nem financeiro.
 
 import 'package:hive/hive.dart';
 
@@ -13,12 +13,14 @@ class VendasPeriodMetrics {
     required this.bruto,
     required this.liquido,
     required this.descontos,
+    required this.lucro,
     required this.quantidade,
   });
 
   final double bruto;
   final double liquido;
   final double descontos;
+  final double lucro;
   final int quantidade;
 
   double get ticketMedio => quantidade > 0 ? liquido / quantidade : 0;
@@ -27,6 +29,7 @@ class VendasPeriodMetrics {
     bruto: 0,
     liquido: 0,
     descontos: 0,
+    lucro: 0,
     quantidade: 0,
   );
 }
@@ -56,6 +59,11 @@ double descontoAbsolutoVenda(Venda v) {
   return 0;
 }
 
+/// Lucro simples a partir de campos já persistidos na venda (sem engine financeiro).
+double lucroSimplesVenda(Venda v) {
+  return v.total - v.custoProdutos - v.taxas;
+}
+
 VendasPeriodMetrics agregarVendasPeriodo(
   Iterable<Venda> vendas, {
   required DateTime inicio,
@@ -64,6 +72,7 @@ VendasPeriodMetrics agregarVendasPeriodo(
 }) {
   double liquido = 0;
   double descontos = 0;
+  double lucro = 0;
   var qtd = 0;
   for (final v in vendas) {
     if (lojaId != null && lojaId.isNotEmpty) {
@@ -73,12 +82,14 @@ VendasPeriodMetrics agregarVendasPeriodo(
     if (v.data.isBefore(inicio) || !v.data.isBefore(fimExclusivo)) continue;
     liquido += v.total;
     descontos += descontoAbsolutoVenda(v);
+    lucro += lucroSimplesVenda(v);
     qtd++;
   }
   return VendasPeriodMetrics(
     bruto: liquido + descontos,
     liquido: liquido,
     descontos: descontos,
+    lucro: lucro,
     quantidade: qtd,
   );
 }

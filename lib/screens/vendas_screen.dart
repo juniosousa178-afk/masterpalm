@@ -36,6 +36,7 @@ import '../services/financeiro_firestore_service.dart';
 import '../utils/responsive.dart';
 import '../widgets/app_help_icon_button.dart';
 import '../widgets/empty_state_cta.dart';
+import '../widgets/vendas_resumo_sheet.dart';
 import 'nova_venda_modal.dart';
 import '../services/loja_id_service.dart';
 import '../services/ai_loja_service.dart';
@@ -797,6 +798,18 @@ class _VendasScreenState extends State<VendasScreen>
         ),
         actions: [
           const AppHelpIconButton(iconColor: _surfaceColor),
+          if (lojaId != null && lojaId!.trim().isNotEmpty)
+            TextButton(
+              onPressed: () => VendasResumoSheet.show(context, lojaId: lojaId!),
+              style: TextButton.styleFrom(
+                foregroundColor: _surfaceColor,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+              ),
+              child: const Text(
+                '📊 Resumo',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+              ),
+            ),
           IconButton(
             icon: Container(
               padding: const EdgeInsets.all(8),

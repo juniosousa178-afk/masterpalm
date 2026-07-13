@@ -75,7 +75,6 @@ import '../widgets/update_app_dialog.dart';
 import '../widgets/notificacao_centro_sheet.dart';
 import '../widgets/app_help_icon_button.dart';
 import '../widgets/dashboard_home_cards.dart';
-import '../widgets/vendas_period_metrics_strip.dart';
 import '../utils/catalog_payment_support_nav.dart';
 import '../widgets/dashboard_insights_section.dart';
 import '../widgets/home_intelligent_section.dart';
@@ -2849,7 +2848,6 @@ class _HomeScreenState extends State<HomeScreen>
                 if (_lojaIdInterno.isNotEmpty) ...[
                   PainelCrescimentoWidget(lojaId: _lojaIdInterno),
                   const SizedBox(height: 6),
-                  VendasPeriodMetricsStrip(lojaId: _lojaIdInterno),
                   DashboardHomeCards(lojaId: _lojaIdInterno),
                 ],
                 const SizedBox(height: 8),

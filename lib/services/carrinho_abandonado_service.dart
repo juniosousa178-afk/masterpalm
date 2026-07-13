@@ -73,9 +73,21 @@ class CarrinhoAbandonadoCatalogoItem {
   final List<Map<String, dynamic>> produtos;
   final String clienteNome;
   final String clienteTelefone;
+  final String clienteWhatsapp;
+  final String clienteEmail;
+  final String clienteCpf;
+  final String enderecoCompleto;
+  final String cupom;
+  final double frete;
+  final double desconto;
+  final double? totalOverride;
+  final int visitasCatalogo;
+  final int retornosCatalogo;
+  final bool clienteRecorrente;
   final DateTime? criadoEm;
   final DateTime? ultimoUpdate;
   final String status;
+  final Map<String, dynamic> raw;
 
   CarrinhoAbandonadoCatalogoItem({
     required this.cartId,
@@ -83,14 +95,110 @@ class CarrinhoAbandonadoCatalogoItem {
     required this.produtos,
     this.clienteNome = '',
     this.clienteTelefone = '',
+    this.clienteWhatsapp = '',
+    this.clienteEmail = '',
+    this.clienteCpf = '',
+    this.enderecoCompleto = '',
+    this.cupom = '',
+    this.frete = 0,
+    this.desconto = 0,
+    this.totalOverride,
+    this.visitasCatalogo = 0,
+    this.retornosCatalogo = 0,
+    this.clienteRecorrente = false,
     this.criadoEm,
     this.ultimoUpdate,
     this.status = kCarrinhoStatusAtivo,
+    this.raw = const {},
   });
 
   int get totalItens =>
       produtos.fold(0, (s, e) => s + ((e['quantidade'] as num?)?.toInt() ?? 1));
+
+  String get telefoneEfetivo =>
+      clienteWhatsapp.trim().isNotEmpty ? clienteWhatsapp : clienteTelefone;
+
+  factory CarrinhoAbandonadoCatalogoItem.fromFirestore({
+    required String cartId,
+    required String lojaId,
+    required Map<String, dynamic> d,
+    required String status,
+  }) {
+    final produtosRaw = d['produtos'] ?? d['itens'] ?? d['items'];
+    final produtos = produtosRaw is List
+        ? produtosRaw
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList()
+        : <Map<String, dynamic>>[];
+
+    final tsUpdate = d['ultimoUpdate'] ?? d['updatedAt'] ?? d['ultimaAtualizacao'];
+    final ultimoUpdate = tsUpdate is Timestamp ? tsUpdate.toDate() : null;
+    final tsCriado = d['criadoEm'] ?? d['createdAt'];
+    final criadoEm = tsCriado is Timestamp ? tsCriado.toDate() : null;
+
+    String endereco = (d['enderecoFormatado'] ??
+            d['clienteEndereco'] ??
+            d['enderecoCompleto'] ??
+            '')
+        .toString()
+        .trim();
+    if (endereco.isEmpty) {
+      final end = d['endereco'] ?? d['clienteEnderecoMap'];
+      if (end is Map) {
+        final m = Map<String, dynamic>.from(end);
+        endereco = [
+          m['rua'] ?? m['logradouro'],
+          m['numero'],
+          m['complemento'],
+          m['bairro'],
+          m['cidade'],
+          m['estado'],
+          m['cep'],
+          m['referencia'],
+        ]
+            .where((e) => e != null && e.toString().trim().isNotEmpty)
+            .map((e) => e.toString().trim())
+            .join(', ');
+      }
+    }
+
+    double? asDouble(dynamic v) {
+      if (v is num) return v.toDouble();
+      if (v is String) return double.tryParse(v.replaceAll(',', '.'));
+      return null;
+    }
+
+    return CarrinhoAbandonadoCatalogoItem(
+      cartId: cartId,
+      lojaId: lojaId,
+      produtos: produtos,
+      clienteNome: (d['clienteNome'] ?? d['nome'] ?? '').toString(),
+      clienteTelefone:
+          (d['clienteTelefone'] ?? d['telefone'] ?? d['phone'] ?? '').toString(),
+      clienteWhatsapp:
+          (d['clienteWhatsapp'] ?? d['whatsapp'] ?? '').toString(),
+      clienteEmail: (d['clienteEmail'] ?? d['email'] ?? '').toString(),
+      clienteCpf: (d['clienteCpf'] ?? d['cpf'] ?? '').toString(),
+      enderecoCompleto: endereco,
+      cupom: (d['cupom'] ?? d['cupomCodigo'] ?? d['codigoCupom'] ?? '')
+          .toString(),
+      frete: asDouble(d['frete'] ?? d['freteValor'] ?? d['valorFrete']) ?? 0,
+      desconto: asDouble(d['desconto'] ?? d['descontoValor']) ?? 0,
+      totalOverride: asDouble(d['total'] ?? d['valorTotal']),
+      visitasCatalogo: (d['visitasCatalogo'] as num?)?.toInt() ?? 0,
+      retornosCatalogo: (d['retornosCatalogo'] as num?)?.toInt() ?? 0,
+      clienteRecorrente: d['clienteRecorrente'] == true ||
+          d['recorrente'] == true ||
+          ((d['quantidadePedidosAnteriores'] as num?)?.toInt() ?? 0) > 0,
+      criadoEm: criadoEm,
+      ultimoUpdate: ultimoUpdate,
+      status: status,
+      raw: d,
+    );
+  }
 }
+
 
 /// Métricas simples de recuperação do catálogo (contagens por status).
 class MetricasRecuperacaoCatalogo {
@@ -237,6 +345,49 @@ class CarrinhoAbandonadoService {
     }
   }
 
+  /// E-mail de lembrete para carrinho do catálogo (collection carrinhos_abandonados).
+  static Future<bool> enviarLembreteEmailCatalogo({
+    required String lojaId,
+    required String cartId,
+    required String emailDestino,
+    required String nomeCliente,
+    required String linkRecuperacao,
+    String? nomeLoja,
+  }) async {
+    final email = emailDestino.trim();
+    if (email.isEmpty || !email.contains('@')) {
+      debugPrint('⚠️ [CARRINHO-ABANDONADO] e-mail inválido para catálogo');
+      return false;
+    }
+    final assunto =
+        'Você deixou itens no carrinho${nomeLoja != null && nomeLoja.isNotEmpty ? ' - $nomeLoja' : ''}';
+    final nome = nomeCliente.trim().isEmpty ? 'cliente' : nomeCliente.trim();
+    final corpo = mensagemLembrete(nome, linkRecuperacao);
+    try {
+      final ok = await EmailService.enviarEmail(
+        destinatario: email,
+        assunto: assunto,
+        mensagem: corpo,
+        remetenteNome: nomeLoja ?? 'Loja',
+      );
+      if (ok && cartId.trim().isNotEmpty) {
+        await _db
+            .collection('lojas')
+            .doc(lojaId)
+            .collection(_colCarrinhos(lojaId))
+            .doc(cartId)
+            .set({
+          'lembreteEmailEnviadoEm': FieldValue.serverTimestamp(),
+          'lembreteEmailDestino': email,
+        }, SetOptions(merge: true));
+      }
+      return ok;
+    } catch (e) {
+      debugPrint('⚠️ [CARRINHO-ABANDONADO] Erro email catálogo: $e');
+      return false;
+    }
+  }
+
   /// Abre o WhatsApp com mensagem pré-preenchida para enviar ao cliente (admin envia manualmente).
   static Future<bool> abrirWhatsAppLembrete({
     required String telefone,
@@ -379,12 +530,13 @@ class CarrinhoAbandonadoService {
                 .map((e) => Map<String, dynamic>.from(e as Map))
                 .toList()
             : <Map<String, dynamic>>[];
-        if (produtos.isEmpty) continue;
+        if (produtos.isEmpty &&
+            (d['itens'] is! List || (d['itens'] as List).isEmpty)) {
+          continue;
+        }
 
         final tsUpdate = d['ultimoUpdate'];
         final ultimoUpdate = tsUpdate is Timestamp ? tsUpdate.toDate() : null;
-        final tsCriado = d['criadoEm'];
-        final criadoEm = tsCriado is Timestamp ? tsCriado.toDate() : null;
 
         if (status == kCarrinhoStatusAtivo &&
             ultimoUpdate != null &&
@@ -398,16 +550,14 @@ class CarrinhoAbandonadoService {
                 ultimoUpdate.isBefore(limite));
         if (!considerAbandonado && status != kCarrinhoStatusAtivo) continue;
 
-        lista.add(CarrinhoAbandonadoCatalogoItem(
-          cartId: doc.id,
-          lojaId: lojaId,
-          produtos: produtos,
-          clienteNome: (d['clienteNome'] ?? '').toString(),
-          clienteTelefone: (d['clienteTelefone'] ?? '').toString(),
-          criadoEm: criadoEm,
-          ultimoUpdate: ultimoUpdate,
-          status: considerAbandonado ? kCarrinhoStatusAbandonado : status,
-        ));
+        lista.add(
+          CarrinhoAbandonadoCatalogoItem.fromFirestore(
+            cartId: doc.id,
+            lojaId: lojaId,
+            d: d,
+            status: considerAbandonado ? kCarrinhoStatusAbandonado : status,
+          ),
+        );
       }
       lista.sort((a, b) => (b.ultimoUpdate ?? DateTime(0))
           .compareTo(a.ultimoUpdate ?? DateTime(0)));

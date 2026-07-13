@@ -1,5 +1,4 @@
-// lib/screens/carrinhos_abandonados_screen.dart
-// Lista carrinhos abandonados e permite enviar lembrete por e-mail ou WhatsApp.
+import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -8,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../core/carrinho_abandonado_ui.dart';
+import '../core/carrinho_recuperacao_score.dart';
 import '../widgets/carrinho_abandonado_details_panel.dart';
 import '../services/carrinho_abandonado_service.dart';
 import '../services/catalog_public_url_service.dart';
@@ -37,18 +37,9 @@ class _CarrinhosAbandonadosScreenState
   List<CarrinhoAbandonadoCatalogoItem> _listaCatalogo = [];
   int _horasAbandono = 24;
   bool _enviando = false;
+  String? _enviandoEmailCartId;
   String _lojaNome = '';
-
-  /// Mensagem sugerida pela IA por cartId (catálogo). Quando null, usa mensagem fixa.
-  final Map<String, String> _mensagemSugeridaPorCartId = {};
-
-  /// CartId para o qual a IA está carregando (evita múltiplos toques).
-  String? _loadingIaCartId;
-
-  /// Métricas de recuperação do catálogo (abandonados / recuperados).
   MetricasRecuperacaoCatalogo? _metricasCatalogo;
-
-  /// URL pública do catálogo (hosted ou domínio próprio), carregada após resolver a loja.
   String? _catalogPublicBaseUrl;
 
   String _filtroStatus = 'todos';
@@ -83,7 +74,6 @@ class _CarrinhosAbandonadosScreenState
     _catalogPublicBaseUrl =
         await CatalogPublicUrlService.montarUrlCatalogoPublicoAsync(id);
     if (!mounted) return;
-    setState(() {});
     await _carregarConfig();
     await _carregar();
   }
@@ -103,6 +93,23 @@ class _CarrinhosAbandonadosScreenState
 
   String _money(double v) => 'R\$ ${v.toStringAsFixed(2)}';
 
+  RecuperacaoScoreResult _scoreCatalogo(CarrinhoAbandonadoCatalogoItem item) {
+    final agora = DateTime.now();
+    final ref = item.ultimoUpdate ?? item.criadoEm ?? agora;
+    final total = item.totalOverride ??
+        (totalCarrinhoProdutos(item.produtos) + item.frete - item.desconto);
+    return calcularProbabilidadeRecuperacao(
+      tempoAbandonado: agora.difference(ref),
+      valorCarrinho: total,
+      quantidadeItens: item.totalItens,
+      clienteRecorrente: item.clienteRecorrente,
+      temWhatsapp: item.telefoneEfetivo.trim().length >= 10,
+      temEmail: item.clienteEmail.trim().contains('@'),
+      visitasCatalogo: item.visitasCatalogo,
+      retornosCatalogo: item.retornosCatalogo,
+    );
+  }
+
   List<CarrinhoAbandonadoCatalogoItem> get _catalogoFiltrado {
     var list = List<CarrinhoAbandonadoCatalogoItem>.from(_listaCatalogo);
     final q = _filtroTexto.trim().toLowerCase();
@@ -111,6 +118,9 @@ class _CarrinhosAbandonadosScreenState
           .where((e) =>
               e.clienteNome.toLowerCase().contains(q) ||
               e.clienteTelefone.contains(q) ||
+              e.clienteWhatsapp.contains(q) ||
+              e.clienteEmail.toLowerCase().contains(q) ||
+              e.clienteCpf.contains(q) ||
               e.cartId.toLowerCase().contains(q))
           .toList();
     }
@@ -123,13 +133,19 @@ class _CarrinhosAbandonadosScreenState
     list.sort((a, b) {
       final ta = totalCarrinhoProdutos(a.produtos);
       final tb = totalCarrinhoProdutos(b.produtos);
-      final da = a.ultimoUpdate ?? a.criadoEm ?? DateTime.fromMillisecondsSinceEpoch(0);
-      final db = b.ultimoUpdate ?? b.criadoEm ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final da = a.ultimoUpdate ??
+          a.criadoEm ??
+          DateTime.fromMillisecondsSinceEpoch(0);
+      final db = b.ultimoUpdate ??
+          b.criadoEm ??
+          DateTime.fromMillisecondsSinceEpoch(0);
       switch (_ordenacao) {
         case 'valor':
           return tb.compareTo(ta);
         case 'antigo':
           return da.compareTo(db);
+        case 'score':
+          return _scoreCatalogo(b).pontos.compareTo(_scoreCatalogo(a).pontos);
         default:
           return db.compareTo(da);
       }
@@ -137,23 +153,117 @@ class _CarrinhosAbandonadosScreenState
     return list;
   }
 
-  void _abrirDetalheCatalogo(CarrinhoAbandonadoCatalogoItem item) {
+  Future<void> _abrirDetalheCatalogo(CarrinhoAbandonadoCatalogoItem item) async {
     final link = _linkRecuperacaoCatalogo(item.cartId);
-    showModalBottomSheet<void>(
+    await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setModal) {
+            return DraggableScrollableSheet(
+              expand: false,
+              initialChildSize: 0.9,
+              minChildSize: 0.55,
+              maxChildSize: 0.98,
+              builder: (_, __) => Container(
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+                ),
+                child: CarrinhoAbandonadoDetailsPanel(
+                  item: item,
+                  linkCatalogo: link,
+                  enviandoEmail: _enviandoEmailCartId == item.cartId,
+                  onOpenCatalog: () async {
+                    final uri = Uri.parse(link);
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  },
+                  onWhatsApp: () => _abrirWhatsAppCatalogo(item),
+                  onEmail: () async {
+                    setModal(() {});
+                    await _enviarEmailCatalogo(item, setModal: setModal);
+                  },
+                  onCopyLink: () => _copiarTexto(link, 'Link copiado'),
+                  onCopyInfo: () => _copiarTexto(
+                    _infoCatalogo(item, link),
+                    'Informações copiadas',
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  String _infoCatalogo(CarrinhoAbandonadoCatalogoItem item, String link) {
+    final buf = StringBuffer();
+    buf.writeln('Nome: ${item.clienteNome}');
+    buf.writeln('Telefone: ${item.clienteTelefone}');
+    buf.writeln('WhatsApp: ${item.telefoneEfetivo}');
+    buf.writeln('Email: ${item.clienteEmail}');
+    buf.writeln('CPF: ${item.clienteCpf}');
+    buf.writeln('Endereço: ${item.enderecoCompleto}');
+    buf.writeln('Status: ${labelStatusCarrinhoAbandonado(item.status)}');
+    buf.writeln('Cupom: ${item.cupom}');
+    buf.writeln('Frete: ${_money(item.frete)}');
+    for (final p in item.produtos) {
+      buf.writeln(
+        '- ${p['nome'] ?? p['name']} x${p['quantidade'] ?? 1} '
+        'cor=${p['cor'] ?? ''} tam=${p['tamanho'] ?? ''}',
+      );
+    }
+    buf.writeln(link);
+    return buf.toString();
+  }
+
+  Future<void> _abrirDetalheCliente(CarrinhoAbandonadoItem item) async {
+    final catalogItem = CarrinhoAbandonadoCatalogoItem(
+      cartId: item.clienteId,
+      lojaId: _lojaId ?? '',
+      produtos: item.itens,
+      clienteNome: item.nome,
+      clienteTelefone: item.telefone,
+      clienteWhatsapp: item.telefone,
+      clienteEmail: item.email,
+      criadoEm: item.ultimaAtualizacao,
+      ultimoUpdate: item.ultimaAtualizacao,
+      status: kCarrinhoStatusAbandonado,
+    );
+    final link = _catalogBaseOrFallback();
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (ctx) => DraggableScrollableSheet(
         expand: false,
-        initialChildSize: 0.85,
-        minChildSize: 0.5,
-        maxChildSize: 0.95,
-        builder: (_, __) => CarrinhoAbandonadoDetailsPanel(
-          item: item,
-          linkCatalogo: link,
-          onOpenCatalog: () async {
-            final uri = Uri.parse(link);
-            await launchUrl(uri, mode: LaunchMode.externalApplication);
-          },
+        initialChildSize: 0.9,
+        minChildSize: 0.55,
+        maxChildSize: 0.98,
+        builder: (_, __) => Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+          ),
+          child: CarrinhoAbandonadoDetailsPanel(
+            item: catalogItem,
+            linkCatalogo: link,
+            enviandoEmail: _enviando,
+            onOpenCatalog: () async {
+              final uri = Uri.parse(link);
+              await launchUrl(uri, mode: LaunchMode.externalApplication);
+            },
+            onWhatsApp: () => _abrirWhatsApp(item),
+            onEmail: () => _enviarEmail(item),
+            onCopyLink: () => _copiarTexto(link, 'Link copiado'),
+            onCopyInfo: () => _copiarTexto(
+              '${item.nome}\n${item.telefone}\n${item.email}\n$link',
+              'Informações copiadas',
+            ),
+          ),
         ),
       ),
     );
@@ -163,9 +273,7 @@ class _CarrinhosAbandonadosScreenState
     if (_lojaId == null) return;
     final config = await CarrinhoAbandonadoService.getConfig(_lojaId!);
     if (mounted) {
-      setState(() {
-        _horasAbandono = config.horasAbandono;
-      });
+      setState(() => _horasAbandono = config.horasAbandono);
     }
   }
 
@@ -203,26 +311,131 @@ class _CarrinhosAbandonadosScreenState
         _loading = false;
       });
     }
+    // Enriquecimento somente leitura: completa e-mail/CPF/endereço a partir de clientes.
+    unawaited(_enriquecerCatalogoComClientes(listaCatalogo));
+  }
+
+  Future<void> _enriquecerCatalogoComClientes(
+    List<CarrinhoAbandonadoCatalogoItem> base,
+  ) async {
+    if (_lojaId == null || base.isEmpty) return;
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('lojas')
+          .doc(_lojaId)
+          .collection('clientes')
+          .get();
+      String digits(String s) => s.replaceAll(RegExp(r'[^0-9]'), '');
+      final byPhone = <String, Map<String, dynamic>>{};
+      for (final doc in snap.docs) {
+        final d = doc.data();
+        final tel = digits((d['telefone'] ?? d['whatsapp'] ?? '').toString());
+        if (tel.length >= 10) byPhone[tel] = d;
+      }
+      final enriched = <CarrinhoAbandonadoCatalogoItem>[];
+      for (final item in base) {
+        final tel = digits(item.telefoneEfetivo);
+        final c = tel.length >= 10 ? byPhone[tel] : null;
+        if (c == null) {
+          enriched.add(item);
+          continue;
+        }
+        final email = item.clienteEmail.trim().isNotEmpty
+            ? item.clienteEmail
+            : (c['email'] ?? '').toString();
+        final cpf = item.clienteCpf.trim().isNotEmpty
+            ? item.clienteCpf
+            : (c['cpf'] ?? '').toString();
+        var end = item.enderecoCompleto;
+        if (end.trim().isEmpty) {
+          end = (c['endereco'] ?? '').toString();
+        }
+        final recorrente = item.clienteRecorrente ||
+            ((c['quantidadeCompras'] as num?)?.toInt() ?? 0) > 1 ||
+            c['recorrente'] == true;
+        enriched.add(
+          CarrinhoAbandonadoCatalogoItem(
+            cartId: item.cartId,
+            lojaId: item.lojaId,
+            produtos: item.produtos,
+            clienteNome: item.clienteNome.isNotEmpty
+                ? item.clienteNome
+                : (c['nome'] ?? '').toString(),
+            clienteTelefone: item.clienteTelefone,
+            clienteWhatsapp: item.clienteWhatsapp,
+            clienteEmail: email,
+            clienteCpf: cpf,
+            enderecoCompleto: end,
+            cupom: item.cupom,
+            frete: item.frete,
+            desconto: item.desconto,
+            totalOverride: item.totalOverride,
+            visitasCatalogo: item.visitasCatalogo,
+            retornosCatalogo: item.retornosCatalogo,
+            clienteRecorrente: recorrente,
+            criadoEm: item.criadoEm,
+            ultimoUpdate: item.ultimoUpdate,
+            status: item.status,
+            raw: item.raw,
+          ),
+        );
+      }
+      if (mounted) setState(() => _listaCatalogo = enriched);
+    } catch (_) {}
   }
 
   Future<void> _enviarEmail(CarrinhoAbandonadoItem item) async {
     if (_lojaId == null) return;
+    if (!item.email.trim().contains('@')) {
+      _snack('E-mail do cliente inválido ou ausente', ok: false);
+      return;
+    }
     setState(() => _enviando = true);
     final ok = await CarrinhoAbandonadoService.enviarLembreteEmail(
       lojaId: _lojaId!,
       clienteId: item.clienteId,
       emailDestino: item.email,
       nomeCliente: item.nome,
+      nomeLoja: _lojaNome.isNotEmpty ? _lojaNome : null,
     );
     if (mounted) {
       setState(() => _enviando = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(ok
-              ? 'E-mail enviado para ${item.email}'
-              : 'Falha ao enviar e-mail'),
-          backgroundColor: ok ? _successColor : Colors.red,
-        ),
+      _snack(
+        ok ? 'E-mail enviado para ${item.email}' : 'Falha ao enviar e-mail',
+        ok: ok,
+      );
+      if (ok) _carregar();
+    }
+  }
+
+  Future<void> _enviarEmailCatalogo(
+    CarrinhoAbandonadoCatalogoItem item, {
+    void Function(void Function())? setModal,
+  }) async {
+    if (_lojaId == null) return;
+    if (!item.clienteEmail.trim().contains('@')) {
+      _snack('E-mail do cliente inválido ou ausente', ok: false);
+      return;
+    }
+    setState(() => _enviandoEmailCartId = item.cartId);
+    setModal?.call(() {});
+    final link = _linkRecuperacaoCatalogo(item.cartId);
+    final ok = await CarrinhoAbandonadoService.enviarLembreteEmailCatalogo(
+      lojaId: _lojaId!,
+      cartId: item.cartId,
+      emailDestino: item.clienteEmail,
+      nomeCliente: item.clienteNome,
+      linkRecuperacao: link,
+      nomeLoja: _lojaNome.isNotEmpty ? _lojaNome : null,
+    );
+    if (mounted) {
+      setState(() => _enviandoEmailCartId = null);
+      setModal?.call(() {});
+      _snack(
+        ok
+            ? 'E-mail enviado para ${item.clienteEmail}'
+            : 'Falha ao enviar e-mail',
+        ok: ok,
       );
       if (ok) _carregar();
     }
@@ -230,81 +443,53 @@ class _CarrinhosAbandonadosScreenState
 
   Future<void> _abrirWhatsApp(CarrinhoAbandonadoItem item) async {
     if (_lojaId == null) return;
+    if (item.telefone.replaceAll(RegExp(r'[^0-9]'), '').length < 10) {
+      _snack('Telefone inválido para WhatsApp', ok: false);
+      return;
+    }
     final link = _catalogPublicBaseUrl ??
         await CatalogPublicUrlService.montarUrlCatalogoPublicoAsync(_lojaId!);
-    await CarrinhoAbandonadoService.abrirWhatsAppLembrete(
+    final ok = await CarrinhoAbandonadoService.abrirWhatsAppLembrete(
       telefone: item.telefone,
       nomeCliente: item.nome,
       link: link,
     );
+    if (!ok) _snack('Não foi possível abrir o WhatsApp', ok: false);
   }
 
-  String _mensagemAtualCatalogo(CarrinhoAbandonadoCatalogoItem item) {
-    final link = _lojaId != null ? _linkRecuperacaoCatalogo(item.cartId) : '';
-    return _mensagemSugeridaPorCartId[item.cartId] ??
-        CarrinhoAbandonadoService.mensagemWhatsAppRecuperacao(
-          _lojaNome.isNotEmpty ? _lojaNome : 'Loja',
-          link,
-        );
-  }
-
-  Future<void> _sugerirMensagemIaCatalogo(
-      CarrinhoAbandonadoCatalogoItem item) async {
+  Future<void> _abrirWhatsAppCatalogo(CarrinhoAbandonadoCatalogoItem item) async {
     if (_lojaId == null) return;
-    final link = _linkRecuperacaoCatalogo(item.cartId);
-    if (link.isEmpty) return;
-    setState(() => _loadingIaCartId = item.cartId);
-    final nomeLoja = _lojaNome.isNotEmpty ? _lojaNome : 'Loja';
-    final msg =
-        await CarrinhoAbandonadoService.sugerirMensagemRecuperacaoCatalogo(
-      nomeLoja: nomeLoja,
-      linkRecuperacao: link,
-      clienteNome: item.clienteNome,
-      produtos: item.produtos,
-      ultimoUpdate: item.ultimoUpdate,
-    );
-    if (mounted) {
-      setState(() {
-        _mensagemSugeridaPorCartId[item.cartId] = msg;
-        _loadingIaCartId = null;
-      });
+    final tel = item.telefoneEfetivo.replaceAll(RegExp(r'[^0-9]'), '');
+    if (tel.length < 10) {
+      _snack('Telefone/WhatsApp inválido', ok: false);
+      return;
     }
-  }
-
-  Future<void> _abrirWhatsAppCatalogo(CarrinhoAbandonadoCatalogoItem item,
-      {String? mensagem}) async {
-    if (_lojaId == null) return;
     final link = _linkRecuperacaoCatalogo(item.cartId);
-    if (link.isEmpty) return;
-    final msg = mensagem ?? _mensagemAtualCatalogo(item);
-    await CarrinhoAbandonadoService.abrirWhatsAppRecuperacaoCatalogo(
-      telefone: item.clienteTelefone.isNotEmpty
-          ? item.clienteTelefone
-          : '5511999999999',
+    final msg = CarrinhoAbandonadoService.mensagemWhatsAppRecuperacao(
+      _lojaNome.isNotEmpty ? _lojaNome : 'Loja',
+      link,
+    );
+    final ok = await CarrinhoAbandonadoService.abrirWhatsAppRecuperacaoCatalogo(
+      telefone: item.telefoneEfetivo,
       nomeLoja: _lojaNome.isNotEmpty ? _lojaNome : 'Loja',
       linkRecuperacao: link,
       mensagem: msg,
     );
+    if (!ok) _snack('Não foi possível abrir o WhatsApp', ok: false);
   }
 
-  Future<void> _copiarLink(BuildContext context, String link) async {
-    await Clipboard.setData(ClipboardData(text: link));
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Link copiado'), duration: Duration(seconds: 2)),
-      );
-    }
-  }
-
-  Future<void> _copiarMensagem(BuildContext context, String text) async {
+  Future<void> _copiarTexto(String text, String feedback) async {
     await Clipboard.setData(ClipboardData(text: text));
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Mensagem copiada'), duration: Duration(seconds: 2)),
-      );
-    }
+    if (mounted) _snack(feedback);
+  }
+
+  void _snack(String msg, {bool ok = true}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: ok ? _successColor : Colors.red,
+      ),
+    );
   }
 
   @override
@@ -352,6 +537,7 @@ class _CarrinhosAbandonadosScreenState
         ),
       );
     }
+
     if (_loading || _lojaId == null) {
       return Scaffold(
         backgroundColor: _backgroundColor,
@@ -365,6 +551,9 @@ class _CarrinhosAbandonadosScreenState
             child: CircularProgressIndicator(color: _primaryColor)),
       );
     }
+
+    final catalogo = _catalogoFiltrado;
+
     return Scaffold(
       backgroundColor: _backgroundColor,
       appBar: AppBar(
@@ -379,491 +568,413 @@ class _CarrinhosAbandonadosScreenState
           ),
         ],
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator(color: _primaryColor))
-          : _lista.isEmpty && _listaCatalogo.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.shopping_cart_outlined,
-                          size: 64, color: Colors.grey.shade400),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Nenhum carrinho abandonado no momento.',
-                        style: TextStyle(
-                            fontSize: 16, color: Colors.grey.shade600),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Clientes com itens no carrinho há mais de $_horasAbandono h aparecem aqui.',
-                        style: TextStyle(
-                            fontSize: 13, color: Colors.grey.shade500),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
+      body: _lista.isEmpty && _listaCatalogo.isEmpty
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.shopping_cart_outlined,
+                      size: 64, color: Colors.grey.shade400),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Nenhum carrinho abandonado no momento.',
+                    style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
                   ),
-                )
-              : RefreshIndicator(
-                  onRefresh: _carregar,
-                  color: _primaryColor,
-                  child: ListView(
-                    padding: const EdgeInsets.all(16),
-                    children: [
-                      if (_lista.isNotEmpty) ...[
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: Text(
-                            'Carrinhos da loja (venda)',
-                            style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.grey.shade700),
-                          ),
+                ],
+              ),
+            )
+          : RefreshIndicator(
+              onRefresh: _carregar,
+              color: _primaryColor,
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  if (_lista.isNotEmpty) ...[
+                    _sectionTitle('Carrinhos da loja (venda)'),
+                    ..._lista.map(_cardCliente),
+                    const SizedBox(height: 12),
+                  ],
+                  if (_listaCatalogo.isNotEmpty ||
+                      _metricasCatalogo != null) ...[
+                    if (_metricasCatalogo != null &&
+                        _metricasCatalogo!.total > 0)
+                      _metricasCard(),
+                    _sectionTitle('Carrinhos do catálogo'),
+                    _filtrosCatalogo(),
+                    if (catalogo.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 24),
+                        child: Text(
+                          'Nenhum carrinho com os filtros atuais.',
+                          style: TextStyle(color: Colors.grey.shade600),
+                          textAlign: TextAlign.center,
                         ),
-                        ..._lista.map((item) {
-                          final ultimaStr = item.ultimaAtualizacao != null
-                              ? DateFormat('dd/MM/yyyy HH:mm')
-                                  .format(item.ultimaAtualizacao!)
-                              : '—';
-                          return Card(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12)),
-                            child: Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      CircleAvatar(
-                                        backgroundColor:
-                                            _primaryColor.withOpacity(0.2),
-                                        child: Text(
-                                          item.nome.isNotEmpty
-                                              ? item.nome[0].toUpperCase()
-                                              : '?',
-                                          style: const TextStyle(
-                                              color: _primaryColor,
-                                              fontWeight: FontWeight.bold),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(item.nome,
-                                                style: const TextStyle(
-                                                    fontWeight:
-                                                        FontWeight.w600)),
-                                            if (item.email.isNotEmpty)
-                                              Text(item.email,
-                                                  style: TextStyle(
-                                                      fontSize: 12,
-                                                      color: Colors
-                                                          .grey.shade600)),
-                                            if (item.telefone.isNotEmpty)
-                                              Text(item.telefone,
-                                                  style: TextStyle(
-                                                      fontSize: 12,
-                                                      color: Colors
-                                                          .grey.shade600)),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    '${item.totalItens} item(ns) · Última atualização: $ultimaStr',
-                                    style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey.shade600),
-                                  ),
-                                  if (item.lembreteEnviadoEm != null)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 4),
-                                      child: Text(
-                                        'Lembrete enviado em ${DateFormat('dd/MM HH:mm').format(item.lembreteEnviadoEm!)}',
-                                        style: const TextStyle(
-                                            fontSize: 11, color: _successColor),
-                                      ),
-                                    ),
-                                  const SizedBox(height: 12),
-                                  Row(
-                                    children: [
-                                      if (item.email.trim().isNotEmpty)
-                                        Expanded(
-                                          child: OutlinedButton.icon(
-                                            onPressed: _enviando
-                                                ? null
-                                                : () => _enviarEmail(item),
-                                            icon: _enviando
-                                                ? const SizedBox(
-                                                    width: 18,
-                                                    height: 18,
-                                                    child:
-                                                        CircularProgressIndicator(
-                                                            strokeWidth: 2))
-                                                : const Icon(
-                                                    Icons.email_outlined,
-                                                    size: 18),
-                                            label: const Text('Enviar e-mail'),
-                                            style: OutlinedButton.styleFrom(
-                                                foregroundColor: _primaryColor),
-                                          ),
-                                        ),
-                                      if (item.email.trim().isNotEmpty &&
-                                          item.telefone.trim().isNotEmpty)
-                                        const SizedBox(width: 8),
-                                      if (item.telefone.trim().isNotEmpty)
-                                        Expanded(
-                                          child: FilledButton.icon(
-                                            onPressed: () =>
-                                                _abrirWhatsApp(item),
-                                            icon: const Icon(
-                                                Icons.chat_outlined,
-                                                size: 18),
-                                            label: const Text('WhatsApp'),
-                                            style: FilledButton.styleFrom(
-                                                backgroundColor: _successColor),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        }),
-                        if (_listaCatalogo.isNotEmpty)
-                          const SizedBox(height: 20),
-                      ],
-                      if (_listaCatalogo.isNotEmpty ||
-                          _metricasCatalogo != null) ...[
-                        if (_metricasCatalogo != null &&
-                            _metricasCatalogo!.total > 0)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: Card(
-                              margin: EdgeInsets.zero,
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10)),
-                              color: _primaryColor.withOpacity(0.08),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 14, vertical: 10),
-                                child: Row(
-                                  children: [
-                                    const Icon(Icons.insights_outlined,
-                                        size: 20, color: _primaryColor),
-                                    const SizedBox(width: 10),
-                                    Text(
-                                      'Abandonados: ${_metricasCatalogo!.abandonados}',
-                                      style: TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.grey.shade800),
-                                    ),
-                                    const SizedBox(width: 16),
-                                    Text(
-                                      'Recuperados: ${_metricasCatalogo!.recuperados}',
-                                      style: TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.grey.shade800),
-                                    ),
-                                    const SizedBox(width: 16),
-                                    Text(
-                                      'Taxa: ${_metricasCatalogo!.taxaRecuperacaoPercent.toStringAsFixed(0)}%',
-                                      style: const TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w600,
-                                          color: _primaryColor),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: Text(
-                            'Carrinhos do catálogo',
-                            style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.grey.shade700),
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: Column(
-                            children: [
-                              TextField(
-                                decoration: const InputDecoration(
-                                  isDense: true,
-                                  prefixIcon: Icon(Icons.search, size: 20),
-                                  labelText: 'Filtrar cliente / telefone',
-                                  border: OutlineInputBorder(),
-                                ),
-                                onChanged: (v) =>
-                                    setState(() => _filtroTexto = v),
-                              ),
-                              const SizedBox(height: 8),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: DropdownButtonFormField<String>(
-                                      value: _filtroStatus,
-                                      decoration: const InputDecoration(
-                                        isDense: true,
-                                        labelText: 'Status',
-                                        border: OutlineInputBorder(),
-                                      ),
-                                      items: const [
-                                        DropdownMenuItem(
-                                            value: 'todos',
-                                            child: Text('Todos')),
-                                        DropdownMenuItem(
-                                            value: kCarrinhoUiAbandonado,
-                                            child: Text('Abandonado')),
-                                        DropdownMenuItem(
-                                            value: kCarrinhoUiRecuperado,
-                                            child: Text('Recuperado')),
-                                        DropdownMenuItem(
-                                            value: kCarrinhoUiVirouPedido,
-                                            child: Text('Virou Pedido')),
-                                        DropdownMenuItem(
-                                            value: kCarrinhoUiVirouVenda,
-                                            child: Text('Virou Venda')),
-                                      ],
-                                      onChanged: (v) => setState(
-                                          () => _filtroStatus = v ?? 'todos'),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: DropdownButtonFormField<String>(
-                                      value: _ordenacao,
-                                      decoration: const InputDecoration(
-                                        isDense: true,
-                                        labelText: 'Ordenar',
-                                        border: OutlineInputBorder(),
-                                      ),
-                                      items: const [
-                                        DropdownMenuItem(
-                                            value: 'recente',
-                                            child: Text('Mais recente')),
-                                        DropdownMenuItem(
-                                            value: 'antigo',
-                                            child: Text('Mais antigo')),
-                                        DropdownMenuItem(
-                                            value: 'valor',
-                                            child: Text('Maior valor')),
-                                      ],
-                                      onChanged: (v) => setState(
-                                          () => _ordenacao = v ?? 'recente'),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                        ..._catalogoFiltrado.map((item) {
-                          final link = _lojaId != null
-                              ? _linkRecuperacaoCatalogo(item.cartId)
-                              : '';
-                          final ultimaStr = item.ultimoUpdate != null
-                              ? DateFormat('dd/MM/yyyy HH:mm')
-                                  .format(item.ultimoUpdate!)
-                              : '—';
-                          final mensagemAtual = _mensagemAtualCatalogo(item);
-                          final loadingIa = _loadingIaCartId == item.cartId;
-                          return Card(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12)),
-                            child: Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      CircleAvatar(
-                                        backgroundColor:
-                                            _primaryColor.withOpacity(0.2),
-                                        child: Text(
-                                          item.clienteNome.isNotEmpty
-                                              ? item.clienteNome[0]
-                                                  .toUpperCase()
-                                              : '?',
-                                          style: const TextStyle(
-                                              color: _primaryColor,
-                                              fontWeight: FontWeight.bold),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              item.clienteNome.isEmpty
-                                                  ? 'Cliente (sem nome)'
-                                                  : item.clienteNome,
-                                              style: const TextStyle(
-                                                  fontWeight: FontWeight.w600),
-                                            ),
-                                            if (item.clienteTelefone.isNotEmpty)
-                                              Text(item.clienteTelefone,
-                                                  style: TextStyle(
-                                                      fontSize: 12,
-                                                      color: Colors
-                                                          .grey.shade600)),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    '${item.totalItens} item(ns) · '
-                                    '${_money(totalCarrinhoProdutos(item.produtos))} · '
-                                    'Última: $ultimaStr · '
-                                    '${labelStatusCarrinhoAbandonado(item.status)}',
-                                    style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey.shade600),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: OutlinedButton.icon(
-                                      onPressed: () =>
-                                          _abrirDetalheCatalogo(item),
-                                      icon: const Icon(Icons.open_in_new,
-                                          size: 16),
-                                      label: const Text('Abrir detalhe'),
-                                    ),
-                                  ),
-                                  if (link.isNotEmpty)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 6),
-                                      child: SelectableText(link,
-                                          style: const TextStyle(
-                                              fontSize: 11,
-                                              color: _primaryColor)),
-                                    ),
-                                  const SizedBox(height: 10),
-                                  Container(
-                                    width: double.infinity,
-                                    padding: const EdgeInsets.all(10),
-                                    decoration: BoxDecoration(
-                                      color: Colors.grey.shade100,
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(
-                                          color: Colors.grey.shade300),
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          _mensagemSugeridaPorCartId
-                                                  .containsKey(item.cartId)
-                                              ? 'Mensagem sugerida (IA)'
-                                              : 'Mensagem para envio',
-                                          style: TextStyle(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w600,
-                                              color: Colors.grey.shade700),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        SelectableText(mensagemAtual,
-                                            style:
-                                                const TextStyle(fontSize: 13)),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(height: 10),
-                                  Row(
-                                    children: [
-                                      OutlinedButton.icon(
-                                        onPressed: loadingIa
-                                            ? null
-                                            : () => _sugerirMensagemIaCatalogo(
-                                                item),
-                                        icon: loadingIa
-                                            ? const SizedBox(
-                                                width: 16,
-                                                height: 16,
-                                                child:
-                                                    CircularProgressIndicator(
-                                                        strokeWidth: 2))
-                                            : const Icon(Icons.auto_awesome,
-                                                size: 18),
-                                        label: Text(loadingIa
-                                            ? 'Gerando…'
-                                            : 'Sugerir com IA'),
-                                        style: OutlinedButton.styleFrom(
-                                            foregroundColor: _primaryColor),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      OutlinedButton.icon(
-                                        onPressed: () => _copiarMensagem(
-                                            context, mensagemAtual),
-                                        icon: const Icon(Icons.copy, size: 18),
-                                        label: const Text('Copiar mensagem'),
-                                        style: OutlinedButton.styleFrom(
-                                            foregroundColor: _primaryColor),
-                                      ),
-                                    ],
-                                  ),
-                                  if (link.isNotEmpty)
-                                    const SizedBox(height: 8),
-                                  Row(
-                                    children: [
-                                      if (link.isNotEmpty)
-                                        Expanded(
-                                          child: OutlinedButton.icon(
-                                            onPressed: () =>
-                                                _copiarLink(context, link),
-                                            icon: const Icon(Icons.link,
-                                                size: 18),
-                                            label: const Text('Copiar link'),
-                                            style: OutlinedButton.styleFrom(
-                                                foregroundColor: _primaryColor),
-                                          ),
-                                        ),
-                                      if (link.isNotEmpty)
-                                        const SizedBox(width: 8),
-                                      Expanded(
-                                        child: FilledButton.icon(
-                                          onPressed: () =>
-                                              _abrirWhatsAppCatalogo(item),
-                                          icon: const Icon(Icons.chat_outlined,
-                                              size: 18),
-                                          label: const Text('WhatsApp'),
-                                          style: FilledButton.styleFrom(
-                                              backgroundColor: _successColor),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        }),
-                      ],
-                    ],
+                      )
+                    else
+                      ...catalogo.map(_cardCatalogo),
+                  ],
+                ],
+              ),
+            ),
+    );
+  }
+
+  Widget _sectionTitle(String t) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Text(
+          t,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: Colors.grey.shade700,
+          ),
+        ),
+      );
+
+  Widget _metricasCard() {
+    final m = _metricasCatalogo!;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      color: _primaryColor.withOpacity(0.08),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          children: [
+            const Icon(Icons.insights_outlined, size: 20, color: _primaryColor),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Abandonados: ${m.abandonados} · Recuperados: ${m.recuperados} · '
+                'Taxa: ${m.taxaRecuperacaoPercent.toStringAsFixed(0)}%',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade800),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _filtrosCatalogo() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        children: [
+          TextField(
+            decoration: InputDecoration(
+              isDense: true,
+              prefixIcon: const Icon(Icons.search, size: 20),
+              labelText: 'Pesquisar nome, telefone, e-mail, CPF',
+              filled: true,
+              fillColor: Colors.white,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            onChanged: (v) => setState(() => _filtroTexto = v),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  value: _filtroStatus,
+                  decoration: InputDecoration(
+                    isDense: true,
+                    labelText: 'Filtro status',
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
+                  items: const [
+                    DropdownMenuItem(value: 'todos', child: Text('Todos')),
+                    DropdownMenuItem(
+                        value: kCarrinhoUiAbandonado, child: Text('Abandonado')),
+                    DropdownMenuItem(
+                        value: kCarrinhoUiRecuperado, child: Text('Recuperado')),
+                    DropdownMenuItem(
+                        value: kCarrinhoUiVirouPedido,
+                        child: Text('Virou Pedido')),
+                    DropdownMenuItem(
+                        value: kCarrinhoUiVirouVenda, child: Text('Virou Venda')),
+                  ],
+                  onChanged: (v) =>
+                      setState(() => _filtroStatus = v ?? 'todos'),
                 ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  value: _ordenacao,
+                  decoration: InputDecoration(
+                    isDense: true,
+                    labelText: 'Ordenação',
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                        value: 'recente', child: Text('Mais recente')),
+                    DropdownMenuItem(
+                        value: 'antigo', child: Text('Mais antigo')),
+                    DropdownMenuItem(
+                        value: 'valor', child: Text('Maior valor')),
+                    DropdownMenuItem(
+                        value: 'score', child: Text('Maior score')),
+                  ],
+                  onChanged: (v) =>
+                      setState(() => _ordenacao = v ?? 'recente'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _cardCliente(CarrinhoAbandonadoItem item) {
+    final ultimaStr = item.ultimaAtualizacao != null
+        ? DateFormat('dd/MM/yyyy HH:mm').format(item.ultimaAtualizacao!)
+        : '—';
+    final score = calcularProbabilidadeRecuperacao(
+      tempoAbandonado: item.ultimaAtualizacao == null
+          ? const Duration(days: 3)
+          : DateTime.now().difference(item.ultimaAtualizacao!),
+      valorCarrinho: totalCarrinhoProdutos(item.itens),
+      quantidadeItens: item.totalItens,
+      temWhatsapp: item.telefone.trim().length >= 10,
+      temEmail: item.email.trim().contains('@'),
+    );
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: Colors.grey.shade200),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => _abrirDetalheCliente(item),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    backgroundColor: _primaryColor.withOpacity(0.15),
+                    child: Text(
+                      item.nome.isNotEmpty ? item.nome[0].toUpperCase() : '?',
+                      style: const TextStyle(
+                          color: _primaryColor, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(item.nome,
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w700)),
+                        if (item.telefone.isNotEmpty)
+                          Text(item.telefone,
+                              style: TextStyle(
+                                  fontSize: 12, color: Colors.grey.shade600)),
+                      ],
+                    ),
+                  ),
+                  _scoreBadge(score),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                '${item.totalItens} item(ns) · ${_money(totalCarrinhoProdutos(item.itens))} · $ultimaStr',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  if (item.telefone.trim().length >= 10)
+                    _miniAction('WhatsApp', Icons.chat, () => _abrirWhatsApp(item)),
+                  if (item.email.trim().contains('@'))
+                    _miniAction('E-mail', Icons.email_outlined, () => _enviarEmail(item)),
+                  _miniAction('Detalhes', Icons.info_outline,
+                      () => _abrirDetalheCliente(item)),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _cardCatalogo(CarrinhoAbandonadoCatalogoItem item) {
+    final score = _scoreCatalogo(item);
+    final ultimaStr = item.ultimoUpdate != null
+        ? DateFormat('dd/MM/yyyy HH:mm').format(item.ultimoUpdate!)
+        : '—';
+    final valor = item.totalOverride ??
+        (totalCarrinhoProdutos(item.produtos) + item.frete - item.desconto);
+    final tempo = formatarTempoAbandonado(
+      DateTime.now().difference(
+        item.ultimoUpdate ?? item.criadoEm ?? DateTime.now(),
+      ),
+    );
+    final link = _linkRecuperacaoCatalogo(item.cartId);
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: Colors.grey.shade200),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => _abrirDetalheCatalogo(item),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  CircleAvatar(
+                    backgroundColor: _primaryColor.withOpacity(0.15),
+                    child: Text(
+                      item.clienteNome.isNotEmpty
+                          ? item.clienteNome[0].toUpperCase()
+                          : '?',
+                      style: const TextStyle(
+                          color: _primaryColor, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.clienteNome.isEmpty
+                              ? 'Cliente (sem nome)'
+                              : item.clienteNome,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          [
+                            if (item.telefoneEfetivo.isNotEmpty)
+                              item.telefoneEfetivo,
+                            if (item.clienteEmail.isNotEmpty) item.clienteEmail,
+                          ].join(' · '),
+                          style: TextStyle(
+                              fontSize: 12, color: Colors.grey.shade600),
+                        ),
+                      ],
+                    ),
+                  ),
+                  _scoreBadge(score),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  _infoChip('${item.totalItens} itens'),
+                  _infoChip(_money(valor)),
+                  _infoChip(labelStatusCarrinhoAbandonado(item.status)),
+                  _infoChip(tempo),
+                  _infoChip(ultimaStr),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  _miniAction('WhatsApp', Icons.chat,
+                      () => _abrirWhatsAppCatalogo(item)),
+                  _miniAction(
+                    'E-mail',
+                    Icons.email_outlined,
+                    item.clienteEmail.trim().contains('@')
+                        ? () => _enviarEmailCatalogo(item)
+                        : null,
+                  ),
+                  _miniAction(
+                      'Copiar link', Icons.link, () => _copiarTexto(link, 'Link copiado')),
+                  _miniAction('Catálogo', Icons.open_in_new, () async {
+                    await launchUrl(Uri.parse(link),
+                        mode: LaunchMode.externalApplication);
+                  }),
+                  _miniAction(
+                    'Copiar infos',
+                    Icons.copy_all,
+                    () => _copiarTexto(
+                      _infoCatalogo(item, link),
+                      'Informações copiadas',
+                    ),
+                  ),
+                  _miniAction('Detalhes', Icons.info_outline,
+                      () => _abrirDetalheCatalogo(item)),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _scoreBadge(RecuperacaoScoreResult score) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: score.badgeColor.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        '${score.emojiBadge} ${score.label.split(' ').first}',
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: score.badgeColor,
+        ),
+      ),
+    );
+  }
+
+  Widget _infoChip(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(text, style: const TextStyle(fontSize: 11)),
+    );
+  }
+
+  Widget _miniAction(String label, IconData icon, VoidCallback? onTap) {
+    return ActionChip(
+      avatar: Icon(icon, size: 16),
+      label: Text(label, style: const TextStyle(fontSize: 12)),
+      onPressed: onTap,
     );
   }
 }

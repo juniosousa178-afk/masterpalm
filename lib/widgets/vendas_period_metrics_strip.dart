@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/vendas_period_metrics_service.dart';
 
-/// Faixa compacta Hoje / Mês para o cabeçalho da Home.
+/// Faixa compacta Hoje / Mês (legado — Home não usa mais; preferir VendasResumoSheet).
 class VendasPeriodMetricsStrip extends StatelessWidget {
   const VendasPeriodMetricsStrip({super.key, required this.lojaId});
 
@@ -68,6 +68,7 @@ class VendasPeriodMetricsStrip extends StatelessWidget {
           _line('Líquido', money(m.liquido)),
           _line('Bruto', money(m.bruto)),
           _line('Descontos', money(m.descontos)),
+          _line('Lucro', money(m.lucro)),
           _line('Ticket', money(m.ticketMedio)),
           _line('Vendas', '${m.quantidade}'),
         ],

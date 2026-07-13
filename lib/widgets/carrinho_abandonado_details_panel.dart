@@ -14,26 +14,39 @@ class CarrinhoAbandonadoDetailsPanel extends StatelessWidget {
     super.key,
     required this.item,
     required this.linkCatalogo,
-    this.clienteEmail = '',
-    this.cupom,
-    this.frete,
-    this.desconto,
-    this.totalOverride,
-    this.visitasCatalogo = 0,
-    this.retornosCatalogo = 0,
+    this.enviandoEmail = false,
     this.onOpenCatalog,
+    this.onWhatsApp,
+    this.onEmail,
+    this.onCopyLink,
+    this.onCopyInfo,
   });
 
   final CarrinhoAbandonadoCatalogoItem item;
   final String linkCatalogo;
-  final String clienteEmail;
-  final String? cupom;
-  final double? frete;
-  final double? desconto;
-  final double? totalOverride;
-  final int visitasCatalogo;
-  final int retornosCatalogo;
+  final bool enviandoEmail;
   final VoidCallback? onOpenCatalog;
+  final VoidCallback? onWhatsApp;
+  final VoidCallback? onEmail;
+  final VoidCallback? onCopyLink;
+  final VoidCallback? onCopyInfo;
+
+  RecuperacaoScoreResult get _score {
+    final agora = DateTime.now();
+    final ref = item.ultimoUpdate ?? item.criadoEm ?? agora;
+    final total = item.totalOverride ??
+        (totalCarrinhoProdutos(item.produtos) + item.frete - item.desconto);
+    return calcularProbabilidadeRecuperacao(
+      tempoAbandonado: agora.difference(ref),
+      valorCarrinho: total,
+      quantidadeItens: item.totalItens,
+      clienteRecorrente: item.clienteRecorrente,
+      temWhatsapp: item.telefoneEfetivo.trim().length >= 10,
+      temEmail: item.clienteEmail.trim().contains('@'),
+      visitasCatalogo: item.visitasCatalogo,
+      retornosCatalogo: item.retornosCatalogo,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -42,105 +55,164 @@ class CarrinhoAbandonadoDetailsPanel extends StatelessWidget {
     final ref = item.ultimoUpdate ?? item.criadoEm ?? agora;
     final tempo = agora.difference(ref);
     final subtotal = totalCarrinhoProdutos(item.produtos);
-    final freteV = frete ?? 0;
-    final descV = desconto ?? 0;
-    final total = totalOverride ?? (subtotal + freteV - descV);
-    final score = calcularProbabilidadeRecuperacao(
-      tempoAbandonado: tempo,
-      valorCarrinho: total,
-      visitasCatalogo: visitasCatalogo,
-      retornosCatalogo: retornosCatalogo,
-    );
+    final total = item.totalOverride ?? (subtotal + item.frete - item.desconto);
+    final score = _score;
     final statusLabel = labelStatusCarrinhoAbandonado(item.status);
+    final wa = item.telefoneEfetivo;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Cliente', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 6),
-          _kv('Nome', item.clienteNome),
-          _kv('Telefone', item.clienteTelefone),
-          _kv('WhatsApp', item.clienteTelefone),
-          _kv('Email', clienteEmail.isEmpty ? '—' : clienteEmail),
-          const SizedBox(height: 12),
-          Text('Carrinho', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 6),
-          ...item.produtos.map(_produtoTile),
-          const Divider(height: 24),
-          _kv('Subtotal', _money(subtotal)),
-          _kv('Cupom', (cupom ?? '').isEmpty ? '—' : cupom!),
-          _kv('Desconto', _money(descV)),
-          _kv('Frete', _money(freteV)),
-          _kv('Total', _money(total)),
-          const SizedBox(height: 12),
-          Text('Datas', style: Theme.of(context).textTheme.titleMedium),
-          _kv(
-            'Criado',
-            item.criadoEm == null ? '—' : df.format(item.criadoEm!),
-          ),
-          _kv(
-            'Última alteração',
-            item.ultimoUpdate == null ? '—' : df.format(item.ultimoUpdate!),
-          ),
-          _kv('Tempo abandonado', formatarTempoAbandonado(tempo)),
-          _kv('Status', statusLabel),
-          const SizedBox(height: 8),
-          Chip(
-            avatar: Icon(
-              score.categoria == RecuperacaoProbabilidade.alta
-                  ? Icons.trending_up
-                  : score.categoria == RecuperacaoProbabilidade.media
-                      ? Icons.trending_flat
-                      : Icons.trending_down,
-              size: 16,
-            ),
-            label: Text('Recuperação: ${score.label} (${score.pontos} pts)'),
-          ),
-          if (score.motivos.isNotEmpty)
-            Text(
-              score.motivos.join(' · '),
-              style: TextStyle(fontSize: 11, color: Colors.grey[600]),
-            ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              ActionChip(
-                avatar: const Icon(Icons.open_in_new, size: 16),
-                label: const Text('Abrir catálogo'),
-                onPressed: onOpenCatalog ??
-                    () => _open(context, linkCatalogo),
-              ),
-              ActionChip(
-                avatar: const Icon(Icons.chat, size: 16),
-                label: const Text('WhatsApp'),
-                onPressed: () => _open(
-                  context,
-                  whatsappUrlFromTelefone(item.clienteTelefone),
+    return Material(
+      color: Colors.white,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              ActionChip(
-                avatar: const Icon(Icons.link, size: 16),
-                label: const Text('Copiar link'),
-                onPressed: () => _copy(context, 'Link', linkCatalogo),
-              ),
-              ActionChip(
-                avatar: const Icon(Icons.copy_all, size: 16),
-                label: const Text('Copiar carrinho'),
-                onPressed: () => _copy(context, 'Carrinho', _resumoTexto()),
+            ),
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Detalhe do carrinho',
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                  ),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: score.badgeColor.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    '${score.emojiBadge} ${score.label}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: score.badgeColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Text('Cliente', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 6),
+            _kv('Nome', item.clienteNome.isEmpty ? '—' : item.clienteNome),
+            _kv('Telefone', item.clienteTelefone.isEmpty ? '—' : item.clienteTelefone),
+            _kv('WhatsApp', wa.isEmpty ? '—' : wa),
+            _kv('Email', item.clienteEmail.isEmpty ? '—' : item.clienteEmail),
+            _kv('Endereço',
+                item.enderecoCompleto.isEmpty ? '—' : item.enderecoCompleto),
+            _kv('CPF', item.clienteCpf.isEmpty ? '—' : item.clienteCpf),
+            const SizedBox(height: 14),
+            Text('Produtos', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 6),
+            if (item.produtos.isEmpty)
+              Text('—', style: TextStyle(color: Colors.grey[600]))
+            else
+              ...item.produtos.map(_produtoTile),
+            const Divider(height: 24),
+            _kv('Subtotal', _money(subtotal)),
+            _kv('Cupom', item.cupom.isEmpty ? '—' : item.cupom),
+            _kv('Desconto', _money(item.desconto)),
+            _kv('Frete', _money(item.frete)),
+            _kv('Total', _money(total)),
+            const SizedBox(height: 12),
+            Text('Datas / status', style: Theme.of(context).textTheme.titleMedium),
+            _kv(
+              'Data',
+              item.criadoEm == null ? '—' : df.format(item.criadoEm!),
+            ),
+            _kv(
+              'Última atualização',
+              item.ultimoUpdate == null ? '—' : df.format(item.ultimoUpdate!),
+            ),
+            _kv('Tempo abandonado', formatarTempoAbandonado(tempo)),
+            _kv('Status', statusLabel),
+            if (score.motivos.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                score.motivos.join(' · '),
+                style: TextStyle(fontSize: 11, color: Colors.grey[600]),
               ),
             ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Recuperar venda: disponível em sprint futura (estrutura preparada).',
-            style: TextStyle(fontSize: 11, color: Colors.grey[600]),
-          ),
-        ],
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _actionChip(
+                  icon: Icons.chat,
+                  label: 'WhatsApp',
+                  onPressed: wa.trim().length < 10
+                      ? null
+                      : (onWhatsApp ??
+                          () => _open(
+                                context,
+                                whatsappUrlFromTelefone(wa),
+                              )),
+                ),
+                _actionChip(
+                  icon: enviandoEmail ? null : Icons.email_outlined,
+                  label: enviandoEmail ? 'Enviando…' : 'E-mail',
+                  onPressed: item.clienteEmail.trim().contains('@') &&
+                          !enviandoEmail
+                      ? (onEmail ?? () {})
+                      : null,
+                  loading: enviandoEmail,
+                ),
+                _actionChip(
+                  icon: Icons.link,
+                  label: 'Copiar link',
+                  onPressed: onCopyLink ??
+                      () => _copy(context, 'Link', linkCatalogo),
+                ),
+                _actionChip(
+                  icon: Icons.open_in_new,
+                  label: 'Abrir catálogo',
+                  onPressed: onOpenCatalog ??
+                      () => _open(context, linkCatalogo),
+                ),
+                _actionChip(
+                  icon: Icons.copy_all,
+                  label: 'Copiar informações',
+                  onPressed: onCopyInfo ??
+                      () => _copy(context, 'Informações', _resumoTexto()),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
+    );
+  }
+
+  Widget _actionChip({
+    IconData? icon,
+    required String label,
+    VoidCallback? onPressed,
+    bool loading = false,
+  }) {
+    return ActionChip(
+      avatar: loading
+          ? const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : Icon(icon ?? Icons.circle, size: 16),
+      label: Text(label),
+      onPressed: onPressed,
     );
   }
 
@@ -152,31 +224,62 @@ class CarrinhoAbandonadoDetailsPanel extends StatelessWidget {
     final preco = (p['preco'] as num?)?.toDouble() ??
         (p['precoUnitario'] as num?)?.toDouble() ??
         0;
+    final lineTotal = (p['total'] as num?)?.toDouble() ?? (preco * q);
     final img = (p['imagem'] ?? p['imageUrl'] ?? p['url_foto'] ?? '').toString();
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: img.isEmpty
-          ? const CircleAvatar(child: Icon(Icons.shopping_bag_outlined))
-          : ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: Image.network(
-                img,
-                width: 44,
-                height: 44,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) =>
-                    const CircleAvatar(child: Icon(Icons.broken_image)),
-              ),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: img.isEmpty
+                ? Container(
+                    width: 52,
+                    height: 52,
+                    color: Colors.grey.shade200,
+                    child: const Icon(Icons.shopping_bag_outlined),
+                  )
+                : Image.network(
+                    img,
+                    width: 52,
+                    height: 52,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      width: 52,
+                      height: 52,
+                      color: Colors.grey.shade200,
+                      child: const Icon(Icons.broken_image),
+                    ),
+                  ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(nome, style: const TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 4),
+                Text(
+                  [
+                    'Qtd $q',
+                    if (cor.isNotEmpty) 'Cor $cor',
+                    if (tam.isNotEmpty) 'Tam $tam',
+                    'Unit. ${_money(preco)}',
+                    'Sub ${_money(lineTotal)}',
+                  ].join(' · '),
+                  style: TextStyle(fontSize: 11, color: Colors.grey[700]),
+                ),
+              ],
             ),
-      title: Text(nome, style: const TextStyle(fontSize: 13)),
-      subtitle: Text(
-        [
-          'Qtd $q',
-          if (tam.isNotEmpty) 'Tam $tam',
-          if (cor.isNotEmpty) 'Cor $cor',
-          _money(preco),
-        ].join(' · '),
-        style: const TextStyle(fontSize: 11),
+          ),
+        ],
       ),
     );
   }
@@ -184,12 +287,18 @@ class CarrinhoAbandonadoDetailsPanel extends StatelessWidget {
   String _resumoTexto() {
     final buf = StringBuffer();
     buf.writeln(item.clienteNome);
-    buf.writeln(item.clienteTelefone);
+    buf.writeln(item.telefoneEfetivo);
+    buf.writeln(item.clienteEmail);
+    buf.writeln(item.clienteCpf);
+    buf.writeln(item.enderecoCompleto);
     for (final p in item.produtos) {
       buf.writeln(
-        '- ${p['nome'] ?? p['name']} x${p['quantidade'] ?? 1}',
+        '- ${p['nome'] ?? p['name']} x${p['quantidade'] ?? 1} '
+        'cor=${p['cor'] ?? ''} tam=${p['tamanho'] ?? ''}',
       );
     }
+    buf.writeln('Cupom: ${item.cupom}');
+    buf.writeln('Frete: ${_money(item.frete)}');
     buf.writeln(linkCatalogo);
     return buf.toString();
   }
@@ -201,11 +310,14 @@ class CarrinhoAbandonadoDetailsPanel extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 120,
+            width: 130,
             child: Text(k, style: TextStyle(color: Colors.grey[600], fontSize: 12)),
           ),
           Expanded(
-            child: Text(v, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+            child: Text(
+              v,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+            ),
           ),
         ],
       ),

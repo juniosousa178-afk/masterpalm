@@ -1,6 +1,14 @@
 // Extrai histórico de comunicação somente leitura do documento do pedido.
+// Sem dados fictícios — só canais com evidência no mapa.
 
-enum CommunicationChannel { whatsapp, email, mercadoPago, campanha, roleta }
+enum CommunicationChannel {
+  whatsapp,
+  email,
+  mercadoPago,
+  campanha,
+  roleta,
+  numeroSorte,
+}
 
 enum CommunicationStatus { enviado, pendente, falhou, reenviado, desconhecido }
 
@@ -11,6 +19,7 @@ class CommunicationHistoryItem {
     required this.status,
     this.at,
     this.detail,
+    this.origem,
   });
 
   final CommunicationChannel channel;
@@ -18,6 +27,7 @@ class CommunicationHistoryItem {
   final CommunicationStatus status;
   final DateTime? at;
   final String? detail;
+  final String? origem;
 }
 
 CommunicationStatus _statusFrom(dynamic raw) {
@@ -27,8 +37,16 @@ CommunicationStatus _statusFrom(dynamic raw) {
   if (s.contains('fail') || s.contains('falh') || s.contains('erro')) {
     return CommunicationStatus.falhou;
   }
-  if (s.contains('pend')) return CommunicationStatus.pendente;
-  if (s.contains('env') || s.contains('ok') || s.contains('sent') || s == 'true') {
+  if (s.contains('pend') || s.contains('aguard') || s == 'pending') {
+    return CommunicationStatus.pendente;
+  }
+  if (s.contains('env') ||
+      s.contains('ok') ||
+      s.contains('sent') ||
+      s.contains('aprov') ||
+      s == 'paid' ||
+      s == 'approved' ||
+      s == 'true') {
     return CommunicationStatus.enviado;
   }
   return CommunicationStatus.desconhecido;
@@ -48,6 +66,7 @@ List<CommunicationHistoryItem> buildCommunicationHistory(
   Map<String, dynamic> data,
 ) {
   final items = <CommunicationHistoryItem>[];
+  final origemDoc = (data['origem'] ?? data['source'] ?? '').toString().trim();
 
   void add(
     CommunicationChannel ch,
@@ -55,7 +74,9 @@ List<CommunicationHistoryItem> buildCommunicationHistory(
     dynamic statusRaw, {
     dynamic at,
     String? detail,
+    String? origem,
   }) {
+    // Exige evidência: status, data ou detalhe concreto.
     if (statusRaw == null && detail == null && at == null) return;
     items.add(
       CommunicationHistoryItem(
@@ -68,64 +89,90 @@ List<CommunicationHistoryItem> buildCommunicationHistory(
                 : _statusFrom(statusRaw),
         at: _asDate(at),
         detail: detail,
+        origem: (origem ?? origemDoc).isEmpty ? null : (origem ?? origemDoc),
       ),
     );
   }
 
-  if (data.containsKey('whatsappEnviado') ||
-      data.containsKey('waEnviado') ||
-      data.containsKey('whatsappStatus')) {
+  final waFlag = data['whatsappEnviado'] ??
+      data['waEnviado'] ??
+      data['mensagemEnviadaWhatsApp'];
+  final waAt = data['whatsappEnviadoEm'];
+  if (waFlag != null || waAt != null) {
     add(
       CommunicationChannel.whatsapp,
       'WhatsApp',
-      data['whatsappStatus'] ?? data['whatsappEnviado'] ?? data['waEnviado'],
-      at: data['whatsappEnviadoEm'],
+      data['whatsappStatus'] ?? waFlag,
+      at: waAt,
     );
   }
 
-  if (data.containsKey('emailEnviado') || data.containsKey('emailStatus')) {
+  final emailFlag = data['emailEnviado'] ?? data['mensagemEnviadaEmail'];
+  final emailAt = data['emailEnviadoEm'];
+  if (emailFlag != null || emailAt != null || data.containsKey('emailStatus')) {
     add(
       CommunicationChannel.email,
       'Email',
-      data['emailStatus'] ?? data['emailEnviado'],
-      at: data['emailEnviadoEm'],
+      data['emailStatus'] ?? emailFlag,
+      at: emailAt,
     );
   }
 
   final mp = (data['statusPagamento'] ?? data['mpStatus'] ?? '').toString();
-  if (mp.isNotEmpty || (data['paymentId'] ?? '').toString().isNotEmpty) {
+  final paymentId = (data['paymentId'] ?? '').toString().trim();
+  if (mp.isNotEmpty || paymentId.isNotEmpty) {
     add(
       CommunicationChannel.mercadoPago,
       'Mercado Pago',
       mp.isNotEmpty ? mp : 'pendente',
-      at: data['paidAt'],
-      detail: (data['paymentId'] ?? '').toString().isEmpty
-          ? null
-          : 'paymentId=${data['paymentId']}',
+      at: data['paidAt'] ?? data['paymentStartedAt'],
+      detail: paymentId.isEmpty ? null : 'paymentId=$paymentId',
+      origem: 'mercado_pago',
     );
   }
 
-  if ((data['campanhaId'] ?? data['campanhaNome'] ?? '').toString().isNotEmpty ||
-      data['campanhaAplicada'] == true) {
+  if (data['campanhaAplicada'] == true ||
+      data['campanhaAplicadaEm'] != null ||
+      ((data['campanhaStatus'] ?? '').toString().trim().isNotEmpty)) {
     add(
       CommunicationChannel.campanha,
       'Campanha',
       data['campanhaStatus'] ??
           (data['campanhaAplicada'] == true ? 'enviado' : 'pendente'),
       at: data['campanhaAplicadaEm'],
-      detail: (data['campanhaNome'] ?? data['numeroSorte'] ?? '').toString(),
+      detail: (data['campanhaNome'] ?? '').toString().trim().isEmpty
+          ? null
+          : data['campanhaNome'].toString(),
+      origem: 'campanha',
     );
   }
 
   if (data['premioRoleta'] != null) {
     final p = data['premioRoleta'];
+    final detail = p is Map
+        ? (p['descricao'] ?? p['tipo'] ?? '').toString()
+        : p.toString();
+    if (detail.trim().isNotEmpty || p is Map) {
+      add(
+        CommunicationChannel.roleta,
+        'Roleta',
+        data['roletaStatus'] ?? 'enviado',
+        at: data['roletaEm'] ?? data['premioRoletaEm'],
+        detail: detail.trim().isEmpty ? null : detail,
+        origem: 'roleta',
+      );
+    }
+  }
+
+  final numero = (data['numeroSorte'] ?? data['numeroDaSorte'] ?? '').toString();
+  if (numero.trim().isNotEmpty) {
     add(
-      CommunicationChannel.roleta,
-      'Roleta',
-      data['roletaStatus'] ?? 'enviado',
-      detail: p is Map
-          ? (p['descricao'] ?? p['tipo'] ?? '').toString()
-          : p.toString(),
+      CommunicationChannel.numeroSorte,
+      'Número da sorte',
+      data['numeroSorteStatus'] ?? 'enviado',
+      at: data['numeroSorteEm'] ?? data['campanhaAplicadaEm'],
+      detail: numero.trim(),
+      origem: 'campanha',
     );
   }
 
@@ -142,14 +189,17 @@ List<CommunicationHistoryItem> buildCommunicationHistory(
                   ? CommunicationChannel.mercadoPago
                   : canal.contains('camp')
                       ? CommunicationChannel.campanha
-                      : CommunicationChannel.roleta;
+                      : canal.contains('sorte') || canal.contains('numero')
+                          ? CommunicationChannel.numeroSorte
+                          : CommunicationChannel.roleta;
       items.add(
         CommunicationHistoryItem(
           channel: ch,
           label: (e['label'] ?? canal).toString(),
           status: _statusFrom(e['status']),
-          at: _asDate(e['at'] ?? e['data']),
+          at: _asDate(e['at'] ?? e['data'] ?? e['hora']),
           detail: (e['detail'] ?? e['detalhe'])?.toString(),
+          origem: (e['origem'] ?? e['source'])?.toString(),
         ),
       );
     }
