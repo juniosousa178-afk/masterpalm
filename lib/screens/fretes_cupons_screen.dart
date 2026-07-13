@@ -15,6 +15,7 @@ import '../services/cloud_sync_service.dart';
 import '../services/catalog_publish_service.dart';
 import '../services/store_resolver_facade.dart';
 import '../services/cupom_desconto_service.dart';
+import '../services/clientes_firestore_service.dart';
 import '../services/indicacao_config_service.dart';
 import '../services/superfrete_integration_service.dart';
 import '../services/melhor_envio_integration_service.dart';
@@ -2904,9 +2905,10 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
     IconData tagIcon = Icons.public;
 
     if (cupom.clienteId != null) {
-      tagColor = const Color(0xFF9C27B0);
-      tagText = 'VALE-COMPRA';
-      tagIcon = Icons.card_giftcard;
+      final ehVale = cupom.nome.toLowerCase().contains('vale-compra');
+      tagColor = ehVale ? const Color(0xFF9C27B0) : const Color(0xFF673AB7);
+      tagText = ehVale ? 'VALE-COMPRA' : 'PESSOAL';
+      tagIcon = ehVale ? Icons.card_giftcard : Icons.person_pin;
     } else if (cupom.usoUnicoGlobal) {
       tagColor = _warningColor;
       tagText = 'USO ÚNICO';
@@ -3153,11 +3155,34 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
     final nomeCtrl = TextEditingController();
     final valorCtrl = TextEditingController();
     final valorMinimoCtrl = TextEditingController();
+    final buscaClienteCtrl = TextEditingController();
+    final limiteUsosCtrl = TextEditingController();
 
     String tipo = 'percentual';
+    String tipoAcesso = 'publico';
     bool freteGratis = false;
     bool usoUnico = false;
     bool usoUnicoGlobal = false;
+    DateTime? dataFim;
+    Map<String, dynamic>? clienteSelecionado;
+    List<Map<String, dynamic>> clientesBusca = [];
+    bool buscandoClientes = false;
+
+    Future<void> buscarClientesDialog(
+      void Function(void Function()) setDialogState,
+    ) async {
+      final q = buscaClienteCtrl.text.trim();
+      if (q.length < 2 || _slug == null) return;
+      setDialogState(() => buscandoClientes = true);
+      final lista = await ClientesFirestoreService.searchClientes(
+        q,
+        lojaId: _slug,
+      );
+      setDialogState(() {
+        clientesBusca = lista;
+        buscandoClientes = false;
+      });
+    }
 
     final result = await showDialog<bool>(
       context: context,
@@ -3215,6 +3240,68 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                       ),
                     ),
                   ),
+                  const SizedBox(height: 16),
+                  const Text('Tipo de acesso', style: TextStyle(fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 8),
+                  SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(value: 'publico', label: Text('Público')),
+                      ButtonSegment(value: 'pessoal', label: Text('Pessoal')),
+                    ],
+                    selected: {tipoAcesso},
+                    onSelectionChanged: (s) => setDialogState(() {
+                      tipoAcesso = s.first;
+                      if (tipoAcesso == 'publico') {
+                        clienteSelecionado = null;
+                      }
+                    }),
+                  ),
+                  if (tipoAcesso == 'pessoal') ...[
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: buscaClienteCtrl,
+                      decoration: InputDecoration(
+                        labelText: 'Cliente (nome, e-mail ou telefone)',
+                        prefixIcon: const Icon(Icons.person_search),
+                        suffixIcon: IconButton(
+                          icon: const Icon(Icons.search),
+                          onPressed: () => buscarClientesDialog(setDialogState),
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      onSubmitted: (_) => buscarClientesDialog(setDialogState),
+                    ),
+                    if (buscandoClientes)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 8),
+                        child: LinearProgressIndicator(),
+                      ),
+                    if (clientesBusca.isNotEmpty)
+                      ...clientesBusca.map(
+                        (c) => ListTile(
+                          dense: true,
+                          title: Text((c['nome'] ?? 'Sem nome').toString()),
+                          subtitle: Text(
+                            (c['email'] ?? c['telefone'] ?? '').toString(),
+                          ),
+                          onTap: () => setDialogState(() {
+                            clienteSelecionado = c;
+                            clientesBusca = [];
+                          }),
+                        ),
+                      ),
+                    if (clienteSelecionado != null)
+                      Chip(
+                        label: Text(
+                          'Cliente: ${clienteSelecionado!['nome'] ?? clienteSelecionado!['email'] ?? ''}',
+                        ),
+                        onDeleted: () => setDialogState(() {
+                          clienteSelecionado = null;
+                        }),
+                      ),
+                  ],
                   const SizedBox(height: 16),
                   Row(
                     children: [
@@ -3292,6 +3379,42 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                       helperText: 'Deixe vazio se não houver valor mínimo',
                     ),
                   ),
+                  const SizedBox(height: 12),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Validade (opcional)'),
+                    subtitle: Text(
+                      dataFim == null
+                          ? 'Sem data de expiração'
+                          : 'Até ${dataFim!.day.toString().padLeft(2, '0')}/${dataFim!.month.toString().padLeft(2, '0')}/${dataFim!.year}',
+                    ),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.calendar_today),
+                      onPressed: () async {
+                        final picked = await showDatePicker(
+                          context: ctx,
+                          initialDate: DateTime.now().add(const Duration(days: 30)),
+                          firstDate: DateTime.now(),
+                          lastDate: DateTime.now().add(const Duration(days: 3650)),
+                        );
+                        if (picked != null) {
+                          setDialogState(() => dataFim = picked);
+                        }
+                      },
+                    ),
+                  ),
+                  TextField(
+                    controller: limiteUsosCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      labelText: 'Limite de uso (opcional)',
+                      hintText: 'Ex: 1',
+                      prefixIcon: const Icon(Icons.confirmation_number),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: 20),
                   const Text(
                     'Opções do Cupom',
@@ -3305,7 +3428,10 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
                     title: const Text('Frete Grátis'),
                     subtitle: const Text('Cliente não paga frete'),
                     value: freteGratis,
-                    onChanged: (v) => setDialogState(() => freteGratis = v),
+                    onChanged: (v) => setDialogState(() {
+                      freteGratis = v;
+                      if (v) tipo = 'fixo';
+                    }),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
@@ -3367,13 +3493,24 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
     if (result == true && _slug != null) {
       final codigo = codigoCtrl.text.trim().toUpperCase();
       final nome = nomeCtrl.text.trim();
-      final valor = double.tryParse(valorCtrl.text.trim()) ?? 0.0;
+      final valor = freteGratis ? 0.0 : (double.tryParse(valorCtrl.text.trim()) ?? 0.0);
       final valorMinimo = double.tryParse(valorMinimoCtrl.text.trim());
+      final limiteUsos = int.tryParse(limiteUsosCtrl.text.trim());
 
-      if (codigo.isEmpty || nome.isEmpty || valor <= 0) {
+      if (codigo.isEmpty || nome.isEmpty || (!freteGratis && valor <= 0)) {
         _snack('⚠️ Preencha código, nome e valor corretamente');
         return;
       }
+      if (tipoAcesso == 'pessoal' && clienteSelecionado == null) {
+        _snack('⚠️ Cupom pessoal exige selecionar um cliente');
+        return;
+      }
+
+      final clienteId = clienteSelecionado != null
+          ? (clienteSelecionado!['id'] ?? clienteSelecionado!['clienteId'])
+              ?.toString()
+          : null;
+      final ownerEmail = clienteSelecionado?['email']?.toString();
 
       try {
         await CupomDescontoService().criarCupom(
@@ -3381,12 +3518,17 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
           codigo: codigo,
           nome: nome,
           valor: valor,
-          tipo: tipo,
-          aplicarEm: 'produtos',
+          tipo: freteGratis ? 'fixo' : tipo,
+          aplicarEm: 'total',
           freteGratis: freteGratis,
           usoUnico: usoUnico,
           usoUnicoGlobal: usoUnicoGlobal,
           valorMinimo: valorMinimo,
+          clienteId: tipoAcesso == 'pessoal' ? clienteId : null,
+          ownerEmail: tipoAcesso == 'pessoal' ? ownerEmail : null,
+          dataFim: dataFim,
+          qtdMaximaUsos: limiteUsos,
+          pessoal: tipoAcesso == 'pessoal',
         );
         _snack('✅ Cupom "$codigo" criado com sucesso!');
       } catch (e) {

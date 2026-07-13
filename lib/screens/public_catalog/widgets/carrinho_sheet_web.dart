@@ -1270,6 +1270,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
 
     final clienteLogado = await ClienteAuthService.getClienteLogado();
     final temLogin = clienteLogado != null;
+    final clienteLogadoId = clienteLogado?['clienteId']?.toString();
+    final clienteLogadoEmail = clienteLogado?['email']?.toString();
 
     // 1.5) Cupom público da collection Firestore (funciona sem login)
     if (found == null) {
@@ -1278,11 +1280,20 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
       final resolver = resolverCupomPublicoFirestore(
         cupom: cLoja,
         clienteLogado: temLogin,
+        clienteLogadoId: clienteLogadoId,
+        clienteLogadoEmail: clienteLogadoEmail,
       );
       if (resolver.status ==
           CatalogoCupomResolverStatus.bloqueadoPessoalSemLogin) {
         widget.showSnack(
           resolver.mensagem ?? catalogoCupomPessoalExigeLoginMsg,
+        );
+        return;
+      }
+      if (resolver.status ==
+          CatalogoCupomResolverStatus.bloqueadoPessoalContaErrada) {
+        widget.showSnack(
+          resolver.mensagem ?? catalogoCupomPessoalContaErradaMsg,
         );
         return;
       }

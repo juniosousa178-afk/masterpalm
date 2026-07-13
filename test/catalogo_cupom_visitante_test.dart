@@ -58,6 +58,7 @@ void main() {
       final r = resolverCupomPublicoFirestore(
         cupom: _cupomPessoal(),
         clienteLogado: true,
+        clienteLogadoId: 'cliente-1',
       );
       expect(r.status, CatalogoCupomResolverStatus.encontradoPublico);
     });

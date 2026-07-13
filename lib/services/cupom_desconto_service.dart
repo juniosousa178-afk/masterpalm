@@ -34,6 +34,8 @@ class CupomDescontoService {
     DateTime? dataFim,
     double? valorMinimo,
     int? qtdMaximaUsos,
+    String? ownerEmail,
+    bool pessoal = false,
   }) async {
     try {
       // Validar código único
@@ -54,6 +56,7 @@ class CupomDescontoService {
         usoUnico: usoUnico,
         usoUnicoGlobal: usoUnicoGlobal,
         clienteId: clienteId,
+        ownerEmail: ownerEmail,
         ativo: true,
         dataInicio: dataInicio,
         dataFim: dataFim,
@@ -62,11 +65,14 @@ class CupomDescontoService {
         criadoEm: DateTime.now(),
       );
 
+      final payload = cupom.toFirestore();
+      if (pessoal) payload['pessoal'] = true;
+
       final docRef = await _firestore
           .collection('lojas')
           .doc(lojaId)
           .collection('cupons')
-          .add(cupom.toFirestore());
+          .add(payload);
 
       logD('✅ Cupom criado: ${docRef.id} - $codigo');
       return docRef.id;

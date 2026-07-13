@@ -25,6 +25,7 @@ class Cupom {
   final bool usoUnico; // Uso único por cliente
   final bool usoUnicoGlobal; // Uso único global (somente uma pessoa pode usar)
   final String? clienteId; // Se preenchido, somente este cliente pode usar (vale-compra)
+  final String? ownerEmail; // E-mail normalizado do dono (cupom pessoal)
   final bool ativo;
   final List<String> usadosPor; // IDs dos clientes que já usaram
   final DateTime? dataInicio;
@@ -47,6 +48,7 @@ class Cupom {
     this.usoUnico = false,
     this.usoUnicoGlobal = false,
     this.clienteId,
+    this.ownerEmail,
     this.ativo = true,
     this.usadosPor = const [],
     this.dataInicio,
@@ -74,7 +76,7 @@ class Cupom {
     // Limite de usos atingido
     if (qtdMaximaUsos != null && qtdUsosAtuais >= qtdMaximaUsos!) return false;
 
-    // Cupom específico de cliente (vale-compra)
+    // Cupom específico de cliente (vale-compra / pessoal)
     if (this.clienteId != null && this.clienteId != clienteId) return false;
 
     // Uso único global
@@ -110,6 +112,7 @@ class Cupom {
       usoUnico: data['usoUnico'] ?? false,
       usoUnicoGlobal: data['usoUnicoGlobal'] ?? false,
       clienteId: data['clienteId'],
+      ownerEmail: data['ownerEmail'],
       ativo: data['ativo'] ?? true,
       usadosPor: List<String>.from(data['usadosPor'] ?? []),
       dataInicio: data['dataInicio'] != null
@@ -141,6 +144,8 @@ class Cupom {
       'usoUnico': usoUnico,
       'usoUnicoGlobal': usoUnicoGlobal,
       'clienteId': clienteId,
+      if (ownerEmail != null && ownerEmail!.trim().isNotEmpty)
+        'ownerEmail': ownerEmail!.trim().toLowerCase(),
       'ativo': ativo,
       'usadosPor': usadosPor,
       'dataInicio': dataInicio,
@@ -166,6 +171,7 @@ class Cupom {
     bool? usoUnico,
     bool? usoUnicoGlobal,
     String? clienteId,
+    String? ownerEmail,
     bool? ativo,
     List<String>? usadosPor,
     DateTime? dataInicio,
@@ -188,6 +194,7 @@ class Cupom {
       usoUnico: usoUnico ?? this.usoUnico,
       usoUnicoGlobal: usoUnicoGlobal ?? this.usoUnicoGlobal,
       clienteId: clienteId ?? this.clienteId,
+      ownerEmail: ownerEmail ?? this.ownerEmail,
       ativo: ativo ?? this.ativo,
       usadosPor: usadosPor ?? this.usadosPor,
       dataInicio: dataInicio ?? this.dataInicio,

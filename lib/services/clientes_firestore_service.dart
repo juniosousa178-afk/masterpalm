@@ -352,11 +352,26 @@ class ClientesFirestoreService {
       final resultados = <String, Map<String, dynamic>>{};
 
       for (final doc in nomeQuery.docs) {
-        resultados[doc.id] = doc.data();
+        resultados[doc.id] = {...doc.data(), 'id': doc.id};
       }
 
       for (final doc in telefoneQuery.docs) {
-        resultados[doc.id] = doc.data();
+        resultados[doc.id] = {...doc.data(), 'id': doc.id};
+      }
+
+      if (query.contains('@')) {
+        final emailLower = queryLower;
+        final emailQuery = await _db
+            .collection('lojas')
+            .doc(storeId)
+            .collection(FSPaths.estoqueClientesCol)
+            .where('email', isGreaterThanOrEqualTo: emailLower)
+            .where('email', isLessThanOrEqualTo: '$emailLower\uf8ff')
+            .limit(10)
+            .get();
+        for (final doc in emailQuery.docs) {
+          resultados[doc.id] = {...doc.data(), 'id': doc.id};
+        }
       }
 
       return resultados.values.toList();

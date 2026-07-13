@@ -6,6 +6,7 @@ import '../models/cupom.dart';
 enum CatalogoCupomResolverStatus {
   encontradoPublico,
   bloqueadoPessoalSemLogin,
+  bloqueadoPessoalContaErrada,
   naoEncontrado,
 }
 
@@ -25,6 +26,40 @@ class CatalogoCupomResolverResult {
 const catalogoCupomPessoalExigeLoginMsg =
     'Este cupom é pessoal. Entre na sua conta para utilizá-lo.';
 
+/// Mensagem UX quando cupom pessoal pertence a outra conta.
+const catalogoCupomPessoalContaErradaMsg =
+    'Este cupom é pessoal e não está disponível para esta conta.';
+
+String catalogoEmailNormalizado(String? email) =>
+    email?.trim().toLowerCase() ?? '';
+
+bool catalogoCupomEhPessoal(Cupom cupom) =>
+    cupom.clienteId != null && cupom.clienteId!.trim().isNotEmpty;
+
+/// Valida se o cliente logado é dono do cupom pessoal (uid/email normalizado).
+bool catalogoClienteEhDonoCupom({
+  required Cupom cupom,
+  required String? clienteLogadoId,
+  required String? clienteLogadoEmail,
+}) {
+  if (!catalogoCupomEhPessoal(cupom)) return true;
+
+  final ownerId = cupom.clienteId?.trim() ?? '';
+  final ownerEmail = catalogoEmailNormalizado(cupom.ownerEmail);
+  final idLogado = clienteLogadoId?.trim() ?? '';
+  final emailLogado = catalogoEmailNormalizado(clienteLogadoEmail);
+
+  if (ownerId.isNotEmpty && idLogado.isNotEmpty && idLogado == ownerId) {
+    return true;
+  }
+  if (ownerEmail.isNotEmpty &&
+      emailLogado.isNotEmpty &&
+      ownerEmail == emailLogado) {
+    return true;
+  }
+  return false;
+}
+
 /// Converte [Cupom] da loja para mapa usado no carrinho.
 Map<String, dynamic> catalogoCupomMapFromFirestoreCupom(Cupom c) {
   final tipo = c.freteGratis
@@ -42,6 +77,11 @@ Map<String, dynamic> catalogoCupomMapFromFirestoreCupom(Cupom c) {
     'dataFim': c.dataFim,
     'ativo': c.ativo,
     'origem': 'cupom_publico_loja',
+    'pessoal': catalogoCupomEhPessoal(c),
+    if (c.clienteId != null && c.clienteId!.isNotEmpty)
+      'clienteId': c.clienteId,
+    if (c.ownerEmail != null && c.ownerEmail!.trim().isNotEmpty)
+      'ownerEmail': catalogoEmailNormalizado(c.ownerEmail),
     if (c.produtoIds.isNotEmpty) 'produtoIds': c.produtoIds,
   };
 }
@@ -56,6 +96,8 @@ bool catalogoCupomConfigEhPublico(Map<String, dynamic> cupom) {
 CatalogoCupomResolverResult resolverCupomPublicoFirestore({
   required Cupom? cupom,
   required bool clienteLogado,
+  String? clienteLogadoId,
+  String? clienteLogadoEmail,
 }) {
   if (cupom == null || !cupom.ativo) {
     return const CatalogoCupomResolverResult(
@@ -63,12 +105,23 @@ CatalogoCupomResolverResult resolverCupomPublicoFirestore({
     );
   }
 
-  final ehPessoal =
-      cupom.clienteId != null && cupom.clienteId!.trim().isNotEmpty;
+  final ehPessoal = catalogoCupomEhPessoal(cupom);
   if (ehPessoal && !clienteLogado) {
     return const CatalogoCupomResolverResult(
       status: CatalogoCupomResolverStatus.bloqueadoPessoalSemLogin,
       mensagem: catalogoCupomPessoalExigeLoginMsg,
+    );
+  }
+
+  if (ehPessoal &&
+      !catalogoClienteEhDonoCupom(
+        cupom: cupom,
+        clienteLogadoId: clienteLogadoId,
+        clienteLogadoEmail: clienteLogadoEmail,
+      )) {
+    return const CatalogoCupomResolverResult(
+      status: CatalogoCupomResolverStatus.bloqueadoPessoalContaErrada,
+      mensagem: catalogoCupomPessoalContaErradaMsg,
     );
   }
 
