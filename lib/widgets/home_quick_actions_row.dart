@@ -1,4 +1,4 @@
-// M3.8 S2-R5 — atalhos permanentes da Home (Vendas / Estoque / Carrinhos).
+// M3.8 S2-R5/R6 — atalhos permanentes da Home (Vendas / Estoque / Carrinhos / Catálogo).
 
 import 'package:flutter/material.dart';
 
@@ -18,36 +18,92 @@ class HomeQuickActionsRow extends StatelessWidget {
   final HomeModuleAccessContext access;
   final HomeModuleTap onModuleTap;
 
-  static const _ids = ['vendas', 'estoque', 'carrinhos_abandonados'];
+  static const ids = [
+    'vendas',
+    'estoque',
+    'carrinhos_abandonados',
+    'catalogo_loja',
+  ];
+
+  static String shortTitle(AppModuleDefinition m) {
+    switch (m.id) {
+      case 'carrinhos_abandonados':
+        return 'Carrinhos';
+      case 'catalogo_loja':
+        return 'Catálogo';
+      default:
+        return m.title;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final actions = <Widget>[];
-    for (final id in _ids) {
+    final modules = <AppModuleDefinition>[];
+    for (final id in ids) {
       final m = HomeModuleRegistry.byId(id);
       if (m == null) continue;
       if (!HomeModuleRegistry.isAllowed(m, access)) continue;
+      modules.add(m);
+    }
+    if (modules.isEmpty) return const SizedBox.shrink();
+
+    Widget chipFor(AppModuleDefinition m) {
       final locked = HomeModuleRegistry.isPlanLocked(m, access);
-      final isVendas = id == 'vendas';
-      actions.add(
-        Expanded(
-          flex: isVendas ? 3 : 2,
-          child: _QuickActionChip(
-            module: m,
-            emphasized: isVendas,
-            locked: locked,
-            onTap: () => onModuleTap(m, planLocked: locked),
-          ),
+      final isVendas = m.id == 'vendas';
+      final isCatalogo = m.id == 'catalogo_loja';
+      return _QuickActionChip(
+        module: m,
+        label: shortTitle(m),
+        emphasized: isVendas || isCatalogo,
+        locked: locked,
+        onTap: () => onModuleTap(m, planLocked: locked),
+      );
+    }
+
+    // Mobile: duas linhas (Vendas+Estoque / Carrinhos+Catálogo).
+    final narrow = MediaQuery.sizeOf(context).width < 560;
+    if (narrow && modules.length >= 3) {
+      final row1 = modules.take(2).toList();
+      final row2 = modules.skip(2).toList();
+      return Padding(
+        padding: const EdgeInsets.only(bottom: MpSpacing.sm),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                for (var i = 0; i < row1.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 8),
+                  Expanded(child: chipFor(row1[i])),
+                ],
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                for (var i = 0; i < row2.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 8),
+                  Expanded(child: chipFor(row2[i])),
+                ],
+              ],
+            ),
+          ],
         ),
       );
-      if (id != _ids.last) {
-        actions.add(const SizedBox(width: 8));
-      }
     }
-    if (actions.isEmpty) return const SizedBox.shrink();
+
     return Padding(
-      padding: const EdgeInsets.only(bottom: MpSpacing.md),
-      child: Row(children: actions),
+      padding: const EdgeInsets.only(bottom: MpSpacing.sm),
+      child: Row(
+        children: [
+          for (var i = 0; i < modules.length; i++) ...[
+            if (i > 0) const SizedBox(width: 8),
+            Expanded(
+              flex: modules[i].id == 'vendas' ? 3 : 2,
+              child: chipFor(modules[i]),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -55,12 +111,14 @@ class HomeQuickActionsRow extends StatelessWidget {
 class _QuickActionChip extends StatelessWidget {
   const _QuickActionChip({
     required this.module,
+    required this.label,
     required this.onTap,
     required this.emphasized,
     required this.locked,
   });
 
   final AppModuleDefinition module;
+  final String label;
   final VoidCallback onTap;
   final bool emphasized;
   final bool locked;
@@ -74,7 +132,7 @@ class _QuickActionChip extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(MpRadius.md),
         child: Ink(
-          height: emphasized ? 52 : 48,
+          height: emphasized ? 48 : 44,
           decoration: BoxDecoration(
             color: emphasized ? accent : MpColors.surface,
             borderRadius: BorderRadius.circular(MpRadius.md),
@@ -98,38 +156,28 @@ class _QuickActionChip extends StatelessWidget {
                   ],
           ),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 8),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(
-                  module.icon,
-                  size: emphasized ? 22 : 18,
+                  locked ? Icons.lock_outline : module.icon,
+                  size: emphasized ? 20 : 17,
                   color: emphasized ? Colors.white : accent,
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 5),
                 Flexible(
                   child: Text(
-                    module.id == 'carrinhos_abandonados'
-                        ? 'Carrinhos'
-                        : module.title,
+                    label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: emphasized ? Colors.white : MpColors.ink,
                       fontWeight: FontWeight.w800,
-                      fontSize: emphasized ? 14 : 12,
+                      fontSize: emphasized ? 13 : 12,
                     ),
                   ),
                 ),
-                if (locked) ...[
-                  const SizedBox(width: 4),
-                  Icon(
-                    Icons.lock_outline,
-                    size: 14,
-                    color: emphasized ? Colors.white70 : MpColors.warning,
-                  ),
-                ],
               ],
             ),
           ),

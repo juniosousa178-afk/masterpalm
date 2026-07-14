@@ -51,15 +51,16 @@ void main() {
     }
   });
 
-  test('HOMEPORTAL-5 catálogo interno aponta Estoque admin', () {
+  test('HOMEPORTAL-5 catálogo interno é comercial (vendas)', () {
     final m = HomeModuleRegistry.byId('catalogo_interno')!;
     expect(m.route, '/catalogo_interno');
-    expect(m.category, HomeModuleCategory.operacoes);
+    expect(m.category, HomeModuleCategory.vendas);
+    expect(m.permissionKey, 'vendas');
   });
 
-  test('HOMEPORTAL-6 catálogo da loja fica em Marketing', () {
+  test('HOMEPORTAL-6 catálogo da loja fica em Vendas (atalho Home)', () {
     final m = HomeModuleRegistry.byId('catalogo_loja')!;
-    expect(m.category, HomeModuleCategory.marketing);
+    expect(m.category, HomeModuleCategory.vendas);
     expect(m.route, '/catalogo_loja');
   });
 
@@ -87,16 +88,27 @@ void main() {
     }
   });
 
-  test('HOMEPORTAL-10 marketing inclui catálogo da loja e campanhas', () {
+  test('HOMEPORTAL-10 marketing inclui campanhas (sem catálogo da loja)', () {
     final mkt = HomeModuleRegistry.byCategory(HomeModuleCategory.marketing)
         .map((e) => e.id);
-    expect(mkt, containsAll(['catalogo_loja', 'campanhas_dashboard']));
+    expect(mkt, contains('campanhas_dashboard'));
+    expect(mkt, isNot(contains('catalogo_loja')));
   });
 
-  test('HOMEPORTAL-11 operações inclui estoque e catálogo interno', () {
+  test('HOMEPORTAL-11 operações inclui estoque (sem catálogo interno)', () {
     final ops = HomeModuleRegistry.byCategory(HomeModuleCategory.operacoes)
         .map((e) => e.id);
-    expect(ops, containsAll(['estoque', 'catalogo_interno', 'fornecedores']));
+    expect(ops, containsAll(['estoque', 'fornecedores']));
+    expect(ops, isNot(contains('catalogo_interno')));
+  });
+
+  test('HOMEPORTAL-11b vendas inclui catálogo interno e da loja', () {
+    final vendas = HomeModuleRegistry.byCategory(HomeModuleCategory.vendas)
+        .map((e) => e.id);
+    expect(
+      vendas,
+      containsAll(['vendas', 'catalogo_interno', 'catalogo_loja']),
+    );
   });
 
   test('HOMEPORTAL-12 gate de plano em carrinhos', () {
@@ -140,7 +152,7 @@ void main() {
     expect(find.textContaining('funcionalidade'), findsWidgets);
   });
 
-  testWidgets('HOMEPORTAL-15 quick actions Vendas Estoque Carrinhos',
+  testWidgets('HOMEPORTAL-15 quick actions Vendas Estoque Carrinhos Catálogo',
       (tester) async {
     final opened = <String>[];
     await tester.pumpWidget(
@@ -158,6 +170,7 @@ void main() {
     expect(find.text('Vendas'), findsOneWidget);
     expect(find.text('Estoque'), findsOneWidget);
     expect(find.text('Carrinhos'), findsOneWidget);
+    expect(find.text('Catálogo'), findsOneWidget);
     await tester.tap(find.text('Vendas'));
     await tester.pump();
     expect(opened, ['vendas']);
@@ -176,22 +189,23 @@ void main() {
     );
     expect(find.text('Estoque'), findsWidgets);
     expect(find.text('Fornecedores'), findsOneWidget);
-    expect(find.text('Catálogo interno'), findsOneWidget);
+    expect(find.text('Catálogo interno'), findsNothing);
   });
 
-  testWidgets('HOMEPORTAL-17 tela portal Marketing lista catálogo da loja',
+  testWidgets('HOMEPORTAL-17 tela portal Vendas lista catálogos',
       (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         home: HomePortalCategoryScreen(
-          category: HomeModuleCategory.marketing,
+          category: HomeModuleCategory.vendas,
           access: _adminCtx(),
           onOpenModule: (_, {required planLocked}) {},
         ),
       ),
     );
+    expect(find.text('Catálogo interno'), findsOneWidget);
     expect(find.text('Catálogo da loja'), findsOneWidget);
-    expect(find.text('Campanhas'), findsWidgets);
+    expect(find.text('Campanhas'), findsNothing);
   });
 
   testWidgets('HOMEPORTAL-18 tap no atalho da tela portal dispara callback',

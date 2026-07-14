@@ -86,13 +86,13 @@ extension HomeModuleCategoryX on HomeModuleCategory {
   String get portalDescription {
     switch (this) {
       case HomeModuleCategory.operacoes:
-        return 'Estoque, fornecedores e catálogo interno';
+        return 'Estoque e fornecedores';
       case HomeModuleCategory.vendas:
-        return 'PDV, pré-pedidos e recuperação';
+        return 'PDV, catálogo interno e loja';
       case HomeModuleCategory.clientes:
         return 'Cadastros, histórico e CRM';
       case HomeModuleCategory.marketing:
-        return 'Campanhas, roleta e vitrine';
+        return 'Campanhas, roleta e cupons';
       case HomeModuleCategory.financeiro:
         return 'Lançamentos, metas e contas';
       case HomeModuleCategory.configuracoes:

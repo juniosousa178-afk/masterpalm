@@ -41,7 +41,7 @@ class DashboardHomeCards extends StatelessWidget {
         final metaAtingida = d['metaAtingida'] as double;
 
         return Padding(
-          padding: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.only(bottom: 6),
           child: Row(
             children: [
               Expanded(

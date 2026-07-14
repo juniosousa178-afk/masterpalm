@@ -749,7 +749,9 @@ class _CadastroVendedorSheetState extends State<_CadastroVendedorSheet> {
       _snack(
         e.code == 'email-already-in-use'
             ? 'Este e-mail ja esta em uso.'
-            : 'Erro Firebase: ${e.code}',
+            : e.code == 'weak-password'
+                ? 'Senha fraca: use no minimo 6 caracteres.'
+                : 'Erro Firebase: ${e.code}',
         isError: true,
       );
     } catch (e) {
@@ -879,8 +881,9 @@ class _CadastroVendedorSheetState extends State<_CadastroVendedorSheet> {
                   border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12)),
                 ),
-                validator: (v) =>
-                    v == null || v.length < 4 ? 'Minimo 4 caracteres' : null,
+                validator: (v) => v == null || v.length < 6
+                    ? 'Minimo 6 caracteres'
+                    : null,
               ),
               const SizedBox(height: 24),
 

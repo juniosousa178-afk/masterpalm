@@ -53,14 +53,15 @@ abstract final class HomeModuleRegistry {
     AppModuleDefinition(
       id: 'catalogo_interno',
       title: 'Catálogo interno',
-      subtitle: 'Produtos / estoque',
+      subtitle: 'Venda rápida',
       icon: Icons.menu_book_outlined,
-      // Admin = EstoqueScreen (gate da tela: 'estoque').
+      // Comercial: grade → carrinho → Nova Venda (gate: vendas).
       route: '/catalogo_interno',
-      category: HomeModuleCategory.operacoes,
-      order: 30,
-      permissionKey: 'estoque',
-      keywords: ['catalogo interno', 'produtos', 'estoque', 'admin'],
+      category: HomeModuleCategory.vendas,
+      order: 15,
+      permissionKey: 'vendas',
+      accent: Color(0xFF22C55E),
+      keywords: ['catalogo interno', 'pdv', 'venda rapida', 'carrinho'],
     ),
 
     // —— Vendas ——
@@ -220,10 +221,12 @@ abstract final class HomeModuleRegistry {
       subtitle: 'Vitrine pública',
       icon: Icons.storefront_outlined,
       // Sentinel: abre /loja/{slug} via Home (não CatalogoScreen legado).
+      // Sempre no atalho da Home + portal Vendas (não esconder em Marketing).
       route: '/catalogo_loja',
-      category: HomeModuleCategory.marketing,
-      order: 45,
+      category: HomeModuleCategory.vendas,
+      order: 50,
       permissionKey: 'catalogo',
+      accent: Color(0xFF0EA5E9),
       keywords: [
         'catalogo',
         'publico',

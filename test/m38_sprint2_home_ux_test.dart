@@ -105,7 +105,7 @@ void main() {
     expect(HomeModuleRegistry.byId('catalogo_loja')!.route, '/catalogo_loja');
     expect(
       HomeModuleRegistry.byId('catalogo_loja')!.category,
-      HomeModuleCategory.marketing,
+      HomeModuleCategory.vendas,
     );
     expect(HomeModuleRegistry.duplicateRoutes(), isEmpty);
   });

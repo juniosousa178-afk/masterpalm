@@ -30,7 +30,7 @@ class HomePortalGrid extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        const spacing = 12.0;
+        const spacing = 8.0;
         final w = constraints.maxWidth;
         final tileW = cols == 1
             ? w
@@ -97,7 +97,7 @@ class _PortalCategoryCardState extends State<_PortalCategoryCard> {
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 160),
               curve: Curves.easeOut,
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: MpColors.surface,
                 borderRadius: BorderRadius.circular(MpRadius.lg),
@@ -117,15 +117,15 @@ class _PortalCategoryCardState extends State<_PortalCategoryCard> {
               child: Row(
                 children: [
                   Container(
-                    width: 48,
-                    height: 48,
+                    width: 40,
+                    height: 40,
                     decoration: BoxDecoration(
                       color: accent.withOpacity(0.12),
                       borderRadius: BorderRadius.circular(MpRadius.md),
                     ),
-                    child: Icon(cat.icon, color: accent, size: 26),
+                    child: Icon(cat.icon, color: accent, size: 22),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,

@@ -2716,7 +2716,7 @@ class _HomeScreenState extends State<HomeScreen>
     // Conteúdo principal (body) – layout compacto, uma tela sem overflow
     final mainBody = SafeArea(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: kMaxContentWidth),
@@ -2739,7 +2739,7 @@ class _HomeScreenState extends State<HomeScreen>
                     style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                   ),
                 ],
-                const SizedBox(height: 10),
+                const SizedBox(height: 6),
                 if (_lojaIdInterno.isNotEmpty)
                   DashboardHomeCards(lojaId: _lojaIdInterno),
                 Expanded(
@@ -2765,7 +2765,7 @@ class _HomeScreenState extends State<HomeScreen>
                       }
                       final bundle = snap.data!;
                       return ListView(
-                        padding: const EdgeInsets.only(bottom: 24),
+                        padding: const EdgeInsets.only(bottom: 16),
                         children: [
                           HomeQuickActionsRow(
                             access: bundle.access,
@@ -2780,7 +2780,7 @@ class _HomeScreenState extends State<HomeScreen>
                               letterSpacing: 0.4,
                             ),
                           ),
-                          const SizedBox(height: 10),
+                          const SizedBox(height: 6),
                           HomePortalGrid(
                             access: bundle.access,
                             onOpenCategory: (cat) =>

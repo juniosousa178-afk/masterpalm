@@ -39,10 +39,10 @@ void main() {
       expect(HomeModuleRegistry.byId('clientes')!.permissionKey, 'clientes');
     });
 
-    test('PERM-REG-3 catalogo_interno usa estoque (abre EstoqueScreen)', () {
+    test('PERM-REG-3 catalogo_interno usa vendas (grade comercial)', () {
       expect(
         HomeModuleRegistry.byId('catalogo_interno')!.permissionKey,
-        'estoque',
+        'vendas',
       );
     });
 

@@ -59,6 +59,7 @@ import 'screens/fornecedor_screen.dart';
 import 'screens/vendas_screen.dart';
 import 'screens/clientes_screen.dart';
 import 'screens/estoque_screen.dart';
+import 'screens/catalogo_interno_screen.dart';
 import 'screens/historico_clientes_screen.dart';
 import 'screens/backup_screen.dart';
 import 'screens/relatorios_screen.dart';
@@ -4379,7 +4380,7 @@ class MyApp extends StatelessWidget {
                   const VisualizarPermissoesScreen(),
               // Catálogo interno admin = Estoque (produtos Hive). CatalogoScreen
               // legado (/catalogo) apontava para box `catalogo_*` desatualizada.
-              '/catalogo_interno': (_) => const EstoqueScreen(),
+              '/catalogo_interno': (_) => const CatalogoInternoScreen(),
               '/catalogo': (_) => const EstoqueScreen(),
               '/cadastro_catalogo': (_) => const CadastroCatalogoScreen(),
               '/relatorio_financeiro': (_) => _planGate(

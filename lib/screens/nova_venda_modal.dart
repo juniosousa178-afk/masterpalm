@@ -52,6 +52,12 @@ class NovaVendaModal extends StatefulWidget {
   /// Quando informado, abre em modo edição (atualização in-place via [VendasService.editarVendaMulti]).
   final Venda? vendaParaEditar;
 
+  /// Prefill do Catálogo Interno (mesma shape de `produtosSelecionados`).
+  /// Ignorado quando [vendaParaEditar] está definido.
+  final List<Map<String, dynamic>>? itensIniciais;
+  final String? observacaoInicial;
+  final double? descontoPctInicial;
+
   const NovaVendaModal({
     super.key,
     required this.produtosBox,
@@ -62,6 +68,9 @@ class NovaVendaModal extends StatefulWidget {
     required this.onVendaFinalizada,
     this.onErroAoFinalizar,
     this.vendaParaEditar,
+    this.itensIniciais,
+    this.observacaoInicial,
+    this.descontoPctInicial,
   });
 
   @override
@@ -151,7 +160,58 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
           _carregarVendaParaEdicao(widget.vendaParaEditar!);
         }
       });
+    } else if (widget.itensIniciais != null &&
+        widget.itensIniciais!.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _carregarItensIniciais();
+      });
     }
+  }
+
+  /// Prefill a partir do Catálogo Interno (não altera fluxo de finalização).
+  void _carregarItensIniciais() {
+    final raw = widget.itensIniciais;
+    if (raw == null || raw.isEmpty) return;
+
+    final obs = widget.observacaoInicial?.trim();
+    if (obs != null && obs.isNotEmpty) {
+      observacaoController.text = obs;
+    }
+    final desc = widget.descontoPctInicial;
+    if (desc != null && desc > 0) {
+      desconto = desc;
+      _descontoEmReais = false;
+      descontoController.text = _formatPercentualCampo(desc);
+    }
+
+    produtosSelecionados = raw
+        .map((m) => Map<String, dynamic>.from(m))
+        .where((m) => (m['produto']?.toString() ?? '').trim().isNotEmpty)
+        .toList();
+    if (produtosSelecionados.isEmpty) {
+      produtosSelecionados = [
+        {
+          'produto': '',
+          'preco': 0.0,
+          'quantidade': 1,
+          'tamanho': '',
+          'cor': '',
+          'extraValor': '',
+          'variacaoExtraResumo': '',
+        },
+      ];
+    }
+
+    for (final c in _quantityControllers) {
+      c.dispose();
+    }
+    _quantityControllers.clear();
+    for (final item in produtosSelecionados) {
+      final q = item['quantidade'] ?? 1;
+      _quantityControllers.add(TextEditingController(
+          text: (q is int ? q : int.tryParse(q.toString()) ?? 1).toString()));
+    }
+    setState(() {});
   }
 
   void _carregarVendaParaEdicao(Venda v) {
