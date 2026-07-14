@@ -49,6 +49,14 @@ import 'configuracoes/canais_meta_screen.dart';
 import 'campanhas_sorteio_screen.dart';
 import 'globo_sorteio_screen.dart';
 
+// ✅ M3.8 Sprint 2 — dashboards marketing
+import 'marketing/marketing_hub_screen.dart';
+import 'marketing/campanhas_dashboard_screen.dart';
+import 'marketing/roleta_dashboard_screen.dart';
+import 'marketing/marketing_estatisticas_screen.dart';
+import '../design_system/mp_tokens.dart';
+import '../widgets/home_modules_sectioned_grid.dart';
+
 // ✅ sistema de comissões
 import 'metas_comissoes_screen.dart';
 
@@ -1612,19 +1620,19 @@ class _HomeScreenState extends State<HomeScreen>
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              padding: const EdgeInsets.all(10),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: cardColor.withOpacity(0.1),
+                color: cardColor.withOpacity(0.12),
                 shape: BoxShape.circle,
               ),
-              child: Icon(icon, size: 24, color: cardColor),
+              child: Icon(icon, size: 28, color: cardColor),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             Text(
               label,
               style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
                 color: _surfaceColor,
               ),
               textAlign: TextAlign.center,
@@ -2149,6 +2157,74 @@ class _HomeScreenState extends State<HomeScreen>
 
       currentChildren.add(
         _menuTileWithPlanGate(
+          'Painel Marketing',
+          Icons.campaign_outlined,
+          '/marketing_hub',
+          pushWidget: MarketingHubScreen(
+            lojaId: _lojaIdInterno.isNotEmpty ? _lojaIdInterno : null,
+          ),
+          iconBgColor: const Color(0xFFEC4899).withOpacity(0.1),
+          color: const Color(0xFFEC4899),
+          sidebarMode: sidebarMode,
+          applyPlanGate: applyPlanGate,
+          menuPlanTier: menuPlanTier,
+          planFeature: PlanGateFeature.campanhasSorteios,
+        ),
+      );
+
+      currentChildren.add(
+        _menuTileWithPlanGate(
+          'Dashboard Campanhas',
+          Icons.insights,
+          '/campanhas_dashboard',
+          pushWidget: CampanhasDashboardScreen(
+            lojaId: _lojaIdInterno.isNotEmpty ? _lojaIdInterno : null,
+          ),
+          iconBgColor: const Color(0xFFEC4899).withOpacity(0.1),
+          color: const Color(0xFFEC4899),
+          sidebarMode: sidebarMode,
+          applyPlanGate: applyPlanGate,
+          menuPlanTier: menuPlanTier,
+          planFeature: PlanGateFeature.campanhasSorteios,
+        ),
+      );
+
+      currentChildren.add(
+        _menuTileWithPlanGate(
+          'Dashboard Roleta',
+          Icons.casino_outlined,
+          '/roleta_dashboard',
+          pushWidget: RoletaDashboardScreen(
+            lojaId: _lojaIdInterno.isNotEmpty ? _lojaIdInterno : null,
+          ),
+          iconBgColor: const Color(0xFF8B5CF6).withOpacity(0.1),
+          color: const Color(0xFF8B5CF6),
+          sidebarMode: sidebarMode,
+          applyPlanGate: applyPlanGate,
+          menuPlanTier: menuPlanTier,
+          planFeature: PlanGateFeature.campanhasSorteios,
+        ),
+      );
+
+      currentChildren.add(
+        _menuTileWithPlanGate(
+          'Estatísticas Marketing',
+          Icons.bar_chart_rounded,
+          '/marketing_estatisticas',
+          pushWidget: MarketingEstatisticasScreen(
+            lojaId: _lojaIdInterno.isNotEmpty ? _lojaIdInterno : null,
+          ),
+          iconBgColor: _primaryColor.withOpacity(0.1),
+          color: _primaryColor,
+          sidebarMode: sidebarMode,
+          applyPlanGate: applyPlanGate,
+          menuPlanTier: menuPlanTier,
+          planFeature: PlanGateFeature.campanhasSorteios,
+        ),
+      );
+
+      currentChildren.add(
+        _menuTileWithPlanGate(
           'Campanhas & Sorteios',
           Icons.casino,
           '/campanhas_sorteio',
@@ -2586,8 +2662,8 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  // ---------- cards principais ----------
-  Future<List<Widget>> _buildCardsPrincipais() async {
+  // ---------- cards principais (M3.8 S2 — seções) ----------
+  Future<List<HomeModuleSection>> _buildCardsPrincipais() async {
     final permissoes = await PermissaoService.todas();
 
     final combinadas = <String, bool>{
@@ -2603,13 +2679,16 @@ class _HomeScreenState extends State<HomeScreen>
       menuPlanTier = await _resolveMenuPlanTier();
     }
 
-    final cards = <Widget>[];
+    final operacao = <Widget>[];
+    final vendas = <Widget>[];
+    final clientes = <Widget>[];
+    final marketing = <Widget>[];
+    final financeiro = <Widget>[];
+    final config = <Widget>[];
 
-    // (Loja/Catálogo: acesso só pelo atalho "Catálogo" nos atalhos inteligentes; não duplicar no grid.)
-
-    // 1. Estoque
+    // Operação
     if (combinadas['estoque'] == true) {
-      cards.add(_buildMainCard(
+      operacao.add(_buildMainCard(
         Icons.inventory_2,
         'Estoque',
         '/estoque',
@@ -2617,21 +2696,22 @@ class _HomeScreenState extends State<HomeScreen>
         subtitle: 'Produtos',
       ));
     }
-
-    // 3. Clientes
-    if (combinadas['clientes'] == true) {
-      cards.add(_buildMainCard(
-        Icons.people,
-        'Clientes',
-        '/clientes',
-        color: const Color(0xFF8B5CF6),
-        subtitle: 'Cadastros',
+    if (combinadas['fornecedores'] == true) {
+      operacao.add(_mainCardWithPlanGate(
+        Icons.local_shipping,
+        'Fornecedores',
+        '/fornecedores',
+        color: _warningColor,
+        subtitle: 'Parceiros',
+        applyPlanGate: applyPlanGate,
+        menuPlanTier: menuPlanTier,
+        planFeature: PlanGateFeature.fornecedores,
       ));
     }
 
-    // 4. Vendas
+    // Vendas
     if (combinadas['vendas'] == true) {
-      cards.add(_buildMainCard(
+      vendas.add(_buildMainCard(
         Icons.point_of_sale,
         'Vendas',
         '/vendas',
@@ -2639,9 +2719,7 @@ class _HomeScreenState extends State<HomeScreen>
         subtitle: 'Histórico',
       ));
     }
-
-    // 4b. Carrinhos abandonados (módulo próprio — fora de Fretes & Cupons)
-    cards.add(
+    vendas.add(
       _mainCardWithPlanGate(
         Icons.shopping_cart_outlined,
         'Carrinhos Abandonados',
@@ -2657,23 +2735,97 @@ class _HomeScreenState extends State<HomeScreen>
       ),
     );
 
-    // 5. Fornecedores
-    if (combinadas['fornecedores'] == true) {
-      cards.add(_mainCardWithPlanGate(
-        Icons.local_shipping,
-        'Fornecedores',
-        '/fornecedores',
-        color: _warningColor,
-        subtitle: 'Parceiros',
-        applyPlanGate: applyPlanGate,
-        menuPlanTier: menuPlanTier,
-        planFeature: PlanGateFeature.fornecedores,
+    // Clientes
+    if (combinadas['clientes'] == true) {
+      clientes.add(_buildMainCard(
+        Icons.people,
+        'Clientes',
+        '/clientes',
+        color: const Color(0xFF8B5CF6),
+        subtitle: 'Cadastros',
       ));
     }
 
-    // 6. Relatórios Financeiros (apenas admin/programador)
+    // Marketing / Campanhas / Roleta (S2 dashboards — read-only UX)
     if (_tipo == 'admin' || _tipo == 'programador') {
-      cards.add(
+      marketing.add(
+        _mainCardWithPlanGate(
+          Icons.campaign_outlined,
+          'Painel Marketing',
+          '/marketing_hub',
+          pushWidget: MarketingHubScreen(
+            lojaId: _lojaIdInterno.isNotEmpty ? _lojaIdInterno : null,
+          ),
+          color: MpColors.marketing,
+          subtitle: 'Hub',
+          applyPlanGate: applyPlanGate,
+          menuPlanTier: menuPlanTier,
+          planFeature: PlanGateFeature.campanhasSorteios,
+        ),
+      );
+      marketing.add(
+        _mainCardWithPlanGate(
+          Icons.insights,
+          'Campanhas',
+          '/campanhas_dashboard',
+          pushWidget: CampanhasDashboardScreen(
+            lojaId: _lojaIdInterno.isNotEmpty ? _lojaIdInterno : null,
+          ),
+          color: MpColors.marketing,
+          subtitle: 'Dashboard',
+          applyPlanGate: applyPlanGate,
+          menuPlanTier: menuPlanTier,
+          planFeature: PlanGateFeature.campanhasSorteios,
+        ),
+      );
+      marketing.add(
+        _mainCardWithPlanGate(
+          Icons.casino_outlined,
+          'Roleta',
+          '/roleta_dashboard',
+          pushWidget: RoletaDashboardScreen(
+            lojaId: _lojaIdInterno.isNotEmpty ? _lojaIdInterno : null,
+          ),
+          color: MpColors.roleta,
+          subtitle: 'Dashboard',
+          applyPlanGate: applyPlanGate,
+          menuPlanTier: menuPlanTier,
+          planFeature: PlanGateFeature.campanhasSorteios,
+        ),
+      );
+      marketing.add(
+        _mainCardWithPlanGate(
+          Icons.bar_chart_rounded,
+          'Estatísticas',
+          '/marketing_estatisticas',
+          pushWidget: MarketingEstatisticasScreen(
+            lojaId: _lojaIdInterno.isNotEmpty ? _lojaIdInterno : null,
+          ),
+          color: MpColors.primary,
+          subtitle: 'Gráficos',
+          applyPlanGate: applyPlanGate,
+          menuPlanTier: menuPlanTier,
+          planFeature: PlanGateFeature.campanhasSorteios,
+        ),
+      );
+      marketing.add(
+        _mainCardWithPlanGate(
+          Icons.emoji_events_outlined,
+          'Campanhas & Sorteios',
+          '/campanhas_sorteio',
+          pushWidget: const CampanhasSorteioScreen(),
+          color: const Color(0xFFEC4899),
+          subtitle: 'Gestão',
+          applyPlanGate: applyPlanGate,
+          menuPlanTier: menuPlanTier,
+          planFeature: PlanGateFeature.campanhasSorteios,
+        ),
+      );
+    }
+
+    // Financeiro
+    if (_tipo == 'admin' || _tipo == 'programador') {
+      financeiro.add(
         _mainCardWithPlanGate(
           Icons.analytics,
           'Relatórios',
@@ -2686,7 +2838,7 @@ class _HomeScreenState extends State<HomeScreen>
           planFeature: PlanGateFeature.relatorioFinanceiroDetalhado,
         ),
       );
-      cards.add(
+      financeiro.add(
         _mainCardWithPlanGate(
           Icons.payments_outlined,
           'Gestão financeira',
@@ -2700,9 +2852,7 @@ class _HomeScreenState extends State<HomeScreen>
         ),
       );
     }
-
-    // 7. Financeiro & Metas (todos podem ver - filtrado por permissão dentro da tela)
-    cards.add(
+    financeiro.add(
       _mainCardWithPlanGate(
         Icons.trending_up,
         'Metas',
@@ -2716,7 +2866,31 @@ class _HomeScreenState extends State<HomeScreen>
       ),
     );
 
-    return cards;
+    // Configurações (atalhos rápidos)
+    if (_tipo == 'admin' || _tipo == 'programador') {
+      config.add(
+        _mainCardWithPlanGate(
+          Icons.local_offer,
+          'Fretes & Cupons',
+          '/fretes_cupons',
+          pushWidget: const FretesCuponsScreen(),
+          color: MpColors.info,
+          subtitle: 'Config',
+          applyPlanGate: applyPlanGate,
+          menuPlanTier: menuPlanTier,
+          planFeature: PlanGateFeature.fretesCupons,
+        ),
+      );
+    }
+
+    return [
+      HomeModuleSection(title: 'Operação', cards: operacao),
+      HomeModuleSection(title: 'Vendas', cards: vendas),
+      HomeModuleSection(title: 'Clientes', cards: clientes),
+      HomeModuleSection(title: 'Marketing · Campanhas · Roleta', cards: marketing),
+      HomeModuleSection(title: 'Financeiro', cards: financeiro),
+      HomeModuleSection(title: 'Configurações', cards: config),
+    ];
   }
 
   String _getGreeting() {
@@ -2734,10 +2908,10 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   /// [FutureBuilder] de listas (atalhos / menu) — erro, loading e retry sem tela vazia.
-  Widget _futureListOrError({
-    required AsyncSnapshot<List<Widget>> snap,
+  Widget _futureListOrError<T>({
+    required AsyncSnapshot<List<T>> snap,
     required VoidCallback onRetry,
-    required Widget Function(List<Widget> items) onData,
+    required Widget Function(List<T> items) onData,
   }) {
     final theme = Theme.of(context);
     if (snap.hasError) {
@@ -2784,7 +2958,7 @@ class _HomeScreenState extends State<HomeScreen>
         child: CircularProgressIndicator(color: _primaryColor),
       );
     }
-    return onData(snap.data ?? const <Widget>[]);
+    return onData(snap.data ?? <T>[]);
   }
 
   @override
@@ -2888,7 +3062,7 @@ class _HomeScreenState extends State<HomeScreen>
                 const SizedBox(height: 8),
                 // Grid de acesso (Loja, Estoque, Vendas, etc.)
                 Expanded(
-                  child: FutureBuilder<List<Widget>>(
+                  child: FutureBuilder<List<HomeModuleSection>>(
                     key: ValueKey(_homeCardsRetryKey),
                     future: _buildCardsPrincipais(),
                     builder: (context, snap) {
@@ -2897,15 +3071,8 @@ class _HomeScreenState extends State<HomeScreen>
                         onRetry: () {
                           unawaited(_refreshPlanGates(force: true));
                         },
-                        onData: (children) => GridView.count(
-                          crossAxisCount: responsiveGridCount(context,
-                              mobile: 2, tablet: 3, desktop: 4),
-                          crossAxisSpacing: 10,
-                          mainAxisSpacing: 10,
-                          childAspectRatio: desktopWeb ? 1.4 : 1.35,
-                          padding: EdgeInsets.zero,
-                          children: children,
-                        ),
+                        onData: (sections) =>
+                            HomeModulesSectionedGrid(sections: sections),
                       );
                     },
                   ),

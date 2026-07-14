@@ -96,6 +96,10 @@ import 'screens/pre_pedidos_screen.dart';
 import 'screens/planos_screen.dart';
 import 'screens/campanhas_sorteio_screen.dart';
 import 'screens/globo_sorteio_screen.dart';
+import 'screens/marketing/marketing_hub_screen.dart';
+import 'screens/marketing/campanhas_dashboard_screen.dart';
+import 'screens/marketing/roleta_dashboard_screen.dart';
+import 'screens/marketing/marketing_estatisticas_screen.dart';
 // import 'screens/gerenciar_vendedores_screen.dart'; // Substituído por vendedores_screen.dart
 import 'screens/vendedores_screen.dart';
 import 'screens/fretes_cupons_screen.dart';
@@ -4456,6 +4460,22 @@ class MyApp extends StatelessWidget {
               '/campanhas_sorteio': (_) => _planGate(
                     PlanGateFeature.campanhasSorteios,
                     const CampanhasSorteioScreen(),
+                  ),
+              '/marketing_hub': (_) => _planGate(
+                    PlanGateFeature.campanhasSorteios,
+                    const MarketingHubScreen(),
+                  ),
+              '/campanhas_dashboard': (_) => _planGate(
+                    PlanGateFeature.campanhasSorteios,
+                    const CampanhasDashboardScreen(),
+                  ),
+              '/roleta_dashboard': (_) => _planGate(
+                    PlanGateFeature.campanhasSorteios,
+                    const RoletaDashboardScreen(),
+                  ),
+              '/marketing_estatisticas': (_) => _planGate(
+                    PlanGateFeature.campanhasSorteios,
+                    const MarketingEstatisticasScreen(),
                   ),
               '/fretes_cupons': (_) => _planGate(
                     PlanGateFeature.fretesCupons,
