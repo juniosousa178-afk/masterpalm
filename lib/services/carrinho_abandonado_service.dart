@@ -29,27 +29,64 @@ class EnvioLembreteEmailResultado {
 /// Configuração da recuperação de carrinho (salva em lojas/{lojaId}/config/config.carrinhoAbandonado)
 class CarrinhoAbandonadoConfig {
   final bool ativo;
-  final int horasAbandono;
+  /// Fonte canônica (minutos). Legado gravava só [horasAbandono].
+  final int minutosAbandono;
   final bool enviarEmail;
+  final DateTime? atualizadoEm;
+  final String? atualizadoPor;
 
   CarrinhoAbandonadoConfig({
     this.ativo = false,
-    this.horasAbandono = 24,
+    this.minutosAbandono = 24 * 60,
     this.enviarEmail = true,
+    this.atualizadoEm,
+    this.atualizadoPor,
   });
+
+  /// Compatibilidade com leitores legados (ceil de horas, mín. 1).
+  int get horasAbandono {
+    final h = (minutosAbandono / 60).ceil();
+    return h < 1 ? 1 : h;
+  }
 
   Map<String, dynamic> toMap() => {
         'ativo': ativo,
         'horasAbandono': horasAbandono,
+        'minutosAbandono': minutosAbandono,
         'enviarEmail': enviarEmail,
+        if (atualizadoEm != null)
+          'atualizadoEm': Timestamp.fromDate(atualizadoEm!),
+        if (atualizadoPor != null && atualizadoPor!.trim().isNotEmpty)
+          'atualizadoPor': atualizadoPor!.trim(),
       };
 
   static CarrinhoAbandonadoConfig fromMap(Map<String, dynamic>? map) {
     if (map == null) return CarrinhoAbandonadoConfig();
+    int? minutos;
+    final rawMin = map['minutosAbandono'];
+    if (rawMin is num) {
+      minutos = rawMin.round();
+    } else {
+      final rawHoras = map['horasAbandono'];
+      if (rawHoras is num) {
+        minutos = (rawHoras.toDouble() * 60).round();
+      }
+    }
+    DateTime? atualizadoEm;
+    final rawTs = map['atualizadoEm'];
+    if (rawTs is Timestamp) {
+      atualizadoEm = rawTs.toDate();
+    } else if (rawTs is DateTime) {
+      atualizadoEm = rawTs;
+    }
     return CarrinhoAbandonadoConfig(
       ativo: map['ativo'] as bool? ?? false,
-      horasAbandono: (map['horasAbandono'] as int?) ?? 24,
+      minutosAbandono: minutos ?? 24 * 60,
       enviarEmail: map['enviarEmail'] as bool? ?? true,
+      atualizadoEm: atualizadoEm,
+      atualizadoPor: (map['atualizadoPor'] ?? '').toString().trim().isEmpty
+          ? null
+          : (map['atualizadoPor'] ?? '').toString().trim(),
     );
   }
 }
@@ -237,6 +274,9 @@ class CarrinhoAbandonadoService {
   static const String _collectionCarrinhosAbandonados = 'carrinhos_abandonados';
 
   /// Minutos sem checkout para considerar carrinho abandonado (catálogo).
+  /// Preferir [CarrinhoAbandonadoSettingsService.resolveMinutos] — este const
+  /// permanece como fallback legado (30 min) só se a chamada omitir o parâmetro
+  /// e não houver duração injetada.
   static const int minutosAbandonoCatalogo = 30;
 
   static Future<CarrinhoAbandonadoConfig> getConfig(String lojaId) async {
@@ -267,15 +307,17 @@ class CarrinhoAbandonadoService {
         .set({'carrinhoAbandonado': config.toMap()}, SetOptions(merge: true));
   }
 
-  /// Lista clientes com carrinho abandonado (carrinho não vazio + última atualização há mais de X horas).
+  /// Lista clientes com carrinho abandonado (carrinho não vazio + última atualização há mais de X).
   static Future<List<CarrinhoAbandonadoItem>> listarCarrinhosAbandonados({
     required String lojaId,
     int? horasAbandono,
+    int? minutosAbandono,
   }) async {
     try {
       final config = await getConfig(lojaId);
-      final horas = horasAbandono ?? config.horasAbandono;
-      final limite = DateTime.now().subtract(Duration(hours: horas));
+      final minutos = minutosAbandono ??
+          (horasAbandono != null ? horasAbandono * 60 : config.minutosAbandono);
+      final limite = DateTime.now().subtract(Duration(minutes: minutos));
 
       final snapshot = await _db
           .collection('lojas')
@@ -763,16 +805,19 @@ class CarrinhoAbandonadoService {
     }
   }
 
-  /// Lista carrinhos abandonados do catálogo. Considera ativo com ultimoUpdate > X min como abandonado e atualiza status.
+  /// Lista carrinhos abandonados do catálogo. Considera ativo com ultimoUpdate > X
+  /// como abandonado e atualiza status **somente** ativo→abandonado (não reverte
+  /// recuperado / virou_pedido / virou_venda).
   static Future<List<CarrinhoAbandonadoCatalogoItem>>
       listarCarrinhosAbandonadosCatalogo({
     required String lojaId,
-    int minutosAbandono = minutosAbandonoCatalogo,
+    int? minutosAbandono,
   }) async {
     if (lojaId.trim().isEmpty) return [];
     try {
+      final minutos = minutosAbandono ?? (await getConfig(lojaId)).minutosAbandono;
       final limite =
-          DateTime.now().subtract(Duration(minutes: minutosAbandono));
+          DateTime.now().subtract(Duration(minutes: minutos));
       final snapshot = await _db
           .collection('lojas')
           .doc(lojaId)
@@ -782,6 +827,12 @@ class CarrinhoAbandonadoService {
       for (final doc in snapshot.docs) {
         final d = doc.data();
         final status = (d['status'] ?? '').toString();
+        final statusNorm = status.trim().toLowerCase();
+        if (statusNorm == kCarrinhoStatusRecuperado ||
+            statusNorm.contains('pedido') ||
+            statusNorm.contains('venda')) {
+          continue;
+        }
         final produtosRaw = d['produtos'];
         final produtos = produtosRaw is List
             ? (produtosRaw)

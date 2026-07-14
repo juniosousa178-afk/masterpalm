@@ -99,7 +99,9 @@ import 'screens/globo_sorteio_screen.dart';
 import 'screens/marketing/marketing_hub_screen.dart';
 import 'screens/marketing/campanhas_dashboard_screen.dart';
 import 'screens/marketing/roleta_dashboard_screen.dart';
+import 'screens/marketing/roleta_historico_screen.dart';
 import 'screens/marketing/marketing_estatisticas_screen.dart';
+import 'screens/carrinho_abandonado_config_screen.dart';
 // import 'screens/gerenciar_vendedores_screen.dart'; // Substituído por vendedores_screen.dart
 import 'screens/vendedores_screen.dart';
 import 'screens/fretes_cupons_screen.dart';
@@ -4402,6 +4404,11 @@ class MyApp extends StatelessWidget {
                     PlanGateFeature.carrinhosAbandonados,
                     (lojaId) => CarrinhosAbandonadosScreen(lojaId: lojaId),
                   ),
+              '/config_carrinhos_abandonados': (ctx) => _lojaIdRouteGated(
+                    PlanGateFeature.carrinhosAbandonados,
+                    (lojaId) =>
+                        CarrinhoAbandonadoConfigScreen(lojaId: lojaId),
+                  ),
               '/catalog_avaliacoes_moderacao': (ctx) => _lojaIdRouteGated(
                     PlanGateFeature.catalogoAvaliacoesModeracao,
                     (lojaId) => kIsWeb
@@ -4472,6 +4479,10 @@ class MyApp extends StatelessWidget {
               '/roleta_dashboard': (_) => _planGate(
                     PlanGateFeature.campanhasSorteios,
                     const RoletaDashboardScreen(),
+                  ),
+              '/roleta_historico': (_) => _planGate(
+                    PlanGateFeature.campanhasSorteios,
+                    const RoletaHistoricoScreen(),
                   ),
               '/marketing_estatisticas': (_) => _planGate(
                     PlanGateFeature.campanhasSorteios,

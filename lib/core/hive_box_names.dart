@@ -48,4 +48,7 @@ class HiveBoxNames {
   /// Journal local de operationId pendente (recovery pré-Hive) — por loja.
   static String vendaOperationJournal(String lojaId) =>
       'venda_operation_journal_$lojaId';
+
+  /// Atalhos / preferências da Home administrativa (favoritos, última categoria).
+  static String homeUx(String lojaId) => 'home_ux_$lojaId';
 }

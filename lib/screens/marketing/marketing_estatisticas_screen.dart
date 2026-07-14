@@ -195,6 +195,8 @@ class _MarketingEstatisticasScreenState
               _boot();
             },
           ),
+          const SizedBox(height: MpSpacing.md),
+          _kpiHeader(),
           MpSectionHeader(
             title: 'Participantes por dia',
             subtitle: 'Somente leitura dos dados existentes',
@@ -249,6 +251,84 @@ class _MarketingEstatisticasScreenState
               accent: MpColors.primary,
             ),
           ],
+        ],
+      ),
+    );
+  }
+
+  Widget _kpiHeader() {
+    final camp = _campSnap?.kpis;
+    final roleta = _roletaLoad?.kpis;
+    String money(double? v) {
+      if (v == null) return '—';
+      return 'R\$ ${v.toStringAsFixed(0)}';
+    }
+
+    final tiles = <({String label, String value, IconData icon, Color color})>[
+      (
+        label: 'Campanhas ativas',
+        value: camp == null ? '—' : '${camp.ativas}',
+        icon: Icons.campaign_outlined,
+        color: MpColors.marketing,
+      ),
+      (
+        label: 'Participantes',
+        value: camp == null ? '—' : '${camp.participantes}',
+        icon: Icons.people_outline,
+        color: MpColors.primary,
+      ),
+      (
+        label: 'Conversão',
+        value: camp == null
+            ? '—'
+            : '${camp.conversaoPercent.toStringAsFixed(0)}%',
+        icon: Icons.percent,
+        color: MpColors.info,
+      ),
+      (
+        label: 'Receita',
+        value: camp == null ? '—' : money(camp.receitaGerada),
+        icon: Icons.attach_money,
+        color: MpColors.success,
+      ),
+      (
+        label: 'Roletas',
+        value: formatMetricDisplay(
+          roleta?.giros,
+          disponivel: roleta?.logsDisponiveis ?? false,
+        ),
+        icon: Icons.casino_outlined,
+        color: MpColors.roleta,
+      ),
+      (
+        label: 'Prêmios',
+        value: formatMetricDisplay(
+          roleta?.premios,
+          disponivel: roleta?.logsDisponiveis ?? false,
+        ),
+        icon: Icons.card_giftcard_outlined,
+        color: MpColors.warning,
+      ),
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: MpSpacing.md),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (final t in tiles)
+            SizedBox(
+              width: MediaQuery.sizeOf(context).width > 700
+                  ? (MediaQuery.sizeOf(context).width - 80) / 3
+                  : (MediaQuery.sizeOf(context).width - 56) / 2,
+              child: MpStatCard(
+                label: t.label,
+                value: t.value,
+                icon: t.icon,
+                accent: t.color,
+              ),
+            ),
         ],
       ),
     );

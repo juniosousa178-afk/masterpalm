@@ -9,6 +9,7 @@ import '../../models/meta.dart';
 import '../../models/venda.dart';
 import '../../core/venda_metrics_filter.dart';
 import '../../services/carrinho_abandonado_service.dart';
+import '../../services/carrinho_abandonado_settings_service.dart';
 import '../../utils/store_access_guard.dart';
 import '../models/crescimento_resumo.dart';
 import 'motor_crescimento_orchestrator.dart';
@@ -28,9 +29,11 @@ class MotorCrescimentoResumoService {
 
     try {
       final painel = await MotorCrescimentoOrchestrator.carregarPainel(lojaId);
+      final minutos =
+          await CarrinhoAbandonadoSettingsService.resolveMinutos(lojaId);
       final carrinhos = await CarrinhoAbandonadoService.listarCarrinhosAbandonadosCatalogo(
         lojaId: lojaId,
-        minutosAbandono: CarrinhoAbandonadoService.minutosAbandonoCatalogo,
+        minutosAbandono: minutos,
       );
       final ticketMedio = painel.ticketMedio;
       final produtosParados = painel.totalProdutosParados;

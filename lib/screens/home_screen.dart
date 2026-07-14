@@ -14,7 +14,6 @@ import '../widgets/vendedor_aguarde_widget.dart';
 import 'package:master_palm/widgets/responsive_shell.dart';
 import '../utils/responsive.dart';
 import '../screens/admin_login.dart';
-import '../screens/relatorio_financeiro_screen.dart';
 import '../screens/relatorios_financeiros_screen.dart';
 import '../screens/pre_pedidos_screen.dart';
 import 'loja_config_screen.dart';
@@ -54,8 +53,12 @@ import 'marketing/marketing_hub_screen.dart';
 import 'marketing/campanhas_dashboard_screen.dart';
 import 'marketing/roleta_dashboard_screen.dart';
 import 'marketing/marketing_estatisticas_screen.dart';
-import '../design_system/mp_tokens.dart';
-import '../widgets/home_modules_sectioned_grid.dart';
+import '../widgets/home_module_accordion.dart';
+import '../widgets/home_global_search_bar.dart';
+import '../widgets/home_recent_activity_card.dart';
+import '../core/home_module_registry.dart';
+import '../core/app_module_definition.dart';
+import '../services/home_ux_prefs_service.dart';
 
 // ✅ sistema de comissões
 import 'metas_comissoes_screen.dart';
@@ -68,7 +71,6 @@ import '../utils/theme_notifier.dart';
 import '../screens/notas_fiscais_screen.dart';
 import '../screens/contas_receber_screen.dart';
 import '../screens/contas_pagar_screen.dart';
-import '../screens/financeiro/financeiro_screen.dart';
 
 // ✅ consolidação de lojas
 import '../screens/consolidate_stores_screen.dart';
@@ -83,10 +85,8 @@ import '../services/notificacao_centro_service.dart';
 import '../widgets/update_app_dialog.dart';
 import '../widgets/notificacao_centro_sheet.dart';
 import '../widgets/app_help_icon_button.dart';
-import '../widgets/dashboard_home_cards.dart';
 import '../utils/catalog_payment_support_nav.dart';
 import '../widgets/dashboard_insights_section.dart';
-import '../widgets/home_intelligent_section.dart';
 import '../widgets/painel_crescimento_widget.dart';
 import 'onboarding_app_screen.dart';
 import 'global_search_screen.dart';
@@ -144,7 +144,7 @@ class _HomeScreenState extends State<HomeScreen>
   bool _vendedorSemPermissao =
       false; // ✅ Vendedor sem nenhuma permissão liberada
 
-  /// Recria [FutureBuilder]s após falha em [_buildCardsPrincipais] / [_buildMenuLateral].
+  /// Recria [FutureBuilder]s após falha em carregamento Home / menu.
   int _homeCardsRetryKey = 0;
   int _homeSidebarMenuRetryKey = 0;
   int _homeDrawerMenuRetryKey = 0;
@@ -1575,154 +1575,6 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Widget _buildMainCard(
-    IconData icon,
-    String label,
-    String route, {
-    Widget? pushWidget,
-    PlanGateFeature? pushPlanFeature,
-    Color? color,
-    String? subtitle,
-  }) {
-    final cardColor = color ?? _primaryColor;
-
-    return InkWell(
-      onTap: () {
-        final nav = navigatorKey.currentState;
-        if (nav == null) return;
-        if (pushWidget != null) {
-          final w = pushWidget;
-          final Widget page = pushPlanFeature != null
-              ? PlanGatedScreen(
-                  feature: pushPlanFeature,
-                  child: w,
-                )
-              : w;
-          nav.push(MaterialPageRoute(builder: (_) => page));
-        } else {
-          nav.pushNamed(route);
-        }
-      },
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        decoration: BoxDecoration(
-          color: _cardColor,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: cardColor.withOpacity(0.12),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, size: 28, color: cardColor),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: _surfaceColor,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            if (subtitle != null) ...[
-              const SizedBox(height: 2),
-              Text(
-                subtitle,
-                style: TextStyle(
-                  fontSize: 10,
-                  color: Colors.grey[500],
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _mainCardWithPlanGate(
-    IconData icon,
-    String label,
-    String route, {
-    Widget? pushWidget,
-    Color? color,
-    String? subtitle,
-    required bool applyPlanGate,
-    required PlanAccessTier menuPlanTier,
-    PlanGateFeature? planFeature,
-  }) {
-    if (applyPlanGate &&
-        planFeature != null &&
-        !PlanMatrix.allows(menuPlanTier, planFeature)) {
-      return InkWell(
-        onTap: () => navigatorKey.currentState?.pushNamed('/planos'),
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          decoration: BoxDecoration(
-            color: _cardColor,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: _warningColor.withOpacity(0.35)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.lock_outline, size: 22, color: _warningColor),
-              const SizedBox(height: 6),
-              Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: _surfaceColor,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
-                child: Text(
-                  PlanMatrix.upgradeHint(planFeature),
-                  style: TextStyle(fontSize: 9, color: Colors.grey[600]),
-                  textAlign: TextAlign.center,
-                  maxLines: 3,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-    return _buildMainCard(
-      icon,
-      label,
-      route,
-      pushWidget: pushWidget,
-      pushPlanFeature: applyPlanGate ? planFeature : null,
-      color: color,
-      subtitle: subtitle,
-    );
-  }
-
   // ---------- menu lateral ----------
   Future<List<Widget>> _buildMenuLateral({bool sidebarMode = false}) async {
     final permissoes = await PermissaoService.todas();
@@ -2285,6 +2137,21 @@ class _HomeScreenState extends State<HomeScreen>
         ),
       );
 
+      // Tempo de abandono — mesma rota do registry HomeModuleRegistry
+      currentChildren.add(
+        _menuTileWithPlanGate(
+          'Config. carrinhos abandonados',
+          Icons.timer_outlined,
+          '/config_carrinhos_abandonados',
+          iconBgColor: const Color(0xFFF59E0B).withOpacity(0.12),
+          color: const Color(0xFFF59E0B),
+          sidebarMode: sidebarMode,
+          applyPlanGate: applyPlanGate,
+          menuPlanTier: menuPlanTier,
+          planFeature: PlanGateFeature.carrinhosAbandonados,
+        ),
+      );
+
       // ✅ CANAIS META (WhatsApp, Instagram, Messenger)
       currentChildren.add(
         _menuTileWithPlanGate(
@@ -2662,10 +2529,9 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  // ---------- cards principais (M3.8 S2 — seções) ----------
-  Future<List<HomeModuleSection>> _buildCardsPrincipais() async {
+  // ---------- Home M3.8 S2-R3 — accordion + registry ----------
+  Future<HomeModuleAccessContext> _loadHomeAccessContext() async {
     final permissoes = await PermissaoService.todas();
-
     final combinadas = <String, bool>{
       for (final k in permissoes.keys)
         k: (_tipo == 'programador' || _tipo == 'admin')
@@ -2679,218 +2545,29 @@ class _HomeScreenState extends State<HomeScreen>
       menuPlanTier = await _resolveMenuPlanTier();
     }
 
-    final operacao = <Widget>[];
-    final vendas = <Widget>[];
-    final clientes = <Widget>[];
-    final marketing = <Widget>[];
-    final financeiro = <Widget>[];
-    final config = <Widget>[];
-
-    // Operação
-    if (combinadas['estoque'] == true) {
-      operacao.add(_buildMainCard(
-        Icons.inventory_2,
-        'Estoque',
-        '/estoque',
-        color: _primaryColor,
-        subtitle: 'Produtos',
-      ));
-    }
-    if (combinadas['fornecedores'] == true) {
-      operacao.add(_mainCardWithPlanGate(
-        Icons.local_shipping,
-        'Fornecedores',
-        '/fornecedores',
-        color: _warningColor,
-        subtitle: 'Parceiros',
-        applyPlanGate: applyPlanGate,
-        menuPlanTier: menuPlanTier,
-        planFeature: PlanGateFeature.fornecedores,
-      ));
-    }
-
-    // Vendas
-    if (combinadas['vendas'] == true) {
-      vendas.add(_buildMainCard(
-        Icons.point_of_sale,
-        'Vendas',
-        '/vendas',
-        color: _successColor,
-        subtitle: 'Histórico',
-      ));
-    }
-    vendas.add(
-      _mainCardWithPlanGate(
-        Icons.shopping_cart_outlined,
-        'Carrinhos Abandonados',
-        '/carrinhos_abandonados',
-        pushWidget: CarrinhosAbandonadosScreen(
-          lojaId: _lojaIdInterno.isNotEmpty ? _lojaIdInterno : null,
-        ),
-        color: const Color(0xFFF59E0B),
-        subtitle: 'Recuperação',
-        applyPlanGate: applyPlanGate,
-        menuPlanTier: menuPlanTier,
-        planFeature: PlanGateFeature.carrinhosAbandonados,
-      ),
+    return HomeModuleAccessContext(
+      tipoUsuario: _tipo,
+      permissoes: combinadas,
+      planTier: menuPlanTier,
+      applyPlanGate: applyPlanGate,
     );
+  }
 
-    // Clientes
-    if (combinadas['clientes'] == true) {
-      clientes.add(_buildMainCard(
-        Icons.people,
-        'Clientes',
-        '/clientes',
-        color: const Color(0xFF8B5CF6),
-        subtitle: 'Cadastros',
-      ));
+  Future<_HomePanelBundle> _loadHomePanelBundle() async {
+    final access = await _loadHomeAccessContext();
+    final open =
+        await HomeUxPrefsService.getOpenCategoryId(_lojaIdInterno);
+    return _HomePanelBundle(access: access, openCategoryId: open);
+  }
+
+  void _abrirModuloHome(AppModuleDefinition module, {required bool planLocked}) {
+    final nav = navigatorKey.currentState;
+    if (nav == null) return;
+    if (planLocked) {
+      nav.pushNamed('/planos');
+      return;
     }
-
-    // Marketing / Campanhas / Roleta (S2 dashboards — read-only UX)
-    if (_tipo == 'admin' || _tipo == 'programador') {
-      marketing.add(
-        _mainCardWithPlanGate(
-          Icons.campaign_outlined,
-          'Painel Marketing',
-          '/marketing_hub',
-          pushWidget: MarketingHubScreen(
-            lojaId: _lojaIdInterno.isNotEmpty ? _lojaIdInterno : null,
-          ),
-          color: MpColors.marketing,
-          subtitle: 'Hub',
-          applyPlanGate: applyPlanGate,
-          menuPlanTier: menuPlanTier,
-          planFeature: PlanGateFeature.campanhasSorteios,
-        ),
-      );
-      marketing.add(
-        _mainCardWithPlanGate(
-          Icons.insights,
-          'Campanhas',
-          '/campanhas_dashboard',
-          pushWidget: CampanhasDashboardScreen(
-            lojaId: _lojaIdInterno.isNotEmpty ? _lojaIdInterno : null,
-          ),
-          color: MpColors.marketing,
-          subtitle: 'Dashboard',
-          applyPlanGate: applyPlanGate,
-          menuPlanTier: menuPlanTier,
-          planFeature: PlanGateFeature.campanhasSorteios,
-        ),
-      );
-      marketing.add(
-        _mainCardWithPlanGate(
-          Icons.casino_outlined,
-          'Roleta',
-          '/roleta_dashboard',
-          pushWidget: RoletaDashboardScreen(
-            lojaId: _lojaIdInterno.isNotEmpty ? _lojaIdInterno : null,
-          ),
-          color: MpColors.roleta,
-          subtitle: 'Dashboard',
-          applyPlanGate: applyPlanGate,
-          menuPlanTier: menuPlanTier,
-          planFeature: PlanGateFeature.campanhasSorteios,
-        ),
-      );
-      marketing.add(
-        _mainCardWithPlanGate(
-          Icons.bar_chart_rounded,
-          'Estatísticas',
-          '/marketing_estatisticas',
-          pushWidget: MarketingEstatisticasScreen(
-            lojaId: _lojaIdInterno.isNotEmpty ? _lojaIdInterno : null,
-          ),
-          color: MpColors.primary,
-          subtitle: 'Gráficos',
-          applyPlanGate: applyPlanGate,
-          menuPlanTier: menuPlanTier,
-          planFeature: PlanGateFeature.campanhasSorteios,
-        ),
-      );
-      marketing.add(
-        _mainCardWithPlanGate(
-          Icons.emoji_events_outlined,
-          'Campanhas & Sorteios',
-          '/campanhas_sorteio',
-          pushWidget: const CampanhasSorteioScreen(),
-          color: const Color(0xFFEC4899),
-          subtitle: 'Gestão',
-          applyPlanGate: applyPlanGate,
-          menuPlanTier: menuPlanTier,
-          planFeature: PlanGateFeature.campanhasSorteios,
-        ),
-      );
-    }
-
-    // Financeiro
-    if (_tipo == 'admin' || _tipo == 'programador') {
-      financeiro.add(
-        _mainCardWithPlanGate(
-          Icons.analytics,
-          'Relatórios',
-          '/relatorio_financeiro',
-          pushWidget: const RelatorioFinanceiroScreen(),
-          color: const Color(0xFFEC4899),
-          subtitle: 'Financeiro',
-          applyPlanGate: applyPlanGate,
-          menuPlanTier: menuPlanTier,
-          planFeature: PlanGateFeature.relatorioFinanceiroDetalhado,
-        ),
-      );
-      financeiro.add(
-        _mainCardWithPlanGate(
-          Icons.payments_outlined,
-          'Gestão financeira',
-          '/financeiro',
-          pushWidget: const FinanceiroScreen(),
-          color: const Color(0xFF0D9488),
-          subtitle: 'Lançamentos',
-          applyPlanGate: applyPlanGate,
-          menuPlanTier: menuPlanTier,
-          planFeature: PlanGateFeature.financeiroLancamentos,
-        ),
-      );
-    }
-    financeiro.add(
-      _mainCardWithPlanGate(
-        Icons.trending_up,
-        'Metas',
-        '/relatorios_financeiros',
-        pushWidget: const RelatoriosFinanceirosScreen(),
-        color: const Color(0xFF10B981),
-        subtitle: 'Financeiro',
-        applyPlanGate: applyPlanGate,
-        menuPlanTier: menuPlanTier,
-        planFeature: PlanGateFeature.relatoriosFinanceirosHub,
-      ),
-    );
-
-    // Configurações (atalhos rápidos)
-    if (_tipo == 'admin' || _tipo == 'programador') {
-      config.add(
-        _mainCardWithPlanGate(
-          Icons.local_offer,
-          'Fretes & Cupons',
-          '/fretes_cupons',
-          pushWidget: const FretesCuponsScreen(),
-          color: MpColors.info,
-          subtitle: 'Config',
-          applyPlanGate: applyPlanGate,
-          menuPlanTier: menuPlanTier,
-          planFeature: PlanGateFeature.fretesCupons,
-        ),
-      );
-    }
-
-    return [
-      HomeModuleSection(title: 'Operação', cards: operacao),
-      HomeModuleSection(title: 'Vendas', cards: vendas),
-      HomeModuleSection(title: 'Clientes', cards: clientes),
-      HomeModuleSection(title: 'Marketing · Campanhas · Roleta', cards: marketing),
-      HomeModuleSection(title: 'Financeiro', cards: financeiro),
-      HomeModuleSection(title: 'Configurações', cards: config),
-    ];
+    nav.pushNamed(module.route);
   }
 
   String _getGreeting() {
@@ -3011,29 +2688,45 @@ class _HomeScreenState extends State<HomeScreen>
     // Conteúdo principal (body) – layout compacto, uma tela sem overflow
     final mainBody = SafeArea(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: kMaxContentWidth),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Header compacto (insight do mês)
+                // Saudação + insight
+                Text(
+                  '${_getGreeting()}, ${_getFirstName(_usuario)}',
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: _surfaceColor,
+                  ),
+                ),
+                if (_lojaSlugPublico.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    _lojaSlugPublico,
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  ),
+                ],
+                const SizedBox(height: 12),
                 if (isValidForPublicLink(_lojaSlugPublico))
                   Container(
                     padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
-                        colors: [_primaryColor, _primaryColor.withOpacity(0.8)],
+                        colors: [_primaryColor, _primaryColor.withOpacity(0.82)],
                       ),
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(14),
                       boxShadow: [
                         BoxShadow(
-                          color: _primaryColor.withOpacity(0.25),
-                          blurRadius: 8,
+                          color: _primaryColor.withOpacity(0.22),
+                          blurRadius: 10,
                           offset: const Offset(0, 4),
                         ),
                       ],
@@ -3045,34 +2738,53 @@ class _HomeScreenState extends State<HomeScreen>
                           _tipo == 'vendedor' ? _getFirstName(_usuario) : null,
                     ),
                   ),
-                if (_lojaIdInterno.isNotEmpty) const SizedBox(height: 8),
-                // Atalhos inteligentes (Motor, Campanhas, Catálogo) – interno + slug público
-                if (_lojaIdInterno.isNotEmpty)
-                  HomeIntelligentSection(
-                    lojaIdInterno: _lojaIdInterno,
-                    lojaSlugPublico: _lojaSlugPublico,
-                  ),
-                const SizedBox(height: 6),
-                // Painel Crescimento + Dashboard (sempre lojaId interno)
                 if (_lojaIdInterno.isNotEmpty) ...[
+                  const SizedBox(height: 10),
                   PainelCrescimentoWidget(lojaId: _lojaIdInterno),
-                  const SizedBox(height: 6),
-                  DashboardHomeCards(lojaId: _lojaIdInterno),
+                  const SizedBox(height: 8),
+                  HomeRecentActivityCard(lojaId: _lojaIdInterno),
                 ],
-                const SizedBox(height: 8),
-                // Grid de acesso (Loja, Estoque, Vendas, etc.)
+                const SizedBox(height: 12),
                 Expanded(
-                  child: FutureBuilder<List<HomeModuleSection>>(
+                  child: FutureBuilder<_HomePanelBundle>(
                     key: ValueKey(_homeCardsRetryKey),
-                    future: _buildCardsPrincipais(),
+                    future: _loadHomePanelBundle(),
                     builder: (context, snap) {
-                      return _futureListOrError(
-                        snap: snap,
-                        onRetry: () {
-                          unawaited(_refreshPlanGates(force: true));
-                        },
-                        onData: (sections) =>
-                            HomeModulesSectionedGrid(sections: sections),
+                      if (snap.hasError) {
+                        return Center(
+                          child: FilledButton.icon(
+                            onPressed: () {
+                              unawaited(_refreshPlanGates(force: true));
+                            },
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('Tentar novamente'),
+                          ),
+                        );
+                      }
+                      if (!snap.hasData) {
+                        return const Center(
+                          child: CircularProgressIndicator(color: _primaryColor),
+                        );
+                      }
+                      final bundle = snap.data!;
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          HomeGlobalSearchBar(
+                            access: bundle.access,
+                            onOpenModule: _abrirModuloHome,
+                          ),
+                          const SizedBox(height: 12),
+                          Expanded(
+                            child: HomeModuleAccordion(
+                              access: bundle.access,
+                              lojaId: _lojaIdInterno,
+                              initialOpenCategoryId: bundle.openCategoryId,
+                              onModuleTap: _abrirModuloHome,
+                              excludeFavoriteIdsFromAccordion: true,
+                            ),
+                          ),
+                        ],
                       );
                     },
                   ),
@@ -3482,6 +3194,16 @@ class _HomeScreenState extends State<HomeScreen>
 
 /// Card de plano na landing web (mastepalm.com.br).
 /// Mantido aqui para evitar falhas de resolução do import em ambientes Windows.
+class _HomePanelBundle {
+  const _HomePanelBundle({
+    required this.access,
+    this.openCategoryId,
+  });
+
+  final HomeModuleAccessContext access;
+  final String? openCategoryId;
+}
+
 class WebLandingPlanCard extends StatelessWidget {
   final String title;
   final String price;

@@ -35,7 +35,7 @@ class _CarrinhosAbandonadosScreenState
   String? _lojaId;
   List<CarrinhoAbandonadoItem> _lista = [];
   List<CarrinhoAbandonadoCatalogoItem> _listaCatalogo = [];
-  int _horasAbandono = 24;
+  int _minutosAbandono = 24 * 60;
   bool _enviando = false;
   String? _enviandoEmailCartId;
   String _lojaNome = '';
@@ -336,7 +336,7 @@ class _CarrinhosAbandonadosScreenState
     if (_lojaId == null) return;
     final config = await CarrinhoAbandonadoService.getConfig(_lojaId!);
     if (mounted) {
-      setState(() => _horasAbandono = config.horasAbandono);
+      setState(() => _minutosAbandono = config.minutosAbandono);
     }
   }
 
@@ -345,11 +345,12 @@ class _CarrinhosAbandonadosScreenState
     setState(() => _loading = true);
     final lista = await CarrinhoAbandonadoService.listarCarrinhosAbandonados(
       lojaId: _lojaId!,
-      horasAbandono: _horasAbandono,
+      minutosAbandono: _minutosAbandono,
     );
     final listaCatalogo =
         await CarrinhoAbandonadoService.listarCarrinhosAbandonadosCatalogo(
       lojaId: _lojaId!,
+      minutosAbandono: _minutosAbandono,
     );
     final metricasCatalogo =
         await CarrinhoAbandonadoService.getMetricasRecuperacaoCatalogo(
@@ -947,9 +948,15 @@ class _CarrinhosAbandonadosScreenState
                 ],
               ),
               const SizedBox(height: 10),
-              Text(
-                '${item.totalItens} item(ns) · ${_money(totalCarrinhoProdutos(item.itens))} · $ultimaStr',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  _infoChip('${item.totalItens} itens'),
+                  _infoChip(_money(totalCarrinhoProdutos(item.itens))),
+                  _infoChip(ultimaStr),
+                  _infoChip(score.label),
+                ],
               ),
               const SizedBox(height: 10),
               Wrap(
