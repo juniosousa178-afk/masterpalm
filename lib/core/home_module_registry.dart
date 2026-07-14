@@ -1,4 +1,4 @@
-// M3.8 S2-R3 — registry único de módulos (Home accordion + menu lateral).
+// M3.8 S2 — registry único de módulos (Home portal + telas por categoria + menu).
 
 import 'package:flutter/material.dart';
 
@@ -53,12 +53,14 @@ abstract final class HomeModuleRegistry {
     AppModuleDefinition(
       id: 'catalogo_interno',
       title: 'Catálogo interno',
-      subtitle: 'Produtos',
+      subtitle: 'Produtos / estoque',
       icon: Icons.menu_book_outlined,
-      route: '/catalogo',
+      // Admin = Estoque (não CatalogoScreen legado).
+      route: '/catalogo_interno',
       category: HomeModuleCategory.operacoes,
       order: 30,
       permissionKey: 'catalogo',
+      keywords: ['catalogo interno', 'produtos', 'estoque', 'admin'],
     ),
 
     // —— Vendas ——
@@ -208,6 +210,24 @@ abstract final class HomeModuleRegistry {
       planFeature: PlanGateFeature.campanhasSorteios,
       accent: MpColors.primary,
       keywords: ['estatisticas', 'graficos', 'campanha', 'conversao', 'receita'],
+    ),
+    AppModuleDefinition(
+      id: 'catalogo_loja',
+      title: 'Catálogo da loja',
+      subtitle: 'Vitrine pública',
+      icon: Icons.storefront_outlined,
+      // Sentinel: abre /loja/{slug} via Home (não CatalogoScreen legado).
+      route: '/catalogo_loja',
+      category: HomeModuleCategory.marketing,
+      order: 45,
+      permissionKey: 'catalogo',
+      keywords: [
+        'catalogo',
+        'publico',
+        'vitrine',
+        'loja online',
+        'visualizar loja',
+      ],
     ),
     AppModuleDefinition(
       id: 'campanhas_sorteio',

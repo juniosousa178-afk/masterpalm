@@ -4377,7 +4377,10 @@ class MyApp extends StatelessWidget {
                   ),
               '/visualizar_permissoes': (_) =>
                   const VisualizarPermissoesScreen(),
-              '/catalogo': (_) => const CatalogoScreen(),
+              // Catálogo interno admin = Estoque (produtos Hive). CatalogoScreen
+              // legado (/catalogo) apontava para box `catalogo_*` desatualizada.
+              '/catalogo_interno': (_) => const EstoqueScreen(),
+              '/catalogo': (_) => const EstoqueScreen(),
               '/cadastro_catalogo': (_) => const CadastroCatalogoScreen(),
               '/relatorio_financeiro': (_) => _planGate(
                     PlanGateFeature.relatorioFinanceiroDetalhado,

@@ -82,6 +82,24 @@ extension HomeModuleCategoryX on HomeModuleCategory {
     }
   }
 
+  /// Texto curto do card portal na Home.
+  String get portalDescription {
+    switch (this) {
+      case HomeModuleCategory.operacoes:
+        return 'Estoque, fornecedores e catálogo interno';
+      case HomeModuleCategory.vendas:
+        return 'PDV, pré-pedidos e recuperação';
+      case HomeModuleCategory.clientes:
+        return 'Cadastros, histórico e CRM';
+      case HomeModuleCategory.marketing:
+        return 'Campanhas, roleta e vitrine';
+      case HomeModuleCategory.financeiro:
+        return 'Lançamentos, metas e contas';
+      case HomeModuleCategory.configuracoes:
+        return 'Loja, equipe e integrações';
+    }
+  }
+
   int get order {
     switch (this) {
       case HomeModuleCategory.operacoes:

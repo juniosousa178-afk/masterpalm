@@ -53,12 +53,13 @@ import 'marketing/marketing_hub_screen.dart';
 import 'marketing/campanhas_dashboard_screen.dart';
 import 'marketing/roleta_dashboard_screen.dart';
 import 'marketing/marketing_estatisticas_screen.dart';
-import '../widgets/home_module_accordion.dart';
-import '../widgets/home_global_search_bar.dart';
-import '../widgets/home_recent_activity_card.dart';
+import '../widgets/home_quick_actions_row.dart';
+import '../widgets/home_portal_grid.dart';
+import '../widgets/dashboard_home_cards.dart';
+import '../screens/home_portal_category_screen.dart';
 import '../core/home_module_registry.dart';
 import '../core/app_module_definition.dart';
-import '../services/home_ux_prefs_service.dart';
+import '../screens/configure_loja_placeholder_screen.dart';
 
 // ✅ sistema de comissões
 import 'metas_comissoes_screen.dart';
@@ -86,8 +87,6 @@ import '../widgets/update_app_dialog.dart';
 import '../widgets/notificacao_centro_sheet.dart';
 import '../widgets/app_help_icon_button.dart';
 import '../utils/catalog_payment_support_nav.dart';
-import '../widgets/dashboard_insights_section.dart';
-import '../widgets/painel_crescimento_widget.dart';
 import 'onboarding_app_screen.dart';
 import 'global_search_screen.dart';
 import 'dicas_ia_screen.dart';
@@ -2555,9 +2554,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   Future<_HomePanelBundle> _loadHomePanelBundle() async {
     final access = await _loadHomeAccessContext();
-    final open =
-        await HomeUxPrefsService.getOpenCategoryId(_lojaIdInterno);
-    return _HomePanelBundle(access: access, openCategoryId: open);
+    return _HomePanelBundle(access: access, openCategoryId: null);
   }
 
   void _abrirModuloHome(AppModuleDefinition module, {required bool planLocked}) {
@@ -2567,7 +2564,47 @@ class _HomeScreenState extends State<HomeScreen>
       nav.pushNamed('/planos');
       return;
     }
+    if (module.id == 'catalogo_loja') {
+      unawaited(_abrirCatalogoLojaPublico());
+      return;
+    }
     nav.pushNamed(module.route);
+  }
+
+  Future<void> _abrirCatalogoLojaPublico() async {
+    final slug = _lojaSlugPublico.trim();
+    final nav = navigatorKey.currentState;
+    if (nav == null) return;
+    if (!isValidForPublicLink(slug)) {
+      final navCtx = navigatorKey.currentContext;
+      if (navCtx != null && navCtx.mounted) {
+        await Navigator.of(navCtx).push(
+          MaterialPageRoute(
+            builder: (_) => const ConfigureLojaPlaceholderScreen(),
+          ),
+        );
+      }
+      return;
+    }
+    // Rota canônica pública: /loja/{slug} (evita CatalogoScreen legado vazio).
+    await nav.pushNamed('/loja/$slug');
+  }
+
+  void _abrirPortalCategoria(
+    HomeModuleCategory category,
+    HomeModuleAccessContext access,
+  ) {
+    final navCtx = navigatorKey.currentContext;
+    if (navCtx == null || !navCtx.mounted) return;
+    Navigator.of(navCtx).push(
+      MaterialPageRoute(
+        builder: (_) => HomePortalCategoryScreen(
+          category: category,
+          access: access,
+          onOpenModule: _abrirModuloHome,
+        ),
+      ),
+    );
   }
 
   String _getGreeting() {
@@ -2695,7 +2732,7 @@ class _HomeScreenState extends State<HomeScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Saudação + insight
+                // Saudação
                 Text(
                   '${_getGreeting()}, ${_getFirstName(_usuario)}',
                   style: const TextStyle(
@@ -2711,40 +2748,9 @@ class _HomeScreenState extends State<HomeScreen>
                     style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                   ),
                 ],
-                const SizedBox(height: 12),
-                if (isValidForPublicLink(_lojaSlugPublico))
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [_primaryColor, _primaryColor.withOpacity(0.82)],
-                      ),
-                      borderRadius: BorderRadius.circular(14),
-                      boxShadow: [
-                        BoxShadow(
-                          color: _primaryColor.withOpacity(0.22),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: DashboardInsightsTicker(
-                      lojaId: _lojaIdInterno,
-                      isVendedor: _tipo == 'vendedor',
-                      vendedorNome:
-                          _tipo == 'vendedor' ? _getFirstName(_usuario) : null,
-                    ),
-                  ),
-                if (_lojaIdInterno.isNotEmpty) ...[
-                  const SizedBox(height: 10),
-                  PainelCrescimentoWidget(lojaId: _lojaIdInterno),
-                  const SizedBox(height: 8),
-                  HomeRecentActivityCard(lojaId: _lojaIdInterno),
-                ],
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
+                if (_lojaIdInterno.isNotEmpty)
+                  DashboardHomeCards(lojaId: _lojaIdInterno),
                 Expanded(
                   child: FutureBuilder<_HomePanelBundle>(
                     key: ValueKey(_homeCardsRetryKey),
@@ -2767,22 +2773,27 @@ class _HomeScreenState extends State<HomeScreen>
                         );
                       }
                       final bundle = snap.data!;
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                      return ListView(
+                        padding: const EdgeInsets.only(bottom: 24),
                         children: [
-                          HomeGlobalSearchBar(
+                          HomeQuickActionsRow(
                             access: bundle.access,
-                            onOpenModule: _abrirModuloHome,
+                            onModuleTap: _abrirModuloHome,
                           ),
-                          const SizedBox(height: 12),
-                          Expanded(
-                            child: HomeModuleAccordion(
-                              access: bundle.access,
-                              lojaId: _lojaIdInterno,
-                              initialOpenCategoryId: bundle.openCategoryId,
-                              onModuleTap: _abrirModuloHome,
-                              excludeFavoriteIdsFromAccordion: true,
+                          Text(
+                            'Módulos',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.grey[600],
+                              letterSpacing: 0.4,
                             ),
+                          ),
+                          const SizedBox(height: 10),
+                          HomePortalGrid(
+                            access: bundle.access,
+                            onOpenCategory: (cat) =>
+                                _abrirPortalCategoria(cat, bundle.access),
                           ),
                         ],
                       );

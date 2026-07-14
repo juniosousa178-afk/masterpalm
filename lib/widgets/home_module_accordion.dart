@@ -239,6 +239,7 @@ class HomeModuleAccordion extends StatefulWidget {
     required this.onModuleTap,
     this.lojaId = '',
     this.excludeFavoriteIdsFromAccordion = true,
+    this.excludeModuleIds = const {},
     this.initialOpenCategoryId,
   });
 
@@ -246,6 +247,8 @@ class HomeModuleAccordion extends StatefulWidget {
   final HomeModuleTap onModuleTap;
   final String lojaId;
   final bool excludeFavoriteIdsFromAccordion;
+  /// Módulos já destacados fora do accordion (ex.: CTA Vendas).
+  final Set<String> excludeModuleIds;
   final String? initialOpenCategoryId;
 
   @override
@@ -316,10 +319,17 @@ class HomeModuleAccordionState extends State<HomeModuleAccordion> {
 
   @override
   Widget build(BuildContext context) {
-    final visible = HomeModuleRegistry.visibleForHome(widget.access);
-    final counts = HomeModuleRegistry.countVisibleByCategory(widget.access);
+    final visible = HomeModuleRegistry.visibleForHome(widget.access)
+        .where((m) => !widget.excludeModuleIds.contains(m.id))
+        .toList();
+    final counts = <HomeModuleCategory, int>{};
+    for (final m in visible) {
+      counts[m.category] = (counts[m.category] ?? 0) + 1;
+    }
     final favSet = _favoriteIds.toSet();
-    final favorites = HomeModuleRegistry.byIds(_favoriteIds, access: widget.access);
+    final favorites = HomeModuleRegistry.byIds(_favoriteIds, access: widget.access)
+        .where((m) => !widget.excludeModuleIds.contains(m.id))
+        .toList();
     final accordionModules = widget.excludeFavoriteIdsFromAccordion
         ? visible.where((m) => !favSet.contains(m.id)).toList()
         : visible;

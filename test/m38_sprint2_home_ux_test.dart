@@ -105,6 +105,12 @@ void main() {
 
   test('HOMEUX-5 rotas corretas', () {
     expect(HomeModuleRegistry.byId('estoque')!.route, '/estoque');
+    expect(HomeModuleRegistry.byId('catalogo_interno')!.route, '/catalogo_interno');
+    expect(HomeModuleRegistry.byId('catalogo_loja')!.route, '/catalogo_loja');
+    expect(
+      HomeModuleRegistry.byId('catalogo_loja')!.category,
+      HomeModuleCategory.marketing,
+    );
     expect(HomeModuleRegistry.duplicateRoutes(), isEmpty);
   });
 
