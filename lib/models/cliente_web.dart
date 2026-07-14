@@ -1,5 +1,7 @@
 // lib/models/cliente_web.dart
 
+import '../core/endereco_legacy_string_coercion.dart';
+
 /// Modelo de cliente do catálogo web
 /// Armazenado em: lojas/{lojaId}/clientes_web/{clienteId}
 /// LEGADO (FASE 4): clientes_web = catálogo admin. Não usar para catálogo público.
@@ -54,7 +56,10 @@ class ClienteWeb {
       telefone: map['telefone'],
       cpf: map['cpf'],
       cep: map['cep'],
-      endereco: map['endereco'],
+      endereco: coerceEnderecoLegacyString(
+        enderecoRaw: map['endereco'],
+        enderecoFormatado: map['enderecoFormatado'],
+      ),
       numero: map['numero'],
       complemento: map['complemento'],
       bairro: map['bairro'],

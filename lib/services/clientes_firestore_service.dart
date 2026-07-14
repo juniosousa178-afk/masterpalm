@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../core/hive_box_names.dart';
 import '../core/cupom_pessoal_cliente_busca.dart';
+import '../core/endereco_legacy_string_coercion.dart';
 import 'firestore_paths.dart';
 import '../core/logger.dart';
 import 'package:hive/hive.dart';
@@ -200,7 +201,10 @@ class ClientesFirestoreService {
             nome: data['nome'] ?? '',
             telefone: data['telefone'] ?? '',
             email: data['email'],
-            endereco: data['endereco'],
+            endereco: coerceEnderecoLegacyString(
+              enderecoRaw: data['endereco'],
+              enderecoFormatado: data['enderecoFormatado'],
+            ),
             instagram: data['instagram'] ?? '',
             cep: data['cep'] ?? '',
             cidade: data['cidade'] ?? '',
