@@ -6,6 +6,9 @@ import 'plano_service.dart';
 import 'vendedor_service.dart';
 
 class PermissaoService {
+  /// Chaves conhecidas (Home portal + telas). Fonte única para mapas de acesso.
+  static List<String> get todasAsChaves => List<String>.unmodifiable(_todasAsChaves);
+
   // 🔑 Todas as chaves usadas no app (mantenha em sincronia com menus/telas)
   static const List<String> _todasAsChaves = [
     // Loja / Catálogo
@@ -131,13 +134,22 @@ class PermissaoService {
     'campanhas',
   ];
 
-  /// 🔎 Usa plano individual (box: 'plano_ativo') se existir; senão, cai no perfil do tipo
-  /// ✅ VENDEDOR: Carrega permissões dinâmicas do Firestore
+  /// 🔎 Fonte única de verdade para portal Home + telas internas.
+  ///
+  /// Admin/programador: sempre liberado (mesmo contrato do drawer legado e
+  /// [vendedorTemAlgumaPermissao]) — evita portal mostrar e tela bloquear
+  /// por `plano_ativo` incompleto.
+  ///
+  /// Vendedor: Firestore dinâmico; senão plano_ativo; senão perfil Hive.
   static Future<bool> possuiPermissao(String chave) async {
     final boxSessao = await Hive.openBox('sessao');
     final tipo = (boxSessao.get('tipo_usuario', defaultValue: 'vendedor') as String)
         .trim().toLowerCase();
     final email = boxSessao.get('usuario_logado', defaultValue: '');
+
+    if (tipo == 'admin' || tipo == 'programador') {
+      return true;
+    }
 
     // ✅ VENDEDOR: Permissões bloqueadas SEMPRE retornam false
     if (tipo == 'vendedor' && _permissoesBloqueadasVendedor.contains(chave)) {
@@ -163,6 +175,18 @@ class PermissaoService {
     );
     _garanteTodasAsChaves(permissoesTipo);
     return permissoesTipo[chave] ?? false;
+  }
+
+  /// Mapa resolvido com [possuiPermissao] — usar no portal Home (sem bypass paralelo).
+  static Future<Map<String, bool>> mapaAcessoResolvido({
+    Iterable<String>? chavesExtra,
+  }) async {
+    final keys = <String>{..._todasAsChaves, ...?chavesExtra};
+    final out = <String, bool>{};
+    for (final k in keys) {
+      out[k] = await possuiPermissao(k);
+    }
+    return out;
   }
 
   /// ✅ Carrega permissões dinâmicas do vendedor via Firestore

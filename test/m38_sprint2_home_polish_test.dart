@@ -8,6 +8,7 @@ import 'package:master_palm/core/home_module_search.dart';
 import 'package:master_palm/core/plan_matrix.dart';
 import 'package:master_palm/services/home_category_insight_service.dart';
 import 'package:master_palm/services/home_ux_prefs_service.dart';
+import 'package:master_palm/services/permissao_service.dart';
 import 'package:master_palm/widgets/home_global_search_bar.dart';
 import 'package:master_palm/widgets/home_module_accordion.dart';
 
@@ -16,13 +17,8 @@ HomeModuleAccessContext _adminCtx({
 }) {
   return HomeModuleAccessContext(
     tipoUsuario: 'admin',
-    permissoes: const {
-      'estoque': true,
-      'vendas': true,
-      'clientes': true,
-      'fornecedores': true,
-      'catalogo': true,
-      'minha_loja': true,
+    permissoes: {
+      for (final k in PermissaoService.todasAsChaves) k: true,
     },
     planTier: tier,
     applyPlanGate: true,

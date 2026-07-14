@@ -1576,15 +1576,8 @@ class _HomeScreenState extends State<HomeScreen>
 
   // ---------- menu lateral ----------
   Future<List<Widget>> _buildMenuLateral({bool sidebarMode = false}) async {
-    final permissoes = await PermissaoService.todas();
-
-    // ✅ combinadas: programador/admin vê tudo; vendedor depende do hive
-    final combinadas = <String, bool>{
-      for (final k in permissoes.keys)
-        k: (_tipo == 'programador' || _tipo == 'admin')
-            ? true
-            : (permissoes[k] ?? false),
-    };
+    // Mesma fonte do portal Home / telas (possuiPermissao).
+    final combinadas = await PermissaoService.mapaAcessoResolvido();
 
     PlanAccessTier menuPlanTier = PlanAccessTier.lifetime;
     final bool applyPlanGate = _tipo == 'admin';
@@ -2530,13 +2523,11 @@ class _HomeScreenState extends State<HomeScreen>
 
   // ---------- Home M3.8 S2-R3 — accordion + registry ----------
   Future<HomeModuleAccessContext> _loadHomeAccessContext() async {
-    final permissoes = await PermissaoService.todas();
-    final combinadas = <String, bool>{
-      for (final k in permissoes.keys)
-        k: (_tipo == 'programador' || _tipo == 'admin')
-            ? true
-            : (permissoes[k] ?? false),
-    };
+    // Fonte única = mesma de ClientesScreen/HistoricoClientesScreen/etc.
+    // (PermissaoService.possuiPermissao — sem force paralelo admin→true).
+    final combinadas = await PermissaoService.mapaAcessoResolvido(
+      chavesExtra: HomeModuleRegistry.permissionKeysInRegistry(),
+    );
 
     PlanAccessTier menuPlanTier = PlanAccessTier.lifetime;
     final bool applyPlanGate = _tipo == 'admin';

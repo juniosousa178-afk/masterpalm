@@ -55,11 +55,11 @@ abstract final class HomeModuleRegistry {
       title: 'Catálogo interno',
       subtitle: 'Produtos / estoque',
       icon: Icons.menu_book_outlined,
-      // Admin = Estoque (não CatalogoScreen legado).
+      // Admin = EstoqueScreen (gate da tela: 'estoque').
       route: '/catalogo_interno',
       category: HomeModuleCategory.operacoes,
       order: 30,
-      permissionKey: 'catalogo',
+      permissionKey: 'estoque',
       keywords: ['catalogo interno', 'produtos', 'estoque', 'admin'],
     ),
 
@@ -131,7 +131,8 @@ abstract final class HomeModuleRegistry {
       route: '/historico_cliente',
       category: HomeModuleCategory.clientes,
       order: 20,
-      permissionKey: 'clientes',
+      // Mesma chave de HistoricoClientesScreen._verificarPermissao.
+      permissionKey: 'historico_cliente',
       keywords: ['historico', 'compras', 'cliente'],
     ),
     AppModuleDefinition(
@@ -142,6 +143,8 @@ abstract final class HomeModuleRegistry {
       route: '/dashboard_insights',
       category: HomeModuleCategory.clientes,
       order: 30,
+      // Sem permissionKey no PermissaoService — só PlanGateFeature.insights
+      // (igual ao drawer legado: plan gate, sem snackbar de permissão).
       planFeature: PlanGateFeature.insights,
       keywords: ['crm', 'insights', 'aniversario', 'cliente'],
     ),
@@ -434,18 +437,28 @@ abstract final class HomeModuleRegistry {
     return map;
   }
 
+  /// Mesma regra das telas: [ctx.permissoes] deve vir de
+  /// [PermissaoService.mapaAcessoResolvido] / [PermissaoService.possuiPermissao]
+  /// (sem bypass paralelo só no portal).
   static bool isAllowed(AppModuleDefinition m, HomeModuleAccessContext ctx) {
     if (m.adminOrProgramadorOnly && !ctx.isAdminOrProgramador) {
+      // Vendedor só entra em módulo admin-only se tiver permissionKey explícita.
       if (m.permissionKey == null || ctx.permissoes[m.permissionKey!] != true) {
         return false;
       }
     }
-    if (m.permissionKey != null &&
-        !ctx.isAdminOrProgramador &&
-        ctx.permissoes[m.permissionKey!] != true) {
+    if (m.permissionKey != null && ctx.permissoes[m.permissionKey!] != true) {
       return false;
     }
     return true;
+  }
+
+  /// Chaves de permissão usadas pelo registry (auditoria / carga do mapa).
+  static Set<String> permissionKeysInRegistry() {
+    return {
+      for (final m in all)
+        if (m.permissionKey != null) m.permissionKey!,
+    };
   }
 
   /// Bloqueado por plano (ainda visível, abre /planos).
