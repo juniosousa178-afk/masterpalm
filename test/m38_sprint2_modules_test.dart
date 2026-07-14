@@ -168,7 +168,10 @@ void main() {
       expect(k.premios, 1);
       expect(k.valorDistribuido, 15);
       expect(k.premiosPendentes, greaterThanOrEqualTo(1));
+      expect(k.logsDisponiveis, isTrue);
+    });
 
+    test('busca histórico', () {
       expect(
         roletaHistoricoCorrespondeBusca(
           item: {

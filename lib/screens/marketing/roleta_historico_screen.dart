@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../design_system/mp_components.dart';
 import '../../design_system/mp_tokens.dart';
 import '../../services/loja_id_service.dart';
+import '../../services/marketing_dashboard/firestore_client_error.dart';
 import '../../services/marketing_dashboard/marketing_dashboard_aggregators.dart';
 import '../../services/marketing_dashboard/marketing_dashboard_repository.dart';
 import '../../services/store_resolver_facade.dart';
@@ -24,7 +25,8 @@ class _RoletaHistoricoScreenState extends State<RoletaHistoricoScreen> {
   final _date = DateFormat('dd/MM/yyyy HH:mm');
 
   bool _loading = true;
-  String? _erro;
+  String? _erroRede;
+  bool _permissionDenied = false;
   List<Map<String, dynamic>> _logs = [];
   String _q = '';
 
@@ -43,7 +45,8 @@ class _RoletaHistoricoScreenState extends State<RoletaHistoricoScreen> {
   Future<void> _load() async {
     setState(() {
       _loading = true;
-      _erro = null;
+      _erroRede = null;
+      _permissionDenied = false;
     });
     try {
       var id = widget.lojaId?.trim() ?? '';
@@ -53,21 +56,43 @@ class _RoletaHistoricoScreenState extends State<RoletaHistoricoScreen> {
       }
       if (id.isEmpty) {
         setState(() {
-          _erro = 'Loja não resolvida';
+          _erroRede = 'Loja não resolvida';
           _loading = false;
         });
         return;
       }
-      final logs = await _repo.listarLogsRoleta(id);
+      final r = await _repo.listarLogsRoletaResult(id);
       if (!mounted) return;
+      if (r.availability == MarketingMetricAvailability.permissionDenied) {
+        setState(() {
+          _permissionDenied = true;
+          _logs = const [];
+          _loading = false;
+        });
+        return;
+      }
+      if (!r.historicoDisponivel) {
+        setState(() {
+          _erroRede = r.error?.toString() ?? 'Falha ao carregar histórico';
+          _loading = false;
+        });
+        return;
+      }
       setState(() {
-        _logs = logs;
+        _logs = r.logs;
         _loading = false;
       });
     } catch (e) {
       if (!mounted) return;
+      if (isFirestorePermissionDenied(e)) {
+        setState(() {
+          _permissionDenied = true;
+          _loading = false;
+        });
+        return;
+      }
       setState(() {
-        _erro = e.toString();
+        _erroRede = e.toString();
         _loading = false;
       });
     }
@@ -94,110 +119,118 @@ class _RoletaHistoricoScreenState extends State<RoletaHistoricoScreen> {
       ),
       body: _loading
           ? const MpLoadingState()
-          : _erro != null
-              ? MpErrorState(message: _erro!, onRetry: _load)
-              : Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.all(MpSpacing.lg),
-                      child: MpSearchField(
-                        controller: _busca,
-                        hintText:
-                            'Cliente, telefone, pedido, cupom, prêmio, data…',
-                        onChanged: (v) => setState(() => _q = v),
-                      ),
-                    ),
-                    Expanded(
-                      child: _filtrados.isEmpty
-                          ? const MpEmptyState(
-                              title: 'Nenhum giro encontrado',
-                              icon: Icons.casino_outlined,
-                            )
-                          : ListView.separated(
-                              padding: const EdgeInsets.fromLTRB(
-                                MpSpacing.lg,
-                                0,
-                                MpSpacing.lg,
-                                MpSpacing.xl,
-                              ),
-                              itemCount: _filtrados.length,
-                              separatorBuilder: (_, __) =>
-                                  const SizedBox(height: MpSpacing.sm),
-                              itemBuilder: (context, i) {
-                                final e = _filtrados[i];
-                                final premio = (e['premioLabel'] ??
-                                        e['premio'] ??
-                                        'Prêmio')
-                                    .toString();
-                                final status =
-                                    (e['status'] ?? 'registrado').toString();
-                                final cupom = (e['cupom'] ??
-                                        e['codigoCupom'] ??
-                                        '')
-                                    .toString();
-                                final ped = (e['pedidoId'] ??
-                                        e['vendaId'] ??
-                                        '')
-                                    .toString();
-                                final valor = (e['valorCompraAntes'] ??
-                                        e['valorCompraDepois'] ??
-                                        e['premioValor'] ??
-                                        0) as num?;
-                                final campanha = (e['campanhaNome'] ??
-                                        e['campanhaId'] ??
-                                        '')
-                                    .toString();
-                                final dt = parseMarketingDate(
-                                  e['criadoEm'] ?? e['createdAt'],
-                                );
-                                final nome =
-                                    (e['clienteNome'] ?? 'Cliente').toString();
-                                return MpCard(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
+          : _permissionDenied
+              ? MpRestrictedAccessState(
+                  title: 'Histórico indisponível',
+                  subtitle:
+                      'Seu perfil não possui acesso ao histórico detalhado da roleta.',
+                  onBack: () => Navigator.pop(context),
+                  onRetry: _load,
+                )
+              : _erroRede != null
+                  ? MpErrorState(message: _erroRede!, onRetry: _load)
+                  : Column(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.all(MpSpacing.lg),
+                          child: MpSearchField(
+                            controller: _busca,
+                            hintText:
+                                'Cliente, telefone, pedido, cupom, prêmio, data…',
+                            onChanged: (v) => setState(() => _q = v),
+                          ),
+                        ),
+                        Expanded(
+                          child: _filtrados.isEmpty
+                              ? const MpEmptyState(
+                                  title: 'Nenhum giro encontrado',
+                                  icon: Icons.casino_outlined,
+                                )
+                              : ListView.separated(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    MpSpacing.lg,
+                                    0,
+                                    MpSpacing.lg,
+                                    MpSpacing.xl,
+                                  ),
+                                  itemCount: _filtrados.length,
+                                  separatorBuilder: (_, __) =>
+                                      const SizedBox(height: MpSpacing.sm),
+                                  itemBuilder: (context, i) {
+                                    final e = _filtrados[i];
+                                    final premio = (e['premioLabel'] ??
+                                            e['premio'] ??
+                                            'Prêmio')
+                                        .toString();
+                                    final status = (e['status'] ?? 'registrado')
+                                        .toString();
+                                    final cupom = (e['cupom'] ??
+                                            e['codigoCupom'] ??
+                                            '')
+                                        .toString();
+                                    final ped = (e['pedidoId'] ??
+                                            e['vendaId'] ??
+                                            '')
+                                        .toString();
+                                    final valor = (e['valorCompraAntes'] ??
+                                            e['valorCompraDepois'] ??
+                                            e['premioValor'] ??
+                                            0) as num?;
+                                    final campanha = (e['campanhaNome'] ??
+                                            e['campanhaId'] ??
+                                            '')
+                                        .toString();
+                                    final dt = parseMarketingDate(
+                                      e['criadoEm'] ?? e['createdAt'],
+                                    );
+                                    final nome = (e['clienteNome'] ?? 'Cliente')
+                                        .toString();
+                                    return MpCard(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
-                                          Expanded(
-                                            child: Text(
-                                              nome,
-                                              style: MpType.body,
-                                            ),
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: Text(
+                                                  nome,
+                                                  style: MpType.body,
+                                                ),
+                                              ),
+                                              MpBadge(
+                                                label: status,
+                                                tone: MpBadgeTone.info,
+                                              ),
+                                            ],
                                           ),
-                                          MpBadge(
-                                            label: status,
-                                            tone: MpBadgeTone.info,
+                                          const SizedBox(height: 4),
+                                          Text('Prêmio: $premio',
+                                              style: MpType.caption),
+                                          if (cupom.isNotEmpty)
+                                            Text('Cupom: $cupom',
+                                                style: MpType.caption),
+                                          if (ped.isNotEmpty)
+                                            Text('Pedido: $ped',
+                                                style: MpType.caption),
+                                          Text(
+                                            'Valor: ${_money.format(valor?.toDouble() ?? 0)}',
+                                            style: MpType.caption,
                                           ),
+                                          if (campanha.isNotEmpty)
+                                            Text('Campanha: $campanha',
+                                                style: MpType.caption),
+                                          if (dt != null)
+                                            Text(_date.format(dt),
+                                                style: MpType.caption),
                                         ],
                                       ),
-                                      const SizedBox(height: 4),
-                                      Text('Prêmio: $premio',
-                                          style: MpType.caption),
-                                      if (cupom.isNotEmpty)
-                                        Text('Cupom: $cupom',
-                                            style: MpType.caption),
-                                      if (ped.isNotEmpty)
-                                        Text('Pedido: $ped',
-                                            style: MpType.caption),
-                                      Text(
-                                        'Valor: ${_money.format(valor?.toDouble() ?? 0)}',
-                                        style: MpType.caption,
-                                      ),
-                                      if (campanha.isNotEmpty)
-                                        Text('Campanha: $campanha',
-                                            style: MpType.caption),
-                                      if (dt != null)
-                                        Text(_date.format(dt),
-                                            style: MpType.caption),
-                                    ],
-                                  ),
-                                );
-                              },
-                            ),
+                                    );
+                                  },
+                                ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
     );
   }
 }

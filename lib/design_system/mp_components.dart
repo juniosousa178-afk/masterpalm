@@ -451,6 +451,107 @@ class MpErrorState extends StatelessWidget {
   }
 }
 
+class MpRestrictedAccessState extends StatelessWidget {
+  const MpRestrictedAccessState({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    this.onBack,
+    this.onRetry,
+    this.onUnderstand,
+  });
+
+  final String title;
+  final String subtitle;
+  final VoidCallback? onBack;
+  final VoidCallback? onRetry;
+  final VoidCallback? onUnderstand;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(MpSpacing.xl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.lock_outline,
+                size: 56, color: MpColors.warning.withOpacity(0.8)),
+            const SizedBox(height: MpSpacing.md),
+            Text(title, style: MpType.title, textAlign: TextAlign.center),
+            const SizedBox(height: MpSpacing.sm),
+            Text(subtitle, style: MpType.caption, textAlign: TextAlign.center),
+            const SizedBox(height: MpSpacing.lg),
+            Wrap(
+              spacing: MpSpacing.sm,
+              runSpacing: MpSpacing.sm,
+              alignment: WrapAlignment.center,
+              children: [
+                if (onBack != null)
+                  MpSecondaryButton(
+                    label: 'Voltar',
+                    icon: Icons.arrow_back,
+                    onPressed: onBack,
+                  ),
+                if (onRetry != null)
+                  MpPrimaryButton(
+                    label: 'Tentar novamente',
+                    icon: Icons.refresh,
+                    onPressed: onRetry,
+                  ),
+                if (onUnderstand != null)
+                  MpSecondaryButton(
+                    label: 'Entenda',
+                    icon: Icons.info_outline,
+                    onPressed: onUnderstand,
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class MpInfoBanner extends StatelessWidget {
+  const MpInfoBanner({
+    super.key,
+    required this.message,
+    this.onAction,
+    this.actionLabel = 'Entenda',
+  });
+
+  final String message;
+  final VoidCallback? onAction;
+  final String actionLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return MpCard(
+      borderColor: MpColors.warning.withOpacity(0.4),
+      color: MpColors.warning.withOpacity(0.08),
+      padding: const EdgeInsets.symmetric(
+        horizontal: MpSpacing.md,
+        vertical: MpSpacing.sm,
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.info_outline, color: MpColors.warning, size: 20),
+          const SizedBox(width: MpSpacing.sm),
+          Expanded(child: Text(message, style: MpType.caption)),
+          if (onAction != null)
+            TextButton(
+              onPressed: onAction,
+              child: Text(actionLabel),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+
 class MpSuccessSnack {
   static void show(BuildContext context, String message) {
     ScaffoldMessenger.of(context).showSnackBar(

@@ -243,14 +243,26 @@ class RoletaDashboardKpis {
     required this.taxaConversaoPercent,
     required this.valorDistribuido,
     required this.configAtiva,
+    this.logsDisponiveis = true,
+    this.configPremiosRestantes,
+    this.configTotalVendas,
+    this.configVendasDesdePremio,
   });
 
-  final int giros;
-  final int premios;
-  final int premiosPendentes;
-  final double taxaConversaoPercent;
-  final double valorDistribuido;
+  final int? giros;
+  final int? premios;
+  final int? premiosPendentes;
+  final double? taxaConversaoPercent;
+  final double? valorDistribuido;
   final bool configAtiva;
+
+  /// false quando roleta_vendas não pôde ser lido (permission-denied etc.).
+  final bool logsDisponiveis;
+
+  /// Derivado só de config/roleta_sorte (quantidadeMaxima − quantidadeUsada).
+  final int? configPremiosRestantes;
+  final int? configTotalVendas;
+  final int? configVendasDesdePremio;
 
   static const zero = RoletaDashboardKpis(
     giros: 0,
@@ -260,6 +272,86 @@ class RoletaDashboardKpis {
     valorDistribuido: 0,
     configAtiva: false,
   );
+
+  /// KPIs quando histórico está indisponível — sem zeros falsos em métricas de log.
+  factory RoletaDashboardKpis.fromConfigOnly(Map<String, dynamic>? config) {
+    return RoletaDashboardKpis(
+      giros: null,
+      premios: null,
+      premiosPendentes: null,
+      taxaConversaoPercent: null,
+      valorDistribuido: null,
+      configAtiva: config?['ativa'] == true,
+      logsDisponiveis: false,
+      configPremiosRestantes: premiosRestantesNaConfig(config),
+      configTotalVendas: (config?['totalVendas'] as num?)?.toInt(),
+      configVendasDesdePremio: (config?['vendasDesdePremio'] as num?)?.toInt(),
+    );
+  }
+}
+
+/// Disponibilidade de uma fatia de dados do dashboard.
+enum MarketingMetricAvailability {
+  available,
+  empty,
+  permissionDenied,
+  error,
+}
+
+class RoletaDashboardLoadResult {
+  const RoletaDashboardLoadResult({
+    required this.config,
+    required this.logs,
+    required this.historicoDisponivel,
+    required this.kpis,
+    this.indisponibilidadeCodigo,
+  });
+
+  final Map<String, dynamic>? config;
+  final List<Map<String, dynamic>> logs;
+  final bool historicoDisponivel;
+  final String? indisponibilidadeCodigo;
+  final RoletaDashboardKpis kpis;
+}
+
+class RoletaLogsLoadResult {
+  const RoletaLogsLoadResult({
+    required this.logs,
+    required this.historicoDisponivel,
+    required this.availability,
+    this.indisponibilidadeCodigo,
+    this.error,
+  });
+
+  final List<Map<String, dynamic>> logs;
+  final bool historicoDisponivel;
+  final MarketingMetricAvailability availability;
+  final String? indisponibilidadeCodigo;
+  final Object? error;
+}
+
+int premiosRestantesNaConfig(Map<String, dynamic>? config) {
+  if (config == null) return 0;
+  var rest = 0;
+  final premiosCfg = config['premios'];
+  if (premiosCfg is! List) return 0;
+  for (final raw in premiosCfg) {
+    if (raw is! Map) continue;
+    final m = Map<String, dynamic>.from(raw);
+    final max = (m['quantidadeMaxima'] as num?)?.toInt() ?? 0;
+    final used = (m['quantidadeUsada'] as num?)?.toInt() ?? 0;
+    if (max > 0 && used < max) rest += (max - used);
+  }
+  return rest;
+}
+
+String formatMetricDisplay(num? value, {required bool disponivel}) {
+  if (!disponivel || value == null) return '—';
+  if (value is double) {
+    if (value == value.roundToDouble()) return value.toInt().toString();
+    return value.toStringAsFixed(0);
+  }
+  return value.toString();
 }
 
 bool _premioTipoNenhum(String tipo) {
@@ -278,7 +370,12 @@ RoletaDashboardKpis agregarDashboardRoleta({
   required List<Map<String, dynamic>> logs,
   required MarketingPeriodFilter periodo,
   DateTime? agora,
+  bool logsDisponiveis = true,
 }) {
+  if (!logsDisponiveis) {
+    return RoletaDashboardKpis.fromConfigOnly(config);
+  }
+
   final range = MarketingPeriodRange.resolve(periodo, agora: agora);
   final filtrados = logs.where((l) {
     if (periodo == MarketingPeriodFilter.todo) return true;
@@ -295,27 +392,13 @@ RoletaDashboardKpis agregarDashboardRoleta({
     premios++;
     valor += _premioValorNumerico(l);
     final st = (l['status'] ?? '').toString().toLowerCase();
-    if (st == 'pendente' || st == 'pending' || st.isEmpty) {
-      // sem status = conta como distribuído no log admin; pendente só se explícito
-      if (st == 'pendente' || st == 'pending') pendentes++;
+    if (st == 'pendente' || st == 'pending') {
+      pendentes++;
     }
   }
 
-  // Pendentes adicionais da config (quantidadeMaxima - quantidadeUsada)
-  if (config != null) {
-    final premiosCfg = config['premios'];
-    if (premiosCfg is List) {
-      for (final raw in premiosCfg) {
-        if (raw is! Map) continue;
-        final m = Map<String, dynamic>.from(raw);
-        final max = (m['quantidadeMaxima'] as num?)?.toInt() ?? 0;
-        final used = (m['quantidadeUsada'] as num?)?.toInt() ?? 0;
-        if (max > 0 && used < max) {
-          pendentes += (max - used);
-        }
-      }
-    }
-  }
+  final fromConfig = premiosRestantesNaConfig(config);
+  pendentes += fromConfig;
 
   final giros = filtrados.length;
   final taxa = giros > 0 ? (premios / giros) * 100 : 0.0;
@@ -326,6 +409,10 @@ RoletaDashboardKpis agregarDashboardRoleta({
     taxaConversaoPercent: taxa,
     valorDistribuido: valor,
     configAtiva: config?['ativa'] == true,
+    logsDisponiveis: true,
+    configPremiosRestantes: fromConfig,
+    configTotalVendas: (config?['totalVendas'] as num?)?.toInt(),
+    configVendasDesdePremio: (config?['vendasDesdePremio'] as num?)?.toInt(),
   );
 }
 

@@ -28,7 +28,7 @@ class _RoletaDashboardScreenState extends State<RoletaDashboardScreen> {
   bool _loading = true;
   String? _erro;
   MarketingPeriodFilter _periodo = MarketingPeriodFilter.mes;
-  RoletaDashboardKpis? _kpis;
+  RoletaDashboardLoadResult? _load;
 
   @override
   void initState() {
@@ -55,13 +55,13 @@ class _RoletaDashboardScreenState extends State<RoletaDashboardScreen> {
         });
         return;
       }
-      final k = await _repo.carregarDashboardRoleta(
+      final r = await _repo.carregarDashboardRoleta(
         lojaId: id,
         periodo: _periodo,
       );
       if (!mounted) return;
       setState(() {
-        _kpis = k;
+        _load = r;
         _loading = false;
       });
     } catch (e) {
@@ -71,6 +71,25 @@ class _RoletaDashboardScreenState extends State<RoletaDashboardScreen> {
         _loading = false;
       });
     }
+  }
+
+  void _showEntenda() {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Histórico da roleta'),
+        content: const Text(
+          'Os indicadores básicos continuam disponíveis. '
+          'O histórico completo exige permissão adicional da loja.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -111,7 +130,9 @@ class _RoletaDashboardScreenState extends State<RoletaDashboardScreen> {
   }
 
   Widget _body() {
-    final k = _kpis!;
+    final r = _load!;
+    final k = r.kpis;
+    final logsOk = r.historicoDisponivel;
     return RefreshIndicator(
       onRefresh: _boot,
       color: MpColors.roleta,
@@ -132,6 +153,14 @@ class _RoletaDashboardScreenState extends State<RoletaDashboardScreen> {
             label: k.configAtiva ? 'Roleta ativa' : 'Roleta inativa',
             tone: k.configAtiva ? MpBadgeTone.success : MpBadgeTone.neutral,
           ),
+          if (!logsOk) ...[
+            const SizedBox(height: MpSpacing.md),
+            MpInfoBanner(
+              message:
+                  'Histórico detalhado da roleta indisponível para este perfil.',
+              onAction: _showEntenda,
+            ),
+          ],
           const SizedBox(height: MpSpacing.md),
           GridView.count(
             shrinkWrap: true,
@@ -139,39 +168,62 @@ class _RoletaDashboardScreenState extends State<RoletaDashboardScreen> {
             crossAxisCount: MediaQuery.sizeOf(context).width > 700 ? 3 : 2,
             crossAxisSpacing: MpSpacing.sm,
             mainAxisSpacing: MpSpacing.sm,
-            childAspectRatio: 1.4,
+            childAspectRatio: 1.35,
             children: [
               MpStatCard(
                 label: 'Giros',
-                value: '${k.giros}',
+                value: formatMetricDisplay(k.giros, disponivel: logsOk),
                 icon: Icons.casino,
                 accent: MpColors.roleta,
+                subtitle: logsOk ? null : 'Requer histórico',
               ),
               MpStatCard(
                 label: 'Prêmios',
-                value: '${k.premios}',
+                value: formatMetricDisplay(k.premios, disponivel: logsOk),
                 icon: Icons.card_giftcard,
                 accent: MpColors.marketing,
+                subtitle: logsOk ? null : 'Requer histórico',
               ),
               MpStatCard(
                 label: 'Taxa conversão',
-                value: '${k.taxaConversaoPercent.toStringAsFixed(0)}%',
+                value: logsOk && k.taxaConversaoPercent != null
+                    ? '${k.taxaConversaoPercent!.toStringAsFixed(0)}%'
+                    : '—',
                 icon: Icons.percent,
                 accent: MpColors.success,
-                subtitle: 'prêmios / giros',
+                subtitle: logsOk ? 'prêmios / giros' : 'Requer histórico',
               ),
               MpStatCard(
-                label: 'Pendentes',
-                value: '${k.premiosPendentes}',
+                label: logsOk ? 'Pendentes' : 'Saldo config',
+                value: logsOk
+                    ? formatMetricDisplay(k.premiosPendentes, disponivel: true)
+                    : formatMetricDisplay(
+                        k.configPremiosRestantes,
+                        disponivel: true,
+                      ),
                 icon: Icons.hourglass_empty,
                 accent: MpColors.warning,
+                subtitle: logsOk
+                    ? null
+                    : 'estoque de prêmios na config',
               ),
               MpStatCard(
                 label: 'Valor distribuído',
-                value: _money.format(k.valorDistribuido),
+                value: logsOk && k.valorDistribuido != null
+                    ? _money.format(k.valorDistribuido)
+                    : '—',
                 icon: Icons.payments_outlined,
                 accent: MpColors.financeiro,
+                subtitle: logsOk ? null : 'Requer histórico',
               ),
+              if (k.configTotalVendas != null)
+                MpStatCard(
+                  label: 'Vendas (config)',
+                  value: '${k.configTotalVendas}',
+                  icon: Icons.point_of_sale,
+                  accent: MpColors.info,
+                  subtitle: 'campo da configuração',
+                ),
             ],
           ),
           const SizedBox(height: MpSpacing.lg),
