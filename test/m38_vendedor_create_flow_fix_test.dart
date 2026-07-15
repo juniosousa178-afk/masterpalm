@@ -45,7 +45,7 @@ void main() {
         ),
         contains(VendorCreateFlow.stageVendedores),
       );
-      expect(screenSrc.contains('failureMessage'), isTrue);
+      expect(screenSrc.contains('detailedFailureMessage'), isTrue);
     });
 
     test('VENDOR-FIX-3 email-already-in-use', () {

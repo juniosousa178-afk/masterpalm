@@ -2,13 +2,14 @@
 // Tela unificada: Lista, cadastra e gerencia permissões de vendedores
 
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kReleaseMode;
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb, kReleaseMode;
 import 'package:hive/hive.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:master_palm/firebase_options.dart';
+import '../config/app_check_config.dart';
 import '../core/vendedor_create_flow.dart';
 import '../services/store_resolver_facade.dart';
 import '../services/vendedor_service.dart';
@@ -633,7 +634,17 @@ class _CadastroVendedorSheetState extends State<_CadastroVendedorSheet> {
   Future<FirebaseApp> _ensureSecondaryApp() async {
     try {
       return Firebase.app('secondary');
-    } catch (_) {
+    } catch (e, st) {
+      // R3.1-DIAG: este catch engolia a exceção original (no-app).
+      VendorCreateFlow.logAuthErrorDiag(
+        VendorCreateFlow.captureAuthError(
+          e,
+          stack: st,
+          authStep: 'secondary-app',
+          firstCatchSite: 'vendedores_screen._ensureSecondaryApp',
+        ),
+        stage: 'auth-diag-secondary-miss',
+      );
       return Firebase.initializeApp(
         name: 'secondary',
         options: DefaultFirebaseOptions.currentPlatform,
@@ -641,15 +652,51 @@ class _CadastroVendedorSheetState extends State<_CadastroVendedorSheet> {
     }
   }
 
+  /// R3.2: App Check no secondary NÃO bloqueia createUser (soft-fail).
+  /// Causa R3.1: activate só com android/apple no Web → FirebaseException(code=unknown)
+  /// e stage=auth aparentava falha de Auth.
   Future<void> _ativarAppCheckNoSecundario(FirebaseApp app) async {
-    final appCheck = FirebaseAppCheck.instanceFor(app: app);
-    await appCheck.activate(
-      androidProvider:
-          kReleaseMode ? AndroidProvider.playIntegrity : AndroidProvider.debug,
-      appleProvider:
-          kReleaseMode ? AppleProvider.appAttest : AppleProvider.debug,
-    );
-    await appCheck.setTokenAutoRefreshEnabled(true);
+    assert(!VendorCreateFlow.appCheckFailureBlocksCreate());
+    if (!isAppCheckSupportedPlatform) {
+      VendorCreateFlow.logAuthStep('app-check-skip-unsupported');
+      return;
+    }
+    if (skipAppCheckOnWebInDebug) {
+      VendorCreateFlow.logAuthStep('app-check-skip-web-debug');
+      return;
+    }
+    if (kIsWeb) {
+      // Secondary Web não tem webProvider/site key próprio neste fluxo.
+      // Não bloquear cadastro (alinhado ao soft-fail do App Check principal).
+      debugPrint(
+        '${VendorCreateFlow.logTag} authStep=app-check '
+        'warning=secondary-web-skip-nonblocking',
+      );
+      return;
+    }
+    try {
+      final appCheck = FirebaseAppCheck.instanceFor(app: app);
+      await appCheck.activate(
+        androidProvider: kReleaseMode
+            ? AndroidProvider.playIntegrity
+            : AndroidProvider.debug,
+        appleProvider:
+            kReleaseMode ? AppleProvider.appAttest : AppleProvider.debug,
+      );
+      await appCheck.setTokenAutoRefreshEnabled(true);
+    } catch (e, st) {
+      VendorCreateFlow.logAuthErrorDiag(
+        VendorCreateFlow.captureAuthError(
+          e,
+          stack: st,
+          authStep: 'app-check',
+          firstCatchSite: 'vendedores_screen._ativarAppCheckNoSecundario',
+        ),
+        stage: 'auth-diag-appcheck-soft-fail',
+      );
+      debugPrint(VendorCreateFlow.appCheckSoftFailLogLine(e));
+      // Soft-fail: continua para createUser.
+    }
   }
 
   Future<void> _cadastrarVendedor() async {
@@ -665,22 +712,39 @@ class _CadastroVendedorSheetState extends State<_CadastroVendedorSheet> {
 
     FirebaseAuth? secAuth;
     var stage = VendorCreateFlow.stageForm;
+    var authStep = 'init';
     final adminUidBefore = FirebaseAuth.instance.currentUser?.uid;
     VendorCreateFlow.log(VendorCreateFlow.stageForm);
 
     try {
       stage = VendorCreateFlow.stageAuth;
-      final secApp = await _ensureSecondaryApp();
-      await _ativarAppCheckNoSecundario(secApp);
-      secAuth = FirebaseAuth.instanceFor(app: secApp);
-
       VendorCreateFlow.log(VendorCreateFlow.stageAuth, uid: adminUidBefore);
 
+      authStep = 'secondary-app';
+      VendorCreateFlow.logAuthStep(authStep);
+      final secApp = await _ensureSecondaryApp();
+      VendorCreateFlow.logAuthStep('secondary-app-ok');
+
+      authStep = 'app-check';
+      VendorCreateFlow.logAuthStep(authStep);
+      await _ativarAppCheckNoSecundario(secApp);
+      VendorCreateFlow.logAuthStep('app-check-ok');
+
+      secAuth = FirebaseAuth.instanceFor(app: secApp);
+
+      authStep = 'createUser';
+      VendorCreateFlow.logAuthStep(authStep);
       final cred = await secAuth.createUserWithEmailAndPassword(
         email: email,
         password: senha,
       );
       final uid = cred.user!.uid;
+      VendorCreateFlow.logAuthStep('createUser-ok');
+      VendorCreateFlow.log(
+        VendorCreateFlow.stageAuth,
+        uid: uid,
+        code: 'createUser-ok',
+      );
       final primaryAfter = FirebaseAuth.instance.currentUser?.uid;
 
       if (!VendorCreateFlow.primarySessionStillAdmin(
@@ -827,38 +891,57 @@ class _CadastroVendedorSheetState extends State<_CadastroVendedorSheet> {
       if (mounted) {
         Navigator.pop(context);
       }
-    } on FirebaseAuthException catch (e) {
+    } on FirebaseAuthException catch (e, st) {
+      // Códigos Auth reais: email-already-in-use / weak-password / ….
+      final diag = VendorCreateFlow.captureAuthError(
+        e,
+        stack: st,
+        authStep: authStep,
+        firstCatchSite: 'vendedores_screen._cadastrarVendedor.onFirebaseAuthException',
+      );
+      VendorCreateFlow.logAuthErrorDiag(
+        diag,
+        stage: VendorCreateFlow.stageError,
+      );
       VendorCreateFlow.log(
         VendorCreateFlow.stageError,
-        code: e.code,
+        code: diag.displayCode(),
         uid: adminUidBefore,
       );
-      // Mantém códigos Auth reais (email-already-in-use / weak-password / …).
-      final msg = VendorCreateFlow.failureMessage(
-        code: e.code,
+      final msg = VendorCreateFlow.detailedFailureMessage(
+        diag: diag,
         stage: VendorCreateFlow.stageAuth,
       );
       _showError(msg);
       if (mounted) setState(() => _carregando = false);
-    } catch (e) {
-      final code = e is FirebaseException
-          ? e.code
-          : VendorCreateFlow.extractFirebaseCode(e);
+    } catch (e, st) {
       final stageOut = e is StateError &&
               e.message == VendorCreateFlow.refreshMissMessage()
           ? VendorCreateFlow.stageRefresh
           : stage;
+      final diag = VendorCreateFlow.captureAuthError(
+        e,
+        stack: st,
+        authStep: stageOut == VendorCreateFlow.stageAuth ? authStep : null,
+        firstCatchSite: 'vendedores_screen._cadastrarVendedor.catch',
+      );
+      VendorCreateFlow.logAuthErrorDiag(diag, stage: VendorCreateFlow.stageError);
+      final code = e is StateError &&
+              e.message == VendorCreateFlow.refreshMissMessage()
+          ? 'refresh-miss'
+          : diag.displayCode();
       VendorCreateFlow.log(
         VendorCreateFlow.stageError,
-        code: code == 'unknown' && e is StateError
-            ? 'refresh-miss'
-            : code,
+        code: code,
         uid: adminUidBefore,
       );
       final msg = e is StateError &&
               e.message == VendorCreateFlow.refreshMissMessage()
           ? VendorCreateFlow.refreshMissMessage()
-          : VendorCreateFlow.failureMessage(code: code, stage: stageOut);
+          : VendorCreateFlow.detailedFailureMessage(
+              diag: diag,
+              stage: stageOut,
+            );
       _showError(msg);
       if (mounted) setState(() => _carregando = false);
     } finally {

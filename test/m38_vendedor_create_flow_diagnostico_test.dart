@@ -64,7 +64,7 @@ void main() {
         ),
         'email-already-in-use',
       );
-      expect(screenSrc.contains('failureMessage'), isTrue);
+      expect(screenSrc.contains('detailedFailureMessage'), isTrue);
       expect(screenSrc.contains('reportErrorToParent'), isTrue);
     });
 
