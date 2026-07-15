@@ -1559,6 +1559,9 @@ class VendasService {
     double pix = 0.0,
     double cartao = 0.0,
     String vendedor = 'App',
+    String? vendedorUid,
+    String? vendedorNome,
+    String? vendedorEmail,
     String observacao = '',
     double frete = 0.0,
     double descontoPct = 0.0,
@@ -1609,6 +1612,9 @@ class VendasService {
           pix: pix,
           cartao: cartao,
           vendedor: vendedor,
+          vendedorUid: vendedorUid,
+          vendedorNome: vendedorNome,
+          vendedorEmail: vendedorEmail,
           observacao: observacao,
           frete: frete,
           descontoPct: descontoPct,
@@ -1646,6 +1652,9 @@ class VendasService {
     double pix = 0.0,
     double cartao = 0.0,
     String vendedor = 'App',
+    String? vendedorUid,
+    String? vendedorNome,
+    String? vendedorEmail,
     String observacao = '',
     double frete = 0.0,
     double descontoPct = 0.0,
@@ -2056,6 +2065,13 @@ class VendasService {
           VendaComboEstoqueExpansion.serializeItensComboSelecaoPorIndice(
         itensComboSelecaoPorIndice,
       ),
+      vendedorUid: (vendedorUid ?? '').trim().isEmpty ? null : vendedorUid!.trim(),
+      vendedorNome: (vendedorNome ?? '').trim().isEmpty
+          ? null
+          : vendedorNome!.trim(),
+      vendedorEmail: (vendedorEmail ?? '').trim().isEmpty
+          ? null
+          : vendedorEmail!.trim().toLowerCase(),
     );
 
     // Em edição: reutiliza idFirebase da venda antiga (evita duplicata no Firestore)
@@ -2480,6 +2496,9 @@ class VendasService {
     double pix = 0.0,
     double cartao = 0.0,
     String vendedor = 'App',
+    String? vendedorUid,
+    String? vendedorNome,
+    String? vendedorEmail,
     String observacao = '',
     double frete = 0.0,
     double descontoPct = 0.0,
@@ -2745,6 +2764,15 @@ class VendasService {
     venda.data = dataVenda ?? venda.data;
     venda.tamanho = '';
     venda.vendedor = vendedor;
+    if (vendedorUid != null && vendedorUid.trim().isNotEmpty) {
+      venda.vendedorUid = vendedorUid.trim();
+    }
+    if (vendedorNome != null && vendedorNome.trim().isNotEmpty) {
+      venda.vendedorNome = vendedorNome.trim();
+    }
+    if (vendedorEmail != null && vendedorEmail.trim().isNotEmpty) {
+      venda.vendedorEmail = vendedorEmail.trim().toLowerCase();
+    }
     venda.frete = frete;
     venda.desconto = descontoPct;
     venda.observacao = observacao.trim();

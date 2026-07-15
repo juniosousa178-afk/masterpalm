@@ -9,6 +9,7 @@ import '../core/combo_configuravel_resumo.dart';
 import '../core/dart_error_unwrap.dart';
 import '../core/nova_venda_pos_save_ui_policy.dart';
 import '../core/logger.dart';
+import '../core/access_scope_service.dart';
 import '../core/produto_variacao_extra.dart';
 import '../core/strict_product_resolution.dart';
 import '../core/venda_finalizacao_reentrada_guard.dart';
@@ -123,6 +124,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
 
   final _finalizacaoReentradaGuard = VendaFinalizacaoReentradaGuard();
   final _pdvSaleIntentLifecycle = PdvSaleIntentLifecycle();
+  AccessScopeIdentity? _scope;
 
   @visibleForTesting
   PdvSaleIntentLifecycle get debugPdvSaleIntentLifecycle =>
@@ -149,6 +151,9 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
   void initState() {
     super.initState();
     lojaId = widget.lojaId;
+    AccessScopeService.loadIdentity().then((id) {
+      if (mounted) setState(() => _scope = id);
+    });
     freteController = TextEditingController();
     descontoController = TextEditingController();
     _valorControllers.add(TextEditingController());
@@ -610,14 +615,21 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     return null;
   }
 
-  /// Últimas vendas do cliente (da vendasBox, por nome)
+  /// Últimas vendas do cliente — só as do escopo (vendedor: próprias).
   List<Venda> _ultimasVendasCliente(String nomeCliente) {
     if (nomeCliente.trim().isEmpty) return [];
     final lower = nomeCliente.trim().toLowerCase();
+    final scope = _scope;
     return widget.vendasBox.values
-        .where((v) =>
-            (v.lojaId == lojaId || v.lojaId == null) &&
-            v.clienteNome.trim().toLowerCase() == lower)
+        .where((v) {
+          if (!(v.lojaId == lojaId || v.lojaId == null)) return false;
+          if (v.clienteNome.trim().toLowerCase() != lower) return false;
+          if (scope != null &&
+              !AccessScopeService.canSeeHistory(scope, v)) {
+            return false;
+          }
+          return true;
+        })
         .toList()
       ..sort((a, b) => b.data.compareTo(a.data));
   }
@@ -1916,6 +1928,16 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       final clientesBox = widget.clientesBox;
       final vendasBox = widget.vendasBox;
       final vendedor = widget.vendedor;
+      final scope = await AccessScopeService.loadIdentity();
+      final vendedorUid = scope.uid.isNotEmpty ? scope.uid : null;
+      final vendedorNome = scope.displayName.isNotEmpty
+          ? scope.displayName
+          : (vendedor.trim().isNotEmpty && !vendedor.contains('@')
+              ? vendedor.trim()
+              : null);
+      final vendedorEmail = scope.email.isNotEmpty
+          ? scope.email
+          : (vendedor.contains('@') ? vendedor.trim().toLowerCase() : null);
       final vendaParaEditarRef = widget.vendaParaEditar;
       final onVendaFinalizadaRef = widget.onVendaFinalizada;
 
@@ -1926,6 +1948,9 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         clientesBox: clientesBox,
         vendasBox: vendasBox,
         vendedor: vendedor,
+        vendedorUid: vendedorUid,
+        vendedorNome: vendedorNome,
+        vendedorEmail: vendedorEmail,
         nomeClienteFinal: nomeClienteFinal,
         cliente: cliente,
         itens: itens,
@@ -2007,6 +2032,9 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     required Box<Cliente> clientesBox,
     required Box<Venda> vendasBox,
     required String vendedor,
+    String? vendedorUid,
+    String? vendedorNome,
+    String? vendedorEmail,
     required String nomeClienteFinal,
     required Cliente? cliente,
     required List<VendaItem> itens,
@@ -2037,6 +2065,9 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
           pix: valorPix,
           cartao: valorCartao,
           vendedor: vendedor,
+          vendedorUid: vendedorUid,
+          vendedorNome: vendedorNome,
+          vendedorEmail: vendedorEmail,
           observacao: observacao,
           frete: frete,
           descontoPct: _descontoPctEquivalenteParaSalvar(),
@@ -2075,6 +2106,9 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         pix: valorPix,
         cartao: valorCartao,
         vendedor: vendedor,
+        vendedorUid: vendedorUid,
+        vendedorNome: vendedorNome,
+        vendedorEmail: vendedorEmail,
         observacao: observacao,
         frete: frete,
         descontoPct: _descontoPctEquivalenteParaSalvar(),
@@ -2179,37 +2213,82 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                     ),
                     const SizedBox(height: 20),
 
-                    // Cliente (autocomplete)
-                    Autocomplete<String>(
-                      initialValue:
-                          TextEditingValue(text: clienteController.text),
+                    // Cliente (autocomplete) — pesquisa GLOBAL da loja (MULTI:
+                    // vendedor também vê todos os clientes aqui para evitar
+                    // cadastro duplicado; a carteira aplica-se só na lista CRM).
+                    // Ao selecionar: não expor histórico/CRM de outros vendedores.
+                    Autocomplete<Cliente>(
                       optionsBuilder: (textEditingValue) {
                         if (textEditingValue.text.isEmpty) {
-                          return const Iterable<String>.empty();
+                          return const Iterable<Cliente>.empty();
                         }
                         final lower =
                             textEditingValue.text.toLowerCase().trim();
-                        return widget.clientesBox.values
-                            .where((c) =>
-                                c.lojaId == lojaId &&
-                                c.nome.toLowerCase().contains(lower))
-                            .map((c) => c.nome)
-                            .toSet()
-                            .toList()
-                          ..sort();
+                        return widget.clientesBox.values.where((c) {
+                          if (c.lojaId != lojaId) return false;
+                          final blob = [
+                            c.nome,
+                            c.telefone,
+                            c.cidade,
+                            c.email ?? '',
+                            c.endereco ?? '',
+                            c.cep,
+                          ].join(' ').toLowerCase();
+                          return blob.contains(lower);
+                        }).take(20);
                       },
-                      onSelected: (value) {
-                        clienteController.text = value;
+                      displayStringForOption: (c) => c.nome,
+                      onSelected: (c) {
+                        clienteController.text = c.nome;
                         setState(() {});
+                      },
+                      optionsViewBuilder: (context, onSelected, options) {
+                        return Align(
+                          alignment: Alignment.topLeft,
+                          child: Material(
+                            elevation: 4,
+                            borderRadius: BorderRadius.circular(8),
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxHeight: 240),
+                              child: ListView.builder(
+                                padding: EdgeInsets.zero,
+                                shrinkWrap: true,
+                                itemCount: options.length,
+                                itemBuilder: (context, index) {
+                                  final c = options.elementAt(index);
+                                  final sub =
+                                      AccessScopeService.customerSearchSubtitle(
+                                    telefone: c.telefone,
+                                    cidade: c.cidade,
+                                    cpf: c.cep,
+                                    endereco: c.endereco,
+                                  );
+                                  return ListTile(
+                                    dense: true,
+                                    title: Text(c.nome),
+                                    subtitle: sub.isEmpty ? null : Text(sub),
+                                    onTap: () => onSelected(c),
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
+                        );
                       },
                       fieldViewBuilder:
                           (context, controller, focusNode, onSubmit) {
+                        // Mantém sync com clienteController externo.
+                        if (controller.text != clienteController.text &&
+                            clienteController.text.isNotEmpty &&
+                            controller.text.isEmpty) {
+                          controller.text = clienteController.text;
+                        }
                         return TextFormField(
                           controller: controller,
                           focusNode: focusNode,
                           decoration: InputDecoration(
                             labelText: 'Cliente',
-                            hintText: 'Buscar clientes cadastrados',
+                            hintText: 'Nome, telefone, cidade, CPF…',
                             filled: true,
                             fillColor: Colors.grey.shade50,
                             border: OutlineInputBorder(
@@ -2219,7 +2298,6 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                           ),
                           onChanged: (v) {
                             clienteController.text = v;
-                            setState(() {});
                           },
                           onFieldSubmitted: (_) => onSubmit(),
                         );

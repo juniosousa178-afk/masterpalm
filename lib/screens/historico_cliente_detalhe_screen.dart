@@ -7,6 +7,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../core/access_scope_service.dart';
 import '../models/venda.dart';
 import '../models/venda_item.dart';
 import '../utils/text_utils.dart';
@@ -38,11 +39,24 @@ class HistoricoClienteDetalheScreen extends StatefulWidget {
 
 class _HistoricoClienteDetalheScreenState extends State<HistoricoClienteDetalheScreen> {
   String ordenacaoCompras = 'data_desc'; // data_desc | data_asc
+  AccessScopeIdentity? _scope;
+
+  @override
+  void initState() {
+    super.initState();
+    AccessScopeService.loadIdentity().then((id) {
+      if (mounted) setState(() => _scope = id);
+    });
+  }
 
   List<Venda> _vendasDoCliente() {
     final nomeNorm = normalizeText(widget.clienteNome);
+    final scope = _scope;
     var lista = widget.vendasBox.values.where((v) {
       if (v.lojaId != null && v.lojaId!.isNotEmpty && v.lojaId != widget.lojaId) {
+        return false;
+      }
+      if (scope != null && !AccessScopeService.canSeeSale(scope, v)) {
         return false;
       }
       return normalizeText(v.clienteNome) == nomeNorm;

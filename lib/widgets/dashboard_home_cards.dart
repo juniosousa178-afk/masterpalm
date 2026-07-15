@@ -4,11 +4,12 @@
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 import '../core/hive_box_names.dart';
+import '../core/access_scope_service.dart';
+import '../core/venda_metrics_filter.dart';
 import '../models/produto.dart';
 import '../utils/store_access_guard.dart';
 import '../models/venda.dart';
 import '../models/meta.dart';
-import '../core/venda_metrics_filter.dart';
 
 const Color _primaryColor = Color(0xFF6366F1);
 const Color _successColor = Color(0xFF22C55E);
@@ -39,6 +40,7 @@ class DashboardHomeCards extends StatelessWidget {
         final qtdEstoqueBaixo = d['qtdEstoqueBaixo'] as int;
         final metaAtual = d['metaAtual'] as double;
         final metaAtingida = d['metaAtingida'] as double;
+        final isSeller = d['isSeller'] as bool? ?? false;
 
         return Padding(
           padding: const EdgeInsets.only(bottom: 6),
@@ -47,7 +49,7 @@ class DashboardHomeCards extends StatelessWidget {
               Expanded(
                 child: _DashboardCard(
                   icon: Icons.point_of_sale,
-                  label: 'Vendas hoje',
+                  label: isSeller ? 'Minhas vendas' : 'Vendas hoje',
                   value: 'R\$ ${vendasHoje.toStringAsFixed(2).replaceAll('.', ',')}',
                   color: _successColor,
                 ),
@@ -65,7 +67,7 @@ class DashboardHomeCards extends StatelessWidget {
               Expanded(
                 child: _DashboardCard(
                   icon: Icons.flag_outlined,
-                  label: 'Meta do mês',
+                  label: isSeller ? 'Minha meta' : 'Meta do mês',
                   value: metaAtual <= 0
                       ? '—'
                       : '${(metaAtingida / metaAtual * 100).toStringAsFixed(0)}%',
@@ -84,6 +86,7 @@ class DashboardHomeCards extends StatelessWidget {
     final now = DateTime.now();
     final hojeInicio = DateTime(now.year, now.month, now.day);
     final hojeFim = hojeInicio.add(const Duration(days: 1));
+    final scope = await AccessScopeService.loadIdentity();
 
     double vendasHoje = 0;
     int qtdEstoqueBaixo = 0;
@@ -101,6 +104,7 @@ class DashboardHomeCards extends StatelessWidget {
       }
       for (final v in vendasBox.values) {
         if (v.lojaId != lojaId) continue;
+        if (!AccessScopeService.canSeeSale(scope, v)) continue;
         if (!incluirVendaEmMetricas(v)) continue;
         final dt = v.data;
         if (dt.isAfter(hojeInicio) && dt.isBefore(hojeFim)) {
@@ -118,6 +122,7 @@ class DashboardHomeCards extends StatelessWidget {
         StoreAccessGuard.auditBoxAccess(produtosBoxName, lojaId, op: 'open');
         produtosBox = await Hive.openBox<Produto>(produtosBoxName);
       }
+      // Estoque baixo: vendedor consulta; indicador permanece (consulta).
       for (final p in produtosBox.values) {
         if (p.lojaId != lojaId) continue;
         if (p.isEstoqueBaixo) qtdEstoqueBaixo++;
@@ -139,13 +144,22 @@ class DashboardHomeCards extends StatelessWidget {
       }
       if (metaBox != null) {
         final mesRef = '${now.year}-${now.month.toString().padLeft(2, '0')}';
+        final sellerKeys = scope.sellerKeys;
+        Meta? metaSeller;
+        Meta? metaGeral;
         for (final m in metaBox.values) {
           if (m.lojaId != null && m.lojaId != lojaId) continue;
-          if (m.mesRef == mesRef) {
-            metaAtual = m.metaMensal;
-            break;
+          if (m.mesRef != mesRef) continue;
+          final vid = m.vendedorId.trim().toLowerCase();
+          if (vid == 'geral' || vid.isEmpty) {
+            metaGeral ??= m;
+          } else if (scope.isSeller && sellerKeys.contains(vid)) {
+            metaSeller ??= m;
           }
         }
+        // Vendedor: só a própria meta (nunca a da loja).
+        final escolhida = scope.isSeller ? metaSeller : (metaGeral ?? metaSeller);
+        metaAtual = escolhida?.metaMensal ?? 0;
       }
       if (metaAtual > 0) {
         final vendasBoxName = HiveBoxNames.vendas(lojaId);
@@ -155,6 +169,7 @@ class DashboardHomeCards extends StatelessWidget {
           final mesFim = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
           for (final v in box.values) {
             if (v.lojaId != lojaId) continue;
+            if (!AccessScopeService.canSeeSale(scope, v)) continue;
             if (!incluirVendaEmMetricas(v)) continue;
             if (!v.data.isBefore(mesInicio) && !v.data.isAfter(mesFim)) {
               metaAtingida += v.total;
@@ -169,6 +184,7 @@ class DashboardHomeCards extends StatelessWidget {
       'qtdEstoqueBaixo': qtdEstoqueBaixo,
       'metaAtual': metaAtual,
       'metaAtingida': metaAtingida,
+      'isSeller': scope.isSeller,
     };
   }
 }

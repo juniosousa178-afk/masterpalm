@@ -17,6 +17,7 @@ import 'package:printing/printing.dart';
 
 import '../core/hive_box_names.dart';
 import '../core/venda_metrics_filter.dart';
+import '../core/access_scope_service.dart';
 import '../core/logger.dart';
 import '../models/cliente.dart';
 import '../models/produto.dart';
@@ -90,6 +91,7 @@ class _VendasScreenState extends State<VendasScreen>
   bool _enviandoVendas = false;
   bool? _temVendasParaImportar; // null = ainda não verificou, true/false = resultado
   String _tipoUsuario = 'vendedor';
+  AccessScopeIdentity? _scope;
 
   final _searchController = TextEditingController();
 
@@ -273,6 +275,12 @@ class _VendasScreenState extends State<VendasScreen>
       final sessao = await Hive.openBox('sessao');
       logD('[HIVE_BOX] origem=Vendas.sessao depois abrir box=sessao');
       _tipoUsuario = sessao.get('tipo_usuario', defaultValue: 'vendedor');
+      _scope = await AccessScopeService.loadIdentity();
+      if (_scope?.isSeller == true) {
+        // Vendedor: força escopo próprio (não usa seletor "Todos").
+        final email = _scope!.email;
+        if (email.isNotEmpty) vendedorSelecionado = email;
+      }
     } catch (e, st) {
       logE('[HIVE_BOX] origem=Vendas.sessao falha abrir (type=${e.runtimeType})', error: e, st: st);
       logD('[TRACE_ERRO] [VENDAS] sessao box stack=${_shortStack(st)}');
@@ -573,9 +581,19 @@ class _VendasScreenState extends State<VendasScreen>
   bool _vendaDaLoja(Venda v) =>
       v.lojaId == null || (v.lojaId?.isEmpty ?? true) || v.lojaId == lojaId;
 
+  /// Isolamento multiusuário (vendedor = só as próprias).
+  bool _vendaNoEscopo(Venda v) {
+    final scope = _scope;
+    if (scope == null) {
+      // Sem identidade resolvida: admin path seguro / vendedor bloqueia tudo.
+      return _tipoUsuario != 'vendedor';
+    }
+    return AccessScopeService.canSeeSale(scope, v);
+  }
+
   /// KPIs / IA: mesma regra que painel e relatórios (exclui cancelada/estornada).
   bool _vendaParaKpis(Venda v) =>
-      _vendaDaLoja(v) && incluirVendaEmMetricas(v);
+      _vendaDaLoja(v) && _vendaNoEscopo(v) && incluirVendaEmMetricas(v);
 
   double get totalVendasDia {
     final hoje = DateTime.now();
@@ -615,13 +633,16 @@ class _VendasScreenState extends State<VendasScreen>
 
     var lista = vendasBox.values
         .where(_vendaDaLoja)
+        .where(_vendaNoEscopo)
         .where((v) {
           final cliente = removerAcentos(v.clienteNome);
           final produto = removerAcentos(v.produtosDescricao);
           final data = DateFormat('dd/MM/yyyy').format(v.data);
 
-          final vendedorMatch =
-              vendedorSelecionado == 'Todos' || v.vendedor == vendedorSelecionado;
+          final vendedorMatch = (_scope?.isSeller == true)
+              ? true // já filtrado por _vendaNoEscopo
+              : (vendedorSelecionado == 'Todos' ||
+                  v.vendedor == vendedorSelecionado);
 
           return vendedorMatch &&
               (cliente.contains(query) ||
@@ -2373,7 +2394,7 @@ class _VendasScreenState extends State<VendasScreen>
     ]);
 
     final vendasDaLoja =
-        vendasBox.values.where(_vendaDaLoja).toList();
+        vendasBox.values.where((v) => _vendaDaLoja(v) && _vendaNoEscopo(v)).toList();
 
     for (var v in vendasDaLoja) {
       sheet.appendRow([

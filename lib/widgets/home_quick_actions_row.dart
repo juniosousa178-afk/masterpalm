@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/app_module_definition.dart';
+import '../core/access_scope_service.dart';
 import '../core/home_module_registry.dart';
 import '../design_system/mp_tokens.dart';
 import 'home_module_accordion.dart' show HomeModuleTap;
@@ -18,6 +19,7 @@ class HomeQuickActionsRow extends StatelessWidget {
   final HomeModuleAccessContext access;
   final HomeModuleTap onModuleTap;
 
+  /// IDs padrão (admin) — preservados para testes Sprint 2.
   static const ids = [
     'vendas',
     'estoque',
@@ -25,10 +27,22 @@ class HomeQuickActionsRow extends StatelessWidget {
     'catalogo_loja',
   ];
 
-  static String shortTitle(AppModuleDefinition m) {
+  static List<String> idsFor(HomeModuleAccessContext access) {
+    if (access.tipoUsuario == 'vendedor') {
+      return AccessScopeService.sellerHomeQuickActionIds;
+    }
+    return AccessScopeService.adminHomeQuickActionIds;
+  }
+
+  static String shortTitle(AppModuleDefinition m, {HomeModuleAccessContext? access}) {
+    final seller = access?.tipoUsuario == 'vendedor';
     switch (m.id) {
       case 'catalogo_loja':
         return 'Catálogo';
+      case 'catalogo_interno':
+        return seller ? 'Nova Venda' : m.title;
+      case 'vendas':
+        return seller ? 'Minhas Vendas' : m.title;
       default:
         return m.title;
     }
@@ -37,7 +51,7 @@ class HomeQuickActionsRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final modules = <AppModuleDefinition>[];
-    for (final id in ids) {
+    for (final id in idsFor(access)) {
       final m = HomeModuleRegistry.byId(id);
       if (m == null) continue;
       if (!HomeModuleRegistry.isAllowed(m, access)) continue;
@@ -47,11 +61,11 @@ class HomeQuickActionsRow extends StatelessWidget {
 
     Widget chipFor(AppModuleDefinition m) {
       final locked = HomeModuleRegistry.isPlanLocked(m, access);
-      final isVendas = m.id == 'vendas';
+      final isVendas = m.id == 'vendas' || m.id == 'catalogo_interno';
       final isCatalogo = m.id == 'catalogo_loja';
       return _QuickActionChip(
         module: m,
-        label: shortTitle(m),
+        label: shortTitle(m, access: access),
         emphasized: isVendas || isCatalogo,
         locked: locked,
         onTap: () => onModuleTap(m, planLocked: locked),

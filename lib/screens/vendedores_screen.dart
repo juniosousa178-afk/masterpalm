@@ -10,6 +10,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:master_palm/firebase_options.dart';
 import '../config/app_check_config.dart';
+import '../core/access_scope_service.dart';
 import '../core/vendedor_create_flow.dart';
 import '../services/store_resolver_facade.dart';
 import '../services/vendedor_service.dart';
@@ -759,11 +760,12 @@ class _CadastroVendedorSheetState extends State<_CadastroVendedorSheet> {
       }
 
       final db = FirebaseFirestore.instance;
-      final trialEnd = DateTime.now().add(const Duration(days: 7));
       final adminUid = FirebaseAuth.instance.currentUser?.uid ?? '';
 
       stage = VendorCreateFlow.stageUsers;
       VendorCreateFlow.log(VendorCreateFlow.stageUsers, uid: uid);
+      // Plano pertence à LOJA — nunca gravar plano individual no vendedor.
+      assert(!AccessScopeService.shouldWritePlanFieldsOnSellerUserDoc());
       await db.collection('users').doc(uid).set({
         'uid': uid,
         'email': email,
@@ -775,14 +777,17 @@ class _CadastroVendedorSheetState extends State<_CadastroVendedorSheet> {
         'lojaId': widget.storeId,
         'storeId': widget.storeId,
         'store_id': widget.storeId,
-        'currentPlanId': 'free_trial_90d',
-        'status': 'trialing',
-        'trialing': true,
-        'currentPeriodEnd': Timestamp.fromDate(trialEnd),
-        'trialUsed': true,
-        'trialUsedAt': FieldValue.serverTimestamp(),
         'createdAt': FieldValue.serverTimestamp(),
         'ativo': true,
+      }, SetOptions(merge: true));
+      // Remove resíduos de plano individual se doc legado existir.
+      await db.collection('users').doc(uid).set({
+        'currentPlanId': FieldValue.delete(),
+        'status': FieldValue.delete(),
+        'trialing': FieldValue.delete(),
+        'currentPeriodEnd': FieldValue.delete(),
+        'trialUsed': FieldValue.delete(),
+        'trialUsedAt': FieldValue.delete(),
       }, SetOptions(merge: true));
 
       stage = VendorCreateFlow.stageUsuarios;

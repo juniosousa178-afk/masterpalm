@@ -21,6 +21,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../core/combo_config_canonical.dart';
 import '../core/hive_box_names.dart';
 import '../core/logger.dart';
+import '../core/access_scope_service.dart';
 import '../core/produto_custo_guard.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -97,6 +98,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
   bool _erroResolucaoLoja = false;
   bool _syncEmBackground = false;
   bool _temPermissao = true;
+  bool _podeEditarEstoque = true;
   bool _importando = false;
   int _importProgress = 0;
   int _importTotal = 0;
@@ -501,10 +503,13 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     final permitido = await PermissaoService.possuiPermissao('estoque');
     final podeRecuperacao =
         await ProdutoSyncRecoveryAccess.podeAcessarRecuperacao();
+    final scope = await AccessScopeService.loadIdentity();
+    final podeEditar = AccessScopeService.canEditStock(scope);
     if (!mounted) return;
     setState(() {
       _temPermissao = permitido;
       _podeRecuperacaoSync = podeRecuperacao;
+      _podeEditarEstoque = podeEditar;
     });
   }
 
@@ -1303,6 +1308,10 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
   }
 
   Future<void> _excluirSelecionados() async {
+    if (!_podeEditarEstoque) {
+      _showSnackBar('Consulta apenas: vendedor não pode excluir estoque', isError: true);
+      return;
+    }
     if (_produtosSelecionados.isEmpty) {
       _showSnackBar('Nenhum produto selecionado', isError: true);
       return;
@@ -1727,6 +1736,10 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
   }
 
   void _mostrarMenuAcoes() {
+    if (!_podeEditarEstoque) {
+      _showSnackBar('Consulta apenas: vendedor não pode editar estoque', isError: true);
+      return;
+    }
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -2229,6 +2242,10 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
 
   /// Escolha entre produto avulso ou kit ao tocar em «Novo produto».
   Future<void> _mostrarEscolhaNovoProduto() async {
+    if (!_podeEditarEstoque) {
+      _showSnackBar('Consulta apenas: vendedor não pode cadastrar produtos', isError: true);
+      return;
+    }
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -4581,7 +4598,8 @@ String _formatGradeTexto(Produto p) {
             child: const Icon(Icons.auto_awesome, color: Colors.black87),
           ),
           const SizedBox(height: 12),
-          _modoSelecao && _produtosSelecionados.isNotEmpty
+          if (_podeEditarEstoque)
+            _modoSelecao && _produtosSelecionados.isNotEmpty
               ? FloatingActionButton.extended(
                   heroTag: 'fab_acoes_estoque',
                   onPressed: _publicando ? null : _mostrarMenuAcoes,

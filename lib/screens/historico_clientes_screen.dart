@@ -5,6 +5,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
 
 import '../core/hive_box_names.dart';
+import '../core/access_scope_service.dart';
 import '../models/cliente.dart';
 import '../models/venda.dart';
 import '../utils/export_excel.dart';
@@ -47,6 +48,7 @@ class _HistoricoClientesScreenState extends State<HistoricoClientesScreen> {
   String ordenacaoClientes = 'alfabetica'; // alfabetica | alfabetica_desc | data
 
   bool _carregando = true;
+  AccessScopeIdentity? _scope;
 
   @override
   void initState() {
@@ -107,6 +109,8 @@ class _HistoricoClientesScreenState extends State<HistoricoClientesScreen> {
     } catch (e) {
       debugPrint('HistoricoClientesScreen _init reconciliacao/deduplicacao: $e');
     }
+
+    _scope = await AccessScopeService.loadIdentity();
 
     if (mounted) {
       setState(() => _carregando = false);
@@ -185,6 +189,10 @@ class _HistoricoClientesScreenState extends State<HistoricoClientesScreen> {
 
     final todasVendas = vendasBox.values.where((v) {
       if (v.lojaId != null && v.lojaId!.isNotEmpty && v.lojaId != lojaId) {
+        return false;
+      }
+      final scope = _scope;
+      if (scope != null && !AccessScopeService.canSeeSale(scope, v)) {
         return false;
       }
       return true;

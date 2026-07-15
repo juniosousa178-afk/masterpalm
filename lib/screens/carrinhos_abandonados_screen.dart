@@ -8,11 +8,15 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../core/carrinho_abandonado_ui.dart';
 import '../core/carrinho_recuperacao_score.dart';
+import '../core/access_scope_service.dart';
+import '../core/hive_box_names.dart';
 import '../widgets/carrinho_abandonado_details_panel.dart';
 import '../services/carrinho_abandonado_service.dart';
 import '../services/catalog_public_url_service.dart';
 import '../services/loja_id_service.dart';
 import '../services/public_store_link_helper.dart';
+import '../models/venda.dart';
+import 'package:hive/hive.dart';
 
 const Color _primaryColor = Color(0xFF6366F1);
 const Color _successColor = Color(0xFF22C55E);
@@ -366,17 +370,76 @@ class _CarrinhosAbandonadosScreenState
           .toString()
           .trim();
     } catch (_) {}
+
+    final scope = await AccessScopeService.loadIdentity();
+    var wallet = <String>{};
+    if (scope.isSeller) {
+      try {
+        final boxName = HiveBoxNames.vendas(_lojaId!);
+        Box<Venda>? box;
+        if (Hive.isBoxOpen(boxName)) {
+          box = Hive.box<Venda>(boxName);
+        } else {
+          box = await Hive.openBox<Venda>(boxName);
+        }
+        wallet = AccessScopeService.buildSellerWalletKeys(
+          id: scope,
+          sales: box.values,
+          lojaId: _lojaId,
+        );
+      } catch (_) {}
+    }
+
+    List<CarrinhoAbandonadoItem> listaScoped = lista;
+    List<CarrinhoAbandonadoCatalogoItem> listaCatalogoScoped = listaCatalogo;
+    MetricasRecuperacaoCatalogo? metricasScoped = metricasCatalogo;
+    if (scope.isSeller) {
+      listaScoped = lista
+          .where(
+            (e) => AccessScopeService.canSeeCart(
+              id: scope,
+              walletCustomerKeys: wallet,
+              customerKey: e.clienteId,
+              customerName: e.nome,
+            ),
+          )
+          .toList();
+      listaCatalogoScoped = listaCatalogo
+          .where((e) {
+            final raw = e.raw;
+            return AccessScopeService.canSeeCart(
+              id: scope,
+              walletCustomerKeys: wallet,
+              createdByUid: (raw['createdByUid'] ??
+                      raw['criadoPorUid'] ??
+                      raw['vendedorUid'] ??
+                      '')
+                  .toString(),
+              createdByEmail: (raw['createdByEmail'] ??
+                      raw['criadoPorEmail'] ??
+                      raw['vendedor'] ??
+                      '')
+                  .toString(),
+              customerName: e.clienteNome,
+              customerKey: (raw['clienteId'] ?? '').toString(),
+            );
+          })
+          .toList();
+      // Métricas de loja não são exibidas ao vendedor.
+      metricasScoped = null;
+    }
+
     if (mounted) {
       setState(() {
-        _lista = lista;
-        _listaCatalogo = listaCatalogo;
-        _metricasCatalogo = metricasCatalogo;
+        _lista = listaScoped;
+        _listaCatalogo = listaCatalogoScoped;
+        _metricasCatalogo = metricasScoped;
         _lojaNome = lojaNome;
         _loading = false;
       });
     }
     // Enriquecimento somente leitura: completa e-mail/CPF/endereço a partir de clientes.
-    unawaited(_enriquecerCatalogoComClientes(listaCatalogo));
+    unawaited(_enriquecerCatalogoComClientes(listaCatalogoScoped));
   }
 
   Future<void> _enriquecerCatalogoComClientes(

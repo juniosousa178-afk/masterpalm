@@ -304,6 +304,7 @@ abstract final class HomeModuleRegistry {
       route: '/relatorios_financeiros',
       category: HomeModuleCategory.financeiro,
       order: 30,
+      adminOrProgramadorOnly: true,
       planFeature: PlanGateFeature.relatoriosFinanceirosHub,
       accent: Color(0xFF10B981),
     ),

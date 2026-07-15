@@ -87,6 +87,18 @@ class VendasFirestoreService {
         final s = (data['itensComboSelecaoJson'] ?? '').toString().trim();
         return s.isEmpty ? null : s;
       }(),
+      vendedorUid: () {
+        final s = (data['vendedorUid'] ?? data['vendedorId'] ?? '').toString().trim();
+        return s.isEmpty ? null : s;
+      }(),
+      vendedorNome: () {
+        final s = (data['vendedorNome'] ?? '').toString().trim();
+        return s.isEmpty ? null : s;
+      }(),
+      vendedorEmail: () {
+        final s = (data['vendedorEmail'] ?? '').toString().trim().toLowerCase();
+        return s.isEmpty ? null : s;
+      }(),
     );
   }
 
@@ -258,6 +270,13 @@ class VendasFirestoreService {
         'preco': venda.preco,
         'tamanho': venda.tamanho,
         'vendedor': venda.vendedor,
+        if (venda.vendedorUid != null && venda.vendedorUid!.trim().isNotEmpty)
+          'vendedorUid': venda.vendedorUid!.trim(),
+        if (venda.vendedorNome != null && venda.vendedorNome!.trim().isNotEmpty)
+          'vendedorNome': venda.vendedorNome!.trim(),
+        if (venda.vendedorEmail != null &&
+            venda.vendedorEmail!.trim().isNotEmpty)
+          'vendedorEmail': venda.vendedorEmail!.trim().toLowerCase(),
         'observacao': venda.observacao,
 
         // Pagamentos detalhados

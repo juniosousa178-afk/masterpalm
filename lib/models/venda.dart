@@ -118,6 +118,16 @@ class Venda extends HiveObject {
   @HiveField(31)
   String? itensComboSelecaoJson;
 
+  /// M3.8 MULTI-R2 — identidade oficial do vendedor (chave = vendedorUid).
+  @HiveField(32)
+  String? vendedorUid;
+
+  @HiveField(33)
+  String? vendedorNome;
+
+  @HiveField(34)
+  String? vendedorEmail;
+
   Venda({
     required this.clienteNome,
     required this.produtosDescricao,
@@ -138,9 +148,9 @@ class Venda extends HiveObject {
     this.taxas = 0.0,
     this.custoProdutos = 0.0,
     this.descontoValor = 0.0,
-    this.lojaId, // <- multi-loja
-    this.idFirebase, // <- ID do Firestore
-    this.clienteId, // <- ID estável do cliente
+    this.lojaId,
+    this.idFirebase,
+    this.clienteId,
     this.statusVenda,
     this.cancelada = false,
     this.estornada = false,
@@ -151,6 +161,9 @@ class Venda extends HiveObject {
     this.pedidoId,
     this.origemCusto,
     this.itensComboSelecaoJson,
+    this.vendedorUid,
+    this.vendedorNome,
+    this.vendedorEmail,
   });
 
   /// Itens da venda (nunca null, fallback para [] em vendas antigas)

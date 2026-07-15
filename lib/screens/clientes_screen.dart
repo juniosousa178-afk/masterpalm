@@ -25,6 +25,7 @@ import 'package:printing/printing.dart';
 
 import '../core/hive_box_names.dart';
 import '../core/venda_metrics_filter.dart';
+import '../core/access_scope_service.dart';
 import '../core/logger.dart';
 import '../widgets/app_help_icon_button.dart';
 import '../widgets/empty_state_cta.dart';
@@ -102,6 +103,8 @@ class _ClientesScreenState extends State<ClientesScreen>
   String filtroNomeHistorico = '';
   String ordenacaoClientes = 'alfabetica'; // alfabetica | alfabetica_desc | data
   String ordenacaoHistorico = 'data_desc'; // data_desc | data_asc | cliente_asc | cliente_desc
+  AccessScopeIdentity? _scope;
+  Set<String> _walletKeys = {};
 
   @override
   void initState() {
@@ -361,6 +364,9 @@ class _ClientesScreenState extends State<ClientesScreen>
       logD('📌 [CLIENTES_READ] lojaId=$lojaId | clientesLocais=${clientesBox.length} | vendasLocais=${vendasBox.length}');
     }
 
+    _scope = await AccessScopeService.loadIdentity();
+    _refreshWalletKeys();
+
     if (mounted) {
       setState(() {
         _carregando = false;
@@ -371,6 +377,35 @@ class _ClientesScreenState extends State<ClientesScreen>
 
     _syncClientesEmBackground();
     _verificarSeTemDadosParaImportar();
+  }
+
+  void _refreshWalletKeys() {
+    final scope = _scope;
+    if (scope == null || scope.isAdmin) {
+      _walletKeys = {};
+      return;
+    }
+    _walletKeys = AccessScopeService.buildSellerWalletKeys(
+      id: scope,
+      sales: vendasBox.values,
+      lojaId: lojaId,
+    );
+  }
+
+  bool _clienteNaCarteira(Cliente cliente) {
+    final scope = _scope;
+    if (scope == null || scope.isAdmin) return true;
+    final key = (cliente.key?.toString() ?? cliente.idFirebase ?? cliente.nome);
+    return AccessScopeService.canSeeCustomerInList(
+      id: scope,
+      customerKey: key,
+      walletCustomerKeys: _walletKeys,
+    ) ||
+        AccessScopeService.canSeeCustomerInList(
+          id: scope,
+          customerKey: cliente.nome,
+          walletCustomerKeys: _walletKeys,
+        );
   }
 
   Future<void> _verificarSeTemDadosParaImportar() async {
@@ -631,9 +666,17 @@ class _ClientesScreenState extends State<ClientesScreen>
 
   /// Estatísticas: clientes da clientesBox, vendas/valor da vendasBox (fonte única)
   Map<String, dynamic> _getStats() {
-    final clientes = clientesBox.values.where((c) => c.lojaId == lojaId).toList();
+    final clientes = clientesBox.values
+        .where((c) => c.lojaId == lojaId && _clienteNaCarteira(c))
+        .toList();
+    final scope = _scope;
     final vendasDaLoja = vendasBox.values.where((v) {
-      if (v.lojaId != null && v.lojaId!.isNotEmpty && v.lojaId != lojaId) return false;
+      if (v.lojaId != null && v.lojaId!.isNotEmpty && v.lojaId != lojaId) {
+        return false;
+      }
+      if (scope != null && !AccessScopeService.canSeeSale(scope, v)) {
+        return false;
+      }
       return incluirVendaEmMetricas(v);
     }).toList();
 
@@ -924,11 +967,18 @@ class _ClientesScreenState extends State<ClientesScreen>
   /// Usa clienteNome como fonte de verdade (igual à tela Vendas) para evitar
   /// vendas erradas vindas de clienteId incorreto (reconciliação antiga).
   List<Venda> _vendasDoCliente(Cliente cliente) {
+    final scope = _scope;
     final nomeNorm = normalizeText(cliente.nome);
 
     final lista = vendasBox.values.where((v) {
-      if (v.lojaId != null && v.lojaId!.isNotEmpty && v.lojaId != lojaId) return false;
-      return normalizeText(v.clienteNome) == nomeNorm;
+      if (v.lojaId != null && v.lojaId!.isNotEmpty && v.lojaId != lojaId) {
+        return false;
+      }
+      if (normalizeText(v.clienteNome) != nomeNorm) return false;
+      if (scope != null && !AccessScopeService.canSeeHistorySale(scope, v)) {
+        return false;
+      }
+      return true;
     }).toList();
 
     lista.sort((a, b) => b.data.compareTo(a.data));
@@ -1790,7 +1840,13 @@ class _ClientesScreenState extends State<ClientesScreen>
     }
 
     var lista = vendasBox.values.where((v) {
-      if (v.lojaId != null && v.lojaId!.isNotEmpty && v.lojaId != lojaId) return false;
+      if (v.lojaId != null && v.lojaId!.isNotEmpty && v.lojaId != lojaId) {
+        return false;
+      }
+      final scope = _scope;
+      if (scope != null && !AccessScopeService.canSeeSale(scope, v)) {
+        return false;
+      }
       final dentroDoIntervalo =
           (di == null || v.data.isAfter(di.subtract(const Duration(days: 1)))) &&
           (df == null || v.data.isBefore(df.add(const Duration(days: 1))));
@@ -2347,7 +2403,8 @@ class _ClientesScreenState extends State<ClientesScreen>
               var clientesFiltrados = box.values
                   .where((cliente) =>
                       cliente.lojaId == lojaId &&
-                      cliente.nome.toLowerCase().contains(filtro.toLowerCase()))
+                      cliente.nome.toLowerCase().contains(filtro.toLowerCase()) &&
+                      _clienteNaCarteira(cliente))
                   .toList();
 
               if (ordenacaoClientes == 'data') {
@@ -3070,22 +3127,37 @@ class _ClientesScreenState extends State<ClientesScreen>
   }
 
   String _montarResumoClientesParaIa() {
-    final clientes = clientesBox.values.where((c) => c.lojaId == lojaId).toList();
+    final clientes = clientesBox.values
+        .where((c) => c.lojaId == lojaId && _clienteNaCarteira(c))
+        .toList();
+    final scope = _scope;
     final vendasDaLoja = vendasBox.values
-        .where((v) =>
-            (v.lojaId == null || v.lojaId!.isEmpty || v.lojaId == lojaId) &&
-            incluirVendaEmMetricas(v))
+        .where((v) {
+          if (!(v.lojaId == null ||
+              v.lojaId!.isEmpty ||
+              v.lojaId == lojaId)) {
+            return false;
+          }
+          if (scope != null && !AccessScopeService.canSeeSale(scope, v)) {
+            return false;
+          }
+          return incluirVendaEmMetricas(v);
+        })
         .toList();
     final porCliente = <String, double>{};
     for (final v in vendasDaLoja) {
       final nome = v.clienteNome.trim().isEmpty ? 'Sem nome' : v.clienteNome;
       porCliente[nome] = (porCliente[nome] ?? 0) + v.total;
     }
-    final topClientes = porCliente.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
-    final fmt = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$', decimalDigits: 2);
+    final topClientes = porCliente.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final fmt =
+        NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$', decimalDigits: 2);
     final sb = StringBuffer();
-    sb.writeln('Total de clientes: ${clientes.length}. Total de vendas: ${vendasDaLoja.length}.');
-    sb.writeln('Top 10 clientes por faturamento: ${topClientes.take(10).map((e) => '${e.key} ${fmt.format(e.value)}').join('; ')}.');
+    sb.writeln(
+        'Total de clientes: ${clientes.length}. Total de vendas: ${vendasDaLoja.length}.');
+    sb.writeln(
+        'Top 10 clientes por faturamento: ${topClientes.take(10).map((e) => '${e.key} ${fmt.format(e.value)}').join('; ')}.');
     return sb.toString();
   }
 
