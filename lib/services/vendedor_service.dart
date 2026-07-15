@@ -365,6 +365,8 @@ class VendedorService {
   }) async {
     try {
       // 1. Criar usuário no Firebase Auth
+      // ⚠ R2-FIX: preferir UI com Auth secondary (vendedores_screen).
+      // Este caminho na Auth principal troca currentUser — não usar na admin UI.
       final credential = await _auth.createUserWithEmailAndPassword(
         email: email.trim().toLowerCase(),
         password: senha,
@@ -401,10 +403,11 @@ class VendedorService {
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
-      // 3. Criar documento em usuarios/{email}
-      await _db.collection('usuarios').doc(email.trim().toLowerCase()).set({
+      // 3. Criar documento em usuarios/{email} (sem senha)
+      final emailKey = email.trim().toLowerCase();
+      await _db.collection('usuarios').doc(emailKey).set({
         'authUid': uid,
-        'email': email.trim().toLowerCase(),
+        'email': emailKey,
         'nome': nome,
         'telefone': telefone,
         'tipo': 'vendedor',
@@ -416,6 +419,10 @@ class VendedorService {
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
+      await _db.collection('usuarios').doc(emailKey).set(
+        {'senha': FieldValue.delete()},
+        SetOptions(merge: true),
+      );
 
       // 4. Criar documento em lojas/{storeId}/vendedores/{uid}
       final vendedorPerfil = VendedorPerfil(

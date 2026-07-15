@@ -9,6 +9,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:master_palm/firebase_options.dart';
+import '../core/vendedor_create_flow.dart';
 import '../services/store_resolver_facade.dart';
 import '../services/vendedor_service.dart';
 import '../models/usuario.dart';
@@ -394,15 +395,32 @@ class _VendedoresScreenState extends State<VendedoresScreen>
   }
 
   Future<void> _abrirCadastroVendedor() async {
+    if (_storeId == null || _storeId!.isEmpty) {
+      _snack('Loja nao identificada', isError: true);
+      return;
+    }
+    final listCountBefore = _vendedores.length;
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      isDismissible: false,
+      enableDrag: false,
       backgroundColor: Colors.transparent,
       builder: (context) => _CadastroVendedorSheet(
         storeId: _storeId!,
         usuarioAtual: _usuarioAtual,
-        onCadastrado: () {
-          _carregarDados();
+        listCountBefore: listCountBefore,
+        reloadList: () async {
+          await _carregarDados();
+          return List<VendedorPerfil>.from(_vendedores);
+        },
+        reportErrorToParent: (msg) {
+          if (!mounted) return;
+          _snack(msg, isError: true);
+        },
+        reportSuccessToParent: (msg) {
+          if (!mounted) return;
+          _snack(msg);
         },
       ),
     );
@@ -557,12 +575,18 @@ class _PermissoesSheetState extends State<_PermissoesSheet> {
 class _CadastroVendedorSheet extends StatefulWidget {
   final String storeId;
   final String usuarioAtual;
-  final VoidCallback onCadastrado;
+  final int listCountBefore;
+  final Future<List<VendedorPerfil>> Function() reloadList;
+  final void Function(String message) reportErrorToParent;
+  final void Function(String message) reportSuccessToParent;
 
   const _CadastroVendedorSheet({
     required this.storeId,
     required this.usuarioAtual,
-    required this.onCadastrado,
+    required this.listCountBefore,
+    required this.reloadList,
+    required this.reportErrorToParent,
+    required this.reportSuccessToParent,
   });
 
   @override
@@ -592,13 +616,18 @@ class _CadastroVendedorSheetState extends State<_CadastroVendedorSheet> {
     super.dispose();
   }
 
-  void _snack(String msg, {bool isError = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg),
-        backgroundColor: isError ? _errorColor : _successColor,
-      ),
-    );
+  void _showError(String msg) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(msg),
+          backgroundColor: _errorColor,
+          duration: const Duration(seconds: 8),
+        ),
+      );
+    }
+    // Sempre propaga ao parent — nunca engolir erro se o sheet desmontar.
+    widget.reportErrorToParent(msg);
   }
 
   Future<FirebaseApp> _ensureSecondaryApp() async {
@@ -625,6 +654,7 @@ class _CadastroVendedorSheetState extends State<_CadastroVendedorSheet> {
 
   Future<void> _cadastrarVendedor() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_carregando) return;
 
     setState(() => _carregando = true);
 
@@ -633,26 +663,43 @@ class _CadastroVendedorSheetState extends State<_CadastroVendedorSheet> {
     final telefone = _telefoneController.text.trim();
     final senha = _senhaController.text.trim();
 
-    FirebaseApp? secApp;
     FirebaseAuth? secAuth;
+    var stage = VendorCreateFlow.stageForm;
+    final adminUidBefore = FirebaseAuth.instance.currentUser?.uid;
+    VendorCreateFlow.log(VendorCreateFlow.stageForm);
 
     try {
-      secApp = await _ensureSecondaryApp();
+      stage = VendorCreateFlow.stageAuth;
+      final secApp = await _ensureSecondaryApp();
       await _ativarAppCheckNoSecundario(secApp);
       secAuth = FirebaseAuth.instanceFor(app: secApp);
+
+      VendorCreateFlow.log(VendorCreateFlow.stageAuth, uid: adminUidBefore);
 
       final cred = await secAuth.createUserWithEmailAndPassword(
         email: email,
         password: senha,
       );
       final uid = cred.user!.uid;
+      final primaryAfter = FirebaseAuth.instance.currentUser?.uid;
+
+      if (!VendorCreateFlow.primarySessionStillAdmin(
+        adminUidBefore: adminUidBefore,
+        primaryUidAfterSecondaryCreate: primaryAfter,
+        newVendorUid: uid,
+      )) {
+        throw FirebaseAuthException(
+          code: 'primary-session-swapped',
+          message: 'Sessao do administrador foi alterada during create.',
+        );
+      }
 
       final db = FirebaseFirestore.instance;
-      final agora = DateTime.now();
-      final trialEnd = agora.add(const Duration(days: 7));
+      final trialEnd = DateTime.now().add(const Duration(days: 7));
       final adminUid = FirebaseAuth.instance.currentUser?.uid ?? '';
 
-      // Salvar em users/{uid}
+      stage = VendorCreateFlow.stageUsers;
+      VendorCreateFlow.log(VendorCreateFlow.stageUsers, uid: uid);
       await db.collection('users').doc(uid).set({
         'uid': uid,
         'email': email,
@@ -664,7 +711,6 @@ class _CadastroVendedorSheetState extends State<_CadastroVendedorSheet> {
         'lojaId': widget.storeId,
         'storeId': widget.storeId,
         'store_id': widget.storeId,
-        // Canônico de planos (LEGACY `plan` aposentado para novas escritas)
         'currentPlanId': 'free_trial_90d',
         'status': 'trialing',
         'trialing': true,
@@ -672,25 +718,43 @@ class _CadastroVendedorSheetState extends State<_CadastroVendedorSheet> {
         'trialUsed': true,
         'trialUsedAt': FieldValue.serverTimestamp(),
         'createdAt': FieldValue.serverTimestamp(),
+        'ativo': true,
       }, SetOptions(merge: true));
 
-      // Salvar em usuarios/{email}
-      await db.collection('usuarios').doc(email).set({
-        'authUid': uid,
-        'email': email,
-        'nome': nome,
-        'telefone': telefone,
-        'senha': senha,
-        'tipo': 'vendedor',
-        'ownerAdminEmail': widget.usuarioAtual,
-        'ownerStoreId': widget.storeId,
-        'store_id': widget.storeId,
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      stage = VendorCreateFlow.stageUsuarios;
+      VendorCreateFlow.log(VendorCreateFlow.stageUsuarios, uid: uid);
+      final usuariosRef = db.collection('usuarios').doc(email);
+      final usuariosPayload = VendorCreateFlow.usuariosDocPayload(
+        uid: uid,
+        email: email,
+        nome: nome,
+        telefone: telefone,
+        ownerAdminEmail: widget.usuarioAtual,
+        storeId: widget.storeId,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      );
+      assert(!VendorCreateFlow.payloadContainsPassword(usuariosPayload));
+      await usuariosRef.set(usuariosPayload, SetOptions(merge: true));
+      // Remove secural residual se doc legado tinha senha.
+      await usuariosRef.set(
+        {'senha': FieldValue.delete()},
+        SetOptions(merge: true),
+      );
 
-      // Salvar em lojas/{storeId}/vendedores/{uid}
+      stage = VendorCreateFlow.stageVendedores;
+      VendorCreateFlow.log(VendorCreateFlow.stageVendedores, uid: uid);
       final lojaRef = db.collection('lojas').doc(widget.storeId);
+      final permissoes = <String, bool>{
+        'catalogo': false,
+        'vendas': false,
+        'estoque': false,
+        'clientes': false,
+        'historico_cliente': false,
+        'meu_perfil': true,
+        'minhas_comissoes': true,
+        'meu_link': true,
+      };
       await lojaRef.collection('vendedores').doc(uid).set({
         'uid': uid,
         'email': email,
@@ -700,16 +764,7 @@ class _CadastroVendedorSheetState extends State<_CadastroVendedorSheet> {
         'adminUid': adminUid,
         'adminEmail': widget.usuarioAtual,
         'ativo': true,
-        'permissoes': {
-          'catalogo': false,
-          'vendas': false,
-          'estoque': false,
-          'clientes': false,
-          'historico_cliente': false,
-          'meu_perfil': true,
-          'minhas_comissoes': true,
-          'meu_link': true,
-        },
+        'permissoes': permissoes,
         'comissaoPercentual': null,
         'role': 'vendedor',
         'tipo': 'vendedor',
@@ -717,7 +772,8 @@ class _CadastroVendedorSheetState extends State<_CadastroVendedorSheet> {
         'atualizadoEm': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      // Manter compatibilidade com members (legado)
+      stage = VendorCreateFlow.stageMembers;
+      VendorCreateFlow.log(VendorCreateFlow.stageMembers, uid: uid);
       await lojaRef.collection('members').doc(uid).set({
         'role': 'seller',
         'email': email,
@@ -726,48 +782,101 @@ class _CadastroVendedorSheetState extends State<_CadastroVendedorSheet> {
         'createdBy': widget.usuarioAtual,
       }, SetOptions(merge: true));
 
-      // Salvar no Hive local
+      stage = VendorCreateFlow.stageHive;
+      VendorCreateFlow.log(VendorCreateFlow.stageHive, uid: uid);
       final box = await Hive.openBox<Usuario>('usuarios');
       await box.put(
-          email,
-          Usuario(
-            nome: nome,
-            email: email,
-            telefone: telefone,
-            senha: senha,
-            tipo: 'vendedor',
-            permissoes: Usuario.defaultPermissoes('vendedor'),
-          ));
-
-      if (!mounted) return;
-
-      Navigator.pop(context);
-      widget.onCadastrado();
-    } on FirebaseAuthException catch (e) {
-      if (!mounted) return;
-      setState(() => _carregando = false);
-      _snack(
-        e.code == 'email-already-in-use'
-            ? 'Este e-mail ja esta em uso.'
-            : e.code == 'weak-password'
-                ? 'Senha fraca: use no minimo 6 caracteres.'
-                : 'Erro Firebase: ${e.code}',
-        isError: true,
+        email,
+        Usuario(
+          nome: nome,
+          email: email,
+          telefone: telefone,
+          senha: VendorCreateFlow.hivePasswordPlaceholder(),
+          tipo: 'vendedor',
+          permissoes: Usuario.defaultPermissoes('vendedor'),
+        ),
       );
+
+      stage = VendorCreateFlow.stageRefresh;
+      VendorCreateFlow.log(
+        VendorCreateFlow.stageRefresh,
+        uid: uid,
+        count: widget.listCountBefore,
+      );
+      final lista = await widget.reloadList();
+      final visible = lista.any((v) => v.uid == uid);
+      final refresh = VendorCreateFlow.evaluateRefresh(
+        beforeCount: widget.listCountBefore,
+        afterCount: lista.length,
+        vendorUidInList: visible,
+      );
+      VendorCreateFlow.log(
+        VendorCreateFlow.stageRefresh,
+        uid: uid,
+        count: lista.length,
+      );
+
+      if (!VendorCreateFlow.mayShowSuccessAndPop(refresh)) {
+        throw StateError(VendorCreateFlow.refreshMissMessage());
+      }
+
+      stage = VendorCreateFlow.stageSuccess;
+      VendorCreateFlow.log(VendorCreateFlow.stageSuccess, uid: uid);
+
+      widget.reportSuccessToParent(VendorCreateFlow.successMessage());
+      if (mounted) {
+        Navigator.pop(context);
+      }
+    } on FirebaseAuthException catch (e) {
+      VendorCreateFlow.log(
+        VendorCreateFlow.stageError,
+        code: e.code,
+        uid: adminUidBefore,
+      );
+      // Mantém códigos Auth reais (email-already-in-use / weak-password / …).
+      final msg = VendorCreateFlow.failureMessage(
+        code: e.code,
+        stage: VendorCreateFlow.stageAuth,
+      );
+      _showError(msg);
+      if (mounted) setState(() => _carregando = false);
     } catch (e) {
-      if (!mounted) return;
-      setState(() => _carregando = false);
-      _snack('Erro: $e', isError: true);
+      final code = e is FirebaseException
+          ? e.code
+          : VendorCreateFlow.extractFirebaseCode(e);
+      final stageOut = e is StateError &&
+              e.message == VendorCreateFlow.refreshMissMessage()
+          ? VendorCreateFlow.stageRefresh
+          : stage;
+      VendorCreateFlow.log(
+        VendorCreateFlow.stageError,
+        code: code == 'unknown' && e is StateError
+            ? 'refresh-miss'
+            : code,
+        uid: adminUidBefore,
+      );
+      final msg = e is StateError &&
+              e.message == VendorCreateFlow.refreshMissMessage()
+          ? VendorCreateFlow.refreshMissMessage()
+          : VendorCreateFlow.failureMessage(code: code, stage: stageOut);
+      _showError(msg);
+      if (mounted) setState(() => _carregando = false);
     } finally {
       try {
         await secAuth?.signOut();
       } catch (_) {}
+      // Em sucesso o sheet já fechou; em erro mantém carregando=false acima.
+      if (mounted && _carregando) {
+        // Sucesso com pop — ignore. Erro já resetou.
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return PopScope(
+      canPop: !_carregando,
+      child: Container(
       padding: EdgeInsets.only(
         left: 24,
         right: 24,
@@ -814,11 +923,31 @@ class _CadastroVendedorSheetState extends State<_CadastroVendedorSheet> {
                     ),
                   ),
                   IconButton(
-                    onPressed: () => Navigator.pop(context),
+                    onPressed: _carregando ? null : () => Navigator.pop(context),
                     icon: const Icon(Icons.close),
                   ),
                 ],
               ),
+              if (_carregando) ...[
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      'Cadastrando vendedor...',
+                      style: TextStyle(
+                        color: Colors.grey[700],
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 24),
 
               // Campos
@@ -943,6 +1072,7 @@ class _CadastroVendedorSheetState extends State<_CadastroVendedorSheet> {
             ],
           ),
         ),
+      ),
       ),
     );
   }
