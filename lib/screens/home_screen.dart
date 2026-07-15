@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:hive/hive.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -60,6 +59,7 @@ import '../widgets/dashboard_home_cards.dart';
 import '../screens/home_portal_category_screen.dart';
 import '../core/home_module_registry.dart';
 import '../core/app_module_definition.dart';
+import '../core/store_display_name_resolver.dart';
 import '../screens/configure_loja_placeholder_screen.dart';
 
 // ✅ sistema de comissões
@@ -140,6 +140,9 @@ class _HomeScreenState extends State<HomeScreen>
 
   /// Nome de exibição da loja (saudação Home) — nunca e-mail/login/uid.
   String _nomeLoja = '';
+
+  /// true enquanto a resolução canônica do nome ainda não terminou.
+  bool _nomeLojaResolvendo = true;
 
   /// URL pública do catálogo (domínio próprio ou hosted).
   String? _catalogOnlineUrl;
@@ -258,8 +261,6 @@ class _HomeScreenState extends State<HomeScreen>
       _lojaSlugPublico = _lojaIdInterno;
     }
     await _carregarNomeLoja(sessao);
-    logD(
-        '📋 [HOME] contexto loja: interno=${_lojaIdInterno.isNotEmpty ? "ok" : "vazio"} slugPublico=${_lojaSlugPublico.isNotEmpty ? "ok" : "vazio"} nome=${_nomeLoja.isNotEmpty ? "ok" : "vazio"}');
 
     // ✅ ROOT override (impede "root virar vendedor")
     final isRoot = (sessao.get('is_root') == true) ||
@@ -2617,50 +2618,88 @@ class _HomeScreenState extends State<HomeScreen>
     return fullName.split(' ').first;
   }
 
-  /// Título da saudação: nome da loja (nunca login/e-mail/uid).
-  String _tituloSaudacaoLoja() {
-    final n = _nomeLoja.trim();
-    if (n.isNotEmpty && !_pareceCredencialUsuario(n)) return n;
-    final slug = _lojaSlugPublico.trim();
-    if (slug.isNotEmpty && !_pareceCredencialUsuario(slug)) return slug;
-    return 'Minha Loja';
-  }
-
-  bool _pareceCredencialUsuario(String value) {
-    final v = value.trim();
-    if (v.isEmpty) return true;
-    if (v.contains('@')) return true;
-    if (RegExp(r'^[0-9a-fA-F-]{20,}$').hasMatch(v)) return true;
-    return false;
-  }
-
   Future<void> _carregarNomeLoja(Box sessao) async {
-    final cached = (sessao.get('nome_loja') ?? sessao.get('nomeLoja') ?? '')
-        .toString()
-        .trim();
-    if (cached.isNotEmpty && !_pareceCredencialUsuario(cached)) {
-      _nomeLoja = cached;
+    if (mounted) setState(() => _nomeLojaResolvendo = true);
+
+    // Cache rápido (sem e-mail): evita flicker, mas ainda aguarda resolução.
+    final cached = StoreDisplayNameResolver.normalizeCandidate(
+      sessao.get('nome_loja') ?? sessao.get('nomeLoja'),
+    );
+    if (cached != null &&
+        !StoreDisplayNameResolver.isWeakPlaceholder(cached) &&
+        mounted) {
+      setState(() => _nomeLoja = cached);
     }
 
     final lid = _lojaIdInterno.trim();
-    if (lid.isEmpty) return;
+    if (lid.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _nomeLojaResolvendo = false;
+          if (_nomeLoja.trim().isEmpty) {
+            _nomeLoja = StoreDisplayNameResult.fallbackName;
+          }
+        });
+      }
+      return;
+    }
 
     try {
-      final doc =
-          await FirebaseFirestore.instance.collection('lojas').doc(lid).get();
-      final d = doc.data();
-      if (d == null) return;
-      final nome = (d['nome_loja'] ??
-              d['nomeLoja'] ??
-              d['name'] ??
-              d['nome'] ??
-              '')
-          .toString()
-          .trim();
-      if (nome.isEmpty || _pareceCredencialUsuario(nome)) return;
-      _nomeLoja = nome;
-      await sessao.put('nome_loja', nome);
-    } catch (_) {}
+      final result = await StoreDisplayNameResolver.resolve(
+        lojaId: lid,
+        sessao: sessao,
+        slugPublico: _lojaSlugPublico,
+        debugLog: kDebugMode,
+      );
+      if (!mounted) return;
+      setState(() {
+        _nomeLoja = result.name;
+        _nomeLojaResolvendo = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _nomeLojaResolvendo = false;
+        if (_nomeLoja.trim().isEmpty) {
+          final slugFmt =
+              StoreDisplayNameResolver.formatSlug(_lojaSlugPublico);
+          _nomeLoja = slugFmt ?? StoreDisplayNameResult.fallbackName;
+        }
+      });
+    }
+  }
+
+  Widget _buildSaudacaoTituloLoja({
+    Color? color,
+    double fontSize = 20,
+    int maxLines = 2,
+  }) {
+    final label = StoreDisplayNameResolver.homeGreetingLabel(
+      resolving: _nomeLojaResolvendo,
+      currentName: _nomeLoja,
+    );
+    if (label == null) {
+      return Container(
+        key: const ValueKey('home_store_name_skeleton'),
+        height: 22,
+        width: 220,
+        decoration: BoxDecoration(
+          color: (color ?? _surfaceColor).withOpacity(0.08),
+          borderRadius: BorderRadius.circular(6),
+        ),
+      );
+    }
+    return Text(
+      label,
+      key: const ValueKey('home_store_name_label'),
+      style: TextStyle(
+        fontSize: fontSize,
+        fontWeight: FontWeight.w800,
+        color: color ?? _surfaceColor,
+      ),
+      maxLines: maxLines,
+      overflow: TextOverflow.ellipsis,
+    );
   }
 
   /// [FutureBuilder] de listas (atalhos / menu) — erro, loading e retry sem tela vazia.
@@ -2784,16 +2823,7 @@ class _HomeScreenState extends State<HomeScreen>
                   ),
                 ),
                 const SizedBox(height: 2),
-                Text(
-                  _tituloSaudacaoLoja(),
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    color: _surfaceColor,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
+                _buildSaudacaoTituloLoja(),
                 const SizedBox(height: 6),
                 if (_lojaIdInterno.isNotEmpty)
                   DashboardHomeCards(lojaId: _lojaIdInterno),
@@ -2910,15 +2940,10 @@ class _HomeScreenState extends State<HomeScreen>
                                     color: theme.colorScheme.onSurface
                                         .withOpacity(0.6)),
                               ),
-                              Text(
-                                _tituloSaudacaoLoja(),
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: theme.colorScheme.onSurface,
-                                ),
+                              _buildSaudacaoTituloLoja(
+                                color: theme.colorScheme.onSurface,
+                                fontSize: 18,
                                 maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
                               ),
                             ],
                           ),
