@@ -152,7 +152,7 @@ void main() {
     expect(find.textContaining('funcionalidade'), findsWidgets);
   });
 
-  testWidgets('HOMEPORTAL-15 quick actions Vendas Estoque Carrinhos Catálogo',
+  testWidgets('HOMEPORTAL-15 quick actions Vendas Estoque Clientes Catálogo',
       (tester) async {
     final opened = <String>[];
     await tester.pumpWidget(
@@ -169,8 +169,9 @@ void main() {
     );
     expect(find.text('Vendas'), findsOneWidget);
     expect(find.text('Estoque'), findsOneWidget);
-    expect(find.text('Carrinhos'), findsOneWidget);
+    expect(find.text('Clientes'), findsOneWidget);
     expect(find.text('Catálogo'), findsOneWidget);
+    expect(find.text('Carrinhos'), findsNothing);
     await tester.tap(find.text('Vendas'));
     await tester.pump();
     expect(opened, ['vendas']);

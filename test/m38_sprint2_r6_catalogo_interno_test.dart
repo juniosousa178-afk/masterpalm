@@ -78,6 +78,16 @@ void main() {
       expect(maps.single['productId'], 'abc');
     });
 
+    test('R6.1-CART-9 toNovaVendaItens descarta nome vazio (sem card fantasma)',
+        () {
+      final maps = CatalogoInternoCartLogic.toNovaVendaItens([
+        item(id: 'x', nome: '   ', preco: 1),
+        item(id: 'abc', nome: 'Pulseira', preco: 49.9, qtd: 1),
+      ]);
+      expect(maps, hasLength(1));
+      expect(maps.first['produto'], 'Pulseira');
+    });
+
     test('R6-CART-8 joinObservacoes', () {
       final a = item(nome: 'A');
       a.observacao = 'sem caixa';
@@ -102,6 +112,13 @@ void main() {
       final m = HomeModuleRegistry.byId('catalogo_loja')!;
       expect(m.category, HomeModuleCategory.vendas);
       expect(HomeQuickActionsRow.ids, contains('catalogo_loja'));
+    });
+
+    test('R6.1-REG-3 quick actions: Clientes no lugar de Carrinhos', () {
+      expect(HomeQuickActionsRow.ids, ['vendas', 'estoque', 'clientes', 'catalogo_loja']);
+      expect(HomeQuickActionsRow.ids, isNot(contains('carrinhos_abandonados')));
+      expect(HomeModuleRegistry.byId('carrinhos_abandonados')!.category,
+          HomeModuleCategory.vendas);
     });
   });
 }

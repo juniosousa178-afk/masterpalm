@@ -1,4 +1,4 @@
-// M3.8 S2-R5/R6 — atalhos permanentes da Home (Vendas / Estoque / Carrinhos / Catálogo).
+// M3.8 S2-R6.1 — atalhos permanentes da Home (Vendas / Estoque / Clientes / Catálogo).
 
 import 'package:flutter/material.dart';
 
@@ -21,14 +21,12 @@ class HomeQuickActionsRow extends StatelessWidget {
   static const ids = [
     'vendas',
     'estoque',
-    'carrinhos_abandonados',
+    'clientes',
     'catalogo_loja',
   ];
 
   static String shortTitle(AppModuleDefinition m) {
     switch (m.id) {
-      case 'carrinhos_abandonados':
-        return 'Carrinhos';
       case 'catalogo_loja':
         return 'Catálogo';
       default:

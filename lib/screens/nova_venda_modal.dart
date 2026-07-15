@@ -152,7 +152,31 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     freteController = TextEditingController();
     descontoController = TextEditingController();
     _valorControllers.add(TextEditingController());
-    _quantityControllers.add(TextEditingController(text: '1'));
+
+    // Prefill síncrono (Catálogo Interno): evita 1º frame com card vazio.
+    if (widget.vendaParaEditar == null) {
+      final pref = _normalizeItensIniciais(widget.itensIniciais);
+      if (pref != null) {
+        produtosSelecionados = pref;
+        final obs = widget.observacaoInicial?.trim();
+        if (obs != null && obs.isNotEmpty) {
+          observacaoController.text = obs;
+        }
+        final desc = widget.descontoPctInicial;
+        if (desc != null && desc > 0) {
+          desconto = desc;
+          _descontoEmReais = false;
+          descontoController.text = _formatPercentualCampo(desc);
+        }
+      }
+    }
+
+    for (final item in produtosSelecionados) {
+      final q = item['quantidade'] ?? 1;
+      _quantityControllers.add(TextEditingController(
+          text: (q is int ? q : int.tryParse(q.toString()) ?? 1).toString()));
+    }
+
     _carregarConfigRoleta();
     if (widget.vendaParaEditar != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -160,58 +184,19 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
           _carregarVendaParaEdicao(widget.vendaParaEditar!);
         }
       });
-    } else if (widget.itensIniciais != null &&
-        widget.itensIniciais!.isNotEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _carregarItensIniciais();
-      });
     }
   }
 
-  /// Prefill a partir do Catálogo Interno (não altera fluxo de finalização).
-  void _carregarItensIniciais() {
-    final raw = widget.itensIniciais;
-    if (raw == null || raw.isEmpty) return;
-
-    final obs = widget.observacaoInicial?.trim();
-    if (obs != null && obs.isNotEmpty) {
-      observacaoController.text = obs;
-    }
-    final desc = widget.descontoPctInicial;
-    if (desc != null && desc > 0) {
-      desconto = desc;
-      _descontoEmReais = false;
-      descontoController.text = _formatPercentualCampo(desc);
-    }
-
-    produtosSelecionados = raw
+  /// Normaliza maps do catálogo interno — descarta linhas sem nome de produto.
+  static List<Map<String, dynamic>>? _normalizeItensIniciais(
+    List<Map<String, dynamic>>? raw,
+  ) {
+    if (raw == null || raw.isEmpty) return null;
+    final out = raw
         .map((m) => Map<String, dynamic>.from(m))
         .where((m) => (m['produto']?.toString() ?? '').trim().isNotEmpty)
         .toList();
-    if (produtosSelecionados.isEmpty) {
-      produtosSelecionados = [
-        {
-          'produto': '',
-          'preco': 0.0,
-          'quantidade': 1,
-          'tamanho': '',
-          'cor': '',
-          'extraValor': '',
-          'variacaoExtraResumo': '',
-        },
-      ];
-    }
-
-    for (final c in _quantityControllers) {
-      c.dispose();
-    }
-    _quantityControllers.clear();
-    for (final item in produtosSelecionados) {
-      final q = item['quantidade'] ?? 1;
-      _quantityControllers.add(TextEditingController(
-          text: (q is int ? q : int.tryParse(q.toString()) ?? 1).toString()));
-    }
-    setState(() {});
+    return out.isEmpty ? null : out;
   }
 
   void _carregarVendaParaEdicao(Venda v) {

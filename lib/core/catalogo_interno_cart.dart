@@ -113,7 +113,10 @@ abstract final class CatalogoInternoCartLogic {
   static List<Map<String, dynamic>> toNovaVendaItens(
     Iterable<CatalogoInternoCartItem> items,
   ) =>
-      [for (final i in items) i.toNovaVendaMap()];
+      [
+        for (final i in items)
+          if (i.nome.trim().isNotEmpty) i.toNovaVendaMap(),
+      ];
 
   static String joinObservacoes(Iterable<CatalogoInternoCartItem> items) {
     final parts = <String>[];
