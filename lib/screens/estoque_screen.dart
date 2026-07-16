@@ -120,6 +120,9 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
   int _comprasRevendaPendentesCount = 0;
   bool _podeRecuperacaoSync = false;
 
+  /// Mesma identidade do Catálogo Interno (filtro estoque zero para vendedor).
+  AccessScopeIdentity? _scope;
+
   /// Ordenação: nome_asc | nome_desc | preco_asc | preco_desc | qtd_asc | qtd_desc
   String _ordenacao = 'nome_asc';
 
@@ -508,6 +511,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     final podeEditar = AccessScopeService.canEditStock(scope);
     if (!mounted) return;
     setState(() {
+      _scope = scope;
       _temPermissao = permitido;
       _podeRecuperacaoSync = podeRecuperacao;
       _podeEditarEstoque = podeEditar;
@@ -515,6 +519,65 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
   }
 
   String _norm(String? s) => normalizeText(s ?? '');
+
+  /// Fonte alinhada ao Catálogo Interno: admin vê todos; vendedor só estoque > 0.
+  List<Produto> _produtosVisiveisEstoque(Iterable<Produto> source) {
+    final isSeller = _scope?.isSeller == true;
+    return source.where((p) {
+      if (!isSeller) return true;
+      return produtoEstoqueDisponivelParaVendedor(p);
+    }).toList();
+  }
+
+  bool _passaFiltrosUiEstoque(
+    Produto p, {
+    required String q,
+    DateTime? limite24h,
+  }) {
+    if (q.isNotEmpty &&
+        !(_norm(p.nome).contains(q) ||
+            _norm(p.descricao).contains(q) ||
+            _norm(p.categoria).contains(q) ||
+            _norm(p.subcategoria).contains(q) ||
+            _norm(p.slug).contains(q) ||
+            _norm(p.codigoBarras).contains(q) ||
+            _norm(p.sku).contains(q))) {
+      return false;
+    }
+    if (_filtroCategoria != null &&
+        _filtroCategoria!.isNotEmpty &&
+        _norm(p.categoria) != _norm(_filtroCategoria!)) {
+      return false;
+    }
+    if (_filtroSubcategoria != null &&
+        _filtroSubcategoria!.isNotEmpty &&
+        _norm(p.subcategoria) != _norm(_filtroSubcategoria!)) {
+      return false;
+    }
+    if (_filtroPublicado != null &&
+        p.publicadoNoCatalogo != _filtroPublicado) {
+      return false;
+    }
+    if (_filtroSemFotos && p.imagens.isNotEmpty) return false;
+    if (_filtroRecentementeAlterados) {
+      if (p.updatedAt == null) return false;
+      final limite =
+          limite24h ?? DateTime.now().subtract(const Duration(hours: 24));
+      if (p.updatedAt!.isBefore(limite)) return false;
+    }
+    return true;
+  }
+
+  List<Produto> _produtosListagemEstoque(
+    Iterable<Produto> source, {
+    String? searchQuery,
+    DateTime? limite24h,
+  }) {
+    final q = searchQuery ?? _debouncedSearchQuery;
+    return _produtosVisiveisEstoque(source)
+        .where((p) => _passaFiltrosUiEstoque(p, q: q, limite24h: limite24h))
+        .toList();
+  }
 
   /// Extrai o nome do arquivo de uma URL ou caminho local.
   String _extrairFilename(String url) {
@@ -644,35 +707,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     setState(() {
       _searchDebounce?.cancel();
       _debouncedSearchQuery = _norm(_pesquisaController.text);
-      final q = _debouncedSearchQuery;
-      final produtos = _box.values.where((p) {
-        if (q.isNotEmpty && !(_norm(p.nome).contains(q) ||
-            _norm(p.descricao).contains(q) ||
-            _norm(p.categoria).contains(q) ||
-            _norm(p.subcategoria).contains(q) ||
-            _norm(p.slug).contains(q) ||
-            _norm(p.codigoBarras).contains(q))) {
-          return false;
-        }
-        if (_filtroCategoria != null && _filtroCategoria!.isNotEmpty && _norm(p.categoria) != _norm(_filtroCategoria!)) {
-          return false;
-        }
-        if (_filtroSubcategoria != null && _filtroSubcategoria!.isNotEmpty && _norm(p.subcategoria) != _norm(_filtroSubcategoria!)) {
-          return false;
-        }
-        if (_filtroPublicado != null && p.publicadoNoCatalogo != _filtroPublicado) {
-          return false;
-        }
-        if (_filtroSemFotos && p.imagens.isNotEmpty) {
-          return false;
-        }
-        if (_filtroRecentementeAlterados) {
-          if (p.updatedAt == null) return false;
-          final limite = DateTime.now().subtract(const Duration(hours: 24));
-          if (p.updatedAt!.isBefore(limite)) return false;
-        }
-        return true;
-      }).toList();
+      final produtos = _produtosListagemEstoque(_box.values);
 
       // Contar apenas produtos com keys válidas
       final produtosComKey = produtos.where((p) => p.key != null).toList();
@@ -1989,16 +2024,21 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
   }
 
   /// Busca produto por código de barras (ou slug). Retorna lista de (key, produto).
+  /// Vendedor: mesma regra do Catálogo Interno (`produtoEstoqueDisponivelParaVendedor`).
   List<({int key, Produto p})> _buscarPorCodigoBarras(String codigo) {
     final q = _norm(codigo);
     if (q.isEmpty) return [];
+    final isSeller = _scope?.isSeller == true;
     final resultado = <({int key, Produto p})>[];
     for (final key in _box.keys) {
       final k = key is int ? key : int.tryParse(key.toString());
       if (k == null) continue;
       final p = _box.get(k);
       if (p == null) continue;
-      if (_norm(p.codigoBarras) == q || _norm(p.slug) == q) {
+      if (isSeller && !produtoEstoqueDisponivelParaVendedor(p)) continue;
+      if (_norm(p.codigoBarras) == q ||
+          _norm(p.slug) == q ||
+          _norm(p.sku) == q) {
         resultado.add((key: k, p: p));
       }
     }
@@ -2008,7 +2048,10 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
         if (k == null) continue;
         final p = _box.get(k);
         if (p == null) continue;
-        if (_norm(p.codigoBarras).contains(q) || _norm(p.slug).contains(q)) {
+        if (isSeller && !produtoEstoqueDisponivelParaVendedor(p)) continue;
+        if (_norm(p.codigoBarras).contains(q) ||
+            _norm(p.slug).contains(q) ||
+            _norm(p.sku).contains(q)) {
           resultado.add((key: k, p: p));
         }
       }
@@ -3990,13 +4033,17 @@ String _formatGradeTexto(Produto p) {
 
   /// Itens que compõem inventário físico. Combos (`ehCombo`) não entram: quantidade/valor
   /// já estão nos produtos componentes.
+  /// Vendedor: mesma base do Catálogo Interno (sem estoque zero).
   Iterable<Produto> get _produtosInventarioFisico =>
-      _box.values.where((p) => !p.ehCombo);
+      _produtosVisiveisEstoque(_box.values).where((p) => !p.ehCombo);
 
   int get _totalProdutos => _produtosInventarioFisico.length;
   int get _totalEstoque =>
       _produtosInventarioFisico.fold(0, (acc, p) => acc + p.quantidade);
-  int get _totalPublicados => _box.values.where((p) => p.publicadoNoCatalogo).length;
+  int get _totalPublicados =>
+      _produtosVisiveisEstoque(_box.values)
+          .where((p) => p.publicadoNoCatalogo)
+          .length;
   /// Custo total (custo real × quantidade; sem combos)
   double get _custoTotal => _produtosInventarioFisico.fold(
         0.0,
@@ -4740,34 +4787,11 @@ String _formatGradeTexto(Produto p) {
                       final q = _debouncedSearchQuery;
                       final limite24h = DateTime.now().subtract(const Duration(hours: 24));
 
-                      var itens = box.values.where((p) {
-                        if (q.isNotEmpty &&
-                            !(_norm(p.nome).contains(q) ||
-                                _norm(p.descricao).contains(q) ||
-                                _norm(p.categoria).contains(q) ||
-                                _norm(p.subcategoria).contains(q) ||
-                                _norm(p.slug).contains(q) ||
-                                _norm(p.codigoBarras).contains(q))) {
-                          return false;
-                        }
-                        if (_filtroCategoria != null && _filtroCategoria!.isNotEmpty &&
-                            _norm(p.categoria) != _norm(_filtroCategoria!)) {
-                          return false;
-                        }
-                        if (_filtroSubcategoria != null && _filtroSubcategoria!.isNotEmpty &&
-                            _norm(p.subcategoria) != _norm(_filtroSubcategoria!)) {
-                          return false;
-                        }
-                        if (_filtroPublicado != null && p.publicadoNoCatalogo != _filtroPublicado) {
-                          return false;
-                        }
-                        if (_filtroSemFotos && p.imagens.isNotEmpty) return false;
-                        if (_filtroRecentementeAlterados) {
-                          if (p.updatedAt == null) return false;
-                          if (p.updatedAt!.isBefore(limite24h)) return false;
-                        }
-                        return true;
-                      }).toList();
+                      var itens = _produtosListagemEstoque(
+                        box.values,
+                        searchQuery: q,
+                        limite24h: limite24h,
+                      );
 
                       switch (_ordenacao) {
                         case 'nome_desc':
@@ -5566,9 +5590,10 @@ String _formatGradeTexto(Produto p) {
               child: ValueListenableBuilder<Box<Produto>>(
                 valueListenable: _box.listenable(),
                 builder: (_, Box<Produto> box, __) {
+                  final base = _produtosVisiveisEstoque(box.values);
                   // Unifica por forma canônica: "Anel"/"anel" → uma entrada "Anel".
                   final catNormToCanon = <String, String>{};
-                  for (final p in box.values) {
+                  for (final p in base) {
                     final c = p.categoria.trim();
                     if (c.isEmpty) continue;
                     final n = _norm(c);
@@ -5578,7 +5603,7 @@ String _formatGradeTexto(Produto p) {
                     ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
 
                   final subNormToCanon = <String, String>{};
-                  for (final p in box.values) {
+                  for (final p in base) {
                     if (_filtroCategoria != null &&
                         _norm(p.categoria) != _norm(_filtroCategoria!)) {
                       continue;
