@@ -11,6 +11,7 @@ import 'package:image_picker/image_picker.dart';
 import '../core/compra_item_pipeline_constants.dart';
 import '../core/logger.dart';
 import '../core/hive_box_names.dart';
+import '../core/produto_cadastro_gate.dart';
 import '../core/produto_form_grade_hydration.dart';
 import '../core/produto_variacao_extra.dart';
 import '../models/compra_item_pipeline.dart';
@@ -301,6 +302,10 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(enforceProdutoCadastroOrPop(context));
+    });
     _initLojaEBox();
 
     final p = widget.produto;

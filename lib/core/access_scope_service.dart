@@ -184,11 +184,17 @@ abstract final class AccessScopeService {
   static bool canAccessFinanceiro(AccessScopeIdentity id) =>
       canSeeFinancial(id);
 
+  /// Cadastro/edição/exclusão/ajuste de inventário — somente admin/programador.
+  /// Independente de [canConsultStock] (consulta qty/preço).
   static bool canManageStock(AccessScopeIdentity id) => id.isAdmin;
 
   static bool canEditStock(AccessScopeIdentity id) => canManageStock(id);
 
+  /// Consulta de estoque (qty + preço de venda). Vendedor: sim.
   static bool canConsultStock(AccessScopeIdentity id) => true;
+
+  /// Custo / margem / fornecedor / movimentações — nunca para vendedor nesta fase.
+  static bool canSeeStockCostAndSupplier(AccessScopeIdentity id) => id.isAdmin;
 
   static bool canManageCampaigns(AccessScopeIdentity id) => id.isAdmin;
 

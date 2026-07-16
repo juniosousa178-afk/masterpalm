@@ -9,6 +9,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/catalogo_interno_cart.dart';
 import '../core/hive_box_names.dart';
+import '../core/access_scope_service.dart';
+import '../core/produto_cadastro_gate.dart';
 import '../design_system/mp_tokens.dart';
 import '../models/cliente.dart';
 import '../models/produto.dart';
@@ -31,6 +33,7 @@ class _CatalogoInternoScreenState extends State<CatalogoInternoScreen> {
   Box<Venda>? _vendasBox;
   String? _lojaId;
   String _vendedor = 'vendedor';
+  AccessScopeIdentity? _scope;
 
   bool _loading = true;
   bool _semPermissao = false;
@@ -94,6 +97,7 @@ class _CatalogoInternoScreenState extends State<CatalogoInternoScreen> {
 
     final prefs = await SharedPreferences.getInstance();
     final favs = prefs.getStringList('catalogo_interno_fav_$lojaId') ?? [];
+    final scope = await AccessScopeService.loadIdentity();
 
     if (!mounted) return;
     setState(() {
@@ -102,6 +106,7 @@ class _CatalogoInternoScreenState extends State<CatalogoInternoScreen> {
       _produtosBox = produtos;
       _clientesBox = clientes;
       _vendasBox = vendas;
+      _scope = scope;
       _favoritos
         ..clear()
         ..addAll(favs);
@@ -128,22 +133,23 @@ class _CatalogoInternoScreenState extends State<CatalogoInternoScreen> {
   List<Produto> get _produtosVisiveis {
     final box = _produtosBox;
     if (box == null) return const [];
+    final isSeller = _scope?.isSeller == true;
     var list = box.values.where((p) {
-      if (p.quantidade <= 0 &&
-          (p.estoquePorTamanho.isEmpty) &&
-          (p.variacoes == null || p.variacoes!.isEmpty)) {
-        // Ainda permite verno catálogo se tem grade vazia; filtra “zero físico total”
-      }
-      return true;
+      if (!isSeller) return true;
+      return produtoEstoqueDisponivelParaVendedor(p);
     }).toList();
 
     final q = _busca.trim().toLowerCase();
     if (q.isNotEmpty) {
       list = list
-          .where((p) =>
-              p.nome.toLowerCase().contains(q) ||
-              p.categoria.toLowerCase().contains(q) ||
-              p.subcategoria.toLowerCase().contains(q))
+          .where((p) {
+            final sku = (p.codigoBarras.isNotEmpty ? p.codigoBarras : p.sku)
+                .toLowerCase();
+            return p.nome.toLowerCase().contains(q) ||
+                p.categoria.toLowerCase().contains(q) ||
+                p.subcategoria.toLowerCase().contains(q) ||
+                sku.contains(q);
+          })
           .toList();
     }
     if (_categoriaFiltro != null && _categoriaFiltro!.isNotEmpty) {
@@ -159,10 +165,8 @@ class _CatalogoInternoScreenState extends State<CatalogoInternoScreen> {
   }
 
   List<String> get _categorias {
-    final box = _produtosBox;
-    if (box == null) return const [];
     final s = <String>{};
-    for (final p in box.values) {
+    for (final p in _produtosVisiveis) {
       s.addAll(p.categoriasAssociadas.where((c) => c.trim().isNotEmpty));
     }
     final out = s.toList()..sort();

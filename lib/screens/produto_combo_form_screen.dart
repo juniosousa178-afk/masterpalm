@@ -2,6 +2,7 @@
 // Tela de cadastro de Combo/Kit – produto virtual que agrupa outros produtos.
 // Ao vender, dá baixa individual em cada item.
 
+import 'dart:async';
 import 'dart:io' show File;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:collection/collection.dart';
@@ -12,6 +13,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../core/combo_config_canonical.dart';
 import '../core/hive_box_names.dart';
+import '../core/produto_cadastro_gate.dart';
 import '../models/produto.dart';
 import '../utils/moeda_input_formatter.dart';
 import '../utils/text_utils.dart';
@@ -91,6 +93,10 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(enforceProdutoCadastroOrPop(context));
+    });
     _init();
   }
 

@@ -22,6 +22,7 @@ import '../core/combo_config_canonical.dart';
 import '../core/hive_box_names.dart';
 import '../core/logger.dart';
 import '../core/access_scope_service.dart';
+import '../core/produto_cadastro_gate.dart';
 import '../core/produto_custo_guard.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -537,6 +538,10 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
   // ========== SELEÇÃO MÚLTIPLA (NOVO) ==========
 
   void _toggleModoSelecao() {
+    if (!_podeEditarEstoque) {
+      _showSnackBar(kProdutoCadastroDeniedMessage, isError: true);
+      return;
+    }
     setState(() {
       _modoSelecao = !_modoSelecao;
       if (!_modoSelecao) {
@@ -2013,6 +2018,10 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
 
   /// Diálogo para dar baixa no estoque pelo código de barras.
   Future<void> _baixaPorCodigoBarras() async {
+    if (!_podeEditarEstoque) {
+      _showSnackBar(kProdutoCadastroDeniedMessage, isError: true);
+      return;
+    }
     final codigoCtrl = TextEditingController();
     final qtdCtrl = TextEditingController(text: '1');
     final codigo = await showDialog<String>(
@@ -2212,7 +2221,37 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
 
   // ========== FUNÇÕES ORIGINAIS (MANTIDAS) ==========
 
+  /// Consulta rápida para vendedor (qty + preço) — sem abrir formulário editável.
+  void _mostrarConsultaProdutoVendedor(Produto p) {
+    final fmt = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(p.nome),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Disponível: ${p.quantidade}'),
+            const SizedBox(height: 8),
+            Text('Preço: ${fmt.format(p.precoFinal)}'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Fechar'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _abrirForm({Produto? produto}) async {
+    if (!_podeEditarEstoque) {
+      _showSnackBar(kProdutoCadastroDeniedMessage, isError: true);
+      return;
+    }
     final isCombo = produto != null && produto.ehCombo;
     final ok = await Navigator.push<bool>(
       context,
@@ -2230,6 +2269,10 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
 
   /// Abre formulário de kit (vários itens vendidos juntos).
   Future<void> _abrirNovoKitForm() async {
+    if (!_podeEditarEstoque) {
+      _showSnackBar(kProdutoCadastroDeniedMessage, isError: true);
+      return;
+    }
     final ok = await Navigator.push<bool>(
       context,
       MaterialPageRoute(builder: (_) => const ProdutoComboFormScreen()),
@@ -2243,7 +2286,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
   /// Escolha entre produto avulso ou kit ao tocar em «Novo produto».
   Future<void> _mostrarEscolhaNovoProduto() async {
     if (!_podeEditarEstoque) {
-      _showSnackBar('Consulta apenas: vendedor não pode cadastrar produtos', isError: true);
+      _showSnackBar(kProdutoCadastroDeniedMessage, isError: true);
       return;
     }
     await showModalBottomSheet<void>(
@@ -2307,6 +2350,10 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
   }
 
   Future<void> _remover(Produto p) async {
+    if (!_podeEditarEstoque) {
+      _showSnackBar(kProdutoCadastroDeniedMessage, isError: true);
+      return;
+    }
     final confirmar = await _showConfirmSheet(
       'Remover Produto?',
       'Esta ação não pode ser desfeita. O produto "${p.nome}" será removido do estoque, catálogo e Firebase.',
@@ -2513,6 +2560,10 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
   }
 
   Future<void> _ajustarQuantidade(Produto p, int delta) async {
+    if (!_podeEditarEstoque) {
+      _showSnackBar(kProdutoCadastroDeniedMessage, isError: true);
+      return;
+    }
     final extraTipo =
         p.variacoesExtraTipo != null && p.variacoesExtraTipo!.isNotEmpty;
     final temEstoqueEstruturado =
@@ -5204,8 +5255,14 @@ String _formatGradeTexto(Produto p) {
           borderRadius: BorderRadius.circular(16),
           onTap: _modoSelecao
               ? () => _toggleSelecaoProduto(key)
-              : () => _abrirForm(produto: p),
-          onLongPress: !_modoSelecao
+              : () {
+                  if (!_podeEditarEstoque) {
+                    _mostrarConsultaProdutoVendedor(p);
+                    return;
+                  }
+                  _abrirForm(produto: p);
+                },
+          onLongPress: (!_modoSelecao && _podeEditarEstoque)
               ? () {
                   setState(() => _modoSelecao = true);
                   _toggleSelecaoProduto(key);

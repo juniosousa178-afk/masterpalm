@@ -10,6 +10,7 @@ import '../core/dart_error_unwrap.dart';
 import '../core/nova_venda_pos_save_ui_policy.dart';
 import '../core/logger.dart';
 import '../core/access_scope_service.dart';
+import '../core/produto_cadastro_gate.dart';
 import '../core/produto_variacao_extra.dart';
 import '../core/strict_product_resolution.dart';
 import '../core/venda_finalizacao_reentrada_guard.dart';
@@ -1513,21 +1514,34 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         : 'Estoque insuficiente para "$nome". Disponível: $disponivel.';
 
     if (!mounted) return false;
+    final scope = await AccessScopeService.loadIdentity();
+    if (!mounted) return false;
+    final isSeller = scope.isSeller;
     final acao = await showDialog<String>(
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Produto com estoque zerado'),
-        content: Text('$msg\n\nO que deseja fazer?'),
+        content: Text(
+          isSeller
+              ? '$msg\n\nEste produto não está disponível para venda.'
+              : '$msg\n\nO que deseja fazer?',
+        ),
         actions: [
           if (indiceRemoverNaLista != null)
             TextButton(
               onPressed: () => Navigator.pop(context, 'remover'),
               child: const Text('Remover da venda'),
             ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, 'atualizar'),
-            child: const Text('Ir para o produto'),
-          ),
+          if (!isSeller)
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, 'atualizar'),
+              child: const Text('Ir para o produto'),
+            )
+          else
+            TextButton(
+              onPressed: () => Navigator.pop(context, 'ok'),
+              child: const Text('OK'),
+            ),
         ],
       ),
     );
@@ -1548,8 +1562,10 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       setState(() {});
       return false;
     }
-    if (acao == 'atualizar') {
+    if (acao == 'atualizar' && !isSeller) {
       if (!mounted) return false;
+      final allowed = await ensureProdutoCadastroAccess(context);
+      if (!allowed || !mounted) return false;
       await Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => ProdutoFormScreen(produto: prod),

@@ -4,7 +4,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
+import '../core/access_scope_service.dart';
 import '../core/hive_box_names.dart';
+import '../core/produto_cadastro_gate.dart';
 import '../models/produto.dart';
 import '../models/cliente.dart';
 import '../models/venda.dart';
@@ -67,11 +69,20 @@ class _GlobalSearchScreenState extends State<GlobalSearchScreen> {
           StoreAccessGuard.auditBoxAccess(produtosBoxName, lojaId, op: 'open');
           produtosBox = await Hive.openBox<Produto>(produtosBoxName);
         }
+        final scope = await AccessScopeService.loadIdentity();
         for (final p in produtosBox.values) {
           if (p.lojaId != lojaId) continue;
-          if (p.nome.toLowerCase().contains(lower)) {
-            list.add({'type': 'produto', 'id': p.key, 'title': p.nome, 'subtitle': 'R\$ ${p.precoFinal.toStringAsFixed(2)}', 'route': '/estoque'});
+          if (!p.nome.toLowerCase().contains(lower)) continue;
+          if (scope.isSeller && !produtoEstoqueDisponivelParaVendedor(p)) {
+            continue;
           }
+          list.add({
+            'type': 'produto',
+            'id': p.key,
+            'title': p.nome,
+            'subtitle': 'R\$ ${p.precoFinal.toStringAsFixed(2)}',
+            'route': '/estoque',
+          });
         }
 
         final clientesBoxName = HiveBoxNames.clientes(lojaId);
