@@ -142,7 +142,39 @@ abstract final class AccessScopeService {
 
   static bool canSeeDashboard(AccessScopeIdentity id) => true;
 
-  /// Relatórios/exportações: admin tudo; vendedor só o próprio escopo.
+  /// Acesso à rota/tela `/vendas` (lista + pesquisa + detalhes no escopo).
+  /// Independente de indicadores globais — vendedor SEMPRE pode abrir a tela;
+  /// o isolamento de linhas usa [canSeeSale] / [filterSalesForScope].
+  static bool canAccessVendasScreen(AccessScopeIdentity id) => true;
+
+  /// Consolidados da loja (bruto/líquido/lucro/ticket/Qtd total/mais vendidos…).
+  /// Sprint4-R2: somente admin/programador.
+  static bool canSeeStoreAggregates(AccessScopeIdentity id) => id.isAdmin;
+
+  /// KPIs/indicadores consolidados da loja na UX de Vendas (mês/ano/resumo…).
+  /// Diferente de [canAccessVendasScreen].
+  static bool canSeeVendasStoreKpis(AccessScopeIdentity id) =>
+      canSeeStoreAggregates(id);
+
+  /// Resumo de vendas (sheet/rota) — dados globais da loja.
+  static bool canSeeVendasResumoGlobal(AccessScopeIdentity id) =>
+      canSeeStoreAggregates(id);
+
+  /// Tela/ranking "Mais vendidos" com faturamento — admin only nesta fase.
+  static bool canSeeMaisVendidos(AccessScopeIdentity id) =>
+      canSeeStoreAggregates(id);
+
+  /// Totais consolidados no header do Estoque (valor de venda / custo / …).
+  static bool canSeeStockFinancialTotals(AccessScopeIdentity id) =>
+      canSeeStoreAggregates(id);
+
+  /// Hub Financeiro & Metas da loja (não a tela pessoal Metas & Comissões).
+  static bool canSeeFinanceiroMetasLoja(AccessScopeIdentity id) =>
+      canSeeStoreAggregates(id);
+
+  /// Relatório/exportação com escopo: admin=loja; vendedor=próprias vendas
+  /// (filtrar via [filterSalesForScope]). Agregados de loja usam
+  /// [canSeeStoreAggregates].
   static bool canSeeReport(AccessScopeIdentity id) => true;
 
   static bool canExport(AccessScopeIdentity id) => true;

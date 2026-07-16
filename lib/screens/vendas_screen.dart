@@ -277,9 +277,9 @@ class _VendasScreenState extends State<VendasScreen>
       _tipoUsuario = sessao.get('tipo_usuario', defaultValue: 'vendedor');
       _scope = await AccessScopeService.loadIdentity();
       if (_scope?.isSeller == true) {
-        // Vendedor: força escopo próprio (não usa seletor "Todos").
-        final email = _scope!.email;
-        if (email.isNotEmpty) vendedorSelecionado = email;
+        // Vendedor: isolamento via AccessScope (_vendaNoEscopo). NÃO usar e-mail
+        // no DropdownButton (itens vêm de v.vendedor legado → AssertionError).
+        vendedorSelecionado = 'Todos';
       }
     } catch (e, st) {
       logE('[HIVE_BOX] origem=Vendas.sessao falha abrir (type=${e.runtimeType})', error: e, st: st);
@@ -591,6 +591,22 @@ class _VendasScreenState extends State<VendasScreen>
     return AccessScopeService.canSeeSale(scope, v);
   }
 
+  /// KPIs consolidados da loja (mês/ano/resumo) — distinto do acesso à tela.
+  bool get _podeVerKpisLoja {
+    final scope = _scope;
+    if (scope != null) {
+      return AccessScopeService.canSeeVendasStoreKpis(scope);
+    }
+    return _tipoUsuario != 'vendedor';
+  }
+
+  /// Valor seguro do dropdown de vendedor (evita AssertionError se seleção ∉ items).
+  String get _vendedorDropdownValue {
+    final items = vendedoresDisponiveis;
+    if (items.contains(vendedorSelecionado)) return vendedorSelecionado;
+    return 'Todos';
+  }
+
   /// KPIs / IA: mesma regra que painel e relatórios (exclui cancelada/estornada).
   bool _vendaParaKpis(Venda v) =>
       _vendaDaLoja(v) && _vendaNoEscopo(v) && incluirVendaEmMetricas(v);
@@ -819,7 +835,9 @@ class _VendasScreenState extends State<VendasScreen>
         ),
         actions: [
           const AppHelpIconButton(iconColor: _surfaceColor),
-          if (lojaId != null && lojaId!.trim().isNotEmpty)
+          if (lojaId != null &&
+              lojaId!.trim().isNotEmpty &&
+              _podeVerKpisLoja)
             TextButton(
               onPressed: () => VendasResumoSheet.show(context, lojaId: lojaId!),
               style: TextButton.styleFrom(
@@ -1062,7 +1080,8 @@ class _VendasScreenState extends State<VendasScreen>
               ),
             ],
           ),
-          if (_tipoUsuario != 'vendedor') ...[
+          // Indicadores mês/ano = consolidados de loja (admin only).
+          if (_podeVerKpisLoja) ...[
             const SizedBox(height: 16),
             Row(
               children: [
@@ -1133,55 +1152,57 @@ class _VendasScreenState extends State<VendasScreen>
             ),
           ),
           const SizedBox(height: 12),
-          // Filtros: Vendedor + Ordenação
+          // Filtros: Vendedor (só admin) + Ordenação
           Row(
             children: [
-              Expanded(
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: _cardColor,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
-                        blurRadius: 10,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      isExpanded: true,
-                      value: vendedorSelecionado,
-                      icon: const Icon(Icons.keyboard_arrow_down, color: _primaryColor),
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
+              if (_scope?.isSeller != true) ...[
+                Expanded(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: _cardColor,
                       borderRadius: BorderRadius.circular(12),
-                      onChanged: (value) {
-                        if (value != null) setState(() => vendedorSelecionado = value);
-                      },
-                      items: vendedoresDisponiveis.map((v) {
-                        return DropdownMenuItem<String>(
-                          value: v,
-                          child: Row(
-                            children: [
-                              Icon(
-                                v == 'Todos' ? Icons.groups : Icons.person,
-                                color: _primaryColor,
-                                size: 20,
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(v, overflow: TextOverflow.ellipsis),
-                              ),
-                            ],
-                          ),
-                        );
-                      }).toList(),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.05),
+                          blurRadius: 10,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        isExpanded: true,
+                        value: _vendedorDropdownValue,
+                        icon: const Icon(Icons.keyboard_arrow_down, color: _primaryColor),
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        borderRadius: BorderRadius.circular(12),
+                        onChanged: (value) {
+                          if (value != null) setState(() => vendedorSelecionado = value);
+                        },
+                        items: vendedoresDisponiveis.map((v) {
+                          return DropdownMenuItem<String>(
+                            value: v,
+                            child: Row(
+                              children: [
+                                Icon(
+                                  v == 'Todos' ? Icons.groups : Icons.person,
+                                  color: _primaryColor,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(v, overflow: TextOverflow.ellipsis),
+                                ),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 12),
+                const SizedBox(width: 12),
+              ],
               Expanded(
                 child: Container(
                   decoration: BoxDecoration(
