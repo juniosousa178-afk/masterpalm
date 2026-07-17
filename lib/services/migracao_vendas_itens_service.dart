@@ -31,6 +31,28 @@ class MigracaoVendasItensService {
     return migradas;
   }
 
+  /// Itens para exibição/PDF: usa `venda.itens` ou reconstrói a partir de
+  /// `produtosDescricao` (vendas antigas / sync sem lista estruturada).
+  static List<VendaItem> resolverItens(Venda venda) {
+    final atuais = venda.itens;
+    if (atuais != null && atuais.isNotEmpty) {
+      return List<VendaItem>.from(atuais);
+    }
+    return itensFromDescricao(venda.produtosDescricao);
+  }
+
+  /// Parseia linhas de produto em [produtosDescricao].
+  static List<VendaItem> itensFromDescricao(String desc) {
+    final linhas = _extrairLinhasProdutos(desc);
+    if (linhas.isEmpty) return const [];
+    final itens = <VendaItem>[];
+    for (final linha in linhas) {
+      final item = _parseLinhaProduto(linha);
+      if (item != null) itens.add(item);
+    }
+    return itens;
+  }
+
   static bool _podeMigrar(Venda venda) {
     final itens = venda.itens ?? [];
     if (itens.length > 1) return false; // já tem múltiplos itens corretos
@@ -41,18 +63,8 @@ class MigracaoVendasItensService {
   }
 
   static bool _tentarMigrarVenda(Venda venda) {
-    final linhas = _extrairLinhasProdutos(venda.produtosDescricao);
-    if (linhas.isEmpty) return false;
-
-    final novosItens = <VendaItem>[];
-    for (final linha in linhas) {
-      final item = _parseLinhaProduto(linha);
-      if (item != null) {
-        novosItens.add(item);
-      }
-    }
+    final novosItens = itensFromDescricao(venda.produtosDescricao);
     if (novosItens.isEmpty) return false;
-
     venda.itens = novosItens;
     return true;
   }
@@ -80,29 +92,56 @@ class MigracaoVendasItensService {
         s.contains('R\$');
   }
 
-  /// Parse "3 x Piercing A (Tam: P) - R$ 10.00" -> VendaItem
+  /// Parse "3 x Piercing A (Tam: P, Cor: Azul) - R$ 10.00" -> VendaItem
   static VendaItem? _parseLinhaProduto(String linha) {
     final matchPrice = RegExp(r'-\s*R\$\s*([\d,\.]+)\s*$').firstMatch(linha);
     if (matchPrice == null) return null;
     final priceStr = matchPrice.group(1)?.replaceAll(',', '.') ?? '0';
     final preco = double.tryParse(priceStr) ?? 0.0;
     final antesPreco = linha.substring(0, matchPrice.start).trim();
-    final matchQtd = RegExp(r'^(\d+)\s*x\s*(.+)$', caseSensitive: false).firstMatch(antesPreco);
+    final matchQtd =
+        RegExp(r'^(\d+)\s*x\s*(.+)$', caseSensitive: false).firstMatch(antesPreco);
     if (matchQtd == null) return null;
     final qtd = int.tryParse(matchQtd.group(1) ?? '1') ?? 1;
     var nome = (matchQtd.group(2) ?? '').trim();
     var tamanho = '';
     var cor = '';
-    final tamMatch = RegExp(r'\(Tam:\s*([^)]+)\)', caseSensitive: false).firstMatch(nome);
-    if (tamMatch != null) {
-      tamanho = tamMatch.group(1)?.trim() ?? '';
-      nome = nome.replaceAll(tamMatch.group(0) ?? '', '').trim();
+    var variacaoExtra = '';
+
+    // Formato unificado: (Tam: P, Cor: Azul, Letra: A)
+    final blocoMatch =
+        RegExp(r'\(([^)]*)\)\s*$').firstMatch(nome);
+    if (blocoMatch != null) {
+      final bloco = (blocoMatch.group(1) ?? '').trim();
+      nome = nome.replaceAll(blocoMatch.group(0) ?? '', '').trim();
+      final partes = bloco.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty);
+      final extras = <String>[];
+      for (final parte in partes) {
+        final lower = parte.toLowerCase();
+        if (lower.startsWith('tam:')) {
+          tamanho = parte.substring(parte.indexOf(':') + 1).trim();
+        } else if (lower.startsWith('cor:')) {
+          cor = parte.substring(parte.indexOf(':') + 1).trim();
+        } else {
+          extras.add(parte);
+        }
+      }
+      variacaoExtra = extras.join(', ');
+    } else {
+      final tamMatch =
+          RegExp(r'\(Tam:\s*([^)]+)\)', caseSensitive: false).firstMatch(nome);
+      if (tamMatch != null) {
+        tamanho = tamMatch.group(1)?.trim() ?? '';
+        nome = nome.replaceAll(tamMatch.group(0) ?? '', '').trim();
+      }
+      final corMatch =
+          RegExp(r'\(Cor:\s*([^)]+)\)', caseSensitive: false).firstMatch(nome);
+      if (corMatch != null) {
+        cor = corMatch.group(1)?.trim() ?? '';
+        nome = nome.replaceAll(corMatch.group(0) ?? '', '').trim();
+      }
     }
-    final corMatch = RegExp(r'\(Cor:\s*([^)]+)\)', caseSensitive: false).firstMatch(nome);
-    if (corMatch != null) {
-      cor = corMatch.group(1)?.trim() ?? '';
-      nome = nome.replaceAll(corMatch.group(0) ?? '', '').trim();
-    }
+
     nome = nome.replaceAll(RegExp(r'\s+'), ' ').trim();
     if (nome.isEmpty) return null;
     return VendaItem(
@@ -111,6 +150,7 @@ class MigracaoVendasItensService {
       precoUnitario: preco,
       tamanho: tamanho,
       cor: cor,
+      variacaoExtraResumo: variacaoExtra,
     );
   }
 }

@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../core/access_scope_service.dart';
 import '../models/venda.dart';
 import '../models/venda_item.dart';
+import '../services/migracao_vendas_itens_service.dart';
 import '../utils/text_utils.dart';
 
 // Cores alinhadas com vendas_screen
@@ -201,7 +202,7 @@ class _CompraCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final itens = venda.itensOuVazio;
+    final itens = MigracaoVendasItensService.resolverItens(venda);
     final temItens = itens.isNotEmpty;
     final currencyFormat = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
 

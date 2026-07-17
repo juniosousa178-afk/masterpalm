@@ -30,14 +30,22 @@ class VendasFirestoreService {
     final itensRaw = data['itens'] as List? ?? [];
     final itens = itensRaw.map((e) {
       final m = Map<String, dynamic>.from(e as Map);
-      final pid = m['productId'] as String?;
+      final pid = (m['productId'] ?? m['id'] ?? '').toString().trim();
+      final nome = (m['produtoNome'] ?? m['nome'] ?? m['produto'] ?? m['name'] ?? '')
+          .toString()
+          .trim();
       return VendaItem(
-        produtoNome: m['produtoNome'] as String? ?? '',
-        quantidade: (m['quantidade'] as num?)?.toInt() ?? 0,
-        precoUnitario: (m['precoUnitario'] as num?)?.toDouble() ?? 0.0,
-        tamanho: m['tamanho'] as String? ?? '',
-        cor: m['cor'] as String? ?? '',
-        productId: pid != null && pid.trim().isNotEmpty ? pid : null,
+        produtoNome: nome,
+        quantidade: (m['quantidade'] as num?)?.toInt() ??
+            (m['qty'] as num?)?.toInt() ??
+            0,
+        precoUnitario: (m['precoUnitario'] as num?)?.toDouble() ??
+            (m['preco'] as num?)?.toDouble() ??
+            (m['price'] as num?)?.toDouble() ??
+            0.0,
+        tamanho: (m['tamanho'] ?? m['size'] ?? '').toString(),
+        cor: (m['cor'] ?? m['color'] ?? '').toString(),
+        productId: pid.isNotEmpty ? pid : null,
         variacaoExtraResumo: (m['variacaoExtraResumo'] ?? '').toString().trim(),
         extraValor: (m['extraValor'] ?? '').toString().trim(),
         custoUnitario: (m['custoUnitario'] as num?)?.toDouble(),
@@ -45,7 +53,7 @@ class VendasFirestoreService {
           (m['origemCustoItem'] as String?)?.trim(),
         ),
       );
-    }).toList();
+    }).where((it) => it.produtoNome.isNotEmpty || it.quantidade > 0).toList();
 
     return Venda(
       clienteNome: data['clienteNome'] ?? '',
