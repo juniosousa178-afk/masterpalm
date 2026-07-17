@@ -12,6 +12,8 @@ Widget buildPlatformImage(
   BoxFit fit = BoxFit.cover,
   double? width,
   double? height,
+  int? cacheWidth,
+  int? cacheHeight,
   Widget Function(BuildContext, Object, StackTrace?)? errorBuilder,
 }) {
   final defaultErrorBuilder = errorBuilder ??
@@ -38,6 +40,8 @@ Widget buildPlatformImage(
       fit: fit,
       width: width,
       height: height,
+      cacheWidth: cacheWidth,
+      cacheHeight: cacheHeight,
       errorBuilder: defaultErrorBuilder,
     );
   }

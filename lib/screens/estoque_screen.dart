@@ -99,7 +99,9 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
   bool _erroResolucaoLoja = false;
   bool _syncEmBackground = false;
   bool _temPermissao = true;
-  bool _podeEditarEstoque = true;
+  bool _podeEditarEstoque = false;
+  bool _podeVerCusto = false;
+  bool _podeVerTotaisFinanceirosEstoque = false;
   bool _importando = false;
   int _importProgress = 0;
   int _importTotal = 0;
@@ -509,12 +511,18 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
         await ProdutoSyncRecoveryAccess.podeAcessarRecuperacao();
     final scope = await AccessScopeService.loadIdentity();
     final podeEditar = AccessScopeService.canEditStock(scope);
+    final podeVerCusto =
+        AccessScopeService.canSeeStockCostAndSupplier(scope);
+    final podeVerTotais =
+        AccessScopeService.canSeeStockFinancialTotals(scope);
     if (!mounted) return;
     setState(() {
       _scope = scope;
       _temPermissao = permitido;
       _podeRecuperacaoSync = podeRecuperacao;
       _podeEditarEstoque = podeEditar;
+      _podeVerCusto = podeVerCusto;
+      _podeVerTotaisFinanceirosEstoque = podeVerTotais;
     });
   }
 
@@ -2485,6 +2493,10 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
   }
 
   Future<void> _duplicarProduto(Produto p) async {
+    if (!_podeEditarEstoque) {
+      _showSnackBar(kProdutoCadastroDeniedMessage, isError: true);
+      return;
+    }
     try {
       final copia = Produto(
         nome: '${p.nome} (cópia)',
@@ -4098,6 +4110,7 @@ String _formatGradeTexto(Produto p) {
                 Navigator.of(context).pop();
               },
             ),
+          if (_podeEditarEstoque) ...[
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
             child: Text(
@@ -4424,6 +4437,7 @@ String _formatGradeTexto(Produto p) {
               _abrirConfigCatalogo();
             },
           ),
+          ],
         ],
       ),
     );
@@ -5044,24 +5058,28 @@ String _formatGradeTexto(Produto p) {
                         compact: true,
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _buildStatCard(
-                        'Custo total',
-                        currencyFormat.format(_custoTotal),
-                        Icons.shopping_cart,
-                        compact: true,
+                    if (_podeVerCusto) ...[
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildStatCard(
+                          'Custo total',
+                          currencyFormat.format(_custoTotal),
+                          Icons.shopping_cart,
+                          compact: true,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _buildStatCard(
-                        'Valor de venda',
-                        currencyFormat.format(_valorTotal),
-                        Icons.attach_money,
-                        compact: true,
+                    ],
+                    if (_podeVerTotaisFinanceirosEstoque) ...[
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildStatCard(
+                          'Valor de venda',
+                          currencyFormat.format(_valorTotal),
+                          Icons.attach_money,
+                          compact: true,
+                        ),
                       ),
-                    ),
+                    ],
                     const SizedBox(width: 8),
                     Expanded(
                       child: _buildStatCard(
@@ -5085,30 +5103,34 @@ String _formatGradeTexto(Produto p) {
                         compact: true,
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _buildStatCard(
-                        'Custo total',
-                        currencyFormat.format(_custoTotal),
-                        Icons.shopping_cart,
-                        compact: true,
+                    if (_podeVerCusto) ...[
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildStatCard(
+                          'Custo total',
+                          currencyFormat.format(_custoTotal),
+                          Icons.shopping_cart,
+                          compact: true,
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
                 const SizedBox(height: 8),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: _buildStatCard(
-                        'Valor de venda',
-                        currencyFormat.format(_valorTotal),
-                        Icons.attach_money,
-                        compact: true,
+                    if (_podeVerTotaisFinanceirosEstoque)
+                      Expanded(
+                        child: _buildStatCard(
+                          'Valor de venda',
+                          currencyFormat.format(_valorTotal),
+                          Icons.attach_money,
+                          compact: true,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
+                    if (_podeVerTotaisFinanceirosEstoque)
+                      const SizedBox(width: 8),
                     Expanded(
                       child: _buildStatCard(
                         'Qtd. produtos',
@@ -5494,7 +5516,7 @@ String _formatGradeTexto(Produto p) {
                 ),
                 const SizedBox(width: 8),
                 // Actions
-                if (!_modoSelecao)
+                if (!_modoSelecao && _podeEditarEstoque)
                   Column(
                     children: [
                       IconButton(

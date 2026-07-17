@@ -15,6 +15,7 @@ import '../models/venda_item.dart';
 import '../models/conta_receber.dart';
 import '../core/conta_receber_identity.dart';
 import '../core/conta_receber_venda_vinculo.dart' as crv;
+import '../core/nova_venda_ui_release_policy.dart';
 import '../core/loja_ativa_resolver.dart';
 import '../core/logger.dart';
 import '../core/safe_cast.dart';
@@ -1577,6 +1578,7 @@ class VendasService {
     void Function(String? numeroSorte)? onNumeroSorteGerado,
     String? saleIntentId,
     String? saleIntentOrigin,
+    void Function()? onLocalPersistUiReady,
   }) {
     final chave = _chaveCoalesceRegistrarVenda(
       lojaId: lojaId,
@@ -1630,6 +1632,7 @@ class VendasService {
           onNumeroSorteGerado: onNumeroSorteGerado,
           saleIntentId: saleIntentId,
           saleIntentOrigin: saleIntentOrigin,
+          onLocalPersistUiReady: onLocalPersistUiReady,
         );
         if (!placeholder.isCompleted) placeholder.complete(venda);
       } catch (e, st) {
@@ -1670,6 +1673,7 @@ class VendasService {
     void Function(String? numeroSorte)? onNumeroSorteGerado,
     String? saleIntentId,
     String? saleIntentOrigin,
+    void Function()? onLocalPersistUiReady,
   }) async {
     if (itens.isEmpty) {
       throw Exception('Nenhum item informado.');
@@ -2389,6 +2393,27 @@ class VendasService {
     }
 
     await debugAfterHiveSalePersistedBeforeSaleIntentComplete?.call();
+
+    // R4.2 — checkpoint UI após Hive+Journal(+fiado); sync/campanha seguem depois.
+    final fiadoAtivo = isFiado && saldoFiado > 0.01;
+    final salePersistedOrSkipped = !isCoordinatedPdv ||
+        saleIntentStatus == SaleIntentStatus.salePersisted ||
+        saleIntentStatus == SaleIntentStatus.completed;
+    if (onLocalPersistUiReady != null &&
+        canReleaseUiAfterLocalPersist(
+          hivePersisted: true,
+          journalCompleted: true,
+          isFiado: fiadoAtivo,
+          fiadoReceivableReady: true,
+          saleIntentPersistedOrSkipped: salePersistedOrSkipped,
+        )) {
+      try {
+        debugPrint('[M39-VENDA-PERF] stage=ui_release');
+        onLocalPersistUiReady();
+      } catch (e) {
+        debugPrint('[VENDAS-SERVICE] onLocalPersistUiReady falhou: $e');
+      }
+    }
 
     if (isCoordinatedPdv &&
         saleIntentStatus == SaleIntentStatus.salePersisted) {

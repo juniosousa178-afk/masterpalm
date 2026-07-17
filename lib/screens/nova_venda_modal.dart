@@ -1958,7 +1958,47 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       final onVendaFinalizadaRef = widget.onVendaFinalizada;
 
       debugPrint('[H1-TRACE] stage=ui_before_salvar_venda_background');
-      // Só fecha o modal após o salvamento principal ter sido concluído com sucesso.
+      // R4.2 — libera UI no checkpoint local (Hive+Journal); sync/campanha em background.
+      var uiReleasedEarly = false;
+      void releaseUiEarly() {
+        if (uiReleasedEarly) return;
+        uiReleasedEarly = true;
+        debugPrint('[M39-VENDA-PERF] stage=ui-success early=true');
+        _pdvSaleIntentLifecycle.clearOnSuccess();
+        if (!mounted) {
+          onErro?.call(
+            'A venda pode ter sido concluída, mas a tela foi atualizada. '
+            'Verifique o histórico de vendas.',
+          );
+          return;
+        }
+        unawaited((() async {
+          try {
+            await _mostrarSucessoVenda();
+            if (!mounted) return;
+            onVendaFinalizadaRef();
+            Navigator.of(context).pop(true);
+          } catch (uiE, uiSt) {
+            _logErroSalvarVenda(
+              etapa: 'UI_POS_SUCCESS_EARLY',
+              erro: uiE,
+              st: uiSt,
+            );
+            if (mounted) {
+              await _mostrarErro(
+                'A venda pode ter sido concluída, mas a tela foi atualizada. '
+                'Verifique o histórico de vendas.',
+              );
+            } else {
+              onErro?.call(
+                'A venda pode ter sido concluída, mas a tela foi atualizada. '
+                'Verifique o histórico de vendas.',
+              );
+            }
+          }
+        })());
+      }
+
       final (ok, numeroSorte, mensagemErro) = await _salvarVendaEmBackground(
         produtosBox: produtosBox,
         clientesBox: clientesBox,
@@ -1987,13 +2027,24 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         saleIntentId: vendaParaEditarRef == null
             ? _pdvSaleIntentLifecycle.ensureForAttempt()
             : null,
+        onLocalPersistUiReady: releaseUiEarly,
       );
       _pendenteFiado = false;
       debugPrint(
         '[H1-TRACE] stage=ui_after_salvar_venda_background '
-        'ok=$ok mounted=$mounted '
+        'ok=$ok mounted=$mounted early=$uiReleasedEarly '
         'hasMsg=${mensagemErro != null && mensagemErro.trim().isNotEmpty}',
       );
+
+      if (uiReleasedEarly) {
+        if (numeroSorte != null &&
+            numeroSorte.isNotEmpty &&
+            mounted) {
+          unawaited(_mostrarDialogNumeroSorte(numeroSorte, nomeClienteFinal));
+        }
+        return;
+      }
+
       final posSave = decideNovaVendaPosSaveUi(
         ok: ok,
         mensagemErro: mensagemErro,
@@ -2067,6 +2118,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     int intervaloParcelasDias = 30,
     Venda? vendaParaEditar,
     String? saleIntentId,
+    void Function()? onLocalPersistUiReady,
   }) async {
     try {
       if (vendaParaEditar != null) {
@@ -2140,6 +2192,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         itensComboSelecaoPorIndice: itensComboSelecaoPorIndice,
         onNumeroSorteGerado: (n) => numeroSorteRecebido = n,
         saleIntentId: saleIntentId,
+        onLocalPersistUiReady: onLocalPersistUiReady,
       );
 
       return (true, numeroSorteRecebido, null);

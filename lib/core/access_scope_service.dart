@@ -190,6 +190,15 @@ abstract final class AccessScopeService {
 
   static bool canEditStock(AccessScopeIdentity id) => canManageStock(id);
 
+  /// Operações administrativas de clientes (importação, reset de senha do catálogo).
+  static bool canManageCustomers(AccessScopeIdentity id) => id.isAdmin;
+
+  static bool canImportClients(AccessScopeIdentity id) =>
+      canManageCustomers(id);
+
+  static bool canResetClienteCatalogPassword(AccessScopeIdentity id) =>
+      canManageCustomers(id);
+
   /// Consulta de estoque (qty + preço de venda). Vendedor: sim.
   static bool canConsultStock(AccessScopeIdentity id) => true;
 

@@ -1,5 +1,6 @@
 ﻿import 'package:flutter/material.dart';
 
+import '../core/access_scope_service.dart';
 import '../themes/app_colors.dart';
 import '../services/cliente_auth_service.dart';
 import '../services/store_resolver_facade.dart';
@@ -38,10 +39,23 @@ class _RedefinirSenhaClienteLojaScreenState
         widget.emailCliente!.trim().isNotEmpty) {
       _emailController.text = widget.emailCliente!.trim();
     }
-    _resolveLoja();
+    _enforceAdminAndResolveLoja();
   }
 
-  Future<void> _resolveLoja() async {
+  Future<void> _enforceAdminAndResolveLoja() async {
+    final scope = await AccessScopeService.loadIdentity();
+    if (!AccessScopeService.canResetClienteCatalogPassword(scope)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Você não possui permissão para redefinir senha de clientes.',
+          ),
+        ),
+      );
+      Navigator.of(context).maybePop();
+      return;
+    }
     final id = await StoreResolverFacade.resolveForAdminApp();
     if (mounted) setState(() => _lojaId = id);
   }
@@ -68,6 +82,14 @@ class _RedefinirSenhaClienteLojaScreenState
   }
 
   Future<void> _redefinir() async {
+    final scope = await AccessScopeService.loadIdentity();
+    if (!AccessScopeService.canResetClienteCatalogPassword(scope)) {
+      _showSnack(
+        'Você não possui permissão para redefinir senha de clientes.',
+        isError: true,
+      );
+      return;
+    }
     final email = _emailController.text.trim();
     final novaSenha = _novaSenhaController.text;
     final confirmar = _confirmarController.text;

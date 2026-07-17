@@ -37,14 +37,18 @@ class _CatalogoInternoScreenState extends State<CatalogoInternoScreen> {
 
   bool _loading = true;
   bool _semPermissao = false;
-  String _busca = '';
+  String _buscaDebounced = '';
+  Timer? _buscaDebounce;
   String? _categoriaFiltro;
   bool _somenteFavoritos = false;
   final Set<String> _favoritos = {};
 
   List<CatalogoInternoCartItem> _carrinho = [];
+  List<Produto>? _produtosVisiveisCache;
+  String? _produtosVisiveisCacheKey;
 
   final _money = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
+  final Stopwatch _perfSw = Stopwatch();
 
   @override
   void initState() {
@@ -52,7 +56,34 @@ class _CatalogoInternoScreenState extends State<CatalogoInternoScreen> {
     _bootstrap();
   }
 
+  @override
+  void dispose() {
+    _buscaDebounce?.cancel();
+    super.dispose();
+  }
+
+  void _perf(String stage) {
+    debugPrint(
+      '[M39-CATALOGO-PERF] stage=$stage elapsedMs=${_perfSw.elapsedMilliseconds}',
+    );
+  }
+
+  void _onBuscaChanged(String value) {
+    _buscaDebounce?.cancel();
+    _buscaDebounce = Timer(const Duration(milliseconds: 200), () {
+      if (!mounted) return;
+      setState(() {
+        _buscaDebounced = value.trim().toLowerCase();
+        _produtosVisiveisCache = null;
+      });
+    });
+  }
+
   Future<void> _bootstrap() async {
+    _perfSw
+      ..reset()
+      ..start();
+    _perf('start');
     final ok = await PermissaoService.possuiPermissao('vendas');
     if (!ok) {
       if (mounted) {
@@ -89,15 +120,23 @@ class _CatalogoInternoScreenState extends State<CatalogoInternoScreen> {
       return;
     }
 
-    final produtos =
-        await Hive.openBox<Produto>(HiveBoxNames.produtos(lojaId));
-    final clientes =
-        await Hive.openBox<Cliente>(HiveBoxNames.clientes(lojaId));
-    final vendas = await Hive.openBox<Venda>(HiveBoxNames.vendas(lojaId));
-
-    final prefs = await SharedPreferences.getInstance();
+    final hiveSw = Stopwatch()..start();
+    final results = await Future.wait([
+      Hive.openBox<Produto>(HiveBoxNames.produtos(lojaId)),
+      Hive.openBox<Cliente>(HiveBoxNames.clientes(lojaId)),
+      Hive.openBox<Venda>(HiveBoxNames.vendas(lojaId)),
+      SharedPreferences.getInstance(),
+      AccessScopeService.loadIdentity(),
+    ]);
+    final produtos = results[0] as Box<Produto>;
+    final clientes = results[1] as Box<Cliente>;
+    final vendas = results[2] as Box<Venda>;
+    final prefs = results[3] as SharedPreferences;
+    final scope = results[4] as AccessScopeIdentity;
     final favs = prefs.getStringList('catalogo_interno_fav_$lojaId') ?? [];
-    final scope = await AccessScopeService.loadIdentity();
+    debugPrint(
+      '[M39-CATALOGO-PERF] stage=hive_parallel ms=${hiveSw.elapsedMilliseconds}',
+    );
 
     if (!mounted) return;
     setState(() {
@@ -110,8 +149,10 @@ class _CatalogoInternoScreenState extends State<CatalogoInternoScreen> {
       _favoritos
         ..clear()
         ..addAll(favs);
+      _produtosVisiveisCache = null;
       _loading = false;
     });
+    _perf('first_paint');
   }
 
   Future<void> _persistFavoritos() async {
@@ -133,13 +174,19 @@ class _CatalogoInternoScreenState extends State<CatalogoInternoScreen> {
   List<Produto> get _produtosVisiveis {
     final box = _produtosBox;
     if (box == null) return const [];
+    final cacheKey =
+        'e0|${box.length}|$_buscaDebounced|${_categoriaFiltro ?? ''}|$_somenteFavoritos|${_favoritos.length}';
+    final cached = _produtosVisiveisCache;
+    if (cached != null && _produtosVisiveisCacheKey == cacheKey) {
+      return cached;
+    }
     final isSeller = _scope?.isSeller == true;
     var list = box.values.where((p) {
       if (!isSeller) return true;
       return produtoEstoqueDisponivelParaVendedor(p);
     }).toList();
 
-    final q = _busca.trim().toLowerCase();
+    final q = _buscaDebounced;
     if (q.isNotEmpty) {
       list = list
           .where((p) {
@@ -161,6 +208,8 @@ class _CatalogoInternoScreenState extends State<CatalogoInternoScreen> {
       list = list.where((p) => _favoritos.contains(_produtoKey(p))).toList();
     }
     list.sort((a, b) => a.nome.toLowerCase().compareTo(b.nome.toLowerCase()));
+    _produtosVisiveisCache = list;
+    _produtosVisiveisCacheKey = cacheKey;
     return list;
   }
 
@@ -492,7 +541,7 @@ class _CatalogoInternoScreenState extends State<CatalogoInternoScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
             child: TextField(
-              onChanged: (v) => setState(() => _busca = v),
+              onChanged: _onBuscaChanged,
               decoration: InputDecoration(
                 hintText: 'Pesquisar produtos…',
                 prefixIcon: const Icon(Icons.search),
@@ -582,8 +631,12 @@ class _CatalogoInternoScreenState extends State<CatalogoInternoScreen> {
                                                 color: Colors.grey,
                                               ),
                                             )
-                                          : buildPlatformImage(thumb,
-                                              fit: BoxFit.cover),
+                                          : buildPlatformImage(
+                                              thumb,
+                                              fit: BoxFit.cover,
+                                              cacheWidth: 360,
+                                              cacheHeight: 360,
+                                            ),
                                     ),
                                     Positioned(
                                       top: 4,

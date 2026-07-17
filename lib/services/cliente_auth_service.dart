@@ -6,6 +6,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/access_scope_service.dart';
 import '../core/logger.dart';
 import '../repositories/cliente_portal_repository.dart';
 import 'firestore_paths.dart';
@@ -994,6 +995,13 @@ class ClienteAuthService {
     required String novaSenha,
   }) async {
     try {
+      final scope = await AccessScopeService.loadIdentity();
+      if (!AccessScopeService.canResetClienteCatalogPassword(scope)) {
+        return {
+          'success': false,
+          'error': 'Você não possui permissão para redefinir senha de clientes.',
+        };
+      }
       final emailNorm = email.toLowerCase().trim();
       if (emailNorm.isEmpty) {
         return {'success': false, 'error': 'Informe o email do cliente.'};

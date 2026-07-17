@@ -1214,10 +1214,32 @@ class _ClientesScreenState extends State<ClientesScreen>
     );
   }
 
+  bool get _podeImportarClientes {
+    final scope = _scope;
+    if (scope == null) return false;
+    return AccessScopeService.canImportClients(scope);
+  }
+
+  bool get _podeRedefinirSenhaCliente {
+    final scope = _scope;
+    if (scope == null) return false;
+    return AccessScopeService.canResetClienteCatalogPassword(scope);
+  }
+
   // -------------------------------
   // Importar clientes via Excel
   // -------------------------------
   Future<void> importarExcel() async {
+    if (!_podeImportarClientes) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Você não possui permissão para importar clientes.'),
+          ),
+        );
+      }
+      return;
+    }
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
@@ -1336,6 +1358,16 @@ class _ClientesScreenState extends State<ClientesScreen>
   // Importar contatos do WhatsApp
   // -------------------------------
   Future<void> importarContatosWhatsApp() async {
+    if (!_podeImportarClientes) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Você não possui permissão para importar clientes.'),
+          ),
+        );
+      }
+      return;
+    }
     if (kIsWeb) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2369,29 +2401,31 @@ class _ClientesScreenState extends State<ClientesScreen>
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
-              // Botões de importação
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildImportButton(
-                      icon: Icons.table_chart,
-                      label: 'Importar Excel',
-                      color: const Color(0xFF22C55E),
-                      onPressed: _importando ? null : importarExcel,
+              if (_podeImportarClientes) ...[
+                const SizedBox(height: 12),
+                // Botões de importação (admin only)
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildImportButton(
+                        icon: Icons.table_chart,
+                        label: 'Importar Excel',
+                        color: const Color(0xFF22C55E),
+                        onPressed: _importando ? null : importarExcel,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildImportButton(
-                      icon: FontAwesomeIcons.whatsapp,
-                      label: 'WhatsApp',
-                      color: const Color(0xFF25D366),
-                      onPressed: _importando ? null : importarContatosWhatsApp,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildImportButton(
+                        icon: FontAwesomeIcons.whatsapp,
+                        label: 'WhatsApp',
+                        color: const Color(0xFF25D366),
+                        onPressed: _importando ? null : importarContatosWhatsApp,
+                      ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
@@ -3347,17 +3381,20 @@ class _ClientesScreenState extends State<ClientesScreen>
                       }
                     },
             ),
+          if (_podeImportarClientes || _podeRedefinirSenhaCliente)
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert),
             tooltip: 'Mais opções',
             onSelected: (value) {
               if (value == 'redefinir_senha_catalogo') {
+                if (!_podeRedefinirSenhaCliente) return;
                 Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (_) => const RedefinirSenhaClienteLojaScreen(),
                   ),
                 );
               } else if (value == 'modelo_import') {
+                if (!_podeImportarClientes) return;
                 Navigator.pushNamed(
                   context,
                   '/modelos_importacao',
@@ -3366,6 +3403,7 @@ class _ClientesScreenState extends State<ClientesScreen>
               }
             },
             itemBuilder: (context) => [
+              if (_podeImportarClientes)
               PopupMenuItem(
                 value: 'modelo_import',
                 child: Row(
@@ -3383,6 +3421,7 @@ class _ClientesScreenState extends State<ClientesScreen>
                   ],
                 ),
               ),
+              if (_podeRedefinirSenhaCliente)
               PopupMenuItem(
                 value: 'redefinir_senha_catalogo',
                 child: Row(
