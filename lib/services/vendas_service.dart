@@ -1883,11 +1883,32 @@ class VendasService {
       'saleIntentId=$coordinatedIntentId',
     );
     for (final it in txItems) {
-      final pid = (it['produtoId'] ?? it['id'] ?? '').toString();
+      final pid = (it['productId'] ?? it['produtoId'] ?? it['id'] ?? '')
+          .toString();
       final qtd = it['quantidade'] ?? it['qtd'] ?? '';
+      final tam = (it['tamanho'] ?? it['size'] ?? '').toString().trim();
+      final cor = (it['cor'] ?? it['color'] ?? '').toString().trim();
+      final extra =
+          (it['extraValor'] ?? it['variacaoExtra'] ?? '').toString().trim();
+      final stockKey = EstoqueTransactionService.stockItemKey(
+        lojaId: lojaEfetiva,
+        produtoId: pid,
+        tamanho: tam,
+        cor: cor,
+        variacaoExtra: extra,
+      );
+      debugPrint(
+        '[M39-ESTOQUE-VARIACAO] stage=start vendaId=$idFirebaseReservado '
+        'produtoId=$pid variacaoId=${[
+          if (tam.isNotEmpty) tam,
+          if (cor.isNotEmpty) cor,
+          if (extra.isNotEmpty) extra,
+        ].join('/')} sku= stockItemKey=$stockKey '
+        'qtdVendida=$qtd operationId=$idFirebaseReservado',
+      );
       debugPrint(
         '[M39-ESTOQUE-VENDA] produtoId=$pid qtdVendida=$qtd '
-        'sellerUid=${(vendedorUid ?? '').trim()}',
+        'tamanho=$tam cor=$cor sellerUid=${(vendedorUid ?? '').trim()}',
       );
     }
     final baixaOp =
