@@ -1876,6 +1876,20 @@ class VendasService {
       'lojaId=$lojaEfetiva itemCount=${txItems.length} '
       'coordinated=$isCoordinatedPdv stockPath=batch_idempotent',
     );
+    debugPrint(
+      '[M39-ESTOQUE-VENDA] stage=start lojaId=$lojaEfetiva '
+      'sellerUid=${(vendedorUid ?? '').trim()} '
+      'itemCount=${txItems.length} operationId=$idFirebaseReservado '
+      'saleIntentId=$coordinatedIntentId',
+    );
+    for (final it in txItems) {
+      final pid = (it['produtoId'] ?? it['id'] ?? '').toString();
+      final qtd = it['quantidade'] ?? it['qtd'] ?? '';
+      debugPrint(
+        '[M39-ESTOQUE-VENDA] produtoId=$pid qtdVendida=$qtd '
+        'sellerUid=${(vendedorUid ?? '').trim()}',
+      );
+    }
     final baixaOp =
         await EstoqueTransactionService.baixarEstoqueTransactionBatchIdempotente(
       lojaId: lojaEfetiva,
@@ -1886,6 +1900,12 @@ class VendasService {
       '[H1-TRACE] stage=after_batch_idempotent '
       'lojaId=$lojaEfetiva opId=$idFirebaseReservado '
       'baixaAplicada=${baixaOp.baixaAplicadaNestaExecucao}',
+    );
+    debugPrint(
+      '[M39-ESTOQUE-VENDA] stage=firestore '
+      'applied=${baixaOp.baixaAplicadaNestaExecucao} '
+      'alreadyApplied=${baixaOp.baixaJaAplicadaAnteriormente} '
+      'operationId=$idFirebaseReservado',
     );
     txResults = baixaOp.transactionResults;
     baixaEstoqueConcluida = true;
@@ -1909,7 +1929,13 @@ class VendasService {
         lojaId: lojaEfetiva,
         result: result,
       );
+      debugPrint(
+        '[M39-ESTOQUE-VENDA] stage=hive produtoId=${result.produtoId} '
+        'qtdVendida=${result.quantidadeDebitada} '
+        'qtdDepois=${result.quantidadeTotalAtualizada}',
+      );
     }
+    debugPrint('[M39-ESTOQUE-VENDA] stage=done vendaOp=$idFirebaseReservado');
 
     txResultsComboCap =
         await ComboKitStockService.aplicarTetoEstoqueComboAposBaixaSemAbortarVenda(

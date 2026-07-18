@@ -255,7 +255,7 @@ class NotificacaoVendasService {
     }
   }
 
-  /// Notifica vendedor que sua venda foi CANCELADA
+  /// Notifica vendedor que sua venda foi CANCELADA/EXCLUÍDA
   Future<void> notificarVendedorVendaCancelada({
     required String storeId,
     required String vendedorUid,
@@ -263,11 +263,19 @@ class NotificacaoVendasService {
     required String pedidoId,
     required String clienteNome,
     String? motivo,
+    String tipoAcao = 'excluida',
+    String? adminUid,
+    String? adminNome,
   }) async {
     try {
-      String mensagem = 'Cliente: $clienteNome';
-      if (motivo != null && motivo.isNotEmpty) {
-        mensagem += '\nMotivo: $motivo';
+      final acaoLabel =
+          tipoAcao.trim().toLowerCase() == 'cancelada' ? 'cancelada' : 'excluída';
+      final motivoTrim = (motivo ?? '').trim();
+      final vendaLabel = pedidoId.trim().isEmpty ? '—' : pedidoId.trim();
+      var mensagem =
+          'Sua venda nº $vendaLabel foi $acaoLabel pelo administrador.';
+      if (motivoTrim.isNotEmpty) {
+        mensagem += '\nMotivo: $motivoTrim.';
       }
 
       final notificacao = NotificacaoVenda(
@@ -275,14 +283,18 @@ class NotificacaoVendasService {
         destinatarioUid: vendedorUid,
         destinatarioEmail: vendedorEmail,
         tipo: TipoNotificacao.vendaCancelada,
-        titulo: 'Venda cancelada',
+        titulo: acaoLabel == 'cancelada' ? 'Venda cancelada' : 'Venda excluída',
         mensagem: mensagem,
         pedidoId: pedidoId,
         storeId: storeId,
         criadaEm: DateTime.now(),
         dados: {
           'clienteNome': clienteNome,
-          'motivo': motivo,
+          'motivo': motivoTrim.isEmpty ? null : motivoTrim,
+          'tipoAcao': acaoLabel == 'cancelada' ? 'cancelada' : 'excluida',
+          if ((adminUid ?? '').trim().isNotEmpty) 'adminUid': adminUid!.trim(),
+          if ((adminNome ?? '').trim().isNotEmpty)
+            'adminNome': adminNome!.trim(),
         },
       );
 
@@ -292,7 +304,7 @@ class NotificacaoVendasService {
           .collection('notificacoes')
           .add(notificacao.toFirestore());
 
-      logD('✅ [NOTIF] Vendedor $vendedorUid notificado: venda cancelada');
+      logD('✅ [NOTIF] Vendedor $vendedorUid notificado: venda $acaoLabel');
     } catch (e, st) {
       logE('❌ [NOTIF] Erro ao notificar vendedor (cancelada) (type=${e.runtimeType})', error: e, st: st);
     }

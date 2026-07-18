@@ -25,6 +25,7 @@ import 'produto_pull_skip_guard.dart';
 import 'produtos_firestore_service.dart';
 import 'clientes_firestore_service.dart';
 import 'estoque_transaction_service.dart';
+import 'notificacao_vendas_service.dart';
 import 'vendas_firestore_service.dart';
 import 'vendas_service.dart';
 
@@ -41,6 +42,12 @@ class _PendingRecord {
   final int hiveKey;
   final int trashKey;
   final String deleteAt; // ISO8601
+  /// Motivo / actor / seller — só vendas (R4.4). Notifica após exclusão definitiva.
+  final String? motivoExclusao;
+  final String? atorUid;
+  final String? vendedorUid;
+  final String? vendedorEmail;
+  final String? clienteNome;
 
   _PendingRecord({
     required this.id,
@@ -50,6 +57,11 @@ class _PendingRecord {
     required this.hiveKey,
     required this.trashKey,
     required this.deleteAt,
+    this.motivoExclusao,
+    this.atorUid,
+    this.vendedorUid,
+    this.vendedorEmail,
+    this.clienteNome,
   });
 
   Map<String, dynamic> toJson() => {
@@ -60,7 +72,27 @@ class _PendingRecord {
         'hiveKey': hiveKey,
         'trashKey': trashKey,
         'deleteAt': deleteAt,
+        if (motivoExclusao != null) 'motivoExclusao': motivoExclusao,
+        if (atorUid != null) 'atorUid': atorUid,
+        if (vendedorUid != null) 'vendedorUid': vendedorUid,
+        if (vendedorEmail != null) 'vendedorEmail': vendedorEmail,
+        if (clienteNome != null) 'clienteNome': clienteNome,
       };
+
+  _PendingRecord copyWith({int? trashKey}) => _PendingRecord(
+        id: id,
+        type: type,
+        lojaId: lojaId,
+        idFirebase: idFirebase,
+        hiveKey: hiveKey,
+        trashKey: trashKey ?? this.trashKey,
+        deleteAt: deleteAt,
+        motivoExclusao: motivoExclusao,
+        atorUid: atorUid,
+        vendedorUid: vendedorUid,
+        vendedorEmail: vendedorEmail,
+        clienteNome: clienteNome,
+      );
 
   static _PendingRecord? fromJsonSafe(Map<String, dynamic> m) {
     try {
@@ -75,6 +107,13 @@ class _PendingRecord {
       final hk = hiveKey is int ? hiveKey : (hiveKey is num ? hiveKey.toInt() : null);
       final tk = trashKey is int ? trashKey : (trashKey is num ? trashKey.toInt() : null);
       if (hk == null || tk == null || deleteAt is! String) return null;
+      String? opt(String k) {
+        final v = m[k];
+        if (v is! String) return null;
+        final t = v.trim();
+        return t.isEmpty ? null : t;
+      }
+
       return _PendingRecord(
         id: id,
         type: type,
@@ -83,6 +122,11 @@ class _PendingRecord {
         hiveKey: hk,
         trashKey: tk,
         deleteAt: deleteAt,
+        motivoExclusao: opt('motivoExclusao'),
+        atorUid: opt('atorUid'),
+        vendedorUid: opt('vendedorUid'),
+        vendedorEmail: opt('vendedorEmail'),
+        clienteNome: opt('clienteNome'),
       );
     } catch (_) {
       return null;
@@ -283,11 +327,19 @@ class SoftDeleteService {
   }
 
   /// Agenda exclusão de venda. Remove do histórico do cliente.
+  ///
+  /// [motivoExclusao]/[vendedorUid]/etc. são persistidos na pendência e a
+  /// notificação ao vendedor só ocorre na exclusão definitiva (após janela undo).
   static Future<String?> scheduleVendaDelete({
     required Venda venda,
     required Box<Venda> vendasBox,
     required Box<Cliente> clientesBox,
     required String lojaId,
+    String? motivoExclusao,
+    String? atorUid,
+    String? vendedorUid,
+    String? vendedorEmail,
+    String? clienteNome,
   }) async {
     await _ensureLoaded();
     final key = venda.key as int?;
@@ -377,6 +429,9 @@ class SoftDeleteService {
 
     final id = const Uuid().v4();
     final deleteAt = DateTime.now().add(_undoWindow);
+    final uidSeller = (vendedorUid ?? venda.vendedorUid ?? '').trim();
+    final emailSeller = (vendedorEmail ?? venda.vendedorEmail ?? '').trim();
+    final nomeCliente = (clienteNome ?? venda.clienteNome).trim();
     _pending.add(_PendingRecord(
       id: id,
       type: 'venda',
@@ -385,6 +440,13 @@ class SoftDeleteService {
       hiveKey: key,
       trashKey: trashKey,
       deleteAt: deleteAt.toIso8601String(),
+      motivoExclusao: (motivoExclusao ?? '').trim().isEmpty
+          ? null
+          : motivoExclusao!.trim(),
+      atorUid: (atorUid ?? '').trim().isEmpty ? null : atorUid!.trim(),
+      vendedorUid: uidSeller.isEmpty ? null : uidSeller,
+      vendedorEmail: emailSeller.isEmpty ? null : emailSeller,
+      clienteNome: nomeCliente.isEmpty ? null : nomeCliente,
     ));
     await _save();
     _startTimerIfNeeded();
@@ -454,15 +516,7 @@ class SoftDeleteService {
             st: st,
           );
           final nk = await trashBox.add(prod);
-          _pending[idx] = _PendingRecord(
-            id: r.id,
-            type: r.type,
-            lojaId: r.lojaId,
-            idFirebase: r.idFirebase,
-            hiveKey: r.hiveKey,
-            trashKey: nk,
-            deleteAt: r.deleteAt,
-          );
+          _pending[idx] = r.copyWith(trashKey: nk);
           await _save();
           return false;
         }
@@ -509,15 +563,7 @@ class SoftDeleteService {
             st: st,
           );
           final nk = await trashBox.add(_cloneVendaParaHive(vendaParaRestaurar));
-          _pending[idx] = _PendingRecord(
-            id: r.id,
-            type: r.type,
-            lojaId: r.lojaId,
-            idFirebase: r.idFirebase,
-            hiveKey: r.hiveKey,
-            trashKey: nk,
-            deleteAt: r.deleteAt,
-          );
+          _pending[idx] = r.copyWith(trashKey: nk);
           await _save();
           return false;
         }
@@ -610,15 +656,7 @@ class SoftDeleteService {
             st: st,
           );
           final nk = await trashBox.add(cliente);
-          _pending[idx] = _PendingRecord(
-            id: r.id,
-            type: r.type,
-            lojaId: r.lojaId,
-            idFirebase: r.idFirebase,
-            hiveKey: r.hiveKey,
-            trashKey: nk,
-            deleteAt: r.deleteAt,
-          );
+          _pending[idx] = r.copyWith(trashKey: nk);
           await _save();
           return false;
         }
@@ -718,6 +756,33 @@ class SoftDeleteService {
         );
       }
       await trashBox.delete(r.trashKey);
+      final sellerUid = (r.vendedorUid ?? venda?.vendedorUid ?? '').trim();
+      if (sellerUid.isNotEmpty) {
+        try {
+          final email =
+              (r.vendedorEmail ?? venda?.vendedorEmail ?? '').trim();
+          final cliente =
+              (r.clienteNome ?? venda?.clienteNome ?? 'Cliente').trim();
+          final pedidoId = (r.idFirebase.isNotEmpty
+                  ? r.idFirebase
+                  : (venda?.idFirebase ?? r.id))
+              .trim();
+          await NotificacaoVendasService().notificarVendedorVendaCancelada(
+            storeId: r.lojaId,
+            vendedorUid: sellerUid,
+            vendedorEmail: email,
+            pedidoId: pedidoId.isEmpty ? r.id : pedidoId,
+            clienteNome: cliente.isEmpty ? 'Cliente' : cliente,
+            motivo: r.motivoExclusao,
+            tipoAcao: 'excluida',
+            adminUid: r.atorUid,
+          );
+        } catch (e) {
+          logW(
+            '[SOFT-DELETE] notificação exclusão venda falhou (type=${e.runtimeType})',
+          );
+        }
+      }
       logD('🗑️ [SOFT-DELETE] Venda ${r.idFirebase} excluída permanentemente (Firestore + local)');
     } else if (r.type == 'cliente') {
       final trashBox = await _trashClientesBox();

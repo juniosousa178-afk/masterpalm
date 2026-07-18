@@ -121,6 +121,9 @@ class _NotificacaoPedidoListenerState extends State<NotificacaoPedidoListener> {
         if (n.tipo == TipoNotificacao.novaVenda &&
             n.criadaEm.isAfter(horarioAbertura)) {
           if (mounted) _mostrarNotificacao(context, n);
+        } else if (n.tipo == TipoNotificacao.vendaCancelada &&
+            n.criadaEm.isAfter(horarioAbertura)) {
+          if (mounted) _mostrarNotificacaoCancelamento(context, n);
         }
       }
     } catch (_) {}
@@ -182,12 +185,18 @@ class _NotificacaoPedidoListenerState extends State<NotificacaoPedidoListener> {
             }
           } else if (horarioAbertura != null) {
             for (final n in snapshot.data!) {
-              if (n.tipo == TipoNotificacao.novaVenda &&
+              if ((n.tipo == TipoNotificacao.novaVenda ||
+                      n.tipo == TipoNotificacao.vendaCancelada) &&
                   !_idsVistos.contains(n.id) &&
                   n.criadaEm.isAfter(horarioAbertura)) {
                 _idsVistos.add(n.id);
                 WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (mounted) _mostrarNotificacao(context, n);
+                  if (!mounted) return;
+                  if (n.tipo == TipoNotificacao.vendaCancelada) {
+                    _mostrarNotificacaoCancelamento(context, n);
+                  } else {
+                    _mostrarNotificacao(context, n);
+                  }
                 });
               } else {
                 _idsVistos.add(n.id);
@@ -277,6 +286,64 @@ class _NotificacaoPedidoListenerState extends State<NotificacaoPedidoListener> {
         NotificacaoService.enviarNotificacao(
           titulo: n.titulo,
           corpo: '${n.mensagem.split('\n').first} $valorStr',
+        );
+      } catch (_) {}
+    }
+  }
+
+  void _mostrarNotificacaoCancelamento(
+      BuildContext context, NotificacaoVenda n) {
+    if (!context.mounted) return;
+    try {
+      SystemSound.play(SystemSoundType.alert);
+    } catch (_) {}
+
+    NotificacaoCentroService().add(
+      titulo: n.titulo,
+      corpo: n.mensagem,
+      tipo: TipoNotificacaoCentro.outro,
+      acaoRota: '/vendas_canceladas_vendedor',
+      storeId: n.storeId,
+    );
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              n.titulo,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            Text(
+              n.mensagem,
+              style: const TextStyle(fontSize: 13),
+              maxLines: 4,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+        backgroundColor: Colors.orange.shade800,
+        duration: const Duration(seconds: 10),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(16),
+        action: SnackBarAction(
+          label: 'Ver',
+          textColor: Colors.white,
+          onPressed: () {
+            if (!context.mounted) return;
+            Navigator.of(context).pushNamed('/vendas_canceladas_vendedor');
+          },
+        ),
+      ),
+    );
+
+    if (!kIsWeb) {
+      try {
+        NotificacaoService.enviarNotificacao(
+          titulo: n.titulo,
+          corpo: n.mensagem.split('\n').first,
         );
       } catch (_) {}
     }

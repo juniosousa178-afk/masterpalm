@@ -58,6 +58,7 @@ import 'screens/home_screen.dart';
 import 'screens/fornecedor_screen.dart';
 import 'screens/vendas_screen.dart';
 import 'screens/clientes_screen.dart';
+import 'screens/vendas_canceladas_vendedor_screen.dart';
 import 'screens/estoque_screen.dart';
 import 'screens/catalogo_interno_screen.dart';
 import 'screens/historico_clientes_screen.dart';
@@ -115,7 +116,8 @@ import 'screens/mp_oauth_callback_screen.dart';
 import 'screens/master_config_screen.dart';
 import 'screens/catalog_payment_support_screen.dart';
 import 'screens/site_config_screen.dart';
-import 'screens/metas_comissoes_screen.dart';
+import 'widgets/scope_route_gate.dart';
+import 'core/access_scope_service.dart';
 import 'screens/notas_fiscais_screen.dart';
 import 'screens/contas_receber_screen.dart';
 import 'screens/contas_pagar_screen.dart';
@@ -4389,11 +4391,17 @@ class MyApp extends StatelessWidget {
                   ),
               '/relatorios_financeiros': (_) => _planGate(
                     PlanGateFeature.relatoriosFinanceirosHub,
-                    const RelatoriosFinanceirosScreen(),
+                    ScopeRouteGate(
+                      allow: AccessScopeService.canSeeFinanceiroMetasLoja,
+                      child: const RelatoriosFinanceirosScreen(),
+                    ),
                   ),
               '/relatorio_mais_vendidos': (ctx) => _lojaIdRouteGated(
                     PlanGateFeature.maisVendidos,
-                    (lojaId) => RelatorioMaisVendidosScreen(lojaId: lojaId),
+                    (lojaId) => ScopeRouteGate(
+                      allow: AccessScopeService.canSeeMaisVendidos,
+                      child: RelatorioMaisVendidosScreen(lojaId: lojaId),
+                    ),
                   ),
               '/relatorio_ranking_clientes': (ctx) => _lojaIdRouteGated(
                     PlanGateFeature.relatorioRankingClientes,
@@ -4498,8 +4506,10 @@ class MyApp extends StatelessWidget {
                   ),
               '/metas_comissoes': (_) => _planGate(
                     PlanGateFeature.metasComissoes,
-                    const MetasComissoesScreen(),
+                    const MetasComissoesRoute(),
                   ),
+              '/vendas_canceladas_vendedor': (_) =>
+                  const VendasCanceladasVendedorRoute(),
               '/motor_crescimento': (ctx) => _lojaIdRouteGated(
                     PlanGateFeature.motorCrescimento,
                     (lojaId) => MotorCrescimentoScreen(lojaId: lojaId),

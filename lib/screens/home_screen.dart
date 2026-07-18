@@ -9,6 +9,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../core/hive_box_names.dart';
+import '../core/access_scope_service.dart';
 import '../services/permissao_service.dart';
 import '../widgets/vendedor_aguarde_widget.dart';
 import 'package:master_palm/widgets/responsive_shell.dart';
@@ -61,9 +62,6 @@ import '../core/home_module_registry.dart';
 import '../core/app_module_definition.dart';
 import '../core/store_display_name_resolver.dart';
 import '../screens/configure_loja_placeholder_screen.dart';
-
-// ✅ sistema de comissões
-import 'metas_comissoes_screen.dart';
 
 // ✅ planos
 import '../services/planos_service.dart';
@@ -131,6 +129,12 @@ class _HomeScreenState extends State<HomeScreen>
 
   String _usuario = '';
   String _tipo = 'vendedor';
+  /// Identidade canónica (fail-closed: sem scope = não-admin).
+  AccessScopeIdentity? _scopeIdentity;
+
+  /// Admin/programador confirmado via AccessScope — nunca assumir admin no loading.
+  bool get _isAdminScope => _scopeIdentity?.isAdmin == true;
+  bool get _isSellerScope => _scopeIdentity?.isSeller == true;
 
   /// Identificador interno da loja ativa (Hive, Firestore, Motor, Campanhas, Painel).
   String _lojaIdInterno = '';
@@ -228,6 +232,12 @@ class _HomeScreenState extends State<HomeScreen>
     _usuario = (sessao.get('usuario_logado') as String?) ??
         (emailAuth.isNotEmpty ? emailAuth : 'Usuário');
     _tipo = (sessao.get('tipo_usuario') as String?) ?? 'vendedor';
+    // R5.2 — identidade canónica; fail-closed até carregar.
+    try {
+      _scopeIdentity = await AccessScopeService.loadIdentity();
+    } catch (_) {
+      _scopeIdentity = null;
+    }
 
     // Fast path: store_id em cache (Hive) → 1º paint sem esperar Firestore.
     final cachedUser = (sessao.get('usuario_logado') ?? '')
@@ -1743,8 +1753,10 @@ class _HomeScreenState extends State<HomeScreen>
           '/dashboard_insights',
           pushWidget: DashboardInsightsScreen(
             lojaId: _lojaIdInterno,
-            isVendedor: _tipo == 'vendedor',
-            vendedorNome: _tipo == 'vendedor' ? _getFirstName(_usuario) : null,
+            isVendedor: _isSellerScope || (!_isAdminScope && _tipo == 'vendedor'),
+            vendedorNome: (_isSellerScope || _tipo == 'vendedor')
+                ? _getFirstName(_usuario)
+                : null,
           ),
           iconBgColor: _primaryColor.withOpacity(0.1),
           color: _primaryColor,
@@ -1756,29 +1768,31 @@ class _HomeScreenState extends State<HomeScreen>
       );
     }
 
-    // Relatórios Financeiros & Metas — gate para admin (free limitado vê upgrade)
-    currentChildren.add(
-      _menuTileWithPlanGate(
-        'Financeiro & Metas',
-        Icons.trending_up,
-        '/relatorios_financeiros',
-        pushWidget: const RelatoriosFinanceirosScreen(),
-        iconBgColor: const Color(0xFFEC4899).withOpacity(0.1),
-        color: const Color(0xFFEC4899),
-        sidebarMode: sidebarMode,
-        applyPlanGate: applyPlanGate,
-        menuPlanTier: menuPlanTier,
-        planFeature: PlanGateFeature.relatoriosFinanceirosHub,
-      ),
-    );
+    // Relatórios Financeiros & Metas — somente admin (AccessScope, fail-closed).
+    if (_isAdminScope) {
+      currentChildren.add(
+        _menuTileWithPlanGate(
+          'Financeiro & Metas',
+          Icons.trending_up,
+          '/relatorios_financeiros',
+          pushWidget: const RelatoriosFinanceirosScreen(),
+          iconBgColor: const Color(0xFFEC4899).withOpacity(0.1),
+          color: const Color(0xFFEC4899),
+          sidebarMode: sidebarMode,
+          applyPlanGate: applyPlanGate,
+          menuPlanTier: menuPlanTier,
+          planFeature: PlanGateFeature.relatoriosFinanceirosHub,
+        ),
+      );
+    }
 
-    // ✅ Metas & Comissões - vendedores veem suas próprias, admin vê todas
+    // Metas & Comissões — rota nomeada (MetasComissoesRoute) decide admin × vendedor.
+    // Sem pushWidget: evita bypass do gate e montagem da tela admin para seller.
     currentChildren.add(
       _menuTileWithPlanGate(
         'Metas & Comissões',
         Icons.monetization_on,
         '/metas_comissoes',
-        pushWidget: const MetasComissoesScreen(),
         iconBgColor: const Color(0xFF10B981).withOpacity(0.1),
         color: const Color(0xFF10B981),
         sidebarMode: sidebarMode,
@@ -1788,19 +1802,35 @@ class _HomeScreenState extends State<HomeScreen>
       ),
     );
 
-    currentChildren.add(
-      _menuTileWithPlanGate(
-        'Mais vendidos',
-        Icons.trending_up,
-        '/relatorio_mais_vendidos',
-        iconBgColor: const Color(0xFFEC4899).withOpacity(0.1),
-        color: const Color(0xFFEC4899),
-        sidebarMode: sidebarMode,
-        applyPlanGate: applyPlanGate,
-        menuPlanTier: menuPlanTier,
-        planFeature: PlanGateFeature.maisVendidos,
-      ),
-    );
+    if (_isAdminScope) {
+      currentChildren.add(
+        _menuTileWithPlanGate(
+          'Mais vendidos',
+          Icons.trending_up,
+          '/relatorio_mais_vendidos',
+          iconBgColor: const Color(0xFFEC4899).withOpacity(0.1),
+          color: const Color(0xFFEC4899),
+          sidebarMode: sidebarMode,
+          applyPlanGate: applyPlanGate,
+          menuPlanTier: menuPlanTier,
+          planFeature: PlanGateFeature.maisVendidos,
+        ),
+      );
+    }
+
+    // Vendedor: vendas canceladas/excluídas (notificações com motivo).
+    if (_isSellerScope && !_isAdminScope) {
+      currentChildren.add(
+        _buildMenuTile(
+          'Vendas canceladas',
+          Icons.cancel_outlined,
+          '/vendas_canceladas_vendedor',
+          sidebarMode: sidebarMode,
+          iconBgColor: _errorColor.withOpacity(0.1),
+          color: _errorColor,
+        ),
+      );
+    }
 
     // Seção de Pedidos (unificada: pré-pedidos + pendentes)
     startSection('Pedidos');
