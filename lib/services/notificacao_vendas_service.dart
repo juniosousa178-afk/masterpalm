@@ -3,8 +3,11 @@
 // - Admin: recebe notificação de TODA nova venda
 // - Vendedor: recebe notificação quando SUA venda é CONFIRMADA ou CANCELADA
 
+import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/logger.dart';
 
@@ -117,7 +120,23 @@ class NotificacaoVendasService {
   factory NotificacaoVendasService() => _instance;
   NotificacaoVendasService._internal();
 
-  final _db = FirebaseFirestore.instance;
+  /// Só testes — FakeFirebaseFirestore / harness.
+  @visibleForTesting
+  static FirebaseFirestore? debugFirestoreOverride;
+
+  /// Contador de badge (cancelamentos) emitido após gravação local/remota.
+  static final ValueNotifier<int> exclusaoBadgeTick = ValueNotifier<int>(0);
+
+  FirebaseFirestore get _db => debugFirestoreOverride ?? FirebaseFirestore.instance;
+
+  static const _prefsExclusaoPrefix = 'm39_notif_exclusao_v1_';
+
+  static void _trace(String stage, Map<String, Object?> fields) {
+    final parts = fields.entries
+        .map((e) => '${e.key}=${e.value ?? ''}')
+        .join(' ');
+    debugPrint('[M39-NOTIFICACAO] stage=$stage $parts');
+  }
 
   // ==========================================================================
   // NOTIFICAÇÕES PARA ADMIN
@@ -257,8 +276,14 @@ class NotificacaoVendasService {
   }
 
   /// Notifica vendedor que sua venda foi CANCELADA/EXCLUÍDA.
+  ///
   /// Idempotente: 1 venda (pedidoId) → no máx. 1 documento por loja/vendedor/ação.
-  Future<void> notificarVendedorVendaCancelada({
+  /// Retorna `true` se gravou (Firestore e/ou espelho local). Não engole falha sem
+  /// sinalizar — o SoftDelete só marca `notificacaoEnviada` quando true.
+  ///
+  /// Nota Rules: `create` em `notificacoes` exige admin. Exclusão pelo vendedor
+  /// cai no espelho local para a tela/badge continuarem a funcionar no device.
+  Future<bool> notificarVendedorVendaCancelada({
     required String storeId,
     required String vendedorUid,
     required String vendedorEmail,
@@ -269,9 +294,19 @@ class NotificacaoVendasService {
     String? adminUid,
     String? adminNome,
   }) async {
+    _trace('start', {
+      'tenant': storeId,
+      'sellerUid': vendedorUid,
+      'vendaId': pedidoId,
+      'tipo': tipoAcao,
+      'motivo': motivo,
+      'admin': adminUid,
+    });
     try {
       final acaoLabel =
           tipoAcao.trim().toLowerCase() == 'cancelada' ? 'cancelada' : 'excluída';
+      final tipoAcaoNorm =
+          acaoLabel == 'cancelada' ? 'cancelada' : 'excluida';
       final motivoTrim = (motivo ?? '').trim();
       final vendaLabel = pedidoId.trim().isEmpty ? '—' : pedidoId.trim();
       var mensagem =
@@ -284,21 +319,18 @@ class NotificacaoVendasService {
         storeId: storeId,
         vendedorUid: vendedorUid,
         pedidoId: pedidoId,
-        tipoAcao: acaoLabel == 'cancelada' ? 'cancelada' : 'excluida',
+        tipoAcao: tipoAcaoNorm,
       );
-      final ref = _db
-          .collection('lojas')
-          .doc(storeId)
-          .collection('notificacoes')
-          .doc(docId);
-      final existing = await ref.get();
-      if (existing.exists) {
-        logD(
-          '[NOTIF] skip duplicata vendaCancelada docId=$docId '
-          'vendedor=$vendedorUid',
-        );
-        return;
-      }
+      _trace('prepare', {
+        'tenant': storeId,
+        'sellerUid': vendedorUid,
+        'vendaId': pedidoId,
+        'docId': docId,
+        'notificationId': docId,
+        'tipo': tipoAcaoNorm,
+        'motivo': motivoTrim,
+        'admin': adminUid,
+      });
 
       final notificacao = NotificacaoVenda(
         id: docId,
@@ -313,7 +345,7 @@ class NotificacaoVendasService {
         dados: {
           'clienteNome': clienteNome,
           'motivo': motivoTrim.isEmpty ? null : motivoTrim,
-          'tipoAcao': acaoLabel == 'cancelada' ? 'cancelada' : 'excluida',
+          'tipoAcao': tipoAcaoNorm,
           'idempotencyKey': docId,
           if ((adminUid ?? '').trim().isNotEmpty) 'adminUid': adminUid!.trim(),
           if ((adminNome ?? '').trim().isNotEmpty)
@@ -321,11 +353,91 @@ class NotificacaoVendasService {
         },
       );
 
-      await ref.set(notificacao.toFirestore());
+      // Espelho local primeiro (sobrevive a Rules deny + Ctrl+F5).
+      final localOk = await _salvarEspelhoExclusaoLocal(notificacao);
+      _trace('local', {
+        'tenant': storeId,
+        'sellerUid': vendedorUid,
+        'docId': docId,
+        'ok': localOk,
+      });
 
-      logD('✅ [NOTIF] Vendedor $vendedorUid notificado: venda $acaoLabel');
+      var firestoreOk = false;
+      _trace('firestore', {
+        'tenant': storeId,
+        'sellerUid': vendedorUid,
+        'docId': docId,
+      });
+      try {
+        // Sem get() prévio: get de doc inexistente falha para não-admin (Rules).
+        // set com docId estável = create ou overwrite idempotente (1 doc).
+        final payload = notificacao.toFirestore();
+        // criadaEm local também no payload para leitura imediata sem serverTimestamp.
+        payload['criadaEm'] = Timestamp.fromDate(notificacao.criadaEm);
+        payload['criadaEmServer'] = FieldValue.serverTimestamp();
+        await _db
+            .collection('lojas')
+            .doc(storeId)
+            .collection('notificacoes')
+            .doc(docId)
+            .set(payload, SetOptions(merge: true));
+        firestoreOk = true;
+        _trace('firestore_ok', {
+          'tenant': storeId,
+          'sellerUid': vendedorUid,
+          'docId': docId,
+        });
+      } catch (e, st) {
+        logW(
+          '[M39-NOTIFICACAO] stage=firestore_fail docId=$docId '
+          '(type=${e.runtimeType}) — espelho local=$localOk',
+        );
+        debugPrint('[M39-NOTIFICACAO] stage=firestore_fail st=$st');
+      }
+
+      final ok = firestoreOk || localOk;
+      if (ok) {
+        exclusaoBadgeTick.value = exclusaoBadgeTick.value + 1;
+        _trace('badge', {
+          'tenant': storeId,
+          'sellerUid': vendedorUid,
+          'docId': docId,
+          'tick': exclusaoBadgeTick.value,
+        });
+        _trace('done', {
+          'tenant': storeId,
+          'sellerUid': vendedorUid,
+          'docId': docId,
+          'firestoreOk': firestoreOk,
+          'localOk': localOk,
+        });
+        logD(
+          '✅ [NOTIF] Vendedor $vendedorUid notificado: venda $acaoLabel '
+          'fs=$firestoreOk local=$localOk',
+        );
+      } else {
+        _trace('done', {
+          'tenant': storeId,
+          'sellerUid': vendedorUid,
+          'docId': docId,
+          'ok': false,
+        });
+      }
+      return ok;
     } catch (e, st) {
-      logE('❌ [NOTIF] Erro ao notificar vendedor (cancelada) (type=${e.runtimeType})', error: e, st: st);
+      logE(
+        '❌ [NOTIF] Erro ao notificar vendedor (cancelada) (type=${e.runtimeType})',
+        error: e,
+        st: st,
+      );
+      _trace('done', {
+        'tenant': storeId,
+        'sellerUid': vendedorUid,
+        'vendaId': pedidoId,
+        'ok': false,
+        'error': e.runtimeType.toString(),
+      });
+      return false;
     }
   }
 
@@ -358,16 +470,133 @@ class NotificacaoVendasService {
         tipoAcao: tipoAcao,
       );
 
+  static String _prefsKeyExclusao(String storeId, String uid) =>
+      '$_prefsExclusaoPrefix${storeId.trim()}_${uid.trim()}';
+
+  Future<bool> _salvarEspelhoExclusaoLocal(NotificacaoVenda n) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key = _prefsKeyExclusao(n.storeId, n.destinatarioUid);
+      final raw = prefs.getString(key);
+      final list = <Map<String, dynamic>>[];
+      if (raw != null && raw.trim().isNotEmpty) {
+        final decoded = jsonDecode(raw);
+        if (decoded is List) {
+          for (final e in decoded) {
+            if (e is Map) {
+              list.add(Map<String, dynamic>.from(e));
+            }
+          }
+        }
+      }
+      list.removeWhere((e) => (e['id'] ?? '').toString() == n.id);
+      list.insert(0, {
+        'id': n.id,
+        'destinatarioUid': n.destinatarioUid,
+        'destinatarioEmail': n.destinatarioEmail,
+        'tipo': n.tipo.name,
+        'titulo': n.titulo,
+        'mensagem': n.mensagem,
+        'pedidoId': n.pedidoId,
+        'vendaId': n.vendaId,
+        'storeId': n.storeId,
+        'lida': n.lida,
+        'criadaEm': n.criadaEm.toIso8601String(),
+        'dados': n.dados,
+      });
+      // Limite defensivo.
+      while (list.length > 100) {
+        list.removeLast();
+      }
+      await prefs.setString(key, jsonEncode(list));
+      return true;
+    } catch (e) {
+      logW(
+        '[M39-NOTIFICACAO] stage=local_fail (type=${e.runtimeType})',
+      );
+      return false;
+    }
+  }
+
+  Future<List<NotificacaoVenda>> _lerEspelhoExclusaoLocal(
+    String uid,
+    String storeId,
+  ) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_prefsKeyExclusao(storeId, uid));
+      if (raw == null || raw.trim().isEmpty) return const [];
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return const [];
+      final out = <NotificacaoVenda>[];
+      for (final e in decoded) {
+        if (e is! Map) continue;
+        final m = Map<String, dynamic>.from(e);
+        final id = (m['id'] ?? '').toString();
+        if (id.isEmpty) continue;
+        out.add(
+          NotificacaoVenda(
+            id: id,
+            destinatarioUid: (m['destinatarioUid'] ?? '').toString(),
+            destinatarioEmail: (m['destinatarioEmail'] ?? '').toString(),
+            tipo: NotificacaoVenda._parseTipo(m['tipo']),
+            titulo: (m['titulo'] ?? '').toString(),
+            mensagem: (m['mensagem'] ?? '').toString(),
+            pedidoId: m['pedidoId']?.toString(),
+            vendaId: m['vendaId']?.toString(),
+            storeId: (m['storeId'] ?? storeId).toString(),
+            lida: m['lida'] == true,
+            criadaEm: DateTime.tryParse((m['criadaEm'] ?? '').toString()) ??
+                DateTime.now(),
+            dados: m['dados'] is Map
+                ? Map<String, dynamic>.from(m['dados'] as Map)
+                : null,
+          ),
+        );
+      }
+      return out;
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  List<NotificacaoVenda> _mergeNotificacoes(
+    List<NotificacaoVenda> remote,
+    List<NotificacaoVenda> local,
+  ) {
+    final byId = <String, NotificacaoVenda>{};
+    for (final n in remote) {
+      byId[n.id] = n;
+    }
+    for (final n in local) {
+      byId.putIfAbsent(n.id, () => n);
+    }
+    final list = byId.values.toList()
+      ..sort((a, b) => b.criadaEm.compareTo(a.criadaEm));
+    return list;
+  }
+
+  @visibleForTesting
+  static Future<void> clearEspelhoExclusaoForTest({
+    required String storeId,
+    required String uid,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_prefsKeyExclusao(storeId, uid));
+  }
+
   // ==========================================================================
   // LEITURA DE NOTIFICAÇÕES
   // ==========================================================================
 
   /// Busca últimas notificações (uma leitura). Usado como fallback quando o stream falha.
   /// Não usa orderBy para evitar dependência do índice composto.
+  /// Faz merge com espelho local de exclusões (Rules podem negar create ao vendedor).
   Future<List<NotificacaoVenda>> getUltimasNotificacoes(
       String uid, String storeId,
       {int limit = 30}) async {
     try {
+      _trace('tela', {'tenant': storeId, 'sellerUid': uid, 'op': 'getUltimas'});
       final snapshot = await _db
           .collection('lojas')
           .doc(storeId)
@@ -376,14 +605,25 @@ class NotificacaoVendasService {
           .limit(limit)
           .get();
 
-      final list = snapshot.docs
+      final remote = snapshot.docs
           .map((doc) => NotificacaoVenda.fromFirestore(doc.data(), doc.id))
           .toList();
-      list.sort((a, b) => b.criadaEm.compareTo(a.criadaEm));
+      final local = await _lerEspelhoExclusaoLocal(uid, storeId);
+      final list = _mergeNotificacoes(remote, local);
+      _trace('listener', {
+        'tenant': storeId,
+        'sellerUid': uid,
+        'remote': remote.length,
+        'local': local.length,
+        'merged': list.length,
+      });
       return list.take(limit).toList();
     } catch (e) {
       logW('⚠️ [NOTIF] Erro ao buscar últimas (type=${e.runtimeType})');
-      return [];
+      // Fallback só local se Firestore falhar.
+      final local = await _lerEspelhoExclusaoLocal(uid, storeId);
+      local.sort((a, b) => b.criadaEm.compareTo(a.criadaEm));
+      return local.take(limit).toList();
     }
   }
 
@@ -413,19 +653,12 @@ class NotificacaoVendasService {
   /// Conta notificações não lidas
   Future<int> contarNaoLidas(String uid, String storeId) async {
     try {
-      final snapshot = await _db
-          .collection('lojas')
-          .doc(storeId)
-          .collection('notificacoes')
-          .where('destinatarioUid', isEqualTo: uid)
-          .where('lida', isEqualTo: false)
-          .count()
-          .get();
-
-      return snapshot.count ?? 0;
+      final merged = await getUltimasNotificacoes(uid, storeId, limit: 80);
+      return merged.where((n) => !n.lida).length;
     } catch (e) {
       logW('⚠️ [NOTIF] Erro ao contar não lidas (type=${e.runtimeType})');
-      return 0;
+      final local = await _lerEspelhoExclusaoLocal(uid, storeId);
+      return local.where((n) => !n.lida).length;
     }
   }
 
@@ -462,6 +695,33 @@ class NotificacaoVendasService {
     } catch (e) {
       logW('⚠️ [NOTIF] Erro ao marcar como lida (type=${e.runtimeType})');
     }
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      // Atualiza espelho em todas as chaves do store (uid desconhecido aqui).
+      for (final key in prefs.getKeys()) {
+        if (!key.startsWith('$_prefsExclusaoPrefix${storeId.trim()}_')) {
+          continue;
+        }
+        final raw = prefs.getString(key);
+        if (raw == null) continue;
+        final decoded = jsonDecode(raw);
+        if (decoded is! List) continue;
+        var changed = false;
+        final list = <Map<String, dynamic>>[];
+        for (final e in decoded) {
+          if (e is! Map) continue;
+          final m = Map<String, dynamic>.from(e);
+          if ((m['id'] ?? '').toString() == notificacaoId) {
+            m['lida'] = true;
+            changed = true;
+          }
+          list.add(m);
+        }
+        if (changed) {
+          await prefs.setString(key, jsonEncode(list));
+        }
+      }
+    } catch (_) {}
   }
 
   /// Marca todas como lidas

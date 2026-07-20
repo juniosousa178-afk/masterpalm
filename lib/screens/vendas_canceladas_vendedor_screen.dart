@@ -34,13 +34,20 @@ class _VendasCanceladasVendedorScreenState
   @override
   void initState() {
     super.initState();
+    NotificacaoVendasService.exclusaoBadgeTick.addListener(_onBadgeTick);
     _bootstrap();
   }
 
   @override
   void dispose() {
+    NotificacaoVendasService.exclusaoBadgeTick.removeListener(_onBadgeTick);
     _sub?.cancel();
     super.dispose();
+  }
+
+  void _onBadgeTick() {
+    debugPrint('[M39-NOTIFICACAO] stage=tela op=badge_tick');
+    _carregarOnce();
   }
 
   Future<void> _bootstrap() async {
@@ -101,6 +108,10 @@ class _VendasCanceladasVendedorScreenState
     setState(() {
       _itens = _filtrarCanceladas(list, id.uid);
     });
+    debugPrint(
+      '[M39-NOTIFICACAO] stage=tela tenant=$lojaId sellerUid=${id.uid} '
+      'count=${_itens.length}',
+    );
   }
 
   List<NotificacaoVenda> _filtrarCanceladas(

@@ -478,6 +478,28 @@ class SoftDeleteService {
     ));
     await _save();
     _startTimerIfNeeded();
+
+    // Notificação imediata (não esperar janela undo). Estoque/tombstone intactos.
+    final notifOk = await _tryNotificarExclusaoVenda(
+      lojaId: lojaId,
+      vendedorUid: uidSeller,
+      vendedorEmail: emailSeller,
+      pedidoId: idFb.isNotEmpty ? idFb : id,
+      clienteNome: nomeCliente.isEmpty ? 'Cliente' : nomeCliente,
+      motivo: (motivoExclusao ?? '').trim().isEmpty
+          ? null
+          : motivoExclusao!.trim(),
+      adminUid: (atorUid ?? '').trim().isEmpty ? null : atorUid!.trim(),
+      pendingId: id,
+    );
+    if (notifOk) {
+      final idx = _pending.indexWhere((p) => p.id == id);
+      if (idx >= 0) {
+        _pending[idx] = _pending[idx].copyWith(notificacaoEnviada: true);
+        await _save();
+      }
+    }
+
     debugPrint('[VENDA-DELETE] etapa=schedule_concluido undoId=$id');
     return id;
   }
@@ -816,43 +838,41 @@ class SoftDeleteService {
         await trashBox.delete(r.trashKey);
       }
 
-      // Notificação idempotente: flag local + doc Firestore estável.
+      // Notificação idempotente: flag local + doc Firestore estável / espelho.
+      // Só marca enviada se o serviço confirmar gravação (evita engolir falha).
       if (!r.notificacaoEnviada) {
         final sellerUid = (r.vendedorUid ?? venda?.vendedorUid ?? '').trim();
-        if (sellerUid.isNotEmpty) {
-          try {
-            final email =
-                (r.vendedorEmail ?? venda?.vendedorEmail ?? '').trim();
-            final cliente =
-                (r.clienteNome ?? venda?.clienteNome ?? 'Cliente').trim();
-            final pedidoId = (r.idFirebase.isNotEmpty
-                    ? r.idFirebase
-                    : (venda?.idFirebase ?? r.id))
-                .trim();
-            await NotificacaoVendasService().notificarVendedorVendaCancelada(
-              storeId: r.lojaId,
-              vendedorUid: sellerUid,
-              vendedorEmail: email,
-              pedidoId: pedidoId.isEmpty ? r.id : pedidoId,
-              clienteNome: cliente.isEmpty ? 'Cliente' : cliente,
-              motivo: r.motivoExclusao,
-              tipoAcao: 'excluida',
-              adminUid: r.atorUid,
-            );
-            final idx = _pending.indexWhere((p) => p.id == r.id);
-            if (idx >= 0) {
-              _pending[idx] = r.copyWith(notificacaoEnviada: true);
-              await _save();
-            }
-          } catch (e) {
-            logW(
-              '[SOFT-DELETE] notificação exclusão venda falhou (type=${e.runtimeType})',
-            );
+        final email =
+            (r.vendedorEmail ?? venda?.vendedorEmail ?? '').trim();
+        final cliente =
+            (r.clienteNome ?? venda?.clienteNome ?? 'Cliente').trim();
+        final pedidoId = (r.idFirebase.isNotEmpty
+                ? r.idFirebase
+                : (venda?.idFirebase ?? r.id))
+            .trim();
+        final ok = await _tryNotificarExclusaoVenda(
+          lojaId: r.lojaId,
+          vendedorUid: sellerUid,
+          vendedorEmail: email,
+          pedidoId: pedidoId.isEmpty ? r.id : pedidoId,
+          clienteNome: cliente.isEmpty ? 'Cliente' : cliente,
+          motivo: r.motivoExclusao,
+          adminUid: r.atorUid,
+          pendingId: r.id,
+        );
+        if (ok) {
+          final idx = _pending.indexWhere((p) => p.id == r.id);
+          if (idx >= 0) {
+            _pending[idx] = r.copyWith(notificacaoEnviada: true);
+            await _save();
           }
         }
       } else {
         debugPrint(
           '[SOFT-DELETE] skip notificação já enviada pendingId=${r.id}',
+        );
+        debugPrint(
+          '[M39-NOTIFICACAO] stage=skip_already pendingId=${r.id}',
         );
       }
       logD('🗑️ [SOFT-DELETE] Venda ${r.idFirebase} excluída permanentemente (Firestore + local)');
@@ -872,5 +892,57 @@ class SoftDeleteService {
     await _ensureLoaded();
     await _processExpired();
     _startTimerIfNeeded();
+  }
+
+  /// Somente caminho de notificação — não altera estoque/estorno/tombstone.
+  static Future<bool> _tryNotificarExclusaoVenda({
+    required String lojaId,
+    required String vendedorUid,
+    required String vendedorEmail,
+    required String pedidoId,
+    required String clienteNome,
+    String? motivo,
+    String? adminUid,
+    required String pendingId,
+  }) async {
+    final seller = vendedorUid.trim();
+    if (seller.isEmpty) {
+      debugPrint(
+        '[M39-NOTIFICACAO] stage=skip_no_seller pendingId=$pendingId '
+        'tenant=$lojaId vendaId=$pedidoId',
+      );
+      logW(
+        '[SOFT-DELETE] notificação exclusão sem vendedorUid — skip '
+        'pendingId=$pendingId',
+      );
+      return false;
+    }
+    try {
+      final ok =
+          await NotificacaoVendasService().notificarVendedorVendaCancelada(
+        storeId: lojaId,
+        vendedorUid: seller,
+        vendedorEmail: vendedorEmail,
+        pedidoId: pedidoId,
+        clienteNome: clienteNome,
+        motivo: motivo,
+        tipoAcao: 'excluida',
+        adminUid: adminUid,
+      );
+      debugPrint(
+        '[M39-NOTIFICACAO] stage=soft_delete_result pendingId=$pendingId '
+        'ok=$ok sellerUid=$seller',
+      );
+      return ok;
+    } catch (e) {
+      logW(
+        '[SOFT-DELETE] notificação exclusão venda falhou (type=${e.runtimeType})',
+      );
+      debugPrint(
+        '[M39-NOTIFICACAO] stage=soft_delete_error pendingId=$pendingId '
+        'type=${e.runtimeType}',
+      );
+      return false;
+    }
   }
 }

@@ -42,6 +42,7 @@ class _NotificacaoPedidoListenerState extends State<NotificacaoPedidoListener> {
   String? _uid;
   String? _storeId;
   static const int _maxRetries = 20; // ~40s no APK até store_id estar na sessão
+  VoidCallback? _exclusaoBadgeListener;
 
   bool _isFirebaseReady() {
     try {
@@ -73,6 +74,10 @@ class _NotificacaoPedidoListenerState extends State<NotificacaoPedidoListener> {
   /// Reseta listener ao trocar de conta (evita stream em lojas/master com usuário novo)
   void _resetParaNovaConta() {
     if (!mounted) return;
+    if (_exclusaoBadgeListener != null) {
+      NotificacaoVendasService.exclusaoBadgeTick
+          .removeListener(_exclusaoBadgeListener!);
+    }
     _inicializado = false;
     _stream = null;
     _uid = null;
@@ -104,6 +109,13 @@ class _NotificacaoPedidoListenerState extends State<NotificacaoPedidoListener> {
     _pollTimer?.cancel();
     _pollTimer =
         Timer.periodic(const Duration(seconds: 15), (_) => _pollNovosPedidos());
+
+    _exclusaoBadgeListener ??= () {
+      debugPrint('[M39-NOTIFICACAO] stage=listener op=badge_tick');
+      _pollNovosPedidos();
+    };
+    NotificacaoVendasService.exclusaoBadgeTick
+        .addListener(_exclusaoBadgeListener!);
   }
 
   Future<void> _pollNovosPedidos() async {
@@ -159,6 +171,10 @@ class _NotificacaoPedidoListenerState extends State<NotificacaoPedidoListener> {
     _authSub?.cancel();
     _retryTimer?.cancel();
     _pollTimer?.cancel();
+    if (_exclusaoBadgeListener != null) {
+      NotificacaoVendasService.exclusaoBadgeTick
+          .removeListener(_exclusaoBadgeListener!);
+    }
     super.dispose();
   }
 
