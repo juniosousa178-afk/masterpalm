@@ -2027,6 +2027,31 @@ class EstoqueTransactionService {
     return _devolucaoLocalJaFeita(lojaId, vendaId);
   }
 
+  /// true se qualquer id candidato já tiver estorno/idempotência.
+  static Future<bool> devolucaoVendaJaAplicadaEmQualquerId(
+    String lojaId,
+    Iterable<String> candidatos,
+  ) async {
+    for (final raw in candidatos) {
+      final id = raw.trim();
+      if (id.isEmpty) continue;
+      if (await devolucaoVendaJaAplicada(lojaId, id)) return true;
+    }
+    return false;
+  }
+
+  /// Após devolução bem-sucedida, marca todos os IDs conhecidos (anti 2º estorno).
+  static Future<void> marcarDevolucaoLocalEmTodosIds(
+    String lojaId,
+    Iterable<String> candidatos,
+  ) async {
+    for (final raw in candidatos) {
+      final id = raw.trim();
+      if (id.isEmpty) continue;
+      await _marcarDevolucaoLocalFeita(lojaId, id);
+    }
+  }
+
   /// Remove o marcador de idempotência local (ex.: após desfazer exclusão da venda).
   static Future<void> removerMarcadorDevolucaoVenda(
     String lojaId,

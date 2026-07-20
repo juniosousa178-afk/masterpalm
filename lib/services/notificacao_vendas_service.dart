@@ -4,6 +4,7 @@
 // - Vendedor: recebe notificação quando SUA venda é CONFIRMADA ou CANCELADA
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
 import '../core/logger.dart';
 
@@ -255,7 +256,8 @@ class NotificacaoVendasService {
     }
   }
 
-  /// Notifica vendedor que sua venda foi CANCELADA/EXCLUÍDA
+  /// Notifica vendedor que sua venda foi CANCELADA/EXCLUÍDA.
+  /// Idempotente: 1 venda (pedidoId) → no máx. 1 documento por loja/vendedor/ação.
   Future<void> notificarVendedorVendaCancelada({
     required String storeId,
     required String vendedorUid,
@@ -278,8 +280,28 @@ class NotificacaoVendasService {
         mensagem += '\nMotivo: $motivoTrim.';
       }
 
+      final docId = _docIdExclusaoIdempotente(
+        storeId: storeId,
+        vendedorUid: vendedorUid,
+        pedidoId: pedidoId,
+        tipoAcao: acaoLabel == 'cancelada' ? 'cancelada' : 'excluida',
+      );
+      final ref = _db
+          .collection('lojas')
+          .doc(storeId)
+          .collection('notificacoes')
+          .doc(docId);
+      final existing = await ref.get();
+      if (existing.exists) {
+        logD(
+          '[NOTIF] skip duplicata vendaCancelada docId=$docId '
+          'vendedor=$vendedorUid',
+        );
+        return;
+      }
+
       final notificacao = NotificacaoVenda(
-        id: '',
+        id: docId,
         destinatarioUid: vendedorUid,
         destinatarioEmail: vendedorEmail,
         tipo: TipoNotificacao.vendaCancelada,
@@ -292,23 +314,49 @@ class NotificacaoVendasService {
           'clienteNome': clienteNome,
           'motivo': motivoTrim.isEmpty ? null : motivoTrim,
           'tipoAcao': acaoLabel == 'cancelada' ? 'cancelada' : 'excluida',
+          'idempotencyKey': docId,
           if ((adminUid ?? '').trim().isNotEmpty) 'adminUid': adminUid!.trim(),
           if ((adminNome ?? '').trim().isNotEmpty)
             'adminNome': adminNome!.trim(),
         },
       );
 
-      await _db
-          .collection('lojas')
-          .doc(storeId)
-          .collection('notificacoes')
-          .add(notificacao.toFirestore());
+      await ref.set(notificacao.toFirestore());
 
       logD('✅ [NOTIF] Vendedor $vendedorUid notificado: venda $acaoLabel');
     } catch (e, st) {
       logE('❌ [NOTIF] Erro ao notificar vendedor (cancelada) (type=${e.runtimeType})', error: e, st: st);
     }
   }
+
+  /// Doc id estável: uma exclusão/cancelamento → uma notificação.
+  static String _docIdExclusaoIdempotente({
+    required String storeId,
+    required String vendedorUid,
+    required String pedidoId,
+    required String tipoAcao,
+  }) {
+    final raw =
+        '${storeId.trim()}|${vendedorUid.trim()}|${pedidoId.trim()}|${tipoAcao.trim()}';
+    final safe = raw.replaceAll(RegExp(r'[^a-zA-Z0-9_\-]'), '_');
+    if (safe.length <= 700) return 'vx_$safe';
+    // Firestore doc id max ~1500; manter prefixo estável.
+    return 'vx_${safe.hashCode.toRadixString(16)}_${safe.substring(0, 80)}';
+  }
+
+  @visibleForTesting
+  static String docIdExclusaoIdempotenteForTest({
+    required String storeId,
+    required String vendedorUid,
+    required String pedidoId,
+    required String tipoAcao,
+  }) =>
+      _docIdExclusaoIdempotente(
+        storeId: storeId,
+        vendedorUid: vendedorUid,
+        pedidoId: pedidoId,
+        tipoAcao: tipoAcao,
+      );
 
   // ==========================================================================
   // LEITURA DE NOTIFICAÇÕES

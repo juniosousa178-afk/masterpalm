@@ -16,6 +16,7 @@ import 'package:uuid/uuid.dart';
 import '../core/hive_box_names.dart';
 import '../core/logger.dart';
 import '../core/safe_cast.dart';
+import '../core/venda_exclusao_tombstone.dart';
 import '../models/cliente.dart';
 import '../models/produto.dart';
 import '../models/venda.dart';
@@ -42,12 +43,16 @@ class _PendingRecord {
   final int hiveKey;
   final int trashKey;
   final String deleteAt; // ISO8601
-  /// Motivo / actor / seller — só vendas (R4.4). Notifica após exclusão definitiva.
+  /// Motivo / actor / seller — só vendas. Notifica após exclusão definitiva.
   final String? motivoExclusao;
   final String? atorUid;
   final String? vendedorUid;
   final String? vendedorEmail;
   final String? clienteNome;
+  /// Estorno já aplicado em [scheduleVendaDelete] — permanente não reestornar.
+  final bool estoqueEstornado;
+  /// Notificação já enviada — retry não duplica.
+  final bool notificacaoEnviada;
 
   _PendingRecord({
     required this.id,
@@ -62,6 +67,8 @@ class _PendingRecord {
     this.vendedorUid,
     this.vendedorEmail,
     this.clienteNome,
+    this.estoqueEstornado = false,
+    this.notificacaoEnviada = false,
   });
 
   Map<String, dynamic> toJson() => {
@@ -77,9 +84,16 @@ class _PendingRecord {
         if (vendedorUid != null) 'vendedorUid': vendedorUid,
         if (vendedorEmail != null) 'vendedorEmail': vendedorEmail,
         if (clienteNome != null) 'clienteNome': clienteNome,
+        'estoqueEstornado': estoqueEstornado,
+        'notificacaoEnviada': notificacaoEnviada,
       };
 
-  _PendingRecord copyWith({int? trashKey}) => _PendingRecord(
+  _PendingRecord copyWith({
+    int? trashKey,
+    bool? estoqueEstornado,
+    bool? notificacaoEnviada,
+  }) =>
+      _PendingRecord(
         id: id,
         type: type,
         lojaId: lojaId,
@@ -92,6 +106,8 @@ class _PendingRecord {
         vendedorUid: vendedorUid,
         vendedorEmail: vendedorEmail,
         clienteNome: clienteNome,
+        estoqueEstornado: estoqueEstornado ?? this.estoqueEstornado,
+        notificacaoEnviada: notificacaoEnviada ?? this.notificacaoEnviada,
       );
 
   static _PendingRecord? fromJsonSafe(Map<String, dynamic> m) {
@@ -127,6 +143,8 @@ class _PendingRecord {
         vendedorUid: opt('vendedorUid'),
         vendedorEmail: opt('vendedorEmail'),
         clienteNome: opt('clienteNome'),
+        estoqueEstornado: m['estoqueEstornado'] == true,
+        notificacaoEnviada: m['notificacaoEnviada'] == true,
       );
     } catch (_) {
       return null;
@@ -378,6 +396,12 @@ class SoftDeleteService {
     }
     debugPrint('[VENDA-DELETE] etapa=devolver_estoque_ok');
 
+    await VendaExclusaoTombstone.registrar(
+      lojaId: lojaId,
+      idFirebase: venda.idFirebase,
+      hiveKey: key,
+    );
+
     final idFb = (venda.idFirebase ?? '').trim();
     if (idFb.isNotEmpty) {
       debugPrint('[VENDA-DELETE] etapa=delete_firestore_start idFb=$idFb');
@@ -407,6 +431,8 @@ class SoftDeleteService {
     venda.lojaId = lojaId;
     final vendaLixeira = _cloneVendaParaHive(venda);
     vendaLixeira.lojaId = lojaId;
+    vendaLixeira.cancelada = true;
+    vendaLixeira.statusVenda = 'excluida';
 
     Cliente? cliente;
     try {
@@ -447,6 +473,8 @@ class SoftDeleteService {
       vendedorUid: uidSeller.isEmpty ? null : uidSeller,
       vendedorEmail: emailSeller.isEmpty ? null : emailSeller,
       clienteNome: nomeCliente.isEmpty ? null : nomeCliente,
+      estoqueEstornado: true,
+      notificacaoEnviada: false,
     ));
     await _save();
     _startTimerIfNeeded();
@@ -635,6 +663,13 @@ class SoftDeleteService {
         }
         _pending.removeAt(idx);
         await _save();
+        await VendaExclusaoTombstone.remover(
+          lojaId: r.lojaId,
+          idFirebase: r.idFirebase.isNotEmpty
+              ? r.idFirebase
+              : vendaParaRestaurar.idFirebase,
+          hiveKey: r.hiveKey,
+        );
         return true;
       }
       if (r.type == 'cliente') {
@@ -680,12 +715,27 @@ class SoftDeleteService {
     return n;
   }
 
+  static Future<void>? _processExpiredInFlight;
+
   static void _startTimerIfNeeded() {
     if (_timer?.isActive == true) return;
     _timer = Timer.periodic(_checkInterval, (_) => _processExpired());
   }
 
+  /// Processa pendências expiradas — no máximo uma execução por vez (anti-duplicata).
   static Future<void> _processExpired() async {
+    if (_processExpiredInFlight != null) {
+      return _processExpiredInFlight!;
+    }
+    _processExpiredInFlight = _processExpiredImpl();
+    try {
+      await _processExpiredInFlight;
+    } finally {
+      _processExpiredInFlight = null;
+    }
+  }
+
+  static Future<void> _processExpiredImpl() async {
     await _ensureLoaded();
     final now = DateTime.now();
     final toRemove = <_PendingRecord>[];
@@ -695,7 +745,7 @@ class SoftDeleteService {
     for (final r in toRemove) {
       try {
         await _executeRealDelete(r);
-        _pending.remove(r);
+        _pending.removeWhere((p) => p.id == r.id);
       } catch (e, st) {
         logE(
           '❌ [SOFT-DELETE] exclusão definitiva falhou; pendência mantida para retry. '
@@ -747,41 +797,63 @@ class SoftDeleteService {
             : null,
       );
       if (venda != null) {
-        final produtosBox = await Hive.openBox<Produto>(HiveBoxNames.produtos(r.lojaId));
+        final produtosBox =
+            await Hive.openBox<Produto>(HiveBoxNames.produtos(r.lojaId));
         await VendasService.executarExclusaoPermanente(
           venda: venda,
           produtosBox: produtosBox,
           lojaId: r.lojaId,
           vendaHiveKeyOriginal: r.hiveKey,
+          estoqueJaEstornadoNoSchedule: r.estoqueEstornado,
+        );
+      } else if (!r.estoqueEstornado) {
+        debugPrint(
+          '[SOFT-DELETE] permanente sem venda na lixeira; estorno já tratado? '
+          'estoqueEstornado=${r.estoqueEstornado} idFb=${r.idFirebase}',
         );
       }
-      await trashBox.delete(r.trashKey);
-      final sellerUid = (r.vendedorUid ?? venda?.vendedorUid ?? '').trim();
-      if (sellerUid.isNotEmpty) {
-        try {
-          final email =
-              (r.vendedorEmail ?? venda?.vendedorEmail ?? '').trim();
-          final cliente =
-              (r.clienteNome ?? venda?.clienteNome ?? 'Cliente').trim();
-          final pedidoId = (r.idFirebase.isNotEmpty
-                  ? r.idFirebase
-                  : (venda?.idFirebase ?? r.id))
-              .trim();
-          await NotificacaoVendasService().notificarVendedorVendaCancelada(
-            storeId: r.lojaId,
-            vendedorUid: sellerUid,
-            vendedorEmail: email,
-            pedidoId: pedidoId.isEmpty ? r.id : pedidoId,
-            clienteNome: cliente.isEmpty ? 'Cliente' : cliente,
-            motivo: r.motivoExclusao,
-            tipoAcao: 'excluida',
-            adminUid: r.atorUid,
-          );
-        } catch (e) {
-          logW(
-            '[SOFT-DELETE] notificação exclusão venda falhou (type=${e.runtimeType})',
-          );
+      if (trashBox.containsKey(r.trashKey)) {
+        await trashBox.delete(r.trashKey);
+      }
+
+      // Notificação idempotente: flag local + doc Firestore estável.
+      if (!r.notificacaoEnviada) {
+        final sellerUid = (r.vendedorUid ?? venda?.vendedorUid ?? '').trim();
+        if (sellerUid.isNotEmpty) {
+          try {
+            final email =
+                (r.vendedorEmail ?? venda?.vendedorEmail ?? '').trim();
+            final cliente =
+                (r.clienteNome ?? venda?.clienteNome ?? 'Cliente').trim();
+            final pedidoId = (r.idFirebase.isNotEmpty
+                    ? r.idFirebase
+                    : (venda?.idFirebase ?? r.id))
+                .trim();
+            await NotificacaoVendasService().notificarVendedorVendaCancelada(
+              storeId: r.lojaId,
+              vendedorUid: sellerUid,
+              vendedorEmail: email,
+              pedidoId: pedidoId.isEmpty ? r.id : pedidoId,
+              clienteNome: cliente.isEmpty ? 'Cliente' : cliente,
+              motivo: r.motivoExclusao,
+              tipoAcao: 'excluida',
+              adminUid: r.atorUid,
+            );
+            final idx = _pending.indexWhere((p) => p.id == r.id);
+            if (idx >= 0) {
+              _pending[idx] = r.copyWith(notificacaoEnviada: true);
+              await _save();
+            }
+          } catch (e) {
+            logW(
+              '[SOFT-DELETE] notificação exclusão venda falhou (type=${e.runtimeType})',
+            );
+          }
         }
+      } else {
+        debugPrint(
+          '[SOFT-DELETE] skip notificação já enviada pendingId=${r.id}',
+        );
       }
       logD('🗑️ [SOFT-DELETE] Venda ${r.idFirebase} excluída permanentemente (Firestore + local)');
     } else if (r.type == 'cliente') {

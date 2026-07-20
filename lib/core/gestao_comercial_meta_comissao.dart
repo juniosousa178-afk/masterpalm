@@ -96,6 +96,7 @@ MetaPessoalProgresso calcularMetaPessoal({
   required Iterable<Venda> vendas,
   required String lojaId,
   DateTime? agora,
+  Set<String> tombstonesExclusao = const {},
 }) {
   final now = agora ?? DateTime.now();
   final metaM = config.metaMensal;
@@ -111,7 +112,9 @@ MetaPessoalProgresso calcularMetaPessoal({
   var qtd = 0;
   for (final v in vendas) {
     if (lojaId.isNotEmpty && v.lojaId != null && v.lojaId != lojaId) continue;
-    if (!incluirVendaEmMetricas(v)) continue;
+    if (!incluirVendaEmMetricas(v, tombstonesExclusao: tombstonesExclusao)) {
+      continue;
+    }
     if (!AccessScopeService.sellerOwnsSale(v, identity)) continue;
     if (v.data.isBefore(mesInicio) || v.data.isAfter(mesFim)) continue;
     realizado += v.total;
@@ -156,6 +159,7 @@ ComissaoPessoalResultado calcularComissaoPessoal({
   required String lojaId,
   DateTime? agora,
   double comissaoJaPaga = 0,
+  Set<String> tombstonesExclusao = const {},
 }) {
   final now = agora ?? DateTime.now();
   final mesInicio = DateTime(now.year, now.month, 1);
@@ -165,7 +169,9 @@ ComissaoPessoalResultado calcularComissaoPessoal({
   var faturamento = 0.0;
   for (final v in vendas) {
     if (lojaId.isNotEmpty && v.lojaId != null && v.lojaId != lojaId) continue;
-    if (!incluirVendaEmMetricas(v)) continue;
+    if (!incluirVendaEmMetricas(v, tombstonesExclusao: tombstonesExclusao)) {
+      continue;
+    }
     if (!AccessScopeService.sellerOwnsSale(v, identity)) continue;
     if (v.data.isBefore(mesInicio) || v.data.isAfter(mesFim)) continue;
     proprias.add(v);

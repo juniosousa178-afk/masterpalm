@@ -8,6 +8,7 @@ import '../core/access_scope_service.dart';
 import '../core/gestao_comercial_meta_comissao.dart';
 import '../core/hive_box_names.dart';
 import '../core/meta_vendedor_legacy_bridge.dart';
+import '../core/venda_exclusao_tombstone.dart';
 import '../models/venda.dart';
 import '../services/comissao_config_service.dart';
 import '../services/gestao_comercial_service.dart';
@@ -105,12 +106,15 @@ class _MetasComissoesVendedorScreenState
         box = await Hive.openBox<Venda>(boxName);
       }
 
+      final tombstones = await VendaExclusaoTombstone.idsParaLoja(lojaId);
+
       final meta = calcularMetaPessoal(
         config: config,
         identity: identity,
         vendas: box.values,
         lojaId: lojaId,
         agora: now,
+        tombstonesExclusao: tombstones,
       );
       final comissao = calcularComissaoPessoal(
         config: config,
@@ -118,6 +122,7 @@ class _MetasComissoesVendedorScreenState
         vendas: box.values,
         lojaId: lojaId,
         agora: now,
+        tombstonesExclusao: tombstones,
       );
 
       if (!mounted) return;
