@@ -127,6 +127,12 @@ class NotificacaoVendasService {
   /// Contador de badge (cancelamentos) emitido após gravação local/remota.
   static final ValueNotifier<int> exclusaoBadgeTick = ValueNotifier<int>(0);
 
+  /// Canal de alerta visual (separado do badge e de "lida").
+  /// O listener consome [lastExclusaoAlerta] quando o tick muda.
+  static final ValueNotifier<int> exclusaoAlertaTick = ValueNotifier<int>(0);
+  static NotificacaoVenda? lastExclusaoAlerta;
+  static String lastExclusaoAlertaSource = '';
+
   FirebaseFirestore get _db => debugFirestoreOverride ?? FirebaseFirestore.instance;
 
   static const _prefsExclusaoPrefix = 'm39_notif_exclusao_v1_';
@@ -398,12 +404,22 @@ class NotificacaoVendasService {
       final ok = firestoreOk || localOk;
       if (ok) {
         exclusaoBadgeTick.value = exclusaoBadgeTick.value + 1;
+        // Alerta visual: mesmo canal para Firestore e espelho local (device atual).
+        lastExclusaoAlerta = notificacao;
+        lastExclusaoAlertaSource =
+            firestoreOk ? 'firestore' : 'local';
+        exclusaoAlertaTick.value = exclusaoAlertaTick.value + 1;
         _trace('badge', {
           'tenant': storeId,
           'sellerUid': vendedorUid,
           'docId': docId,
           'tick': exclusaoBadgeTick.value,
         });
+        debugPrint(
+          '[M39-ALERTA-CANCELAMENTO] notification_received '
+          'notification_id=$docId notification_source=$lastExclusaoAlertaSource '
+          'destinatario_uid=$vendedorUid venda_id=$pedidoId',
+        );
         _trace('done', {
           'tenant': storeId,
           'sellerUid': vendedorUid,
