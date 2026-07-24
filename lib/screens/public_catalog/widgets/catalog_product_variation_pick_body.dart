@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/catalog_color_from_name.dart';
+import '../catalog_cart_identity_trace.dart';
 import '../../../core/produto_variacao_extra.dart';
 import '../../../widgets/smart_image.dart';
 import '../../../widgets/variacao_extras_collapsible.dart';
@@ -29,6 +30,8 @@ typedef CatalogVariationPickCommit = void Function(
 
 /// Bloco embutível com a mesma lógica de [CatalogProductSelectionSheet].
 class CatalogProductVariationPickBody extends StatefulWidget {
+  /// Identidade estável do produto — usada para resetar seleção em [didUpdateWidget].
+  final String productId;
   final String name;
   final double price;
   final double? precoOriginal;
@@ -54,6 +57,7 @@ class CatalogProductVariationPickBody extends StatefulWidget {
 
   const CatalogProductVariationPickBody({
     super.key,
+    required this.productId,
     required this.name,
     required this.price,
     this.precoOriginal,
@@ -86,25 +90,97 @@ class CatalogProductVariationPickBodyState
   String? _corSelecionada;
   String? _extraSelecionado;
   String? _pendingSeedExtra;
+  int _asyncGeneration = 0;
 
   String _fmt2(num v) => v.toStringAsFixed(2).replaceAll('.', ',');
+
+  void _resetSelectionState({bool reseedExtra = true}) {
+    _tamanhoSelecionado = null;
+    _corSelecionada = null;
+    _extraSelecionado = null;
+    _pendingSeedExtra = null;
+    if (reseedExtra) {
+      final s = widget.initialExtraValor?.trim();
+      _pendingSeedExtra = (s != null && s.isNotEmpty) ? s : null;
+    }
+    _asyncGeneration++;
+  }
+
+  void _tracePick(
+    String stage, {
+    String sourcePath = 'variation_sheet',
+    String? traceId,
+    Map<String, String> extraFields = const {},
+  }) {
+    catalogCartIdentityTrace(
+      CatalogCartIdentityTraceEvent(
+        traceId: traceId ?? catalogCartIdentityNewTraceId(),
+        stage: stage,
+        sourcePath: sourcePath,
+        route: 'CatalogProductVariationPickBody',
+        routeIdentity: widget.productId,
+        widgetRuntimeType: 'CatalogProductVariationPickBody',
+        widgetKey: widget.key?.toString(),
+        stateIdentity: hashCode.toString(),
+        mounted: mounted,
+        productId: widget.productId,
+        nome: widget.name,
+        preco: widget.price,
+        precoPix: widget.percentualDescontoPix > 0
+            ? widget.price * (1 - widget.percentualDescontoPix / 100)
+            : widget.price,
+        tamanho: _tamanhoSelecionado ?? '',
+        cor: _corSelecionada ?? '',
+        extra: _extraSelecionado ?? '',
+        imagem: widget.imageUrl,
+        widgetLabel: 'CatalogProductVariationPickBody#${widget.productId}',
+        extraFields: extraFields,
+      ),
+    );
+  }
 
   @override
   void initState() {
     super.initState();
+    _tracePick(
+      'pick_init_state',
+      sourcePath: 'detail',
+      extraFields: {'initialExtra': widget.initialExtraValor ?? ''},
+    );
     final s = widget.initialExtraValor?.trim();
     _pendingSeedExtra = (s != null && s.isNotEmpty) ? s : null;
     _scheduleTryConsumeSeedExtra();
   }
 
-  void _notifyParent() =>
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) widget.onSelectionsChanged?.call();
-      });
+  void _notifyParent() {
+    final gen = _asyncGeneration;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || gen != _asyncGeneration) return;
+      widget.onSelectionsChanged?.call();
+    });
+  }
 
   @override
   void didUpdateWidget(covariant CatalogProductVariationPickBody oldWidget) {
     super.didUpdateWidget(oldWidget);
+    final productChanged = oldWidget.productId != widget.productId;
+    _tracePick(
+      'pick_did_update_widget',
+      sourcePath: 'detail',
+      extraFields: {
+        'oldProductId': oldWidget.productId,
+        'newProductId': widget.productId,
+        'productChanged': '$productChanged',
+        'oldName': oldWidget.name,
+        'newName': widget.name,
+      },
+    );
+    if (productChanged) {
+      _resetSelectionState();
+      _scheduleTryConsumeSeedExtra();
+      _notifyParent();
+      return;
+    }
     if (widget.initialExtraValor != oldWidget.initialExtraValor) {
       final s = widget.initialExtraValor?.trim();
       _pendingSeedExtra = (s != null && s.isNotEmpty) ? s : null;
@@ -113,13 +189,15 @@ class CatalogProductVariationPickBodyState
   }
 
   void _scheduleTryConsumeSeedExtra() {
+    final gen = _asyncGeneration;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _tryConsumeSeedExtra();
+      if (!mounted || gen != _asyncGeneration) return;
+      _tryConsumeSeedExtra(expectedGeneration: gen);
     });
   }
 
-  void _tryConsumeSeedExtra() {
+  void _tryConsumeSeedExtra({required int expectedGeneration}) {
+    if (expectedGeneration != _asyncGeneration) return;
     final seed = _pendingSeedExtra;
     if (seed == null) return;
     if (!_temEixoExtraNaCor) return;
@@ -148,6 +226,11 @@ class CatalogProductVariationPickBodyState
   /// Confirma a escolha e chama [CatalogProductVariationPickBody.onPickCommit].
   void commitPickToCart() {
     if (!_podeAdicionar) return;
+    _tracePick(
+      'pick_commit',
+      sourcePath: 'detail',
+      extraFields: {'precoAtual': '$_precoAtual'},
+    );
     final ex = (_extraSelecionado ?? '').trim();
     final tipo = ex.isNotEmpty ? _extraTipoParaOpcao(ex) : '';
     widget.onPickCommit(

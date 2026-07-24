@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'catalog_product_variation_pick_body.dart';
 
 class CatalogProductSelectionSheet extends StatelessWidget {
+  final String productId;
   final String name;
   final double price;
   final double? precoOriginal;
@@ -24,6 +25,7 @@ class CatalogProductSelectionSheet extends StatelessWidget {
 
   const CatalogProductSelectionSheet({
     super.key,
+    required this.productId,
     required this.name,
     required this.price,
     this.precoOriginal,
@@ -103,6 +105,7 @@ class CatalogProductSelectionSheet extends StatelessWidget {
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(16),
               child: CatalogProductVariationPickBody(
+                productId: productId,
                 name: name,
                 price: price,
                 precoOriginal: precoOriginal,

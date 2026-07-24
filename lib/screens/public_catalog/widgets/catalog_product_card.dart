@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/produto_variacao_extra.dart';
 import '../../../services/catalog_share_service.dart';
 import '../../../utils/platform_adaptive.dart';
+import '../catalog_product_add_seed.dart';
 import '../catalog_product_card_size.dart';
 import '../catalog_theme_extension.dart';
 import 'catalog_gallery_view.dart';
@@ -483,27 +484,57 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
     }
     void onClosed() => widget.onProductUrlBlur?.call();
     final wideChrome = usePointerFirstChrome(context);
+    // Congela identidade e callbacks no momento da abertura — evita mistura se o card
+    // mudar enquanto o sheet permanece aberto (filtro/reordenação na grade).
+    final capturedOnAdd = widget.onAdd;
+    final capturedOnAbrirCarrinho = widget.onAbrirCarrinho;
+    final capturedOnMinimalSilentAddFeedback = widget.onMinimalSilentAddFeedback;
+    final seed = CatalogProductAddSeed(
+      productId: widget.id,
+      name: widget.name,
+      price: widget.price,
+      slug: widget.slug,
+      percentualDescontoPix: widget.percentualDescontoPix,
+      divideSemJuros: widget.divideSemJuros,
+      maxParcelas: widget.maxParcelas,
+      peso: widget.peso,
+      tipoEmbalagem: widget.tipoEmbalagem,
+      imagens: catalogProductAddSeedCopyStringList(widget.imagens),
+      imageUrl: widget.imageUrl,
+      minimalLayout: widget.minimalLayout,
+      emPromocao: widget.emPromocao,
+      mostrarQuantidadeNoCatalogo: widget.mostrarQuantidadeNoCatalogo,
+      estoquePorTamanho:
+          catalogProductAddSeedCopyIntMap(widget.estoquePorTamanho),
+      estoquePorCor: catalogProductAddSeedCopyIntMap(widget.estoquePorCor),
+      precoOriginal: widget.precoOriginal,
+      precoPorTamanho:
+          catalogProductAddSeedCopyDoubleMap(widget.precoPorTamanho),
+      variacoes: catalogProductAddSeedCopyDynamicMap(widget.variacoes),
+      variacoesExtraTipo:
+          catalogProductAddSeedCopyDynamicMap(widget.variacoesExtraTipo),
+      initialExtraValor: widget.initialCatalogExtraValor,
+      onCatalogVariacaoExtraChanged: widget.onCatalogVariacaoExtraChanged,
+    );
 
     Widget selectionContent() {
       return CatalogProductSelectionSheet(
-        name: widget.name,
-        price: widget.price,
-        precoPorTamanho: widget.precoPorTamanho,
-        precoOriginal: widget.precoOriginal,
-        emPromocao: widget.emPromocao,
-        imageUrl: widget.imagens.isNotEmpty ? widget.imagens.first : widget.imageUrl,
-        estoquePorTamanho: widget.estoquePorTamanho ?? {},
-        estoquePorCor: widget.estoquePorCor ?? {},
-        variacoes: widget.variacoes,
-        variacoesExtraTipo: widget.variacoesExtraTipo,
-        initialExtraValor: widget.initialCatalogExtraValor,
-        onCatalogVariacaoExtraChanged: widget.onCatalogVariacaoExtraChanged,
-        percentualDescontoPix: widget.percentualDescontoPix,
-        mostrarQuantidadeNoCatalogo: widget.mostrarQuantidadeNoCatalogo,
+        productId: seed.productId,
+        name: seed.name,
+        price: seed.price,
+        precoPorTamanho: seed.precoPorTamanho,
+        precoOriginal: seed.precoOriginal,
+        emPromocao: seed.emPromocao,
+        imageUrl: seed.primaryImage,
+        estoquePorTamanho: seed.estoquePorTamanho,
+        estoquePorCor: seed.estoquePorCor,
+        variacoes: seed.variacoes,
+        variacoesExtraTipo: seed.variacoesExtraTipo,
+        initialExtraValor: seed.initialExtraValor,
+        onCatalogVariacaoExtraChanged: seed.onCatalogVariacaoExtraChanged,
+        percentualDescontoPix: seed.percentualDescontoPix,
+        mostrarQuantidadeNoCatalogo: seed.mostrarQuantidadeNoCatalogo,
         onAddToCart: (tamanho, cor, preco, extraValor, extraTipo) {
-          final img = widget.imagens.isNotEmpty
-              ? widget.imagens.first
-              : widget.imageUrl;
           final ex = extraValor.trim();
           final resumoExtra = ex.isNotEmpty
               ? ProdutoVariacaoExtra.textoResumoExtra(
@@ -512,39 +543,27 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                 )
               : '';
 
-          final itemParaCarrinho = {
-            'produtosId': widget.id,
-            'id': widget.id,
-            'nome': widget.name,
-            'preco': preco,
-            'percentualDescontoPix': widget.percentualDescontoPix,
-            'divideSemJuros': widget.divideSemJuros,
-            'maxParcelasSemJuros': widget.maxParcelas,
-            'quantidade': 1,
-            'imageUrl': img,
-            'url_foto': img,
-            'slug': widget.slug,
-            'peso': widget.peso,
-            'tipoEmbalagem': widget.tipoEmbalagem,
-            'tamanho': tamanho ?? '',
-            'cor': cor ?? '',
-            if (ex.isNotEmpty) 'extraValor': ex,
-            if (extraTipo.trim().isNotEmpty) 'extraTipo': extraTipo.trim(),
-            if (resumoExtra.isNotEmpty) 'variacaoExtraResumo': resumoExtra,
-          };
+          final itemParaCarrinho = seed.buildCartLine(
+            tamanho: tamanho,
+            cor: cor,
+            preco: preco,
+            extraValor: extraValor,
+            extraTipo: extraTipo,
+            resumoExtra: resumoExtra,
+          );
 
-          final added = widget.onAdd(itemParaCarrinho);
+          final added = capturedOnAdd(itemParaCarrinho);
           Navigator.of(context).pop();
-          if (comprarDirecto && widget.onAbrirCarrinho != null) {
+          if (comprarDirecto && capturedOnAbrirCarrinho != null) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (!mounted) return;
-              widget.onAbrirCarrinho!();
+              capturedOnAbrirCarrinho();
             });
           } else if (!comprarDirecto &&
               added &&
-              widget.minimalLayout &&
-              widget.onMinimalSilentAddFeedback != null) {
-            widget.onMinimalSilentAddFeedback!();
+              seed.minimalLayout &&
+              capturedOnMinimalSilentAddFeedback != null) {
+            capturedOnMinimalSilentAddFeedback();
           }
         },
       );

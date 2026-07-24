@@ -18,6 +18,8 @@ import '../catalog_helpers.dart' show
     catalogProductImageUrlsForDisplay,
     catalogSugestoesRelacionadasParaDetalhe,
     selectCatalogPrimaryImageUrlFromProdutoMap;
+import '../../../services/catalog_cart_item_snapshot.dart';
+import '../catalog_cart_identity_trace.dart';
 import 'catalog_combo_configurable_sheet.dart';
 import 'catalog_product_variation_pick_body.dart';
 import '../catalog_theme_extension.dart';
@@ -392,6 +394,27 @@ class _CatalogProductDetailScreenState extends State<CatalogProductDetailScreen>
     String extraValor,
     String extraTipo,
   ) {
+    final traceId = catalogCartIdentityNewTraceId();
+    catalogCartIdentityTrace(
+      CatalogCartIdentityTraceEvent(
+        traceId: traceId,
+        stage: 'detail_on_commit',
+        sourcePath: 'detail',
+        route: 'CatalogProductDetailScreen',
+        routeIdentity: widget.id,
+        productId: widget.id,
+        nome: widget.name,
+        preco: preco,
+        precoPix: widget.percentualDescontoPix > 0
+            ? preco * (1 - widget.percentualDescontoPix / 100)
+            : preco,
+        tamanho: tamanho ?? '',
+        cor: cor ?? '',
+        extra: extraValor,
+        imagem: widget.imagens.isNotEmpty ? widget.imagens.first : '',
+        widgetLabel: 'CatalogProductDetailScreen#${widget.id}',
+      ),
+    );
     final img = widget.imagens.isNotEmpty ? widget.imagens.first : '';
     final ex = extraValor.trim();
     final resumoExtra = ex.isNotEmpty
@@ -401,6 +424,14 @@ class _CatalogProductDetailScreenState extends State<CatalogProductDetailScreen>
           )
         : '';
     widget.onAdd({
+      '_cartTraceId': traceId,
+      '_catalogCommitSeal': catalogCartCommitSeal(
+        productId: widget.id,
+        nome: widget.name,
+        tamanho: tamanho ?? '',
+        cor: cor ?? '',
+        preco: preco,
+      ),
       'produtosId': widget.id,
       'id': widget.id,
       'nome': widget.name,
@@ -1238,6 +1269,7 @@ class _CatalogProductDetailScreenState extends State<CatalogProductDetailScreen>
                         padding: const EdgeInsets.fromLTRB(12, 16, 12, 16),
                         child: CatalogProductVariationPickBody(
                           key: _pickKey,
+                          productId: widget.id,
                           name: widget.name,
                           price: widget.price,
                           precoOriginal: widget.precoOriginal,
