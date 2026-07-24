@@ -2087,8 +2087,24 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
         final decoded = jsonDecode(json);
         if (decoded is List && mounted) {
           _cart.clear();
+          final restored = <Map<String, dynamic>>[];
           for (final e in decoded) {
-            if (e is Map) _cart.add(Map<String, dynamic>.from(e));
+            if (e is Map) restored.add(Map<String, dynamic>.from(e));
+          }
+          final result = restoreCatalogCartLines(restored);
+          _cart.addAll(result.validLines);
+          if (result.rejectedCount > 0) {
+            if (kDebugMode) {
+              logD(
+                '🛒 [_loadCarrinhoLocal] ${result.rejectedCount} linha(s) rejeitada(s): '
+                '${result.rejectionReasons.join(', ')}',
+              );
+            }
+            _snack(
+              result.rejectedCount == 1
+                  ? '1 item do carrinho salvo não pôde ser restaurado.'
+                  : '${result.rejectedCount} itens do carrinho salvos não puderam ser restaurados.',
+            );
           }
           _clearPrePedidoReuseSession();
           setState(() {});
@@ -2887,6 +2903,30 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
         _snack(avail <= 0
             ? 'Produto esgotado nesta variação.'
             : 'Estoque insuficiente. Disponível: $avail un.');
+        return false;
+      }
+    }
+
+    final key = CatalogEstoqueHelper.cartLineIdentity(item);
+    final idx = _cart
+        .indexWhere((e) => CatalogEstoqueHelper.cartLineIdentity(e) == key);
+
+    final reject = catalogCartLineStructuralRejectionCode(item);
+    if (reject != null) {
+      _snack(
+        'Não foi possível adicionar o item. Atualize o catálogo e tente novamente.',
+      );
+      return false;
+    }
+    if (idx >= 0) {
+      final existIds = catalogCartLineRawProductIds(_cart[idx]);
+      final incIds = catalogCartLineRawProductIds(item);
+      if (existIds.length == 1 &&
+          incIds.length == 1 &&
+          existIds.single != incIds.single) {
+        _snack(
+          'Não foi possível atualizar o item no carrinho. Tente novamente.',
+        );
         return false;
       }
     }

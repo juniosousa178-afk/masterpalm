@@ -355,14 +355,12 @@ class CatalogEstoqueHelper {
   }
 
   /// Identidade de linha do carrinho (merge e validação).
+  ///
+  /// Preferência: `productId` canônico + `variacaoId` quando presente.
+  /// Fallback legado (sem `variacaoId`): `tamanho|cor|extra`.
   static String cartLineIdentity(Map<String, dynamic> item) {
-    final id = '${item['id'] ?? item['produtosId'] ?? ''}';
-    final tam = (item['tamanho'] ?? '').toString().trim().toLowerCase();
-    final cr = (item['cor'] ?? '').toString().trim().toLowerCase();
-    final ex = (item['extraValor'] ?? item['variacaoExtra'] ?? '')
-        .toString()
-        .trim()
-        .toLowerCase();
+    final id = _canonicalProductId(item);
+    final variacaoId = (item['variacaoId'] ?? '').toString().trim();
     final combo = item['itensComboComSelecao'];
     if (combo is List && combo.isNotEmpty) {
       final buf = StringBuffer(id);
@@ -373,13 +371,30 @@ class CatalogEstoqueHelper {
               .toString()
               .trim();
           buf.write(
-            '|${e['productId'] ?? e['id'] ?? ''}|${e['tamanho']}|${e['cor']}|$ex|${e['quantidade']}',
+            '|${_canonicalProductId(Map<String, dynamic>.from(e))}|${e['tamanho']}|${e['cor']}|$ex|${e['quantidade']}',
           );
         }
       }
       return buf.toString();
     }
+    if (variacaoId.isNotEmpty) {
+      return '$id|vid|$variacaoId';
+    }
+    final tam = (item['tamanho'] ?? '').toString().trim().toLowerCase();
+    final cr = (item['cor'] ?? '').toString().trim().toLowerCase();
+    final ex = (item['extraValor'] ?? item['variacaoExtra'] ?? '')
+        .toString()
+        .trim()
+        .toLowerCase();
     return '$id|$tam|$cr|$ex';
+  }
+
+  static String _canonicalProductId(Map<String, dynamic> item) {
+    for (final key in ['productId', 'id', 'produtosId']) {
+      final v = (item[key] ?? '').toString().trim();
+      if (v.isNotEmpty) return v;
+    }
+    return '';
   }
 
   /// Teto de unidades para a linha [index] (estoque da variação menos outras
