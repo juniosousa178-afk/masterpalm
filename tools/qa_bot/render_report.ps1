@@ -119,10 +119,10 @@ if ($null -ne $run.parserIntegrity) {
   $metricsLabel = if ($run.parserIntegrity.metricsReliable) { 'SIM' } else { 'NAO' }
   [void]$sb.AppendLine('## Integridade do parser')
   [void]$sb.AppendLine('')
-  [void]$sb.AppendLine("* **Casos de teste reais detectados:** $($run.parserIntegrity.realTestCasesDetected)")
-  [void]$sb.AppendLine("* **passed:** $($run.parserIntegrity.passed)")
-  [void]$sb.AppendLine("* **failed:** $($run.parserIntegrity.failed)")
-  [void]$sb.AppendLine("* **skipped:** $($run.parserIntegrity.skipped)")
+  [void]$sb.AppendLine("* **Casos de teste (executedTestCases):** $($run.parserIntegrity.executedTestCases)")
+  [void]$sb.AppendLine("* **passedTestCases:** $($run.parserIntegrity.passedTestCases)")
+  [void]$sb.AppendLine("* **failedTestCases:** $($run.parserIntegrity.failedTestCases)")
+  [void]$sb.AppendLine("* **skippedTestCases:** $($run.parserIntegrity.skippedTestCases)")
   [void]$sb.AppendLine("* **protocolo concluido:** $($run.parserIntegrity.protocolCompleted)")
   [void]$sb.AppendLine("* **exit code:** $($run.parserIntegrity.exitCode)")
   [void]$sb.AppendLine("* **metricas confiaveis:** $metricsLabel")
@@ -143,31 +143,45 @@ foreach ($flowResult in $run.flowResults) {
   }
   [void]$sb.AppendLine("**Status:** $statusLabel")
   [void]$sb.AppendLine("**Cobertura:** $($flowResult.statusCobertura)")
-  if ($flowResult.executedTests -and $flowResult.executedTests.Count -gt 0) {
-    [void]$sb.AppendLine('**Arquivo(s) executado(s):**')
-    foreach ($t in $flowResult.executedTests) {
-      [void]$sb.AppendLine("* ``$t``")
-    }
-  } elseif ($flowResult.tests -and $flowResult.tests.Count -gt 0) {
-    [void]$sb.AppendLine('**Teste(s) mapeado(s):**')
-    foreach ($t in $flowResult.tests) {
+  $flowProps = @($flowResult.PSObject.Properties.Name)
+  $plannedFiles = @()
+  if ($flowProps -contains 'plannedTestFiles' -and $null -ne $flowResult.plannedTestFiles) {
+    $plannedFiles = @($flowResult.plannedTestFiles)
+  }
+  $executedFiles = @()
+  if ($flowProps -contains 'executedTestFiles' -and $null -ne $flowResult.executedTestFiles) {
+    $executedFiles = @($flowResult.executedTestFiles)
+  }
+
+  if ($plannedFiles.Count -gt 0) {
+    [void]$sb.AppendLine('**Arquivo(s) planejado(s):**')
+    foreach ($t in $plannedFiles) {
       [void]$sb.AppendLine("* ``$t``")
     }
   } else {
-    [void]$sb.AppendLine('**Teste(s) mapeado(s):** _nenhum_')
+    [void]$sb.AppendLine('**Arquivo(s) planejado(s):** _nenhum_')
+  }
+
+  if ($executedFiles.Count -gt 0) {
+    [void]$sb.AppendLine('**Arquivo(s) executado(s):**')
+    foreach ($t in $executedFiles) {
+      [void]$sb.AppendLine("* ``$t``")
+    }
+  } else {
+    [void]$sb.AppendLine('**Arquivo(s) executado(s):** _nenhum nesta fase_')
   }
   [void]$sb.AppendLine("**Runner:** $($flowResult.runner)")
 
-  if ($null -ne $flowResult.passed -and ($flowResult.PSObject.Properties.Name -contains 'passed')) {
-    [void]$sb.AppendLine("**passed / failed / skipped:** $($flowResult.passed) / $($flowResult.failed) / $($flowResult.skipped)")
+  if ($flowProps -contains 'executedTestCases') {
+    [void]$sb.AppendLine("**Casos executados / pass / fail / skip:** $($flowResult.executedTestCases) / $($flowResult.passedTestCases) / $($flowResult.failedTestCases) / $($flowResult.skippedTestCases)")
   }
-  if ($null -ne $flowResult.durationSeconds -and ($flowResult.PSObject.Properties.Name -contains 'durationSeconds')) {
+  if ($flowProps -contains 'durationSeconds' -and $null -ne $flowResult.durationSeconds) {
     [void]$sb.AppendLine("**Duracao (s):** $($flowResult.durationSeconds)")
   }
-  if ($flowResult.PSObject.Properties.Name -contains 'logicalCommand' -and $flowResult.logicalCommand) {
+  if ($flowProps -contains 'logicalCommand' -and $flowResult.logicalCommand) {
     [void]$sb.AppendLine("**Comando logico:** ``$($flowResult.logicalCommand)``")
   }
-  if ($null -ne $flowResult.metricsReliable -and ($flowResult.PSObject.Properties.Name -contains 'metricsReliable')) {
+  if ($flowProps -contains 'metricsReliable' -and $null -ne $flowResult.metricsReliable) {
     $mr = if ($flowResult.metricsReliable) { 'SIM' } else { 'NAO' }
     [void]$sb.AppendLine("**Metricas confiaveis:** $mr")
   }
@@ -188,12 +202,12 @@ foreach ($flowResult in $run.flowResults) {
     [void]$sb.AppendLine('> Nenhum teste dedicado identificado na matriz atual. Este status **nao** significa que a funcao esta funcionando.')
   }
 
-  if ($flowResult.PSObject.Properties.Name -contains 'm1Note' -and $flowResult.m1Note) {
+  if ($flowProps -contains 'm1Note' -and $flowResult.m1Note) {
     [void]$sb.AppendLine('')
     [void]$sb.AppendLine("**Nota M1:** $(Format-MdBlock $flowResult.m1Note)")
   }
 
-  if ($flowResult.PSObject.Properties.Name -contains 'm0Note' -and $flowResult.m0Note) {
+  if ($flowProps -contains 'm0Note' -and $flowResult.m0Note) {
     [void]$sb.AppendLine('')
     [void]$sb.AppendLine("**Nota M0:** $(Format-MdBlock $flowResult.m0Note)")
   }

@@ -7,7 +7,8 @@
   Executa fluxos P0 allowlisted separadamente (fase M1).
 #>
 param(
-  [switch]$M1P0
+  [switch]$M1P0,
+  [string]$Flow = ''
 )
 
 Set-StrictMode -Version Latest
@@ -15,6 +16,7 @@ $ErrorActionPreference = 'Stop'
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $ScriptDir 'qa_parser.ps1')
+. (Join-Path $ScriptDir 'qa_report_schema.ps1')
 . (Join-Path $ScriptDir 'tracked_credentials_gate.ps1')
 $RepoRoot = (Resolve-Path (Join-Path $ScriptDir '..\..')).Path
 $MatrixPath = Join-Path $ScriptDir 'flow_matrix.json'
@@ -44,6 +46,7 @@ function Get-M1P0FlowAllowlist {
       'test/produto_variacao_edicao_persistencia_test.dart'
       'test/produto_estoque_grade_canonica_save_test.dart'
     )
+    cliente_cadastro    = @('test/cliente_cadastro_persistencia_test.dart')
     pdv_venda           = @(
       'test/vendas_service_test.dart'
       'test/venda_persistencia_consistencia_test.dart'
@@ -115,13 +118,13 @@ function Invoke-FlutterFlowTest {
     return @{
       flowId                = $FlowId
       logicalCommand        = $logicalCommand
-      executedTests         = $TestPaths
+      executedTestFiles     = $TestPaths
       exitCode              = -1
       durationSeconds       = [Math]::Round($sw.Elapsed.TotalSeconds, 3)
-      passed                = 0
-      failed                = 0
-      skipped               = 0
-      realTestCasesDetected = 0
+      passedTestCases       = 0
+      failedTestCases       = 0
+      skippedTestCases      = 0
+      executedTestCases     = 0
       metricsReliable       = $false
       protocolCompleted     = $false
       executionStatus       = 'INFRA_ERROR'
@@ -149,13 +152,13 @@ function Invoke-FlutterFlowTest {
   return @{
     flowId                = $FlowId
     logicalCommand        = $logicalCommand
-    executedTests         = $TestPaths
+    executedTestFiles     = $TestPaths
     exitCode              = $exitCode
     durationSeconds       = [Math]::Round($sw.Elapsed.TotalSeconds, 3)
-    passed                = $parsed.passed
-    failed                = $parsed.failed
-    skipped               = $parsed.skipped
-    realTestCasesDetected = $parsed.realTestCasesDetected
+    passedTestCases       = $parsed.passed
+    failedTestCases       = $parsed.failed
+    skippedTestCases      = $parsed.skipped
+    executedTestCases     = $parsed.realTestCasesDetected
     metricsReliable       = $parsed.metricsReliable
     protocolCompleted     = $parsed.protocolCompleted
     executionStatus       = $resolved.status
@@ -179,9 +182,11 @@ function Get-FlowSuggestion {
     'pdv_venda' { return 'Revisar VendasService, resolucao de produto e persistencia/rollback pre-Hive.' }
     'pdv_venda_variacao' { return 'Revisar validacao de variacao obrigatoria e baixa de estoque por variacao.' }
     'fiado' { return 'Revisar criacao de conta a receber e exibicao de fiado em contas_receber.' }
-    'baixa_parcial' { return 'Revisar baixa parcial e estorno parcial de saldo em financeiro.' }
-    'exclusao_estorno' { return 'Revisar estorno de estoque e guardas de exclusao definitiva.' }
+      'baixa_parcial' { return 'Revisar baixa parcial e estorno parcial de saldo em financeiro.' }
+      'cliente_cadastro' { return 'Revisar cadastro/persistencia de clientes no Hive e sync com estoque_clientes.' }
+      'exclusao_estorno' { return 'Revisar estorno de estoque e guardas de exclusao definitiva.' }
     'sync_hive_firestore' { return 'Revisar sync produto/contas_receber entre Hive e Firestore fake.' }
+    'catalogo_pedido_identidade' { return 'Revisar identidade produto/variacao do catalogo ao pre-pedido e carrinho.' }
       default { return "Inspecionar testes mapeados para o fluxo $FlowId." }
     }
   }
@@ -207,25 +212,23 @@ function Build-FlowResultsM1 {
       impacto         = [string]$flow.impacto
       runner          = [string]$flow.runner
       statusCobertura = [string]$flow.statusCobertura
-      tests           = @()
-      executedTests   = @()
+      plannedTestFiles  = @()
+      executedTestFiles = @()
       status          = $null
       evidence        = ''
       error           = ''
       errorLocation   = ''
       suggestion      = ''
       m1Note          = ''
-      passed          = $null
-      failed          = $null
-      skipped         = $null
       durationSeconds = $null
       logicalCommand  = ''
       metricsReliable = $null
     }
 
     if ($flow.tests) {
-      foreach ($t in $flow.tests) { $entry.tests += [string]$t }
+      foreach ($t in $flow.tests) { $entry.plannedTestFiles += [string]$t }
     }
+    Clear-QaFlowCaseMetrics -Entry $entry
 
     if (-not $PreflightPassed) {
       $entry.status = 'BLOCKED'
@@ -258,11 +261,12 @@ function Build-FlowResultsM1 {
         continue
       }
 
-      $entry.executedTests = @($exec.executedTests)
+      $entry.executedTestFiles = @($exec.executedTestFiles)
       $entry.logicalCommand = [string]$exec.logicalCommand
-      $entry.passed = $exec.passed
-      $entry.failed = $exec.failed
-      $entry.skipped = $exec.skipped
+      Set-QaFlowCaseMetrics -Entry $entry `
+        -PassedTestCases ([int]$exec.passedTestCases) `
+        -FailedTestCases ([int]$exec.failedTestCases) `
+        -SkippedTestCases ([int]$exec.skippedTestCases)
       $entry.durationSeconds = $exec.durationSeconds
       $entry.metricsReliable = $exec.metricsReliable
       $entry.status = [string]$exec.executionStatus
@@ -335,7 +339,7 @@ function Compute-VerdictM1 {
 
   return @{
     verdict = 'GO'
-    reason  = 'M1P0 concluido: todos os fluxos P0 allowlisted passaram; cliente_cadastro permanece NOT_COVERED.'
+    reason  = 'M1P0 concluido: todos os fluxos P0 allowlisted passaram.'
   }
 }
 
@@ -354,24 +358,22 @@ function Get-M1ParserIntegritySummary {
 
   foreach ($key in $FlowExecutions.Keys) {
     $e = $FlowExecutions[$key]
-    $passed += [int]$e.passed
-    $failed += [int]$e.failed
-    $skipped += [int]$e.skipped
-    $real += [int]$e.realTestCasesDetected
+    $passed += [int]$e.passedTestCases
+    $failed += [int]$e.failedTestCases
+    $skipped += [int]$e.skippedTestCases
+    $real += [int]$e.executedTestCases
     if (-not $e.metricsReliable) { $allReliable = $false }
     if (-not $e.protocolCompleted) { $allProtocol = $false }
   }
 
-  return @{
-    realTestCasesDetected = $real
-    passed                = $passed
-    failed                = $failed
-    skipped               = $skipped
-    parserWarnings        = @($ParserWarnings)
-    protocolCompleted     = $allProtocol
-    exitCode              = $null
-    metricsReliable       = $allReliable
-  }
+  return (New-QaParserIntegritySummary `
+    -ExecutedTestCases $real `
+    -PassedTestCases $passed `
+    -FailedTestCases $failed `
+    -SkippedTestCases $skipped `
+    -ProtocolCompleted $allProtocol `
+    -MetricsReliable $allReliable `
+    -ParserWarnings @($ParserWarnings))
 }
 
 function Get-UtcTimestampForFile {
@@ -550,6 +552,109 @@ function Invoke-Preflight {
   }
 }
 
+function Invoke-SingleP1Flow {
+  param(
+    [string]$FlowId,
+    [object]$Matrix,
+    [string]$RunId,
+    [hashtable]$Preflight,
+    [System.Collections.Generic.List[string]]$ParserWarnings
+  )
+
+  $flowDef = $Matrix.flows | Where-Object { [string]$_.id -eq $FlowId } | Select-Object -First 1
+  if ($null -eq $flowDef) {
+    throw "Fluxo nao encontrado em flow_matrix.json: $FlowId"
+  }
+
+  $testPaths = @()
+  if ($flowDef.tests) {
+    foreach ($t in $flowDef.tests) { $testPaths += [string]$t }
+  }
+  if ($testPaths.Count -eq 0) {
+    throw "Fluxo $FlowId sem testes mapeados."
+  }
+  foreach ($p in $testPaths) {
+    if (-not (Test-AllowlistedFlutterTestPath -RelativePath $p)) {
+      throw "Arquivo de teste inexistente ou invalido para $FlowId : $p"
+    }
+  }
+
+  $exec = $null
+  if ($Preflight.passed) {
+    $exec = Invoke-FlutterFlowTest `
+      -FlowId $FlowId `
+      -TestPaths $testPaths `
+      -RunId $RunId `
+      -ParserWarnings $ParserWarnings
+  }
+
+  $entry = [ordered]@{
+    id                = $FlowId
+    descricao         = [string]$flowDef.descricao
+    impacto           = [string]$flowDef.impacto
+    runner            = [string]$flowDef.runner
+    statusCobertura   = [string]$flowDef.statusCobertura
+    plannedTestFiles  = @($testPaths)
+    executedTestFiles = @()
+    status            = $null
+    evidence          = ''
+    error             = ''
+    errorLocation     = ''
+    suggestion        = ''
+    durationSeconds   = $null
+    logicalCommand    = ''
+    metricsReliable   = $null
+  }
+  Clear-QaFlowCaseMetrics -Entry $entry
+
+  if (-not $Preflight.passed) {
+    $entry.status = 'BLOCKED'
+    $entry.evidence = ($Preflight.blockers -join ' ')
+  } elseif ($null -eq $exec) {
+    $entry.status = 'INFRA_ERROR'
+    $entry.evidence = 'Execucao ausente.'
+  } else {
+    $entry.executedTestFiles = @($exec.executedTestFiles)
+    $entry.logicalCommand = [string]$exec.logicalCommand
+    Set-QaFlowCaseMetrics -Entry $entry `
+      -PassedTestCases ([int]$exec.passedTestCases) `
+      -FailedTestCases ([int]$exec.failedTestCases) `
+      -SkippedTestCases ([int]$exec.skippedTestCases)
+    $entry.durationSeconds = $exec.durationSeconds
+    $entry.metricsReliable = $exec.metricsReliable
+    $entry.status = [string]$exec.executionStatus
+    $entry.evidence = [string]$exec.evidence
+    $entry.error = [string]$exec.error
+    if ($exec.failures -and $exec.failures.Count -gt 0) {
+      $f = $exec.failures[0]
+      if ($f.url) {
+        $entry.errorLocation = $f.url -replace '^file:///', '' -replace '\\', '/'
+      }
+    }
+    $entry.suggestion = Get-FlowSuggestion -FlowId $FlowId -Status $entry.status
+  }
+
+  $verdict = 'NO-GO'
+  $reason = 'Fluxo P1 nao concluiu com PASS.'
+  if ($entry.status -eq 'PASS' -and [int]$entry.failedTestCases -eq 0) {
+    $verdict = 'GO'
+    $reason = "Fluxo P1 $FlowId executado com sucesso ($($entry.executedTestCases) casos em $($entry.executedTestFiles.Count) arquivo(s))."
+  } elseif ($entry.status -eq 'BLOCKED') {
+    $reason = 'Preflight bloqueou execucao.'
+  } elseif ($entry.status -eq 'INFRA_ERROR') {
+    $reason = 'INFRA_ERROR na execucao do fluxo P1.'
+  } elseif ($entry.status -eq 'FAIL') {
+    $reason = "Falha em testes do fluxo $FlowId."
+  }
+
+  return @{
+    flowResult = [pscustomobject]$entry
+    verdict    = $verdict
+    reason     = $reason
+    execution  = $exec
+  }
+}
+
 function Read-FlowMatrix {
   if (-not (Test-Path -LiteralPath $MatrixPath)) {
     throw "flow_matrix.json nao encontrado: $MatrixPath"
@@ -574,24 +679,27 @@ function Build-FlowResults {
   $smokeRelated = @($SmokeAllowlist.RelatedFlowIds)
 
   foreach ($flow in $Matrix.flows) {
-    $entry = [ordered]@{
-      id              = [string]$flow.id
-      descricao       = [string]$flow.descricao
-      impacto         = [string]$flow.impacto
-      runner          = [string]$flow.runner
-      statusCobertura = [string]$flow.statusCobertura
-      tests           = @()
-      status          = ''
-      evidence        = ''
-      error           = ''
-      errorLocation   = ''
-      suggestion      = ''
-      m0Note          = ''
+    $planned = @()
+    if ($flow.tests) {
+      foreach ($t in $flow.tests) { $planned += [string]$t }
     }
 
-    if ($flow.tests) {
-      foreach ($t in $flow.tests) { $entry.tests += [string]$t }
+    $entry = [ordered]@{
+      id                = [string]$flow.id
+      descricao         = [string]$flow.descricao
+      impacto           = [string]$flow.impacto
+      runner            = [string]$flow.runner
+      statusCobertura   = [string]$flow.statusCobertura
+      plannedTestFiles  = @($planned)
+      executedTestFiles = @()
+      status            = ''
+      evidence          = ''
+      error             = ''
+      errorLocation     = ''
+      suggestion        = ''
+      m0Note            = ''
     }
+    Clear-QaFlowCaseMetrics -Entry $entry
 
     if (-not $PreflightPassed) {
       $entry.status = 'BLOCKED'
@@ -608,6 +716,13 @@ function Build-FlowResults {
     }
 
     if ($smokeRelated -contains [string]$flow.id) {
+      $smokeFile = 'test/critical_flows_source_contract_test.dart'
+      $entry.executedTestFiles = @($smokeFile)
+      Set-QaFlowCaseMetrics -Entry $entry `
+        -PassedTestCases ([int]$SmokeResult.passed) `
+        -FailedTestCases ([int]$SmokeResult.failed) `
+        -SkippedTestCases ([int]$SmokeResult.skipped)
+
       if ($SmokeResult.executionStatus -eq 'INFRA_ERROR') {
         $entry.status = 'INFRA_ERROR'
         $entry.evidence = $SmokeResult.evidence
@@ -634,6 +749,8 @@ function Build-FlowResults {
 
     # Fluxo mapeado mas fora da smoke M0 - nao usar NOT_COVERED (reservado a fluxo sem teste)
     $entry.status = $null
+    $entry.executedTestFiles = @()
+    Clear-QaFlowCaseMetrics -Entry $entry
     $entry.statusCobertura = [string]$flow.statusCobertura
     $entry.m0Note = 'Execucao omitida na fase M0 (fora da smoke allowlist). Cobertura declarada na matriz nao foi exercitada nesta execucao.'
     $entry.evidence = 'Matriz declarativa apenas - testes existem mas nao foram executados nesta fase.'
@@ -708,6 +825,102 @@ $risks = [System.Collections.Generic.List[object]]::new()
   })
 
 $preflight = Invoke-Preflight
+
+if (-not [string]::IsNullOrWhiteSpace($Flow)) {
+  $flowCheck = Test-P1FlowIdParameter -FlowId $Flow -Matrix $matrix
+  if (-not $flowCheck.ok) {
+    Write-Host "QA Bot P1Flow rejeitado: $($flowCheck.code) - $($flowCheck.message)"
+    $rejectArtifact = [ordered]@{
+      phase               = 'P1Flow'
+      runId               = $runId
+      timestampUtc        = $timestampUtc
+      repoRoot            = $RepoRoot
+      branch              = $branch
+      head                = $head
+      profile             = 'P1_SINGLE_FLOW'
+      flowId              = $Flow.Trim()
+      rejectionCode       = $flowCheck.code
+      rejectionMessage    = $flowCheck.message
+      preflight           = $preflight
+      flowResults         = @()
+      verdict             = 'NO-GO'
+      verdictReason       = $flowCheck.message
+      testExecutionStatus = 'NOT_RUN'
+      qaBotRunStatus      = $flowCheck.code
+    }
+    $rejectPath = Join-Path $ArtifactsDir "run_${runId}_rejected.json"
+    Write-QaUtf8File -Path $rejectPath -Content ($rejectArtifact | ConvertTo-Json -Depth 8)
+    exit 4
+  }
+
+  $flowId = $Flow.Trim()
+  $single = Invoke-SingleP1Flow `
+    -FlowId $flowId `
+    -Matrix $matrix `
+    -RunId $runId `
+    -Preflight $preflight `
+    -ParserWarnings $parserWarnings
+
+  $parserIntegrity = New-QaParserIntegritySummary `
+    -ExecutedTestCases $(if ($single.execution) { [int]$single.execution.executedTestCases } else { 0 }) `
+    -PassedTestCases $(if ($single.execution) { [int]$single.execution.passedTestCases } else { 0 }) `
+    -FailedTestCases $(if ($single.execution) { [int]$single.execution.failedTestCases } else { 0 }) `
+    -SkippedTestCases $(if ($single.execution) { [int]$single.execution.skippedTestCases } else { 0 }) `
+    -ParserWarnings @($parserWarnings) `
+    -ProtocolCompleted $(if ($single.execution) { $single.execution.protocolCompleted } else { $false }) `
+    -ExitCode $(if ($single.execution) { $single.execution.exitCode } else { -1 }) `
+    -MetricsReliable $(if ($single.execution) { $single.execution.metricsReliable } else { $false })
+
+  $artifact = [ordered]@{
+    phase           = 'P1Flow'
+    runId           = $runId
+    timestampUtc    = $timestampUtc
+    repoRoot        = $RepoRoot
+    branch          = $branch
+    head            = $head
+    profile         = 'P1_SINGLE_FLOW'
+    flowId          = $flowId
+    preflight       = $preflight
+    smoke           = $null
+    parserIntegrity = $parserIntegrity
+    flowResults     = @($single.flowResult)
+    parserWarnings  = @($parserWarnings)
+    risks           = @($risks)
+    verdict         = $single.verdict
+    verdictReason   = $single.reason
+    testExecutionStatus = if ($single.execution) { $single.execution.executionStatus } else { 'INFRA_ERROR' }
+    qaBotRunStatus      = 'PASS'
+  }
+
+  $artifactPath = Join-Path $ArtifactsDir "run_$runId.json"
+  Write-QaUtf8File -Path $artifactPath -Content ($artifact | ConvertTo-Json -Depth 14)
+
+  try {
+    $artifactObj = Get-Content -LiteralPath $artifactPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    Assert-QaRunArtifactSchema -RunArtifact $artifactObj
+    $reportPath = & $RenderScript -RunArtifactPath $artifactPath
+  } catch {
+    $artifact.qaBotRunStatus = 'INFRA_ERROR'
+    $artifact.verdict = 'NO-GO'
+    $artifact.verdictReason = "Renderer/schema falhou: $($_.Exception.Message)"
+    Write-QaUtf8File -Path $artifactPath -Content ($artifact | ConvertTo-Json -Depth 14)
+    Write-Host "QA Bot P1Flow INFRA_ERROR: $($_.Exception.Message)"
+    exit 3
+  }
+
+  Write-Host ""
+  Write-Host "QA Bot P1Flow concluido."
+  Write-Host "  Fluxo: $flowId"
+  Write-Host "  Veredito: $($single.verdict)"
+  Write-Host "  Relatorio: $reportPath"
+  Write-Host "  Artefato:  $artifactPath"
+  Write-Host "  executedTestFiles: $($single.flowResult.executedTestFiles.Count)"
+  Write-Host "  executedTestCases: $($single.flowResult.executedTestCases)"
+  Write-Host "  passed/failed/skipped: $($single.flowResult.passedTestCases)/$($single.flowResult.failedTestCases)/$($single.flowResult.skippedTestCases)"
+
+  if ($single.verdict -eq 'NO-GO') { exit 2 }
+  exit 0
+}
 
 $trackedCredentialsPreflight = [ordered]@{
   passed   = $true
@@ -799,13 +1012,20 @@ if ($M1P0) {
     verdictReason    = $verdictInfo.reason
   }
 
-  $artifactPath = Join-Path $ArtifactsDir "run_$runId.json"
-  Write-QaUtf8File -Path $artifactPath -Content ($artifact | ConvertTo-Json -Depth 14)
+$artifactPath = Join-Path $ArtifactsDir "run_$runId.json"
+Write-QaUtf8File -Path $artifactPath -Content ($artifact | ConvertTo-Json -Depth 14)
 
+try {
+  $artifactObj = Get-Content -LiteralPath $artifactPath -Raw -Encoding UTF8 | ConvertFrom-Json
+  Assert-QaRunArtifactSchema -RunArtifact $artifactObj
   $reportPath = & $RenderScript -RunArtifactPath $artifactPath
+} catch {
+  Write-Host "QA Bot INFRA_ERROR (renderer/schema): $($_.Exception.Message)"
+  exit 3
+}
 
-  Write-Host ""
-  Write-Host "QA Bot M1P0 concluido."
+Write-Host ""
+Write-Host "QA Bot M1P0 concluido."
   Write-Host "  Veredito: $($verdictInfo.verdict)"
   Write-Host "  Relatorio: $reportPath"
   Write-Host "  Artefato:  $artifactPath"
@@ -904,16 +1124,15 @@ if ($preflight.passed) {
 $flowResults = Build-FlowResults -Matrix $matrix -SmokeResult $smokeResult -PreflightPassed $preflight.passed -PreflightBlockers $preflight.blockers
 $verdictInfo = Compute-Verdict -FlowResults $flowResults -PreflightPassed $preflight.passed -SmokeExecutionStatus $smokeResult.executionStatus
 
-$parserIntegrity = [ordered]@{
-  realTestCasesDetected = if ($null -ne $smokeResult.realTestCasesDetected) { $smokeResult.realTestCasesDetected } else { 0 }
-  passed                = $smokeResult.passed
-  failed                = $smokeResult.failed
-  skipped               = $smokeResult.skipped
-  parserWarnings        = @($parserWarnings)
-  protocolCompleted     = if ($null -ne $smokeResult.protocolCompleted) { $smokeResult.protocolCompleted } else { $false }
-  exitCode              = if ($null -ne $smoke) { $smoke.exitCode } else { $null }
-  metricsReliable       = if ($null -ne $smokeResult.metricsReliable) { $smokeResult.metricsReliable } else { $false }
-}
+$parserIntegrity = New-QaParserIntegritySummary `
+  -ExecutedTestCases $(if ($null -ne $smokeResult.realTestCasesDetected) { [int]$smokeResult.realTestCasesDetected } else { 0 }) `
+  -PassedTestCases $smokeResult.passed `
+  -FailedTestCases $smokeResult.failed `
+  -SkippedTestCases $smokeResult.skipped `
+  -ParserWarnings @($parserWarnings) `
+  -ProtocolCompleted $(if ($null -ne $smokeResult.protocolCompleted) { $smokeResult.protocolCompleted } else { $false }) `
+  -ExitCode $(if ($null -ne $smoke) { $smoke.exitCode } else { $null }) `
+  -MetricsReliable $(if ($null -ne $smokeResult.metricsReliable) { $smokeResult.metricsReliable } else { $false })
 
 $artifact = [ordered]@{
   phase            = 'M0.1'
@@ -935,7 +1154,14 @@ $artifact = [ordered]@{
 $artifactPath = Join-Path $ArtifactsDir "run_$runId.json"
 Write-QaUtf8File -Path $artifactPath -Content ($artifact | ConvertTo-Json -Depth 12)
 
-$reportPath = & $RenderScript -RunArtifactPath $artifactPath
+try {
+  $artifactObj = Get-Content -LiteralPath $artifactPath -Raw -Encoding UTF8 | ConvertFrom-Json
+  Assert-QaRunArtifactSchema -RunArtifact $artifactObj
+  $reportPath = & $RenderScript -RunArtifactPath $artifactPath
+} catch {
+  Write-Host "QA Bot INFRA_ERROR (renderer/schema): $($_.Exception.Message)"
+  exit 3
+}
 
 Write-Host ""
 Write-Host "QA Bot M0.1 concluido."
