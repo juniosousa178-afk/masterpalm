@@ -70,13 +70,20 @@ class ProdutoAdapter extends TypeAdapter<Produto> {
       subcategoriasExtras:
           fields[46] == null ? [] : (fields[46] as List).cast<String>(),
       sku: fields[47] == null ? '' : fields[47] as String,
+      stockUpdatedAt: fields[48] as DateTime?,
+      stockUpdatedAtServer: fields[49] as DateTime?,
+      stockRevision: fields[50] == null ? 0 : fields[50] as int,
+      confirmedStockOperationId: fields[51] as String?,
+      pendingStockOperationId: fields[52] as String?,
+      pendingStockBaseRevision: fields[53] as int?,
+      stockSyncState: fields[54] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, Produto obj) {
     writer
-      ..writeByte(48)
+      ..writeByte(55)
       ..writeByte(0)
       ..write(obj.nome)
       ..writeByte(1)
@@ -172,7 +179,21 @@ class ProdutoAdapter extends TypeAdapter<Produto> {
       ..writeByte(46)
       ..write(obj.subcategoriasExtras)
       ..writeByte(47)
-      ..write(obj.sku);
+      ..write(obj.sku)
+      ..writeByte(48)
+      ..write(obj.stockUpdatedAt)
+      ..writeByte(49)
+      ..write(obj.stockUpdatedAtServer)
+      ..writeByte(50)
+      ..write(obj.stockRevision)
+      ..writeByte(51)
+      ..write(obj.confirmedStockOperationId)
+      ..writeByte(52)
+      ..write(obj.pendingStockOperationId)
+      ..writeByte(53)
+      ..write(obj.pendingStockBaseRevision)
+      ..writeByte(54)
+      ..write(obj.stockSyncState);
   }
 
   @override

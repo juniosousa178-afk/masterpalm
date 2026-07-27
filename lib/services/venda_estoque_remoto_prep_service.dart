@@ -3,6 +3,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
+import '../core/stock_revision_operation_gate.dart';
 import '../models/produto.dart';
 import 'firestore_paths.dart';
 import 'produto_exclusao_tombstone_service.dart';
@@ -91,6 +92,8 @@ class VendaEstoqueRemotoPrepService {
     required String lojaId,
     required List<Produto> produtos,
   }) async {
+    StockRevisionOperationGate.assertAllowed(StockRevisionOperationKind.venda);
+
     final li = lojaId.trim();
     if (li.isEmpty) return;
 

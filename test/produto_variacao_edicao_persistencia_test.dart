@@ -173,6 +173,7 @@ void main() {
           produto,
           lojaId: lojaId,
           bumpHiveTimestamp: false,
+          forcePushFromCadastro: true,
           enqueueOnFailure: false,
         );
 

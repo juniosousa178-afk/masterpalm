@@ -12,6 +12,11 @@ import '../core/firestore_access_guard.dart';
 import '../core/hive_box_names.dart';
 import '../core/produto_custo_guard.dart';
 import '../core/produto_estoque_grade_canonical_guard.dart';
+import '../core/produto_estoque_grade_snapshot.dart';
+import '../core/produto_stock_revision.dart';
+import '../core/produto_stock_version_fields.dart';
+import '../core/produto_stock_write_enforcement.dart';
+import '../core/stock_revision_operation_gate.dart';
 import '../core/produto_form_grade_hydration.dart';
 import '../core/produto_variacao_extra.dart';
 import 'firestore_paths.dart';
@@ -62,6 +67,23 @@ enum ProdutoSyncRemotoStatus {
 
   /// Produto com venda/referência e colisão remota — sem troca automática de ID.
   recuperacaoManualNecessaria,
+}
+
+/// Contrato explícito de persistência Hive durante sync (R8.4.5 H2).
+enum ProdutoHiveSaveRequirement {
+  /// DTO detached / sync-only — omitir save Hive sem falhar.
+  optionalForDetachedDto,
+
+  /// Entidade que deveria estar na box — falha controlada se detached.
+  requiredForPersistedEntity,
+}
+
+/// Persistência Hive exigida mas [Produto.isInBox] é falso.
+class ProdutoHiveSaveRequiredButDetachedException implements Exception {
+  const ProdutoHiveSaveRequiredButDetachedException();
+
+  @override
+  String toString() => 'persistencia_hive_obrigatoria_objeto_detached';
 }
 
 class ProdutosFirestoreService {
@@ -876,6 +898,34 @@ class ProdutosFirestoreService {
     return localUpdatedAt.isAfter(remoteUpdatedAt);
   }
 
+  static DateTime? parseFirestoreUpdatedAt(Map<String, dynamic> data) {
+    final u = data['updatedAt'];
+    return u is Timestamp ? u.toDate() : null;
+  }
+
+  static DateTime? parseFirestoreStockUpdatedAt(Map<String, dynamic> data) {
+    final u = data[kProdutoStockUpdatedAtField];
+    return u is Timestamp ? u.toDate() : null;
+  }
+
+  /// Pull: regressão de grade remota (por célula) sem janela temporal arbitrária.
+  ///
+  /// Usa [stockUpdatedAt] quando presente; legado sem campo → conservador.
+  @visibleForTesting
+  static bool shouldPreserveLocalStockOnRemoteRegression({
+    required Produto local,
+    required Map<String, dynamic> remoteData,
+  }) {
+    final decision = evaluatePullStockMerge(
+      local: local,
+      remoteData: remoteData,
+      remoteStockUpdatedAt: parseFirestoreStockUpdatedAt(remoteData),
+      localStockUpdatedAt: local.stockUpdatedAt,
+      localStockUpdatedAtServer: local.stockUpdatedAtServer,
+    );
+    return decision == PullStockMergeDecision.preserveLocalGrade;
+  }
+
   /// Push: não sobrescrever remoto mais novo com Hive stale.
   ///
   /// Usa [updatedAtBeforeBump] (capturado antes de `bumpHiveTimestamp`) para que
@@ -890,16 +940,58 @@ class ProdutosFirestoreService {
     bool forcePushFromCadastro = false,
   }) {
     if (forcePushFromCadastro) return false;
-    if (existingData == null) return false;
-    final remoteAt = _firestoreUpdatedAtToDate(existingData['updatedAt']);
-    final localAt = updatedAtBeforeBump ?? local.updatedAt;
-    if (localAt == null || remoteAt == null) return false;
-    return remoteAt.isAfter(localAt.add(const Duration(seconds: 2)));
+    if (existingData != null && remoteTemGradeRica(existingData)) {
+      final variacoesPush = _variacoesParaFirestorePush(local);
+      final variacoesExtraPush = _variacoesExtraTipoParaFirestorePush(local);
+      final estoquePorTamPush = _estoquePorTamanhoParaFirestorePush(local);
+      if (isExplicitGradeRemovalOnPush(
+        local: local,
+        existingData: existingData,
+        variacoesPush: variacoesPush,
+        variacoesExtraPush: variacoesExtraPush,
+        estoquePorTamPush: estoquePorTamPush,
+      )) {
+        return false;
+      }
+    }
+    return evaluatePushStockSkip(
+      local: local,
+      existingData: existingData,
+      forcePushFromCadastro: forcePushFromCadastro,
+    );
   }
 
-  static DateTime? parseFirestoreUpdatedAt(Map<String, dynamic> data) {
-    final u = data['updatedAt'];
-    return u is Timestamp ? u.toDate() : null;
+  static Future<void> _saveProdutoIfInBox(
+    Produto produto, {
+    required ProdutoHiveSaveRequirement saveRequirement,
+  }) async {
+    if (debugProdutoSaveOverride != null) {
+      await debugProdutoSaveOverride!(produto);
+      return;
+    }
+    if (produto.isInBox) {
+      debugLastHiveSaveSkipped = false;
+      await produto.save();
+      return;
+    }
+    debugLastHiveSaveSkipped = true;
+    if (saveRequirement == ProdutoHiveSaveRequirement.requiredForPersistedEntity) {
+      throw const ProdutoHiveSaveRequiredButDetachedException();
+    }
+  }
+
+  /// Apenas testes: último save Hive foi omitido por objeto detached.
+  @visibleForTesting
+  static bool? debugLastHiveSaveSkipped;
+
+  /// Apenas testes: substitui persistência Hive (H5 falha simulada).
+  @visibleForTesting
+  static Future<void> Function(Produto produto)? debugProdutoSaveOverride;
+
+  @visibleForTesting
+  static void resetDebugHiveSaveOverrides() {
+    debugLastHiveSaveSkipped = null;
+    debugProdutoSaveOverride = null;
   }
 
   static DateTime? _maxDateTime(DateTime? a, DateTime? b) {
@@ -1288,6 +1380,10 @@ class ProdutosFirestoreService {
       if (uAt is Timestamp) {
         produto.updatedAt = uAt.toDate();
       }
+      applyServerStockVersionToProduto(
+        produto,
+        parseFirestoreStockUpdatedAt(data),
+      );
       await produto.save();
     } finally {
       ProdutoRemoteSyncGuard.applyingRemoteToHive = false;
@@ -1301,6 +1397,8 @@ class ProdutosFirestoreService {
     bool forcePushFromCadastro = false,
     String? writeOrigin,
     bool enqueueOnFailure = true,
+    ProdutoHiveSaveRequirement hiveSaveRequirement =
+        ProdutoHiveSaveRequirement.optionalForDetachedDto,
     ProdutoFormGradeBaseline? gradeBaseline,
     CatalogoSyncAttemptContext? catalogoDiagContext,
     CatalogoLiveInlinePolicy catalogoLiveInlinePolicy =
@@ -1454,7 +1552,10 @@ class ProdutosFirestoreService {
       // Se as imagens foram atualizadas, salvar no produto local
       if (imagensAtualizadas) {
         produto.imagens = imagensFinais;
-        await produto.save();
+        await _saveProdutoIfInBox(
+          produto,
+          saveRequirement: hiveSaveRequirement,
+        );
         logD(
             '✅ [PRODUTOS-SYNC] Imagens atualizadas no Hive com URLs do Firebase');
       }
@@ -1463,7 +1564,10 @@ class ProdutosFirestoreService {
 
       if (bumpHiveTimestamp) {
         produto.updatedAt = DateTime.now();
-        await produto.save();
+        await _saveProdutoIfInBox(
+          produto,
+          saveRequirement: hiveSaveRequirement,
+        );
       }
 
       final docRef = _db
@@ -1483,10 +1587,11 @@ class ProdutosFirestoreService {
         forcePushFromCadastro: forcePushFromCadastro,
       )) {
         logW(
-          '[PUSH_EDIT_GUARD] push ignorado — remoto mais recente que Hive '
+          '[PUSH_STALE_GUARD] push ignorado — remoto com versão de estoque autoritativa '
           '(doc=$produtoId bump=$bumpHiveTimestamp '
-          'localBeforeBump=$updatedAtBeforeBump forceCadastro=$forcePushFromCadastro)',
-          tag: 'PUSH_EDIT_GUARD',
+          'localStockServer=${produto.stockUpdatedAtServer} '
+          'forceCadastro=$forcePushFromCadastro)',
+          tag: 'PUSH_STALE_GUARD',
         );
         return ProdutoSyncRemotoStatus.semMudancas;
       }
@@ -1659,6 +1764,28 @@ class ProdutosFirestoreService {
         _dlog('[ProdutoSync] create estoque_produtos/$produtoId');
       }
 
+      final remoteGradeBeforePush = docSnap.exists && existingData != null
+          ? ProdutoEstoqueGradeSnapshot.fromRemote(existingData)
+          : null;
+      final localGradePush = ProdutoEstoqueGradeSnapshot.fromProduto(produto);
+      if (remoteGradeBeforePush == null ||
+          localGradePush.gradeDiffersFrom(remoteGradeBeforePush)) {
+        produtoData[kProdutoStockUpdatedAtField] =
+            FieldValue.serverTimestamp();
+        final remoteRev = parseStockRevisionFromRemote(existingData);
+        final opId = hasPendingStockMutation(produto)
+            ? produto.pendingStockOperationId!
+            : newStockOperationId();
+        if (!hasPendingStockMutation(produto)) {
+          markPendingStockMutation(produto, operationId: opId, baseRevision: remoteRev);
+        }
+        attachStockRevisionFields(
+          produtoData,
+          nextRevision: remoteRev + 1,
+          operationId: opId,
+        );
+      }
+
       final variationKeysToRemove = <String>{};
       final preservouGradeRemotaNoPush =
           resolvedVariationPush.rehydrateLocalFromRemote;
@@ -1683,12 +1810,48 @@ class ProdutosFirestoreService {
         );
       }
 
-      await _upsertProdutoDocument(
-        docRef,
-        sanitizeEstoque.payload,
+      final stockGradeChanged = remoteGradeBeforePush == null ||
+          localGradePush.gradeDiffersFrom(remoteGradeBeforePush);
+      if (stockGradeChanged) {
+        StockRevisionOperationGate.assertAllowed(
+          forcePushFromCadastro
+              ? StockRevisionOperationKind.cadastroProduto
+              : StockRevisionOperationKind.importacaoProduto,
+        );
+      }
+
+      enforceStockRevisionWriteContract(
+        updateData: sanitizeEstoque.payload,
         existingData: docSnap.exists ? docSnap.data() : null,
-        forceRemoveKeys: variationKeysToRemove,
       );
+
+      try {
+        await _upsertProdutoDocument(
+          docRef,
+          sanitizeEstoque.payload,
+          existingData: docSnap.exists ? docSnap.data() : null,
+          forceRemoveKeys: variationKeysToRemove,
+        );
+      } on FirebaseException catch (e) {
+        if (e.code == 'permission-denied' && hasPendingStockMutation(produto)) {
+          markStockConflict(produto);
+        }
+        rethrow;
+      }
+
+      final afterPushSnap = await docRef.get();
+      if (afterPushSnap.exists) {
+        final remoteData = Map<String, dynamic>.from(afterPushSnap.data() ?? {});
+        final stockAt = parseFirestoreStockUpdatedAt(remoteData);
+        tryConfirmStockFromRemote(produto, remoteData);
+        if (stockAt != null && !hasPendingStockMutation(produto)) {
+          applyServerStockVersionToProduto(produto, stockAt);
+        }
+        await _saveProdutoIfInBox(
+          produto,
+          saveRequirement: hiveSaveRequirement,
+        );
+      }
 
       // 🔹 TAMBÉM atualizar no catálogo público (produtos) se o produto está publicado
       if (produto.publicadoNoCatalogo) {
@@ -1854,7 +2017,10 @@ class ProdutosFirestoreService {
       // Atualizar idFirebase no produto local se estava vazio
       if (produto.idFirebase.isEmpty) {
         produto.idFirebase = produtoId;
-        await produto.save();
+        await _saveProdutoIfInBox(
+          produto,
+          saveRequirement: hiveSaveRequirement,
+        );
         logD('🔄 [PRODUTOS-SYNC] idFirebase atualizado: $produtoId');
       }
 
@@ -1870,6 +2036,9 @@ class ProdutosFirestoreService {
       }
       if (e is FormatException) {
         ultimoErroSyncSanitizado = e.message;
+      }
+      if (e is ProdutoHiveSaveRequiredButDetachedException) {
+        ultimoErroSyncSanitizado = e.toString();
       }
       logE(
           '❌ [PRODUTOS-SYNC] Erro ao sincronizar produto (type=${e.runtimeType})'
@@ -2133,13 +2302,27 @@ class ProdutosFirestoreService {
                     includeDeadLetter: true,
                   )
                 : false;
+            final preserveStockRegression =
+                shouldPreserveLocalStockOnRemoteRegression(
+              local: p,
+              remoteData: data,
+            );
+            if (shouldMarkStockConflictOnPull(local: p, remoteData: data)) {
+              markStockConflict(
+                p,
+                remoteOperationId:
+                    parseStockOperationIdFromRemote(data),
+                remoteRevision: parseStockRevisionFromRemote(data),
+              );
+            }
             final preserveLocalQuantidade = !preferRemoteQuantity &&
                 (pendingProdutoSync ||
                     shouldPreserveLocalQuantidadeOnFirestorePull(
                       localUpdatedAt: p.updatedAt,
                       remoteUpdatedAt: remoteUpdatedAtForPull,
                     ));
-            final preserveLocalEdits = preserveLocalQuantidade;
+            final preserveLocalEdits =
+                preserveLocalQuantidade || preserveStockRegression;
 
             final custoAntes = p.custoReal;
             final pesoAntes = p.peso;
@@ -2147,7 +2330,9 @@ class ProdutosFirestoreService {
             if (preserveLocalEdits) {
               final motivo = pendingProdutoSync
                   ? 'sync pendente na fila'
-                  : 'updatedAt local mais recente que remoto';
+                  : preserveStockRegression
+                      ? 'regressão de grade remota (snapshot stale)'
+                      : 'updatedAt local mais recente que remoto';
               logD(
                 '[PULL_EDIT_GUARD] doc=$produtoId mantendo edição local ($motivo)',
               );
@@ -2279,10 +2464,18 @@ class ProdutosFirestoreService {
               if (updatedAt is Timestamp) {
                 p.updatedAt = _maxDateTime(p.updatedAt, updatedAt.toDate());
               }
+              if (preserveStockRegression) {
+                tryConfirmStockFromRemote(p, data);
+              }
             } else {
               if (updatedAt != null && updatedAt is Timestamp) {
                 p.updatedAt = updatedAt.toDate();
               }
+              final stockAt = data[kProdutoStockUpdatedAtField];
+              if (stockAt is Timestamp) {
+                applyServerStockVersionToProduto(p, stockAt.toDate());
+              }
+              tryConfirmStockFromRemote(p, data);
             }
             if ((p.custoReal - custoAntes).abs() > 0.0001 ||
                 (p.peso - pesoAntes).abs() > 0.0001) {
