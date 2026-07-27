@@ -1,0 +1,5 @@
+name: fixture_no_deps
+description: Guardian package resolution fixture without external dependencies.
+version: 0.0.1
+environment:
+  sdk: ^3.0.0

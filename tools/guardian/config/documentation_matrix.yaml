@@ -1,0 +1,24 @@
+triggers:
+  Estoque:
+    - docs/knowledge/flows/venda.md
+    - docs/knowledge/flows/inventario.md
+    - docs/intelligence/CHANGE_IMPACT.md
+    - docs/intelligence/EVENT_MAP.md
+  Financeiro:
+    - docs/knowledge/flows/financeiro.md
+    - docs/knowledge/flows/consignado-fiado.md
+  PDV:
+    - docs/knowledge/flows/venda.md
+    - docs/intelligence/CALL_GRAPH.md
+  Sync:
+    - docs/knowledge/flows/sync.md
+    - docs/intelligence/TRANSACTION_MAP.md
+  Tenant:
+    - docs/intelligence/security/SECURITY_MAP.md
+    - docs/engineering/RCA/RCA-001-Thawana-LastWriteWins.md
+  Catálogo:
+    - docs/knowledge/flows/catalogo.md
+    - docs/intelligence/ast/INDEX.md
+  Segurança:
+    - docs/engineering/Checklists/Firestore.md
+    - firestore.rules

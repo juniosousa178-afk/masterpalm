@@ -1,0 +1,6 @@
+{
+  "_note": "Intentional golden for Cryptographic Trust. Update explicitly only.",
+  "policyId": "artifact-signature-trust-v1",
+  "policyVersion": 1,
+  "status": "active"
+}

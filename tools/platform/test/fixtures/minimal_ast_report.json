@@ -1,0 +1,110 @@
+{
+  "meta": {
+    "tool": "masterpalm_ast_engine",
+    "repo_root": "/tmp/minimal_project",
+    "generated_at": "2026-01-01T00:00:00.000Z",
+    "files_analyzed": 2
+  },
+  "metrics": {
+    "total_classes": 2,
+    "total_methods": 3,
+    "firestore_writes": 1,
+    "firestore_reads": 0,
+    "widget_classes": 1,
+    "service_files": 1
+  },
+  "imports": {
+    "lib/services/venda_service.dart": [
+      "package:master_palm/models/venda.dart"
+    ],
+    "lib/screens/venda_screen.dart": [
+      "package:master_palm/services/venda_service.dart"
+    ]
+  },
+  "import_graph": {
+    "lib/screens/venda_screen.dart": [
+      "lib/services/venda_service.dart"
+    ],
+    "lib/services/venda_service.dart": []
+  },
+  "classes": {
+    "lib/services/venda_service.dart::VendaService": {
+      "name": "VendaService",
+      "file": "lib/services/venda_service.dart",
+      "superclass": "Object",
+      "interfaces": [],
+      "mixins": [],
+      "abstract": false,
+      "kind": "service"
+    },
+    "lib/screens/venda_screen.dart::VendaScreen": {
+      "name": "VendaScreen",
+      "file": "lib/screens/venda_screen.dart",
+      "superclass": "StatelessWidget",
+      "interfaces": [],
+      "mixins": [],
+      "abstract": false,
+      "kind": "widget"
+    }
+  },
+  "methods": {
+    "VendaService.salvarVenda": {
+      "name": "salvarVenda",
+      "class": "VendaService",
+      "file": "lib/services/venda_service.dart",
+      "static": false,
+      "callees": ["VendaService._persistir"],
+      "callers": ["VendaScreen.build"]
+    },
+    "VendaService._persistir": {
+      "name": "_persistir",
+      "class": "VendaService",
+      "file": "lib/services/venda_service.dart",
+      "static": false,
+      "callees": [],
+      "callers": ["VendaService.salvarVenda"]
+    },
+    "VendaScreen.build": {
+      "name": "build",
+      "class": "VendaScreen",
+      "file": "lib/screens/venda_screen.dart",
+      "static": false,
+      "callees": ["VendaService.salvarVenda"],
+      "callers": []
+    }
+  },
+  "enums": {},
+  "extensions": {},
+  "mixins": {},
+  "inheritance": {
+    "lib/services/venda_service.dart::VendaService": {
+      "name": "VendaService",
+      "extends": "Object",
+      "implements": [],
+      "with": []
+    },
+    "lib/screens/venda_screen.dart::VendaScreen": {
+      "name": "VendaScreen",
+      "extends": "StatelessWidget",
+      "implements": [],
+      "with": []
+    }
+  },
+  "firestore_writes": [
+    {
+      "file": "lib/services/venda_service.dart",
+      "method": "VendaService._persistir",
+      "target": "vendas",
+      "line": 10
+    }
+  ],
+  "firestore_reads": [],
+  "firestore_transactions": [],
+  "hive_boxes": [
+    {
+      "file": "lib/services/venda_service.dart",
+      "method": "VendaService.salvarVenda",
+      "target": "produtos"
+    }
+  ]
+}

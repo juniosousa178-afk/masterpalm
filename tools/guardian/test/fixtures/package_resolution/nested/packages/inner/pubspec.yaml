@@ -1,0 +1,5 @@
+name: fixture_nested_inner
+description: Nested package fixture inner.
+version: 0.0.1
+environment:
+  sdk: ^3.0.0

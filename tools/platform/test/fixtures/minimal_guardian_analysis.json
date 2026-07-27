@@ -1,0 +1,46 @@
+{
+  "decision": "noGo",
+  "summary": "Alteração de alto risco detectada no domínio Estoque.",
+  "simulation_only": true,
+  "files": {
+    "added": ["lib/services/new_service.dart"],
+    "modified": ["lib/services/estoque_transaction_service.dart"],
+    "removed": []
+  },
+  "methods_changed": ["EstoqueTransactionService.baixarEstoque"],
+  "classes_changed": ["EstoqueTransactionService"],
+  "impact": {
+    "domains": ["Estoque"],
+    "services": ["lib/services/estoque_transaction_service.dart"],
+    "screens": ["lib/screens/estoque_screen.dart"],
+    "firestore_collections": ["estoque"],
+    "hive_boxes": ["estoque_cache"]
+  },
+  "risk": {
+    "overall": "red",
+    "items": [
+      {
+        "file": "lib/services/estoque_transaction_service.dart",
+        "level": "red",
+        "reason": "Método crítico de estoque alterado"
+      }
+    ]
+  },
+  "violations": [
+    {
+      "code": "G001",
+      "severity": "blocking",
+      "message": "Teste obrigatório ausente",
+      "file": "lib/services/estoque_transaction_service.dart",
+      "evidence": "Nenhum teste encontrado",
+      "required_action": "Adicionar teste de integração"
+    }
+  ],
+  "tests": {
+    "required": ["test/estoque_transaction_service_test.dart"],
+    "found": [],
+    "missing": ["test/estoque_transaction_service_test.dart"]
+  },
+  "required_documentation": ["docs/estoque.md"],
+  "recommendations": ["Executar testes de estoque antes do merge"]
+}

@@ -1,0 +1,7 @@
+{
+  "_note": "Intentional golden for Release Supply Chain. Update explicitly only.",
+  "sbomId": "sbom-rel-2026-06-15-001",
+  "fingerprint": "237a655d2b590956ad0e9ed707c052df45342b8bf87ed96aca752ac95d3fe2a9",
+  "componentCount": 1,
+  "canonicalFingerprint": "b90b4377cc659dd31d94b9eca719e67b63598c18db595d5df1e0591646b5dc3f"
+}

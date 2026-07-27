@@ -1,0 +1,1 @@
+export 'persistent_artifact_real_cloud_adapter_admission.dart';

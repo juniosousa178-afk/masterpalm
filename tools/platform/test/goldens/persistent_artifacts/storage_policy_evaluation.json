@@ -1,0 +1,7 @@
+{
+  "schema": "persistent-artifact-golden-v1",
+  "name": "storage_policy_evaluation",
+  "operationType": "persist",
+  "status": "succeeded",
+  "artifactResultCount": 1
+}

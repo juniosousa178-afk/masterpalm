@@ -1,0 +1,7 @@
+{
+  "_note": "Intentional golden for Cryptographic Trust. Update explicitly only.",
+  "verificationId": "pending",
+  "status": "invalid",
+  "trustLevel": "none",
+  "canonicalFingerprint": "b0b10fbe44bcca2ace46d8d8857520c8f7055f024d77c4ec9850135a87ac5656"
+}

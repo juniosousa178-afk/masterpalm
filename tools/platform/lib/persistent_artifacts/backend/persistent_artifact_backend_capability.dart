@@ -1,0 +1,17 @@
+enum PersistentArtifactBackendCapability {
+  contentWrite,
+  contentRead,
+  contentExists,
+  contentMetadata,
+  manifestSave,
+  manifestLoad,
+  manifestLatest,
+  manifestQuery,
+  manifestList,
+  manifestInvalidate,
+  locationResolve,
+  quarantineDelete,
+  recoveryInspect,
+  recoveryRecover,
+  recoveryDiscard,
+}

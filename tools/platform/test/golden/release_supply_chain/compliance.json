@@ -1,0 +1,8 @@
+{
+  "_note": "Intentional golden for Release Supply Chain. Update explicitly only.",
+  "resultId": "comp-result-rel-2026-06-15-001",
+  "fingerprint": "34fda5e8e2fc4a8ae00bd80ed19a13d096d5f4407b4effcc03d92c68044e2e4c",
+  "status": "compliant",
+  "checkCount": 3,
+  "canonicalFingerprint": "56e2337f7be92ba061fdf85d8d5a9a35b1a63f88cb951f3a95801876960cbe78"
+}

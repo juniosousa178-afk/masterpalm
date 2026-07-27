@@ -1,0 +1,18 @@
+name: masterpalm_guardian
+description: MasterPalm AI Guardian V4 — change risk analysis
+publish_to: none
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  args: ^2.6.0
+  crypto: ^3.0.6
+  masterpalm_platform:
+    path: ../platform
+  package_config: ^2.1.0
+  path: ^1.9.0
+  yaml: ^3.1.3
+
+dev_dependencies:
+  test: ^1.25.8

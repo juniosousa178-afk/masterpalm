@@ -1,0 +1,1 @@
+const hiveRuleCodes = ['G005'];

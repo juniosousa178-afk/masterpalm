@@ -1,0 +1,12 @@
+{
+  "_note": "Intentional golden for Release Evidence. Update explicitly only.",
+  "bundleId": "release-evidence:masterpalm-demo:rel-2026-06-15-001:release-evidence-v1:1:d3e5e364bbea6a03a7e5acf2f430e530d91933725742a725aeb7f18d789710d0:1",
+  "fingerprint": "195dcb5927bb929aebb821c911da505917fc1cbf121332ca0ac43d14f5dc37c2",
+  "policyId": "release-evidence-v1",
+  "policyVersion": 1,
+  "evidenceCount": 12,
+  "attestationCount": 1,
+  "compatibilityStatus": "compatible",
+  "eligibilityStatus": "eligible",
+  "canonicalFingerprint": "195dcb5927bb929aebb821c911da505917fc1cbf121332ca0ac43d14f5dc37c2"
+}

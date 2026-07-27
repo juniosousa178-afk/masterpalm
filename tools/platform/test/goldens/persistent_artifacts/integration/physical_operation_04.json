@@ -1,0 +1,6 @@
+{
+  "schema": "persistent-artifact-physical-golden-v1",
+  "name": "physical_operation_04",
+  "operation": "metadata",
+  "status": "succeeded"
+}

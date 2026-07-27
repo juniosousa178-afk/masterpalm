@@ -1,0 +1,5 @@
+name: fixture_unresolved_import
+description: Guardian fixture with unresolved package import.
+version: 0.0.1
+environment:
+  sdk: ^3.0.0

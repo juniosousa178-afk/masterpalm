@@ -1,0 +1,7 @@
+name: fixture_with_crypto
+description: Guardian fixture resolving package:crypto.
+version: 0.0.1
+environment:
+  sdk: ^3.0.0
+dependencies:
+  crypto: ^3.0.6

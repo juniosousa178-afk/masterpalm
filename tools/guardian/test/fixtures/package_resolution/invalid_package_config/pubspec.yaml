@@ -1,0 +1,5 @@
+name: fixture_invalid_config
+description: Guardian fixture with invalid package_config.
+version: 0.0.1
+environment:
+  sdk: ^3.0.0

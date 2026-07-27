@@ -1,0 +1,6 @@
+{
+  "_note": "Intentional golden for Cryptographic Trust. Update explicitly only.",
+  "revocationId": "rev-key-001",
+  "subjectType": "key",
+  "status": "active"
+}

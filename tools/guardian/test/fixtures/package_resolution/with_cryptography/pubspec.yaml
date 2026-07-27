@@ -1,0 +1,7 @@
+name: fixture_with_cryptography
+description: Guardian fixture resolving package:cryptography.
+version: 0.0.1
+environment:
+  sdk: ^3.0.0
+dependencies:
+  cryptography: ^2.9.0
