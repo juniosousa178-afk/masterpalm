@@ -109,7 +109,9 @@ void main() {
     });
 
     test('12 resolver not initialized fail-closed', () {
-      StockRevisionClientBuildResolver.instance.resetForTest();
+      StockRevisionClientBuildResolver.instance.resetForTest(
+        leaveUninitialized: true,
+      );
       expect(
         () => StockRevisionClientBuildResolver.instance.requireBuildNumber(),
         throwsA(isA<StockRevisionClientBuildUnavailableException>()),
@@ -138,7 +140,9 @@ void main() {
 
     test('15 override cleared returns uninitialized', () {
       StockRevisionClientBuildResolver.instance.setTestOverride(285);
-      StockRevisionOperationGate.resetDebugOverrides();
+      StockRevisionClientBuildResolver.instance.resetForTest(
+        leaveUninitialized: true,
+      );
       expect(
         StockRevisionClientBuildResolver.instance.isInitialized,
         isFalse,

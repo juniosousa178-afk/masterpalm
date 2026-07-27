@@ -135,7 +135,9 @@ void main() {
 
   group('R8426 fail-closed antes da inicialização', () {
     test('venda bloqueada sem resolver inicializado', () {
-      StockRevisionClientBuildResolver.instance.resetForTest();
+      StockRevisionClientBuildResolver.instance.resetForTest(
+        leaveUninitialized: true,
+      );
       expect(
         () => StockRevisionOperationGate.assertAllowed(
           StockRevisionOperationKind.venda,

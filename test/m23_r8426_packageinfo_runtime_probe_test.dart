@@ -36,7 +36,9 @@ void main() {
     expect(info.version, '1.0.80');
     expect(info.buildNumber, '285');
 
-    StockRevisionClientBuildResolver.instance.resetForTest();
+    StockRevisionClientBuildResolver.instance.resetForTest(
+      leaveUninitialized: true,
+    );
     await StockRevisionClientBuildResolver.instance.initialize();
 
     expect(
