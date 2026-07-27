@@ -3,6 +3,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:master_palm/core/produto_stock_revision.dart';
 import 'package:master_palm/core/produto_stock_write_enforcement.dart';
+import 'package:master_palm/core/stock_revision_client_build_resolver.dart';
 import 'package:master_palm/core/stock_revision_operation_gate.dart';
 import 'package:master_palm/models/produto.dart';
 import 'package:master_palm/services/estoque_transaction_service.dart';
@@ -31,6 +32,7 @@ void main() {
     });
 
     test('LEG-A2 cancelamento antigo bloqueado no devolver batch', () async {
+      StockRevisionClientBuildResolver.instance.setTestOverride(285);
       StockRevisionOperationGate.debugWriterKindOverride =
           LegacyStockWriterKind.legacyApp;
       await expectLater(
@@ -46,6 +48,7 @@ void main() {
     });
 
     test('LEG-A3 exclusão antiga bloqueada no devolver batch', () async {
+      StockRevisionClientBuildResolver.instance.setTestOverride(285);
       StockRevisionOperationGate.debugWriterKindOverride =
           LegacyStockWriterKind.legacyApp;
       await expectLater(
@@ -92,6 +95,10 @@ void main() {
   });
 
   group('CI — cadastro/importação contrato', () {
+    setUp(() {
+      StockRevisionClientBuildResolver.instance.setTestOverride(285);
+    });
+
     test('CI1 create com grade exige revision fields', () {
       final payload = {
         'quantidade': 5,
