@@ -15,6 +15,9 @@ import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/dart_error_unwrap.dart';
+import '../core/produto_stock_revision.dart';
+import '../core/stock_revision_operation_gate.dart';
+import '../core/produto_stock_version_fields.dart';
 import '../core/firestore_dynamic_map.dart';
 import '../core/produto_variacao_extra.dart';
 import '../core/strict_product_resolution.dart';
@@ -52,6 +55,15 @@ class EstoqueTransactionResult {
   final Map<String, int>? estoquePorTamanhoAtualizado;
   final int quantidadeTotalAtualizada;
 
+  /// Revisão gravada na transação Firestore (R8.3).
+  final int? newStockRevision;
+
+  /// OperationId da mutação de estoque (R8.3).
+  final String? stockOperationId;
+
+  /// Revisão base antes do incremento (R8.3).
+  final int? stockBaseRevision;
+
   /// Ajuste de teto combo feito só no Hive (SKU ausente na nuvem); ver [ComboKitStockService].
   final bool ajusteCapComboSomenteHive;
 
@@ -66,6 +78,9 @@ class EstoqueTransactionResult {
     this.variacoesAtualizadas,
     this.estoquePorTamanhoAtualizado,
     required this.quantidadeTotalAtualizada,
+    this.newStockRevision,
+    this.stockOperationId,
+    this.stockBaseRevision,
     this.ajusteCapComboSomenteHive = false,
     this.quantidadeComboAntesAjusteLocal,
   });
@@ -135,6 +150,7 @@ class _DocStockWorkingState {
     required this.variacoes,
     required this.estoquePorTamanho,
     required this.quantidadeTotal,
+    required this.stockRevision,
   });
 
   final String produtoNome;
@@ -144,6 +160,9 @@ class _DocStockWorkingState {
   Map<String, dynamic> variacoes;
   Map<String, int> estoquePorTamanho;
   int quantidadeTotal;
+  int stockRevision;
+  String? stockOperationIdForWrite;
+  bool revisionAttached = false;
   bool touchedVariacoes = false;
   bool touchedEstoquePorTamanho = false;
 }
@@ -194,6 +213,18 @@ class EstoqueTransactionService {
   @visibleForTesting
   static void touchProdutoUpdatedAtParaHivePosTransacao(Produto p) {
     p.updatedAt = DateTime.now();
+  }
+
+  /// Espelha mutação de estoque no Hive com estado pendente explícito (R8.3).
+  @visibleForTesting
+  static void touchProdutoStockUpdatedAtParaHivePosTransacao(
+    Produto p, {
+    String? operationId,
+    int? baseRevision,
+  }) {
+    final op = operationId ?? newStockOperationId();
+    markPendingStockMutation(p, operationId: op, baseRevision: baseRevision);
+    p.stockUpdatedAt = DateTime.now();
   }
 
   static Exception _erroProdutoNaoSincronizado({
@@ -271,6 +302,8 @@ class EstoqueTransactionService {
     if (quantidade <= 0) {
       throw Exception('Quantidade deve ser maior que zero');
     }
+
+    StockRevisionOperationGate.assertAllowed(StockRevisionOperationKind.venda);
 
     final tam = tamanho.trim();
     final corTrim = cor.trim();
@@ -472,7 +505,14 @@ class EstoqueTransactionService {
         estoquePorTamanhoAnterior: estoquePorTamanho,
         estoquePorTamanhoNovo:
             estoquePorTamanhoParaVariacao ?? novoEstoquePorTamanho,
+        nextStockRevision: parseStockRevisionFromRemote(data) + 1,
+        stockOperationId: newStockOperationId(),
       );
+
+      final stockOpId =
+          updateData[kProdutoStockOperationIdField]?.toString();
+      final nextRev = parseStockRevisionFromRemote(data) + 1;
+      final baseRev = parseStockRevisionFromRemote(data);
 
       transaction.update(produtoRef, updateData);
 
@@ -498,6 +538,9 @@ class EstoqueTransactionService {
         estoquePorTamanhoAtualizado:
             estoquePorTamanhoParaVariacao ?? novoEstoquePorTamanho,
         quantidadeTotalAtualizada: novaQuantidadeTotal,
+        newStockRevision: nextRev,
+        stockOperationId: stockOpId,
+        stockBaseRevision: baseRev,
       );
       }).timeout(
         const Duration(seconds: 20),
@@ -550,11 +593,22 @@ class EstoqueTransactionService {
     Map<String, dynamic>? variacoesNovas,
     Map<String, int>? estoquePorTamanhoAnterior,
     Map<String, int>? estoquePorTamanhoNovo,
+    int? nextStockRevision,
+    String? stockOperationId,
   }) {
     final updateData = <String, dynamic>{
       'quantidade': novaQuantidadeTotal,
       'updatedAt': FieldValue.serverTimestamp(),
+      kProdutoStockUpdatedAtField: FieldValue.serverTimestamp(),
     };
+
+    if (nextStockRevision != null && stockOperationId != null) {
+      attachStockRevisionFields(
+        updateData,
+        nextRevision: nextStockRevision,
+        operationId: stockOperationId,
+      );
+    }
 
     if (variacoesNovas != null) {
       final sanitized = ProdutoVariacaoExtra.sanitizeVariacoesMapForFirestore(
@@ -1269,6 +1323,12 @@ class EstoqueTransactionService {
     required String lojaId,
     required List<Map<String, dynamic>> itens,
   }) async {
+    StockRevisionOperationGate.assertAllowed(
+      itens.length > 1
+          ? StockRevisionOperationKind.combo
+          : StockRevisionOperationKind.venda,
+    );
+
     if (itens.length > _maxItensPorTransacao) {
       throw Exception(
         'Venda com muitos itens (${itens.length}). '
@@ -1441,6 +1501,7 @@ class EstoqueTransactionService {
               variacoes: firestoreStringDynamicMapDeepOrEmpty(variacoesInit),
               estoquePorTamanho: Map<String, int>.from(estoqueInit),
               quantidadeTotal: firestoreIntFieldOrZero(data['quantidade']),
+              stockRevision: parseStockRevisionFromRemote(data),
             );
             workingByPath[path] = working;
           }
@@ -1690,6 +1751,16 @@ class EstoqueTransactionService {
             productId: docId,
           );
           // Deletes: original do doc → estado acumulado final deste path.
+          if (!working.revisionAttached) {
+            working.stockRevision = working.stockRevision + 1;
+            working.stockOperationIdForWrite =
+                idempotency?.operationId ?? newStockOperationId();
+            working.revisionAttached = true;
+          }
+          final nextRev = working.stockRevision;
+          final stockOpId = working.stockOperationIdForWrite!;
+          final baseRev = nextRev - 1;
+
           final updateData = buildEstoqueUpdateDataComDeletes(
             novaQuantidadeTotal: novaQuantidadeTotal,
             variacoesAnteriores: working.variacoesOriginais,
@@ -1699,6 +1770,8 @@ class EstoqueTransactionService {
             estoquePorTamanhoNovo: working.touchedEstoquePorTamanho
                 ? working.estoquePorTamanho
                 : null,
+            nextStockRevision: nextRev,
+            stockOperationId: stockOpId,
           );
 
           final estoqueRef = _db
@@ -1727,6 +1800,9 @@ class EstoqueTransactionService {
                   ? Map<String, int>.from(working.estoquePorTamanho)
                   : null,
               quantidadeTotalAtualizada: novaQuantidadeTotal,
+              newStockRevision: nextRev,
+              stockOperationId: stockOpId,
+              stockBaseRevision: baseRev,
             ),
           );
 
@@ -1742,6 +1818,22 @@ class EstoqueTransactionService {
             qtdDepois: novaQuantidadeTotal,
             operationId: idempotency?.operationId,
             alreadyApplied: false,
+          );
+          debugPrint(
+            '[M39-CONSIGNADO-ESTOQUE] stage=variation_apply '
+            'tenantId=$lojaId vendaId=${idempotency?.operationId ?? ''} '
+            'operationId=${idempotency?.operationId ?? ''} '
+            'productId=$docId variationId=${[
+              if (tamanho.trim().isNotEmpty) tamanho.trim(),
+              if (cor.trim().isNotEmpty) cor.trim(),
+              if (extraTrim.isNotEmpty) extraTrim,
+            ].join('/')} '
+            'stockItemKey=${stockItemKey(lojaId: lojaId, produtoId: docId, tamanho: tamanho, cor: cor, variacaoExtra: extraTrim)} '
+            'quantidade=$quantidade estoqueAntes=$qtdAntes '
+            'estoqueDepois=$novaQuantidadeTotal '
+            'source=working_state writeIndex=$itemIndex '
+            'variacoesHash=${working.variacoes.hashCode.toRadixString(16)} '
+            'timestamp=${DateTime.now().toUtc().toIso8601String()}',
           );
           _txStageLog(
             'tx_stage_14_product_write_after',
@@ -1760,7 +1852,20 @@ class EstoqueTransactionService {
       }
 
       // FASE 2: Uma escrita por documento (estado acumulado final).
-      for (final u in writesByPath.values) {
+      var writeIndex = 0;
+      for (final entry in writesByPath.entries) {
+        writeIndex++;
+        final u = entry.value;
+        final working = workingByPath[entry.key];
+        debugPrint(
+          '[M39-CONSIGNADO-ESTOQUE] stage=product_state_final '
+          'tenantId=$lojaId operationId=${idempotency?.operationId ?? ''} '
+          'productId=${u.ref.id} writeIndex=$writeIndex '
+          'estoqueDepois=${working?.quantidadeTotal} '
+          'variacoesHash=${working?.variacoes.hashCode.toRadixString(16) ?? ''} '
+          'source=writesByPath '
+          'timestamp=${DateTime.now().toUtc().toIso8601String()}',
+        );
         transaction.update(u.ref, u.updateData);
         if (u.estoqueRef != null) {
           transaction.set(u.estoqueRef!, u.updateData, SetOptions(merge: true));
@@ -1877,6 +1982,8 @@ class EstoqueTransactionService {
     if (opId.isEmpty) {
       throw ArgumentError.value(operationId, 'operationId', 'não pode ser vazio');
     }
+
+    StockRevisionOperationGate.assertAllowed(StockRevisionOperationKind.combo);
 
     if (itens.length > _maxItensPorTransacao) {
       throw Exception(
@@ -2078,6 +2185,12 @@ class EstoqueTransactionService {
   }) async {
     if (itens.isEmpty) return [];
 
+    StockRevisionOperationGate.assertAllowed(
+      estornoOrigemCatalogo.contains('cancel')
+          ? StockRevisionOperationKind.cancelamento
+          : StockRevisionOperationKind.exclusao,
+    );
+
     final vidTrim = (vendaIdParaIdempotencia ?? '').trim();
     if (vidTrim.isNotEmpty) {
       final marcadorRemoto = await lerMarcadorBaixaPagamento(lojaId, vidTrim);
@@ -2175,6 +2288,7 @@ class EstoqueTransactionService {
             variacoes: firestoreStringDynamicMapDeepOrEmpty(variacoesInit),
             estoquePorTamanho: Map<String, int>.from(estoqueInit),
             quantidadeTotal: firestoreIntFieldOrZero(data['quantidade']),
+            stockRevision: parseStockRevisionFromRemote(data),
           );
           workingByPath[path] = working;
         }
@@ -2264,6 +2378,16 @@ class EstoqueTransactionService {
         }
         working.quantidadeTotal = novaQuantidadeTotal;
 
+        if (!working.revisionAttached) {
+          working.stockRevision = working.stockRevision + 1;
+          working.stockOperationIdForWrite =
+              vidTrim.isNotEmpty ? vidTrim : newStockOperationId();
+          working.revisionAttached = true;
+        }
+        final nextRev = working.stockRevision;
+        final stockOpId = working.stockOperationIdForWrite!;
+        final baseRev = nextRev - 1;
+
         final updateData = buildEstoqueUpdateDataComDeletes(
           novaQuantidadeTotal: novaQuantidadeTotal,
           variacoesAnteriores: working.variacoesOriginais,
@@ -2273,6 +2397,8 @@ class EstoqueTransactionService {
           estoquePorTamanhoNovo: working.touchedEstoquePorTamanho
               ? working.estoquePorTamanho
               : null,
+          nextStockRevision: nextRev,
+          stockOperationId: stockOpId,
         );
 
         final estoqueRef = _db
@@ -2299,6 +2425,9 @@ class EstoqueTransactionService {
                 ? Map<String, int>.from(working.estoquePorTamanho)
                 : null,
             quantidadeTotalAtualizada: novaQuantidadeTotal,
+            newStockRevision: nextRev,
+            stockOperationId: stockOpId,
+            stockBaseRevision: baseRev,
           ),
         );
 
@@ -2425,6 +2554,18 @@ class EstoqueTransactionService {
         produto.estoquePorTamanho = result.estoquePorTamanhoAtualizado!;
       }
       touchProdutoUpdatedAtParaHivePosTransacao(produto);
+      if (result.stockOperationId != null) {
+        touchProdutoStockUpdatedAtParaHivePosTransacao(
+          produto,
+          operationId: result.stockOperationId,
+          baseRevision: result.stockBaseRevision,
+        );
+        if (result.newStockRevision != null) {
+          produto.stockRevision = result.newStockRevision!;
+        }
+      } else {
+        touchProdutoStockUpdatedAtParaHivePosTransacao(produto);
+      }
       await produto.save();
       debugPrint('[ESTOQUE-TX] Hive atualizado: ${produto.nome}');
     } else {

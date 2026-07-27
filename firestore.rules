@@ -3,7 +3,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // =========================
-    // FUNÇÕES AUXILIARES
+    // FUN├ç├òES AUXILIARES
     // =========================
     function isSignedIn() {
       return request.auth != null;
@@ -19,13 +19,13 @@ service cloud.firestore {
         ];
     }
 
-    // Doc de usuário "legado" (coleção usuarios/{email})
+    // Doc de usu├írio "legado" (cole├º├úo usuarios/{email})
     function isSelfUserDoc(emailDocId) {
       return isSignedIn()
         && emailDocId == request.auth.token.email;
     }
 
-    // Admin / Programador baseado na coleção "usuarios"
+    // Admin / Programador baseado na cole├º├úo "usuarios"
     function isUserAdminTipo() {
       return isSignedIn() && (
         isRootAdmin() ||
@@ -40,7 +40,7 @@ service cloud.firestore {
       );
     }
 
-    // ✅ NOVO: Admin / Programador baseado na coleção "users/{uid}"
+    // Ô£à NOVO: Admin / Programador baseado na cole├º├úo "users/{uid}"
     function isUserAdminByUid() {
       return isSignedIn() &&
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
@@ -65,20 +65,20 @@ service cloud.firestore {
         );
     }
 
-    // ✅ NOVO: Verifica se é vendedor da loja
+    // Ô£à NOVO: Verifica se ├® vendedor da loja
     function isSellerOfStore(lojaId) {
       return isSignedIn() &&
         exists(/databases/$(database)/documents/lojas/$(lojaId)/vendedores/$(request.auth.uid)) &&
         get(/databases/$(database)/documents/lojas/$(lojaId)/vendedores/$(request.auth.uid)).data.ativo == true;
     }
 
-    // ✅ NOVO: Verifica se vendedor tem permissão específica
+    // Ô£à NOVO: Verifica se vendedor tem permiss├úo espec├¡fica
     function sellerHasPermission(lojaId, permissao) {
       return isSellerOfStore(lojaId) &&
         get(/databases/$(database)/documents/lojas/$(lojaId)/vendedores/$(request.auth.uid)).data.permissoes[permissao] == true;
     }
 
-    // ✅ NOVO: Verifica se pertence à loja (admin ou vendedor)
+    // Ô£à NOVO: Verifica se pertence ├á loja (admin ou vendedor)
     // Dono/admin cadastrado em lojas/{lojaId}/members (retrocompat com ownerUid ausente/errado).
     function isLojaMemberElevated(lojaId) {
       return isSignedIn()
@@ -94,7 +94,7 @@ service cloud.firestore {
         || isLojaMemberElevated(lojaId);
     }
 
-    // PDV V1 — markers estoque_baixa_pagamento (protocolVersion == 1, fail-closed)
+    // PDV V1 ÔÇö markers estoque_baixa_pagamento (protocolVersion == 1, fail-closed)
     function isStoreMember(lojaId) {
       return belongsToStore(lojaId);
     }
@@ -168,7 +168,7 @@ service cloud.firestore {
         && hasValidV1MarkerIdentity(lojaId, markerId);
     }
 
-    // M3.2-A — sale_intents (coordenação remota de intenção de venda)
+    // M3.2-A ÔÇö sale_intents (coordena├º├úo remota de inten├º├úo de venda)
     function isSaleIntentAllowedOrigin(origin) {
       return origin in ['pdv_manual', 'order_review', 'pre_pedido'];
     }
@@ -256,7 +256,7 @@ service cloud.firestore {
         );
     }
 
-    // M3.4.2 / M3.7.1 — markers idempotentes side-effects secundários catálogo (admin pré-pedidos).
+    // M3.4.2 / M3.7.1 ÔÇö markers idempotentes side-effects secund├írios cat├ílogo (admin pr├®-pedidos).
     function hasOnlyCatalogoSideEffectsKeys() {
       return request.resource.data.keys().hasOnly([
         'denormAplicado',
@@ -316,7 +316,7 @@ service cloud.firestore {
         && catalogoSideEffectsMarkersMonotonic();
     }
 
-    // Dono / admin da loja (não inclui vendedor): pode editar docs em lojas/{id}/config/* (ex.: payments).
+    // Dono / admin da loja (n├úo inclui vendedor): pode editar docs em lojas/{id}/config/* (ex.: payments).
     function canManageStoreConfig(lojaId) {
       return isSignedIn()
         && (
@@ -326,12 +326,12 @@ service cloud.firestore {
         );
     }
 
-    // Módulo financeiro / fechamentos / metas: equipe da loja (dono, admin loja, vendedor) ou admin sistema.
+    // M├│dulo financeiro / fechamentos / metas: equipe da loja (dono, admin loja, vendedor) ou admin sistema.
     function canAccessLojaFinanceiro(lojaId) {
       return belongsToStore(lojaId) || isAdminOrSystem();
     }
 
-    // config/fretes público — proíbe gravar token SuperFrete pelo cliente.
+    // config/fretes p├║blico ÔÇö pro├¡be gravar token SuperFrete pelo cliente.
     function fretesHasSuperFreteSecretFields(data) {
       return data.keys().hasAny(['superfrete_token', 'superfreteToken', 'apiToken'])
         || (
@@ -366,7 +366,7 @@ service cloud.firestore {
         && !fretesHasMelhorEnvioSecretFields(request.resource.data);
     }
 
-    // -------- Planos / assinatura: cliente não escala para plano pago nem override manual --------
+    // -------- Planos / assinatura: cliente n├úo escala para plano pago nem override manual --------
     function userPlanManualTamperAttempt() {
       return request.resource.data.diff(resource.data).affectedKeys()
         .hasAny(['manualOverride', 'manual_grant', 'manualCourtesyGrant']);
@@ -393,7 +393,7 @@ service cloud.firestore {
     }
 
     // =========================
-    // VALIDAÇÕES PARA WRITES PÚBLICOS (anti-abuso)
+    // VALIDA├ç├òES PARA WRITES P├ÜBLICOS (anti-abuso)
     // =========================
 
     function isValidClienteCreate() {
@@ -406,8 +406,8 @@ service cloud.firestore {
         && request.resource.data.email.size() <= 128;
     }
 
-    /// Doc id de cliente criado pelo catálogo sem login (PrePedidoService.clienteIdPorEmail).
-    /// Permite get/update mínimos só nesse padrão, sem abrir leitura de todos os clientes.
+    /// Doc id de cliente criado pelo cat├ílogo sem login (PrePedidoService.clienteIdPorEmail).
+    /// Permite get/update m├¡nimos s├│ nesse padr├úo, sem abrir leitura de todos os clientes.
     function isClienteDocIdPortalBootstrap(clienteId) {
       return clienteId is string
         && clienteId.size() >= 8
@@ -454,7 +454,7 @@ service cloud.firestore {
         && request.resource.data.total <= 999999.99;
     }
 
-    /// Atualização mínima pelo catálogo público: marcar pré-pedido anterior como substituído (governança).
+    /// Atualiza├º├úo m├¡nima pelo cat├ílogo p├║blico: marcar pr├®-pedido anterior como substitu├¡do (governan├ºa).
     function isValidPrePedidoGovernancaSubstituicao() {
       return request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(['governancaStatus', 'substituidoPor', 'substituidoEm', 'dataAtualizacao'])
@@ -564,8 +564,8 @@ service cloud.firestore {
         && request.resource.data.status.size() <= 32;
     }
 
-    // Denormalização "Mais vendidos" (catálogo): só altera vendasCatalogoTotal, sem apagar outros campos.
-    // Limite por request evita abuso (carrinho já limitado a ~50 itens).
+    // Denormaliza├º├úo "Mais vendidos" (cat├ílogo): s├│ altera vendasCatalogoTotal, sem apagar outros campos.
+    // Limite por request evita abuso (carrinho j├í limitado a ~50 itens).
     function isVendasCatalogoTotalOnlySafeUpdate() {
       let oldV = resource.data.get('vendasCatalogoTotal', 0);
       let newV = request.resource.data.vendasCatalogoTotal;
@@ -575,11 +575,11 @@ service cloud.firestore {
         && newV <= oldV + 1000;
     }
 
-    // Avaliações do catálogo (lojas/{lojaId}/catalog_avaliacoes/{id}):
-    // - Leitura pública (anônima): só docs da loja do path com status aprovado (ou legado sem status = aprovado via get default).
-    // - Leitura lojista: belongsToStore vê pendentes/rejeitados para moderação.
-    // - Create público: pendente + lojaId coerente com path; sem update pelo cliente anônimo.
-    // - Update: só equipe da loja; apenas status e aprovadoEm (moderação).
+    // Avalia├º├Áes do cat├ílogo (lojas/{lojaId}/catalog_avaliacoes/{id}):
+    // - Leitura p├║blica (an├┤nima): s├│ docs da loja do path com status aprovado (ou legado sem status = aprovado via get default).
+    // - Leitura lojista: belongsToStore v├¬ pendentes/rejeitados para modera├º├úo.
+    // - Create p├║blico: pendente + lojaId coerente com path; sem update pelo cliente an├┤nimo.
+    // - Update: s├│ equipe da loja; apenas status e aprovadoEm (modera├º├úo).
     function isCatalogAvaliacaoPublicRead(lojaId) {
       return resource.data.get('lojaId', lojaId) == lojaId
         && resource.data.get('ativo', true) == true
@@ -637,9 +637,9 @@ service cloud.firestore {
         );
     }
 
-    // `payments_public` é lido pelo cliente/UI e nunca deve conter segredos.
-    // Ao adicionar novos gateways, campos ou estruturas em pagamentos públicos,
-    // revisar esta função para bloquear tokens, secrets, api_keys e credenciais sensíveis.
+    // `payments_public` ├® lido pelo cliente/UI e nunca deve conter segredos.
+    // Ao adicionar novos gateways, campos ou estruturas em pagamentos p├║blicos,
+    // revisar esta fun├º├úo para bloquear tokens, secrets, api_keys e credenciais sens├¡veis.
     function paymentsPublicWithoutSecrets() {
       return (
         !request.resource.data.keys().hasAny(['mp'])
@@ -673,7 +673,7 @@ service cloud.firestore {
     }
 
     // =========================
-    // SISTEMA: rate limits e idempotência
+    // SISTEMA: rate limits e idempot├¬ncia
     // =========================
     match /_rate_limits/{doc} {
       allow read, write: if false;
@@ -745,25 +745,25 @@ service cloud.firestore {
         allow write: if isAdminOrSystem();
       }
 
-      // Cortesia Mestre — somente Cloud Functions (Admin SDK)
+      // Cortesia Mestre ÔÇö somente Cloud Functions (Admin SDK)
       match /manualCourtesyGrant/{grantId} {
         allow read, write: if false;
       }
     }
 
-    // Auditoria administrativa de planos — somente backend
+    // Auditoria administrativa de planos ÔÇö somente backend
     match /admin_plan_actions/{actionId} {
       allow read, write: if false;
     }
 
-    // Usuário é dono da loja (ownerUid)
+    // Usu├írio ├® dono da loja (ownerUid)
     function isOwnerOfStore(lojaId) {
       return isSignedIn()
         && exists(/databases/$(database)/documents/lojas/$(lojaId))
         && get(/databases/$(database)/documents/lojas/$(lojaId)).data.ownerUid == request.auth.uid;
     }
 
-    // Fallback: loja resolvida por users/{uid}.store_id (evita PERMISSION_DENIED quando ownerUid não foi setado)
+    // Fallback: loja resolvida por users/{uid}.store_id (evita PERMISSION_DENIED quando ownerUid n├úo foi setado)
     function userResolvedStoreMatches(lojaId) {
       return isSignedIn()
         && exists(/databases/$(database)/documents/users/$(request.auth.uid))
@@ -778,7 +778,57 @@ service cloud.firestore {
         );
     }
 
-    // Criação da primeira loja: usuário logado cria loja onde ele é owner (conta nova Google/cadastro)
+    // R8.4 — enforcement monotônico de stockRevision em estoque_produtos
+    function estoqueStockRevisionVal(data) {
+      return data.get('stockRevision', 0);
+    }
+
+    function estoqueStockOpIdVal(data) {
+      return data.get('stockOperationId', '');
+    }
+
+    function estoqueStockGradeChanged() {
+      return request.resource.data.get('quantidade', 0) != resource.data.get('quantidade', 0)
+        || request.resource.data.get('variacoes', {}) != resource.data.get('variacoes', {})
+        || request.resource.data.get('estoquePorTamanho', {}) != resource.data.get('estoquePorTamanho', {})
+        || request.resource.data.get('estoquePorCor', {}) != resource.data.get('estoquePorCor', {});
+    }
+
+    function isValidEstoqueProdutoStockUpdate() {
+      let prevRev = estoqueStockRevisionVal(resource.data);
+      let newRev = estoqueStockRevisionVal(request.resource.data);
+      let gradeChanged = estoqueStockGradeChanged();
+      let prevOp = estoqueStockOpIdVal(resource.data);
+      let newOp = estoqueStockOpIdVal(request.resource.data);
+
+      return gradeChanged
+        ? (
+            request.resource.data.keys().hasAll(['stockRevision', 'stockOperationId'])
+            && newRev >= prevRev
+            && newRev != prevRev
+            && newRev == prevRev + 1
+            && newOp != ''
+            && newOp != prevOp
+          )
+        : (
+            !(resource.data.keys().hasAll(['stockRevision'])
+              && request.resource.data.keys().hasAll(['stockRevision'])
+              && newRev != prevRev)
+          );
+    }
+
+    function isValidEstoqueProdutoStockCreate() {
+      let hasGrade = request.resource.data.keys().hasAny(
+        ['quantidade', 'variacoes', 'estoquePorTamanho', 'estoquePorCor']
+      );
+      return !hasGrade || (
+        request.resource.data.keys().hasAll(['stockRevision', 'stockOperationId'])
+        && estoqueStockRevisionVal(request.resource.data) >= 0
+        && estoqueStockRevisionVal(request.resource.data) <= 1
+      );
+    }
+
+    // Cria├º├úo da primeira loja: usu├írio logado cria loja onde ele ├® owner (conta nova Google/cadastro)
     function canCreateFirstStore() {
       return isSignedIn()
         && request.resource.data.ownerUid == request.auth.uid
@@ -787,17 +837,17 @@ service cloud.firestore {
     }
 
     // =========================
-    // LOJAS + SUBCOLEÇÕES
+    // LOJAS + SUBCOLE├ç├òES
     // =========================
     match /lojas/{lojaId} {
-      // Leitura: público apenas para lojas publicadas (catálogo); demais exigem auth
+      // Leitura: p├║blico apenas para lojas publicadas (cat├ílogo); demais exigem auth
       allow read: if resource != null
         && (!('published' in resource.data) || resource.data.published == true)
         || isSignedIn();
       allow create: if canCreateFirstStore() || isAdminOrSystem();
       allow update, delete: if isAdminOrSystem();
 
-      // config/payments: segredos (MP token etc.) — não expor ao catálogo anônimo.
+      // config/payments: segredos (MP token etc.) ÔÇö n├úo expor ao cat├ílogo an├┤nimo.
       // config/payments_public: espelho sem tokens (PagamentosService.syncPaymentsPublic).
       // config/fretes_secrets: somente Cloud Functions (Admin SDK).
       match /config/{configId} {
@@ -834,7 +884,7 @@ service cloud.firestore {
         allow read, write: if isAdminOrSystem();
       }
 
-      // Workflow domínio do catálogo (somente leitura no cliente; escrita via Cloud Functions).
+      // Workflow dom├¡nio do cat├ílogo (somente leitura no cliente; escrita via Cloud Functions).
       match /dominios_catalogo/{hostNorm} {
         allow read: if belongsToStore(lojaId);
         allow create, update, delete: if false;
@@ -909,12 +959,12 @@ service cloud.firestore {
       match /produtos/{prodId} {
         allow read: if resource != null;
         allow create, delete: if isAdminOrSystem();
-        // Update: admin total OU dono/vendedor apenas incrementando vendasCatalogoTotal (denorm pós-venda catálogo)
+        // Update: admin total OU dono/vendedor apenas incrementando vendasCatalogoTotal (denorm p├│s-venda cat├ílogo)
         allow update: if isAdminOrSystem()
           || (belongsToStore(lojaId) && isVendasCatalogoTotalOnlySafeUpdate());
       }
 
-      // Só o espelho publicado para o catálogo (denormalizado; sem escrita pública list/get).
+      // S├│ o espelho publicado para o cat├ílogo (denormalizado; sem escrita p├║blica list/get).
       match /produtos_publicos/{produtoId} {
         allow read: if true;
         allow create, update, delete: if isAdminOrSystem() || belongsToStore(lojaId);
@@ -926,8 +976,8 @@ service cloud.firestore {
         allow update, delete: if isAdminOrSystem();
       }
 
-      // clientes: admin/vendedor leem; visitante sem auth pode get/update só em doc ec_* (bootstrap portal).
-      // list: só admin/vendedor OU limit 1 (login/cadastro por email — reduz vazamento).
+      // clientes: admin/vendedor leem; visitante sem auth pode get/update s├│ em doc ec_* (bootstrap portal).
+      // list: s├│ admin/vendedor OU limit 1 (login/cadastro por email ÔÇö reduz vazamento).
       match /clientes/{clienteId} {
         allow get: if belongsToStore(lojaId) || isGuestBootstrapClienteGet(clienteId);
         allow list: if belongsToStore(lojaId) || request.query.limit <= 1;
@@ -961,17 +1011,20 @@ service cloud.firestore {
         allow read, write: if isAdminOrSystem();
       }
 
-      // Contador de uso diário da IA por loja (perguntas, descricao, financeiro)
+      // Contador de uso di├írio da IA por loja (perguntas, descricao, financeiro)
       match /ia_uso/{docId} {
         allow read, write: if belongsToStore(lojaId);
       }
 
-      // Estoque: dono da loja, admin ou vendedor (belongsToStore = admin | owner | seller)
+      // Estoque: dono da loja, admin ou vendedor + enforcement stockRevision (R8.4)
       match /estoque_produtos/{prodId} {
-        allow read, write: if belongsToStore(lojaId);
+        allow read: if belongsToStore(lojaId);
+        allow create: if belongsToStore(lojaId) && isValidEstoqueProdutoStockCreate();
+        allow update: if belongsToStore(lojaId) && isValidEstoqueProdutoStockUpdate();
+        allow delete: if belongsToStore(lojaId);
       }
 
-      // Exclusão definitiva (tombstone): mesma regra de estoque — nunca cruza loja.
+      // Exclus├úo definitiva (tombstone): mesma regra de estoque ÔÇö nunca cruza loja.
       match /exclusao_produto/{tombId} {
         allow read, write: if belongsToStore(lojaId);
       }
@@ -988,7 +1041,7 @@ service cloud.firestore {
         allow read, write: if belongsToStore(lojaId);
       }
 
-      // Compras por fornecedor (espelho Hive ↔ app; CompraFornecedorFirestoreService)
+      // Compras por fornecedor (espelho Hive Ôåö app; CompraFornecedorFirestoreService)
       match /compras_fornecedor/{compraId} {
         allow read, write: if belongsToStore(lojaId);
       }
@@ -1011,7 +1064,7 @@ service cloud.firestore {
           && resource.data.lojaId == lojaId;
       }
 
-      // Módulo financeiro: sync Hive ↔ Firestore (app MasterPalm). lojaId no doc = path.
+      // M├│dulo financeiro: sync Hive Ôåö Firestore (app MasterPalm). lojaId no doc = path.
       match /lancamentos_financeiros/{docId} {
         allow read: if canAccessLojaFinanceiro(lojaId)
           && resource != null
@@ -1025,7 +1078,7 @@ service cloud.firestore {
           && resource.data.lojaId == lojaId;
       }
 
-      // Contas a receber / fiado — sync Hive ↔ Firestore (app MasterPalm).
+      // Contas a receber / fiado ÔÇö sync Hive Ôåö Firestore (app MasterPalm).
       match /contas_receber/{contaId} {
         allow read: if canAccessLojaFinanceiro(lojaId)
           && resource != null
@@ -1052,7 +1105,7 @@ service cloud.firestore {
           && resource.data.lojaId == lojaId;
       }
 
-      // Controle operacional de compras por fornecedor (conferência; sync app).
+      // Controle operacional de compras por fornecedor (confer├¬ncia; sync app).
       match /controle_compras_fornecedor/{docId} {
         allow read: if canAccessLojaFinanceiro(lojaId)
           && resource != null
@@ -1077,7 +1130,7 @@ service cloud.firestore {
         allow read, update, delete: if belongsToStore(lojaId);
       }
 
-      // temp_orders, pedido_temp, pedidos_temp: fluxo deep-link legítimo.
+      // temp_orders, pedido_temp, pedidos_temp: fluxo deep-link leg├¡timo.
       // delete: exige lojaId do doc coerente com path (evita delete cruzado entre lojas).
       match /temp_orders/{orderId} {
         allow read: if resource != null;
@@ -1165,7 +1218,7 @@ service cloud.firestore {
         allow delete: if isAdminOrSystem();
       }
 
-      // Pré-pedidos de envio externos — somente admin/dono lê; escrita só via Functions.
+      // Pr├®-pedidos de envio externos ÔÇö somente admin/dono l├¬; escrita s├│ via Functions.
       match /shipping_preorders/{shippingPreOrderId} {
         allow read: if canManageStoreConfig(lojaId);
         allow create, update, delete: if false;
@@ -1215,13 +1268,13 @@ service cloud.firestore {
         allow delete: if isAdminOrSystem();
       }
 
-      // Histórico de movimentação de estoque da loja
+      // Hist├│rico de movimenta├º├úo de estoque da loja
       // Apenas admin do sistema ou vendedores da loja podem ler/escrever.
       match /movimentacoes_estoque/{movId} {
         allow read, write: if belongsToStore(lojaId);
       }
 
-      // Idempotência do pós-pagamento do catálogo/WhatsApp.
+      // Idempot├¬ncia do p├│s-pagamento do cat├ílogo/WhatsApp.
       // Usado pelo PosPagamentoService para evitar baixa duplicada de estoque.
       match /estoque_baixa_pagamento/{markerId} {
         allow read: if isStoreMember(lojaId);
@@ -1240,7 +1293,7 @@ service cloud.firestore {
         allow delete: if isAdminOrSystem() && isLegacyMarkerDelete();
       }
 
-      // M3.2-A — coordenação remota de intenção de venda (saleIntentId).
+      // M3.2-A ÔÇö coordena├º├úo remota de inten├º├úo de venda (saleIntentId).
       match /sale_intents/{saleIntentId} {
         allow read: if isStoreMember(lojaId);
 
@@ -1251,7 +1304,7 @@ service cloud.firestore {
         allow delete: if false;
       }
 
-      // M3.4.2 / M3.7.1 — idempotência side-effects secundários catálogo (admin pré-pedidos).
+      // M3.4.2 / M3.7.1 ÔÇö idempot├¬ncia side-effects secund├írios cat├ílogo (admin pr├®-pedidos).
       match /catalogo_side_effects_secundarios/{vendaId} {
         allow read: if isStoreMember(lojaId);
 
@@ -1272,7 +1325,7 @@ service cloud.firestore {
         allow delete: if isAdminOrSystem();
       }
 
-      // METAS DE VENDEDORES — sync no Firestore (trocar de aparelho)
+      // METAS DE VENDEDORES ÔÇö sync no Firestore (trocar de aparelho)
       match /metas/{metaId} {
         allow read: if belongsToStore(lojaId);
         allow create, update: if canAccessLojaFinanceiro(lojaId)
@@ -1295,7 +1348,7 @@ service cloud.firestore {
         allow delete: if belongsToStore(lojaId);
       }
 
-      // Depoimentos/avaliações do catálogo web — path fixo multi-tenant: lojas/{lojaId}/catalog_avaliacoes/{id}
+      // Depoimentos/avalia├º├Áes do cat├ílogo web ÔÇö path fixo multi-tenant: lojas/{lojaId}/catalog_avaliacoes/{id}
       match /catalog_avaliacoes/{avaliacaoId} {
         // lojaId no doc: fallback ao path (docs antigos sem campo).
         allow read: if resource != null
@@ -1324,7 +1377,7 @@ service cloud.firestore {
       allow read, write: if isAdminOrSystem();
     }
 
-    // pedidos_temp (root): legado deep-link; sem lojaId no path - mantido como está.
+    // pedidos_temp (root): legado deep-link; sem lojaId no path - mantido como est├í.
     match /pedidos_temp/{pedidoTempId} {
       allow read: if resource != null;
       allow create: if isValidPedidoTempCreate();
@@ -1362,7 +1415,7 @@ service cloud.firestore {
       allow update, delete: if isProgramadorOrRoot();
     }
 
-    // Pedidos de plano (checkout servidor): somente leitura do próprio usuário
+    // Pedidos de plano (checkout servidor): somente leitura do pr├│prio usu├írio
     match /plan_orders/{orderId} {
       allow read: if isSignedIn()
         && resource != null
@@ -1370,7 +1423,7 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // Assinatura recorrente MP (intenções + dedupe webhook) — só backend
+    // Assinatura recorrente MP (inten├º├Áes + dedupe webhook) ÔÇö s├│ backend
     match /plan_recurring_intents/{id} {
       allow read, write: if false;
     }
@@ -1378,7 +1431,7 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // Índices server-side apenas (Cloud Functions Admin SDK). Cliente não acessa.
+    // ├ìndices server-side apenas (Cloud Functions Admin SDK). Cliente n├úo acessa.
     match /order_loja_index/{orderId} {
       allow read, write: if false;
     }
@@ -1386,8 +1439,8 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // Catálogo web: host customizado → lojaId (document ID = host normalizado, lowercase).
-    // Apenas get por ID; sem enumeração da coleção.
+    // Cat├ílogo web: host customizado ÔåÆ lojaId (document ID = host normalizado, lowercase).
+    // Apenas get por ID; sem enumera├º├úo da cole├º├úo.
     match /catalog_domains/{hostId} {
       allow get: if !exists(/databases/$(database)/documents/catalog_domains/$(hostId))
         || (resource.data.status == 'active' && resource.data.verified == true);

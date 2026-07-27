@@ -187,6 +187,34 @@ class Produto extends HiveObject {
   @HiveField(47, defaultValue: '')
   String sku;
 
+  /// Última mutação de **estoque** (Hive espelho; autoritativo no Firestore).
+  @HiveField(48)
+  DateTime? stockUpdatedAt;
+
+  /// Última versão de estoque confirmada pelo servidor (âncora para merge seguro).
+  @HiveField(49)
+  DateTime? stockUpdatedAtServer;
+
+  /// Revisão monotônica confirmada da grade (R8.3).
+  @HiveField(50, defaultValue: 0)
+  int stockRevision;
+
+  /// Operação de estoque confirmada pelo servidor.
+  @HiveField(51)
+  String? confirmedStockOperationId;
+
+  /// Mutação local pendente de confirmação (operationId).
+  @HiveField(52)
+  String? pendingStockOperationId;
+
+  /// Revisão base no momento da mutação pendente.
+  @HiveField(53)
+  int? pendingStockBaseRevision;
+
+  /// Estado persistido de sync (`confirmed` implícito quando null).
+  @HiveField(54)
+  String? stockSyncState;
+
   Produto({
     required this.nome,
     required this.custoReal,
@@ -236,6 +264,13 @@ class Produto extends HiveObject {
     this.categoriasExtras = const [],
     this.subcategoriasExtras = const [],
     this.sku = '',
+    this.stockUpdatedAt,
+    this.stockUpdatedAtServer,
+    this.stockRevision = 0,
+    this.confirmedStockOperationId,
+    this.pendingStockOperationId,
+    this.pendingStockBaseRevision,
+    this.stockSyncState,
   });
 
   bool get ehCombo => tipoProduto == 'combo';
