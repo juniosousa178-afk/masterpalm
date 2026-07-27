@@ -1,0 +1,14 @@
+name: masterpalm_platform
+description: MasterPalm Platform Core — shared infrastructure for engineering tools
+publish_to: none
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  crypto: ^3.0.6
+  cryptography: ^2.7.0
+  path: ^1.9.0
+
+dev_dependencies:
+  test: ^1.25.8

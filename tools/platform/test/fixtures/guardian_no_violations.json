@@ -1,0 +1,31 @@
+{
+  "decision": "go",
+  "summary": "Alteração visual sem impacto funcional.",
+  "simulation_only": true,
+  "files": {
+    "added": [],
+    "modified": ["lib/widgets/my_button.dart"],
+    "removed": []
+  },
+  "methods_changed": [],
+  "classes_changed": [],
+  "impact": {
+    "domains": [],
+    "services": [],
+    "screens": [],
+    "firestore_collections": [],
+    "hive_boxes": []
+  },
+  "risk": {
+    "overall": "green",
+    "items": []
+  },
+  "violations": [],
+  "tests": {
+    "required": [],
+    "found": ["test/widgets/my_button_test.dart"],
+    "missing": []
+  },
+  "required_documentation": [],
+  "recommendations": []
+}

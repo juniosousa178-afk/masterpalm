@@ -1,0 +1,7 @@
+{
+  "_note": "Intentional golden for Release Evidence. Update explicitly only.",
+  "subjectId": "subject-release-001",
+  "fingerprint": "fp-attestation-set-001",
+  "attestationCount": 1,
+  "schemaVersion": 1
+}

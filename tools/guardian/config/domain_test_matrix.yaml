@@ -1,0 +1,42 @@
+domains:
+  Estoque:
+    - estoque_transaction_service_test.dart
+    - venda_estoque_operation_id_idempotencia_test.dart
+    - m39_hotfix_estoque_variacoes_multiplas_test.dart
+    - m39_consignado_variacoes_estoque_test.dart
+    - venda_exclusao_estorno_estoque_test.dart
+    - estoque_baixa_nova_venda_variacoes_test.dart
+  Financeiro:
+    - financeiro_baixa_cr_duplicada_nao_altera_venda_estoque_test.dart
+    - contas_receber_excluir_recuperada_nao_altera_estoque_test.dart
+    - venda_sale_intent_fiado_rollback_test.dart
+  PDV:
+    - pdv_sale_intent_lifecycle_test.dart
+    - venda_fase4_durabilidade_recuperacao_test.dart
+    - m39_hotfix_exclusao_venda_idempotencia_test.dart
+  Venda:
+    - venda_sale_intent_pdv_integration_test.dart
+    - sale_intent_service_test.dart
+  Consignado:
+    - m39_consignado_variacoes_estoque_test.dart
+  Fiado:
+    - venda_sale_intent_fiado_rollback_test.dart
+    - financeiro_baixa_cr_duplicada_nao_altera_venda_estoque_test.dart
+  Sync:
+    - m39_sprint4_r21_produto_estoque_test.dart
+    - produto_sync_recovery
+  Offline:
+    - venda_operation_journal_identity_test.dart
+    - venda_fase4_durabilidade_recuperacao_test.dart
+  Auth:
+    - m38_sprint3_multiusuario_r1_test.dart
+    - m38_sprint3_multiusuario_r2_test.dart
+  Tenant:
+    - m38_sprint3_multiusuario_r1_test.dart
+    - m38_vendedor_create_flow_fix_test.dart
+  Catálogo:
+    - catalogo_venda_side_effects_secundarios_service_test.dart
+    - sale_intent_service_test.dart
+  Segurança:
+    - campanha_sorteio_rules_scope_test.dart
+    - venda_h1txr4_rules_commit_emulator_test.dart

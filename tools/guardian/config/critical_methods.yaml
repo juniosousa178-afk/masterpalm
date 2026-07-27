@@ -1,0 +1,22 @@
+# Critical methods from AST complexity analysis
+critical_methods:
+  - file: lib/screens/public_catalog_screen.dart
+    method: build
+    complexity: 151
+    domains: [Catálogo, Performance]
+  - file: lib/services/vendas_service.dart
+    method: _registrarVendaMultiCorpo
+    complexity: 100
+    domains: [PDV, Venda, Estoque, Financeiro]
+  - file: lib/services/estoque_transaction_service.dart
+    method: _executarBaixaBatchInterno
+    complexity: 56
+    domains: [Estoque, Firestore]
+  - file: lib/services/estoque_transaction_service.dart
+    method: baixarEstoqueTransactionBatchIdempotente
+    complexity: 45
+    domains: [Estoque, PDV]
+  - file: lib/services/loja_id_service.dart
+    method: get
+    complexity: 30
+    domains: [Tenant]

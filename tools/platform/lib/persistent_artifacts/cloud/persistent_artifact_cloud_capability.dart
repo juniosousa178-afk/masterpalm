@@ -1,0 +1,16 @@
+enum PersistentArtifactCloudCapability {
+  describe,
+  evaluateEnvironment,
+  evaluateCapabilities,
+  putObject,
+  getObject,
+  headObject,
+  objectExists,
+  listObjects,
+  deleteObject,
+  copyObject,
+  beginMultipart,
+  uploadPart,
+  completeMultipart,
+  abortMultipart,
+}

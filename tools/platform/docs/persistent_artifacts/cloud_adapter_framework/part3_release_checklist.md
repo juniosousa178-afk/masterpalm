@@ -1,0 +1,47 @@
+# Cloud Adapter Framework — Parte 3 Release Checklist
+
+- [x] Offline composition root (`PersistentArtifactOfflineCloudReferenceComposition`)
+- [x] Runtime lifecycle create/register/use/unregister/dispose
+- [x] Registry auditado
+- [x] backendId explícito
+- [x] Sem fallback implícito
+- [x] Environment gate endurecido
+- [x] Staging bloqueado
+- [x] Production bloqueada
+- [x] Capabilities auditadas
+- [x] Service auditado
+- [x] Provider auditado
+- [x] Uma bridge call por operação
+- [x] Status mapping auditado
+- [x] Put/get/head/exists/list auditados
+- [x] Delete/copy auditados
+- [x] Multipart auditado
+- [x] Retry classifier puro
+- [x] Execution plan sem execução
+- [x] Policy evaluator sem I/O
+- [x] Staging governance sem aprovação
+- [x] Observability sanitizada
+- [x] Provider I/O guards
+- [x] Replay aprovado
+- [x] 30 goldens finais aprovados
+- [x] Property tests
+- [x] Mutation tests
+- [x] Malformed tests
+- [x] Stress tests
+- [x] Performance registrada
+- [x] Security review
+- [x] Dependency review
+- [x] Cross-module audit
+- [x] Guardian verde
+- [x] Admission criteria
+- [x] Admission decision
+- [x] Admission evaluator
+- [x] Documentação
+- [x] ADR-039
+- [x] AR-025
+- [x] Release Governance inalterado
+- [x] Quality Gates inalterados
+- [x] Sem adapter real
+- [x] Sem SDK
+- [x] Sem rede
+- [x] Sem commit/push/deploy

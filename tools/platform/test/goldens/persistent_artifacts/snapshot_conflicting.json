@@ -1,0 +1,6 @@
+{
+  "schema": "persistent-artifact-golden-v1",
+  "name": "snapshot_conflicting",
+  "status": "failed",
+  "expectedException": "PersistentArtifactSnapshotConflictException"
+}

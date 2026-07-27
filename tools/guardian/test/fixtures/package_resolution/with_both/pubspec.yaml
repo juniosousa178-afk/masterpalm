@@ -1,0 +1,8 @@
+name: fixture_with_both
+description: Guardian fixture resolving crypto and cryptography.
+version: 0.0.1
+environment:
+  sdk: ^3.0.0
+dependencies:
+  crypto: ^3.0.6
+  cryptography: ^2.9.0

@@ -1,0 +1,6 @@
+{
+  "_note": "Intentional golden for Cryptographic Trust. Update explicitly only.",
+  "attestationId": "att-provenance-001",
+  "attestationType": "buildProvenance",
+  "status": "issued"
+}

@@ -1,0 +1,7 @@
+{
+  "schema": "persistent-artifact-golden-v1",
+  "name": "report",
+  "reportType": "persistentArtifacts",
+  "projectId": "proj-a",
+  "sectionCountAtLeast": 1
+}

@@ -1,0 +1,1 @@
+const pdvRuleCodes = ['G014'];

@@ -1,0 +1,7 @@
+{
+  "_note": "Intentional golden for Cryptographic Trust. Update explicitly only.",
+  "signatureId": "sig-art-001",
+  "algorithmId": "ed25519-v1",
+  "keyId": "key-signer-001",
+  "hasSignatureValue": true
+}

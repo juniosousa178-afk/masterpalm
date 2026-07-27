@@ -1,0 +1,8 @@
+{
+  "_note": "Intentional golden for Release Evidence. Update explicitly only.",
+  "verificationId": "release-verification:masterpalm-demo:rel-2026-06-15-001:release-verification-v1:1:c0799ed3ce711beb5dad8e919cea0ff9486e1fe6bbeb4f5ecd06a97542637c6a:1",
+  "fingerprint": "c0799ed3ce711beb5dad8e919cea0ff9486e1fe6bbeb4f5ecd06a97542637c6a",
+  "status": "verified",
+  "checkCount": 10,
+  "canonicalFingerprint": "c0799ed3ce711beb5dad8e919cea0ff9486e1fe6bbeb4f5ecd06a97542637c6a"
+}

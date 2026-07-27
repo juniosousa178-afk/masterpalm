@@ -1,0 +1,49 @@
+# MasterPalm Guardian V4 — Rules Registry
+version: 1
+
+rules:
+  G001:
+    severity: info
+    description: Nenhum commit/push/deploy sem autorização explícita
+  G002:
+    severity: red
+    description: Mudança em estoque exige testes obrigatórios
+  G003:
+    severity: red
+    description: Mudança financeira exige testes obrigatórios
+  G004:
+    severity: yellow
+    description: Firestore write — verificar TX/batch/CAS/idempotência
+  G005:
+    severity: yellow
+    description: Hive/sync — testes offline/replay/recovery
+  G006:
+    severity: red
+    description: Complexidade AST > 80 — não aumentar
+  G007:
+    severity: red
+    description: Arquivo crítico > 3000 linhas — alteração extensa
+  G008:
+    severity: blocking
+    description: Novo ciclo de import
+  G009:
+    severity: red
+    description: Firestore/Storage Rules — testes segurança
+  G010:
+    severity: red
+    description: Tenant/lojaId — teste multi-tenant
+  G011:
+    severity: red
+    description: Mudança crítica sem teste
+  G012:
+    severity: blocking
+    description: Remoção CAS/idempotência
+  G013:
+    severity: blocking
+    description: Script reparo sem dry-run/backup/CAS
+  G014:
+    severity: yellow
+    description: Venda — cruzar estoque/financeiro/sync/journal
+  G015:
+    severity: yellow
+    description: Listener/stream — lifecycle e duplicação
