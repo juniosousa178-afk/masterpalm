@@ -1,0 +1,8 @@
+{
+  "_note": "Intentional golden for QG011 providerCapabilityGap. Update explicitly only.",
+  "snapshotId": "quality-gate:demo-project:quality-gate-release-v1:1:14bedd6af496f0af84f0940081cced0e9f6e7d3a84bc89541bf7afac49c29e6d:1",
+  "fingerprint": "14bedd6af496f0af84f0940081cced0e9f6e7d3a84bc89541bf7afac49c29e6d",
+  "decision": "error",
+  "resultStatus": "failure",
+  "qg011Status": "error"
+}

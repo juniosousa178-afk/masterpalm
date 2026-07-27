@@ -15,7 +15,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
+
+import '../core/stock_revision_operation_gate.dart';
 import '../core/produto_custo_guard.dart';
+import '../core/produto_stock_revision.dart';
+import '../core/produto_stock_version_fields.dart';
 import '../core/produto_variacao_extra.dart';
 import '../models/produto.dart';
 import 'combo_kit_stock_service.dart';
@@ -82,6 +86,14 @@ class EstoqueService {
   @visibleForTesting
   static void touchProdutoUpdatedAtParaDevolucaoHive(Produto p) {
     p.updatedAt = DateTime.now();
+    if (!hasPendingStockMutation(p)) {
+      markPendingStockMutation(
+        p,
+        operationId: newStockOperationId(),
+        baseRevision: p.stockRevision,
+      );
+    }
+    p.stockUpdatedAt = DateTime.now();
   }
 
   /// Após ajuste manual no filho, recalibra só combos que referenciam esse [productId] (teto ou piso).
@@ -151,6 +163,22 @@ class EstoqueService {
     if (quantidade <= 0) {
       debugPrint('$tag ERRO: Quantidade deve ser maior que zero');
       return EstoqueResult.erro('Quantidade deve ser maior que zero');
+    }
+
+    try {
+      if (_isOperacaoEntrada(operacao)) {
+        StockRevisionOperationGate.assertAllowed(
+          StockRevisionOperationKind.entradaManual,
+        );
+      } else if (_isOperacaoBaixa(operacao)) {
+        StockRevisionOperationGate.assertAllowed(StockRevisionOperationKind.venda);
+      } else {
+        StockRevisionOperationGate.assertAllowed(
+          StockRevisionOperationKind.devolucao,
+        );
+      }
+    } on StockRevisionUpdateRequiredException catch (e) {
+      return EstoqueResult.erro(e.message);
     }
 
     if (produtoId == null || produtoId.isEmpty) {
@@ -739,19 +767,20 @@ class EstoqueService {
     const tag = '[ESTOQUE-SYNC]';
     int? remoteQtd;
     bool divergenciaRelevante = false;
+    DocumentSnapshot<Map<String, dynamic>>? remoteSnap;
 
     try {
       // Fonte autoritativa de estoque é lojas/{lojaId}/estoque_produtos.
       // Baixas de venda devem passar por EstoqueTransactionService; este método é voltado a ajustes manuais.
       try {
-        final snap = await _db
+        remoteSnap = await _db
             .collection('lojas')
             .doc(lojaId)
             .collection(FSPaths.estoqueProdutosCol)
             .doc(produto.idFirebase)
             .get();
-        if (snap.exists) {
-          final data = snap.data() ?? <String, dynamic>{};
+        if (remoteSnap.exists) {
+          final data = remoteSnap.data() ?? <String, dynamic>{};
           remoteQtd = (data['quantidade'] as num?)?.toInt();
           final localQtd = produto.quantidade;
           final diff = (remoteQtd != null) ? (remoteQtd - localQtd).abs() : null;
@@ -786,10 +815,28 @@ class EstoqueService {
         );
       }
 
+      final remoteRev = remoteSnap != null && remoteSnap.exists
+          ? parseStockRevisionFromRemote(remoteSnap.data())
+          : produto.stockRevision;
+      final opId = produto.pendingStockOperationId ?? newStockOperationId();
+      if (!hasPendingStockMutation(produto)) {
+        markPendingStockMutation(
+          produto,
+          operationId: opId,
+          baseRevision: remoteRev,
+        );
+      }
+
       final updateData = <String, dynamic>{
         'quantidade': produto.quantidade,
         'updatedAt': FieldValue.serverTimestamp(),
+        kProdutoStockUpdatedAtField: FieldValue.serverTimestamp(),
       };
+      attachStockRevisionFields(
+        updateData,
+        nextRevision: remoteRev + 1,
+        operationId: opId,
+      );
 
       // Adicionar variações se existirem
       if (produto.usaVariacoes && produto.variacoes != null) {
@@ -835,6 +882,19 @@ class EstoqueService {
               .update(updateData);
           debugPrint('$tag Atualizado estoque_produtos: ${produto.idFirebase}');
           persistiuRemoto = true;
+          final afterSnap = await _db
+              .collection('lojas')
+              .doc(lojaId)
+              .collection(FSPaths.estoqueProdutosCol)
+              .doc(produto.idFirebase)
+              .get();
+          if (afterSnap.exists) {
+            tryConfirmStockFromRemote(
+              produto,
+              Map<String, dynamic>.from(afterSnap.data() ?? {}),
+            );
+            await produto.save();
+          }
           await atualizarCatalogoParalelo();
         } catch (e) {
           debugPrint(

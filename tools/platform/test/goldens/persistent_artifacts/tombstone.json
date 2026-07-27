@@ -1,0 +1,7 @@
+{
+  "schema": "persistent-artifact-golden-v1",
+  "name": "tombstone",
+  "operationType": "snapshot",
+  "status": "succeeded",
+  "tombstone": "built"
+}

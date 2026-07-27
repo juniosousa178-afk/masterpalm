@@ -1,0 +1,32 @@
+# Critical files from AST V3.5 (top lines)
+critical_files:
+  - path: public_catalog_screen.dart
+    lines: 8473
+    domains: [Catálogo, Performance]
+  - path: loja_config_screen.dart
+    lines: 6781
+    domains: [Catálogo, Firestore]
+  - path: estoque_screen.dart
+    lines: 6213
+    domains: [Estoque, Sync]
+  - path: carrinho_sheet_web.dart
+    lines: 4801
+    domains: [Catálogo, PDV]
+  - path: main.dart
+    lines: 4721
+    domains: [Auth, Tenant, Sync]
+  - path: produto_form_screen.dart
+    lines: 4011
+    domains: [Estoque, Catálogo]
+  - path: nova_venda_modal.dart
+    lines: 4030
+    domains: [PDV, Venda, Estoque, Financeiro]
+  - path: vendas_service.dart
+    lines: 3493
+    domains: [PDV, Venda, Estoque, Financeiro, Sync]
+  - path: produtos_firestore_service.dart
+    lines: 3221
+    domains: [Estoque, Sync, Firestore]
+  - path: estoque_transaction_service.dart
+    lines: 2469
+    domains: [Estoque, Firestore, PDV]

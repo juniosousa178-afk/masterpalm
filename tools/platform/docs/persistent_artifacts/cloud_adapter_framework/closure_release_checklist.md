@@ -1,0 +1,40 @@
+# Cloud Adapter Framework — Closure Release Checklist
+
+- [x] platform format
+- [x] platform analyze
+- [x] cloud tests (366)
+- [x] PA tests (1356)
+- [x] full suite (3385)
+- [x] Guardian format
+- [x] Guardian analyze
+- [x] Guardian tests (43+)
+- [x] targeted command documentado
+- [x] package root correto (`tools/platform`)
+- [x] package config correto
+- [x] targeted complete = true
+- [x] targeted zero unresolved
+- [x] targeted deterministic 5×
+- [x] cloud files cobertos
+- [x] filesystem coberto
+- [x] CT adapters 10/10 cobertos
+- [x] silent exclusion test
+- [x] repository analysis executada
+- [x] findings atribuídos
+- [x] evidence matrix dos 31 critérios
+- [x] admission evaluator executado
+- [x] admission baseline golden
+- [x] approvedForPrototype false
+- [x] staging false
+- [x] production false
+- [x] realAdapterWorkAuthorized false
+- [x] network absent
+- [x] SDK absent
+- [x] credentials absent
+- [x] bootstrap vazio
+- [x] Release Governance inalterado
+- [x] Quality Gates inalterados
+- [x] AR-025 addendum
+- [x] sem commit
+- [x] sem push
+- [x] sem PR
+- [x] sem deploy

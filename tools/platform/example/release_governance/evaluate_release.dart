@@ -1,0 +1,25 @@
+// Example: evaluate a release governance decision from injected sources.
+//
+// Run from tools/platform:
+//   dart run example/release_governance/evaluate_release.dart
+
+import 'dart:io';
+
+import 'package:masterpalm_platform/masterpalm_platform.dart';
+
+import '../../test/release_governance/support/release_governance_test_fixtures.dart';
+
+Future<void> main() async {
+  final core = PlatformBootstrap.forRepo(Directory.current.path);
+  final result = await core.releaseGovernanceEvaluate(
+    ReleaseGovernanceTestFixtures.passingRequest(),
+  );
+  final snapshot = result.snapshot;
+  if (snapshot == null) {
+    stderr.writeln('Evaluation did not produce a snapshot.');
+    exit(1);
+  }
+  stdout.writeln('Decision: ${snapshot.decision.wireName}');
+  stdout.writeln('Snapshot: ${snapshot.metadata.snapshotId}');
+  stdout.writeln('Fingerprint: ${snapshot.fingerprint}');
+}

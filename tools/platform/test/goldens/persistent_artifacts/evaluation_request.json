@@ -1,0 +1,7 @@
+{
+  "schema": "persistent-artifact-golden-v1",
+  "name": "evaluation_request",
+  "evaluationId": "eval-golden",
+  "projectId": "proj-a",
+  "releaseId": "rel-a"
+}

@@ -43,7 +43,10 @@ Produto _produtoBase({
 
 Future<void> _closeHiveBoxesByName(Iterable<String> names) async {
   for (final name in names) {
-    if (Hive.isBoxOpen(name)) {
+    if (!Hive.isBoxOpen(name)) continue;
+    try {
+      await Hive.box<Produto>(name).close();
+    } catch (_) {
       await Hive.box(name).close();
     }
   }
@@ -152,6 +155,7 @@ void main() {
           p,
           lojaId: _lojaId,
           bumpHiveTimestamp: true,
+          forcePushFromCadastro: true,
           enqueueOnFailure: false,
         );
         expect(status, ProdutoSyncRemotoStatus.confirmado);

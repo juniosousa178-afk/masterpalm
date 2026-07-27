@@ -1,0 +1,7 @@
+{
+  "schema": "persistent-artifact-golden-v1",
+  "name": "history_comparable",
+  "artifactType": "persistentArtifacts",
+  "projectId": "proj-a",
+  "fingerprintPresent": true
+}

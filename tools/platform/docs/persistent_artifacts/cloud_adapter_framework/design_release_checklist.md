@@ -1,0 +1,36 @@
+# Sprint 05.3.3 Parte 1 — Design Release Checklist
+
+- [x] provider shortlist
+- [x] comparison matrix
+- [x] recommendation (draft, não aprovada)
+- [x] protocol review
+- [x] SDK decision (reviewRequired)
+- [x] dependency review plan
+- [x] credential architecture
+- [x] least privilege
+- [x] workload identity
+- [x] network boundary
+- [x] endpoint/TLS
+- [x] data residency
+- [x] encryption / key ownership
+- [x] retention / legal hold / deletion / versioning / consistency
+- [x] retry / timeout
+- [x] idempotency
+- [x] multipart
+- [x] observability / redaction
+- [x] integration environment design
+- [x] cost controls / rate limits
+- [x] incident response / ownership / rollback
+- [x] evidence matrix updated
+- [x] admission evaluator executed
+- [x] approvedForPrototype false
+- [x] staging false
+- [x] production false
+- [x] realAdapterWorkAuthorized false
+- [x] no SDK
+- [x] no network
+- [x] no adapter
+- [x] Guardian targeted clean
+- [x] ADR-040 proposed
+- [x] AR-026
+- [x] no commit/push/PR/deploy

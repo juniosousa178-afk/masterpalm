@@ -1,0 +1,9 @@
+{
+  "_note": "Intentional golden for Release Supply Chain. Update explicitly only.",
+  "supplyChainSnapshotId": "release-supply-chain:masterpalm-demo:rel-2026-06-15-001:supply-chain-v1:1:5d6a92946ccb59342bed4468a943ca6b054777f6d7ba97e00293411f41b42d99:1",
+  "fingerprint": "5d6a92946ccb59342bed4468a943ca6b054777f6d7ba97e00293411f41b42d99",
+  "supplyChainPolicyId": "supply-chain-v1",
+  "supplyChainPolicyVersion": 1,
+  "artifactCount": 13,
+  "canonicalFingerprint": "5d6a92946ccb59342bed4468a943ca6b054777f6d7ba97e00293411f41b42d99"
+}

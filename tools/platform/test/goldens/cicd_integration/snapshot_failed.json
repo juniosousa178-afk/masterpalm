@@ -1,0 +1,7 @@
+{
+  "_note": "Intentional golden for CI/CD Integration. Update explicitly only.",
+  "cicdIntegrationSnapshotId": "cicd-integration:masterpalm-demo:rel-2026-07-22-001:pipeline-integration-v1:1:d1a407afcd2fc1f066918b7e8fe367a55b2e6713e4bd930400affed7fe281271:1",
+  "fingerprint": "d1a407afcd2fc1f066918b7e8fe367a55b2e6713e4bd930400affed7fe281271",
+  "executionStatus": "failed",
+  "canonicalFingerprint": "7e9de5278ff467488190d84fe0f1a7e6ed05dea3d137b0bc227b3576b724fbc1"
+}

@@ -1,0 +1,7 @@
+{
+  "schema": "persistent-artifact-golden-v1",
+  "name": "snapshot_partial",
+  "status": "evaluated",
+  "subjectCount": 1,
+  "operationCount": 1
+}

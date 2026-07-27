@@ -1,0 +1,8 @@
+{
+  "_note": "Intentional golden for Cryptographic Trust. Update explicitly only.",
+  "cryptographicTrustSnapshotId": "ct-snapshot:masterpalm-demo:rel-2026-07-22-001:21affdd15bbd7d1a9fe1ab8e0b88890498d9e1f1de1f5363ee7ef489910e390b",
+  "fingerprint": "21affdd15bbd7d1a9fe1ab8e0b88890498d9e1f1de1f5363ee7ef489910e390b",
+  "status": "invalid",
+  "signatureCount": 1,
+  "canonicalFingerprint": "21affdd15bbd7d1a9fe1ab8e0b88890498d9e1f1de1f5363ee7ef489910e390b"
+}

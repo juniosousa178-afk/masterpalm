@@ -1,0 +1,7 @@
+{
+  "schema": "persistent-artifact-golden-v1",
+  "name": "lifecycle_evaluation",
+  "operationType": "persist",
+  "status": "succeeded",
+  "artifactResultCount": 1
+}

@@ -1,0 +1,8 @@
+{
+  "_note": "Intentional golden for Release Supply Chain. Update explicitly only.",
+  "recordId": "sc-record-rel-2026-06-15-001",
+  "fingerprint": "a3d00c33fa23150a03bee2f21c7876150868cea1400dfb5feb821c5919a1721f",
+  "stageCount": 3,
+  "nodeCount": 3,
+  "canonicalFingerprint": "626f730af4fa83c546e43f5525298e8e3e5db11f8b6fe037710940607a105064"
+}

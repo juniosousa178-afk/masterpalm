@@ -1,0 +1,7 @@
+{
+  "_note": "Intentional golden for Cryptographic Trust. Update explicitly only.",
+  "subjectId": "subject-art-001",
+  "algorithmId": "sha256-v1",
+  "valuePrefix": "ba7816bf",
+  "canonicalFingerprint": "880a63c373c2bc0eab21c11ce717a5ad5ab01a8b0adb36b1062150188103d637"
+}

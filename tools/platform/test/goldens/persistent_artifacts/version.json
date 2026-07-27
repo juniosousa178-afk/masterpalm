@@ -1,0 +1,7 @@
+{
+  "schema": "persistent-artifact-golden-v1",
+  "name": "version",
+  "artifactId": "art-pa-001",
+  "versionId": "ver-pa-001",
+  "revision": 1
+}

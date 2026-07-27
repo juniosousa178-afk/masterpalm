@@ -778,6 +778,56 @@ service cloud.firestore {
         );
     }
 
+    // R8.4 — enforcement monotônico de stockRevision em estoque_produtos
+    function estoqueStockRevisionVal(data) {
+      return data.get('stockRevision', 0);
+    }
+
+    function estoqueStockOpIdVal(data) {
+      return data.get('stockOperationId', '');
+    }
+
+    function estoqueStockGradeChanged() {
+      return request.resource.data.get('quantidade', 0) != resource.data.get('quantidade', 0)
+        || request.resource.data.get('variacoes', {}) != resource.data.get('variacoes', {})
+        || request.resource.data.get('estoquePorTamanho', {}) != resource.data.get('estoquePorTamanho', {})
+        || request.resource.data.get('estoquePorCor', {}) != resource.data.get('estoquePorCor', {});
+    }
+
+    function isValidEstoqueProdutoStockUpdate() {
+      let prevRev = estoqueStockRevisionVal(resource.data);
+      let newRev = estoqueStockRevisionVal(request.resource.data);
+      let gradeChanged = estoqueStockGradeChanged();
+      let prevOp = estoqueStockOpIdVal(resource.data);
+      let newOp = estoqueStockOpIdVal(request.resource.data);
+
+      return gradeChanged
+        ? (
+            request.resource.data.keys().hasAll(['stockRevision', 'stockOperationId'])
+            && newRev >= prevRev
+            && newRev != prevRev
+            && newRev == prevRev + 1
+            && newOp != ''
+            && newOp != prevOp
+          )
+        : (
+            !(resource.data.keys().hasAll(['stockRevision'])
+              && request.resource.data.keys().hasAll(['stockRevision'])
+              && newRev != prevRev)
+          );
+    }
+
+    function isValidEstoqueProdutoStockCreate() {
+      let hasGrade = request.resource.data.keys().hasAny(
+        ['quantidade', 'variacoes', 'estoquePorTamanho', 'estoquePorCor']
+      );
+      return !hasGrade || (
+        request.resource.data.keys().hasAll(['stockRevision', 'stockOperationId'])
+        && estoqueStockRevisionVal(request.resource.data) >= 0
+        && estoqueStockRevisionVal(request.resource.data) <= 1
+      );
+    }
+
     // Criação da primeira loja: usuário logado cria loja onde ele é owner (conta nova Google/cadastro)
     function canCreateFirstStore() {
       return isSignedIn()
@@ -790,7 +840,7 @@ service cloud.firestore {
     // LOJAS + SUBCOLEÇÕES
     // =========================
     match /lojas/{lojaId} {
-      // Leitura: público apenas para lojas publicadas (catálogo); demais exigem auth
+      // Rascunho: produtos (simples e combo) com imagens, itensCombo, variacoes
       allow read: if resource != null
         && (!('published' in resource.data) || resource.data.published == true)
         || isSignedIn();
@@ -961,14 +1011,17 @@ service cloud.firestore {
         allow read, write: if isAdminOrSystem();
       }
 
-      // Contador de uso diário da IA por loja (perguntas, descricao, financeiro)
+      // Módulo financeiro: sync Hive ↔ Firestore (app MasterPalm). lojaId no doc = path.
       match /ia_uso/{docId} {
         allow read, write: if belongsToStore(lojaId);
       }
 
-      // Estoque: dono da loja, admin ou vendedor (belongsToStore = admin | owner | seller)
+      // Estoque: dono da loja, admin ou vendedor + enforcement stockRevision (R8.4)
       match /estoque_produtos/{prodId} {
-        allow read, write: if belongsToStore(lojaId);
+        allow read: if belongsToStore(lojaId);
+        allow create: if belongsToStore(lojaId) && isValidEstoqueProdutoStockCreate();
+        allow update: if belongsToStore(lojaId) && isValidEstoqueProdutoStockUpdate();
+        allow delete: if belongsToStore(lojaId);
       }
 
       // Exclusão definitiva (tombstone): mesma regra de estoque — nunca cruza loja.
@@ -1025,7 +1078,7 @@ service cloud.firestore {
           && resource.data.lojaId == lojaId;
       }
 
-      // Contas a receber / fiado — sync Hive ↔ Firestore (app MasterPalm).
+      // delete: exige lojaId do doc coerente com path (evita delete cruzado entre lojas).
       match /contas_receber/{contaId} {
         allow read: if canAccessLojaFinanceiro(lojaId)
           && resource != null

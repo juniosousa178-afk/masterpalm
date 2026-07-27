@@ -1,0 +1,1 @@
+const firestoreRuleCodes = ['G004'];
