@@ -2,7 +2,7 @@ name: master_palm
 description: "MasterPalm - Gestão completa para sua loja: vendas, clientes, estoque, catálogo, pedidos e pagamentos. Multi-loja, relatórios e campanhas de sorteio."
 publish_to: 'none'
 
-version: 1.0.79+95
+version: 1.0.80+285
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -95,6 +95,8 @@ dependencies:
   image: ^4.3.0
 dev_dependencies:
   flutter_test:
+    sdk: flutter
+  integration_test:
     sdk: flutter
   hive_generator: ^2.0.1
   build_runner: ^2.4.13

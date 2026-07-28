@@ -2,6 +2,7 @@
 
 import 'package:master_palm/core/produto_estoque_grade_snapshot.dart';
 import 'package:master_palm/core/produto_stock_revision.dart';
+import 'package:master_palm/core/stock_revision_client_build_resolver.dart';
 
 /// Versão mínima do app que exige contrato stockRevision em mutações de grade.
 const int kMinStockRevisionClientVersion = 284;
@@ -38,8 +39,9 @@ void enforceStockRevisionWriteContract({
   required Map<String, dynamic> updateData,
   Map<String, dynamic>? existingData,
   LegacyStockWriterKind writer = LegacyStockWriterKind.newApp,
-  int clientBuildNumber = kMinStockRevisionClientVersion,
 }) {
+  final clientBuildNumber =
+      StockRevisionClientBuildResolver.instance.requireBuildNumber();
   if (clientBuildNumber < kMinStockRevisionClientVersion) {
     throw StockRevisionWriteRejectedException(
       'LEGACY_CLIENT_FORCED_UPDATE',

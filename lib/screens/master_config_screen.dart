@@ -9,6 +9,8 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../models/master_config.dart';
+import '../core/produto_stock_write_enforcement.dart';
+import '../core/stock_revision_client_build_resolver.dart';
 import '../services/master_config_service.dart';
 import '../themes/app_colors.dart';
 import '../utils/catalog_payment_support_nav.dart';
@@ -45,6 +47,11 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
   final _bulkEmailsController = TextEditingController();
   bool _savingBulk = false;
   String _appVersion = '1.0.0';
+  String _appBuildRaw = '—';
+  String _appBuildResolved = '—';
+  String _appBuildSource = '—';
+  String _appBuildStatus = '—';
+  final String _appBuildMinimum = kMinStockRevisionClientVersion.toString();
   Timer? _sessionTimer;
 
   final _mpAccessTokenController = TextEditingController();
@@ -94,7 +101,16 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
   Future<void> _loadAppVersion() async {
     try {
       final info = await PackageInfo.fromPlatform();
-      if (mounted) setState(() => _appVersion = info.version);
+      final resolverState = StockRevisionClientBuildResolver.instance.currentState;
+      if (!mounted) return;
+      setState(() {
+        _appVersion = info.version;
+        _appBuildRaw = info.buildNumber;
+        _appBuildResolved =
+            resolverState.parsedBuildNumber?.toString() ?? '—';
+        _appBuildSource = resolverState.source.name;
+        _appBuildStatus = resolverState.status.name;
+      });
     } catch (_) {}
   }
 
@@ -1437,6 +1453,11 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
             ),
             const SizedBox(height: 16),
             _buildInfoRow('Versão do app', _appVersion),
+            _buildInfoRow('Build (PackageInfo)', _appBuildRaw),
+            _buildInfoRow('Build resolvido', _appBuildResolved),
+            _buildInfoRow('Fonte do build', _appBuildSource),
+            _buildInfoRow('Mínimo exigido (estoque)', _appBuildMinimum),
+            _buildInfoRow('Status do gate', _appBuildStatus),
             _buildInfoRow('Última atualização',
                 _config!.lastUpdated != null ? _formatDate(_config!.lastUpdated!) : 'N/A'),
             _buildInfoRow('Atualizado por', _config!.updatedBy ?? 'Sistema'),

@@ -21,6 +21,8 @@ import 'package:master_palm/services/sync_queue_service.dart';
 import 'package:master_palm/services/vendas_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/stock_revision_client_build_test_support.dart';
+
 const _lojaId = 'loja-m23-r8-delayed-reversion';
 const _pid = 'colar-r8-multi-var';
 const _tamA = 'var-a';
@@ -274,6 +276,7 @@ void main() {
   }
 
   setUp(() async {
+    initializeCompatibleStockClientBuildForTest(285);
     SharedPreferences.setMockInitialValues({});
     trace = _StockWriteTrace('r8-${DateTime.now().microsecondsSinceEpoch}');
     LojaAtivaResolver.debugResolveOverride =
@@ -300,6 +303,7 @@ void main() {
   });
 
   tearDown(() async {
+    resetStockClientBuildForTest();
     VendasService.debugVendasBoxAddOverride = null;
     VendasService.debugAfterRemoteStockAppliedBeforeHivePersist = null;
     ProdutoExclusaoTombstoneService.resetCacheForTests();

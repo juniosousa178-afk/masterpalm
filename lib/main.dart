@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart'
     show kDebugMode, kIsWeb, defaultTargetPlatform, TargetPlatform;
 
 import 'core/logger.dart';
+import 'core/stock_revision_client_build_bootstrap.dart';
 import 'package:flutter/material.dart';
 import 'url_strategy_stub.dart' if (dart.library.html) 'url_strategy_web.dart'
     as url_strategy;
@@ -3099,6 +3100,7 @@ Future<void> main() async {
   CatalogStartupTrace.mark('CAT_START.main.enter');
   await runWithGlobalErrorHook(() async {
     WidgetsFlutterBinding.ensureInitialized();
+    await StockRevisionClientBuildBootstrap.ensureInitialized();
     BootPerfLog.resetBoot();
     _installUltraEarlyCatalogErrorCapture();
     CatalogStartupTrace.mark('CAT_START.flutter_binding.ready');

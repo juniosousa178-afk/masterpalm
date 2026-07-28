@@ -13,6 +13,8 @@ import 'package:master_palm/services/firestore_paths.dart';
 import 'package:master_palm/services/produto_exclusao_tombstone_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/stock_revision_client_build_test_support.dart';
+
 const _loja = 'loja-r83-l7';
 const _compA = 'comp-a-l7';
 const _compB = 'comp-b-l7';
@@ -39,6 +41,7 @@ void main() {
   });
 
   setUp(() async {
+    initializeCompatibleStockClientBuildForTest(285);
     SharedPreferences.setMockInitialValues({});
     LojaAtivaResolver.debugResolveOverride =
         ({String origem = 'app'}) async => _loja;
@@ -77,6 +80,7 @@ void main() {
   });
 
   tearDown(() async {
+    resetStockClientBuildForTest();
     EstoqueTransactionService.debugClearOverrides();
     ProdutoExclusaoTombstoneService.resetCacheForTests();
     await box.close();

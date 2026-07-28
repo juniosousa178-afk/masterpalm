@@ -22,6 +22,8 @@ import 'package:master_palm/services/produtos_firestore_service.dart';
 import 'package:master_palm/services/vendas_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/stock_revision_client_build_test_support.dart';
+
 const _loja = 'loja-r82-stock';
 const _pid = 'prod-r82';
 const _tamA = 'tam-a';
@@ -104,6 +106,12 @@ int _cell(Produto p, String tam) {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(() {
+    initializeCompatibleStockClientBuildForTest(285);
+  });
+
+  tearDown(resetStockClientBuildForTest);
 
   group('R8.2 — contrato relógio misto', () {
     test('MIXED_CLOCK_VERSIONING_NOT_SAFE sem âncora server', () {
