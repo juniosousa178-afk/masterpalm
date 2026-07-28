@@ -15,6 +15,8 @@ import 'package:master_palm/models/produto.dart';
 import 'package:master_palm/services/produtos_firestore_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/stock_revision_client_build_test_support.dart';
+
 void main() {
   late Directory hiveDir;
 
@@ -33,11 +35,14 @@ void main() {
     }
   });
 
-  tearDown(StockRevisionOperationGate.resetDebugOverrides);
+  tearDown(() {
+    resetStockClientBuildForTest();
+    StockRevisionOperationGate.resetDebugOverrides();
+  });
 
   group('R8.4.3 — contratos de push', () {
     setUp(() {
-      StockRevisionClientBuildResolver.instance.setTestOverride(285);
+      initializeCompatibleStockClientBuildForTest(285);
     });
 
     test('cadastro explícito (forcePush) envia metadata sem stale skip', () async {
@@ -185,7 +190,7 @@ void main() {
     });
 
     test('gate de revisão só quando grade muda no payload', () {
-      StockRevisionClientBuildResolver.instance.setTestOverride(285);
+      initializeCompatibleStockClientBuildForTest(285);
       final localGrade = ProdutoEstoqueGradeSnapshot.fromProduto(
         Produto.vazio()..quantidade = 5,
       );

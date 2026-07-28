@@ -102,7 +102,6 @@ class StockRevisionClientBuildResolver {
       StockRevisionClientBuildState.uninitialized();
 
   int? _testOverrideBuild;
-  bool _testDefaultsEnabled = false;
 
   StockRevisionClientBuildState get currentState => _state;
 
@@ -165,11 +164,6 @@ class StockRevisionClientBuildResolver {
   }
 
   @visibleForTesting
-  void enableTestDefaults() {
-    _testDefaultsEnabled = true;
-  }
-
-  @visibleForTesting
   void setTestOverride(int buildNumber) {
     assert(buildNumber > 0, 'test override must be > 0');
     _testOverrideBuild = buildNumber;
@@ -186,13 +180,9 @@ class StockRevisionClientBuildResolver {
   }
 
   @visibleForTesting
-  void resetForTest({bool leaveUninitialized = false}) {
+  void resetForTest() {
     _testOverrideBuild = null;
-    if (leaveUninitialized || !_testDefaultsEnabled) {
-      _state = StockRevisionClientBuildState.uninitialized();
-      return;
-    }
-    setTestOverride(285);
+    _state = StockRevisionClientBuildState.uninitialized();
   }
 
   void _storeRawBuild(

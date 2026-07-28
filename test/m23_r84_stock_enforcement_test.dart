@@ -4,8 +4,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:master_palm/core/produto_estoque_grade_snapshot.dart';
 import 'package:master_palm/core/produto_stock_revision.dart';
 import 'package:master_palm/core/produto_stock_write_enforcement.dart';
-import 'package:master_palm/core/stock_revision_client_build_resolver.dart';
+import 'package:master_palm/core/stock_revision_operation_gate.dart';
 import 'package:master_palm/models/produto.dart';
+
+import 'support/stock_revision_client_build_test_support.dart';
 
 const _tamA = 'tam-a';
 const _tamB = 'tam-b';
@@ -63,7 +65,10 @@ Produto _local({
 }
 
 void main() {
-  tearDown(StockRevisionClientBuildResolver.instance.resetForTest);
+  tearDown(() {
+    resetStockClientBuildForTest();
+    StockRevisionOperationGate.resetDebugOverrides();
+  });
 
   group('OFF3 — conflito real', () {
     test('OFF3_STOCK_CONFLICT_GREEN', () {
@@ -165,7 +170,7 @@ void main() {
     });
 
     test('Q3 retry de A após B confirmada é stale', () {
-      StockRevisionClientBuildResolver.instance.setTestOverride(285);
+      initializeCompatibleStockClientBuildForTest(285);
       final existing = _remote(qA: 2, qB: 4, revision: 7, operationId: 'op-b');
       expect(
         () => enforceStockRevisionWriteContract(
@@ -211,7 +216,7 @@ void main() {
 
   group('LEG1–LEG5 legado', () {
     test('LEG1 venda sem revision rejeitada', () {
-      StockRevisionClientBuildResolver.instance.setTestOverride(200);
+      initializeCompatibleStockClientBuildForTest(200);
       expect(
         () => enforceStockRevisionWriteContract(
           updateData: {'quantidade': 5},
@@ -228,7 +233,7 @@ void main() {
     });
 
     test('LEG2 entrada legado rejeitada', () {
-      StockRevisionClientBuildResolver.instance.setTestOverride(285);
+      initializeCompatibleStockClientBuildForTest(285);
       expect(
         () => enforceStockRevisionWriteContract(
           updateData: {'quantidade': 20},
@@ -246,7 +251,7 @@ void main() {
     });
 
     test('LEG3 cancelamento sem revision rejeitado', () {
-      StockRevisionClientBuildResolver.instance.setTestOverride(285);
+      initializeCompatibleStockClientBuildForTest(285);
       expect(
         () => enforceStockRevisionWriteContract(
           updateData: {

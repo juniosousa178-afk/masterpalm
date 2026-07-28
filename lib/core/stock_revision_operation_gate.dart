@@ -44,26 +44,7 @@ class StockRevisionOperationGate {
   static LegacyStockWriterKind? debugWriterKindOverride;
 
   @visibleForTesting
-  static set debugClientBuildNumberOverride(int? value) {
-    if (value == null) {
-      StockRevisionClientBuildResolver.instance.resetForTest();
-    } else {
-      StockRevisionClientBuildResolver.instance.setTestOverride(value);
-    }
-  }
-
-  @visibleForTesting
-  static int? get debugClientBuildNumberOverride {
-    final state = StockRevisionClientBuildResolver.instance.currentState;
-    if (state.source == StockRevisionClientBuildSource.testOverride) {
-      return state.parsedBuildNumber;
-    }
-    return null;
-  }
-
-  @visibleForTesting
   static void resetDebugOverrides() {
-    StockRevisionClientBuildResolver.instance.resetForTest();
     debugWriterKindOverride = null;
   }
 

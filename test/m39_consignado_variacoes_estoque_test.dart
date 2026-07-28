@@ -11,6 +11,8 @@ import 'package:master_palm/services/estoque_transaction_service.dart';
 import 'package:master_palm/services/firestore_paths.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/stock_revision_client_build_test_support.dart';
+
 const _loja = 'loja-consignado-var';
 const _op1 = 'cccccccc-3333-4333-8333-cccccccccccc';
 const _op2 = 'dddddddd-4444-4444-8444-dddddddddddd';
@@ -56,6 +58,7 @@ void main() {
   });
 
   setUp(() async {
+    initializeCompatibleStockClientBuildForTest(285);
     SharedPreferences.setMockInitialValues({});
     db = FakeFirebaseFirestore();
     EstoqueTransactionService.debugFirestoreOverride = db;
@@ -65,6 +68,7 @@ void main() {
   });
 
   tearDown(() async {
+    resetStockClientBuildForTest();
     EstoqueTransactionService.debugFirestoreOverride = null;
     if (produtosBox.isOpen) await produtosBox.close();
   });

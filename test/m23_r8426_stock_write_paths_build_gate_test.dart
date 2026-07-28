@@ -1,7 +1,6 @@
 // M2.3-R8.4.26 — caminhos de escrita bloqueados/permitidos por build.
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:master_palm/core/produto_stock_revision.dart';
 import 'package:master_palm/core/produto_stock_write_enforcement.dart';
 import 'package:master_palm/core/stock_revision_client_build_resolver.dart';
 import 'package:master_palm/core/stock_revision_operation_gate.dart';
@@ -9,8 +8,13 @@ import 'package:master_palm/models/produto.dart';
 import 'package:master_palm/services/estoque_transaction_service.dart';
 import 'package:master_palm/services/venda_estoque_remoto_prep_service.dart';
 
+import 'support/stock_revision_client_build_test_support.dart';
+
 void main() {
-  tearDown(StockRevisionOperationGate.resetDebugOverrides);
+  tearDown(() {
+    resetStockClientBuildForTest();
+    StockRevisionOperationGate.resetDebugOverrides();
+  });
 
   final existingRemote = {
     'quantidade': 10,
@@ -19,7 +23,7 @@ void main() {
   };
 
   void expectBlockedAt95(StockRevisionOperationKind kind) {
-    StockRevisionClientBuildResolver.instance.setTestOverride(95);
+    initializeCompatibleStockClientBuildForTest(95);
     expect(
       () => StockRevisionOperationGate.assertAllowed(kind),
       throwsA(isA<StockRevisionUpdateRequiredException>()),
@@ -27,7 +31,7 @@ void main() {
   }
 
   void expectAllowedAt285(StockRevisionOperationKind kind) {
-    StockRevisionClientBuildResolver.instance.setTestOverride(285);
+    initializeCompatibleStockClientBuildForTest(285);
     expect(
       () => StockRevisionOperationGate.assertAllowed(kind),
       returnsNormally,
@@ -52,7 +56,7 @@ void main() {
 
   group('R8426 serviços — build 95 bloqueado', () {
     test('venda prep service', () async {
-      StockRevisionClientBuildResolver.instance.setTestOverride(95);
+      initializeCompatibleStockClientBuildForTest(95);
       final p = Produto.vazio()..lojaId = 'loja-r8426';
       await expectLater(
         VendaEstoqueRemotoPrepService.garantirProdutosProntosParaBaixa(
@@ -64,7 +68,7 @@ void main() {
     });
 
     test('combo transaction batch', () async {
-      StockRevisionClientBuildResolver.instance.setTestOverride(95);
+      initializeCompatibleStockClientBuildForTest(95);
       await expectLater(
         EstoqueTransactionService.baixarEstoqueTransactionBatch(
           lojaId: 'loja-r8426',
@@ -77,7 +81,7 @@ void main() {
     });
 
     test('devolução transaction batch', () async {
-      StockRevisionClientBuildResolver.instance.setTestOverride(95);
+      initializeCompatibleStockClientBuildForTest(95);
       await expectLater(
         EstoqueTransactionService.devolverEstoqueTransactionBatch(
           lojaId: 'loja-r8426',
@@ -91,7 +95,7 @@ void main() {
     });
 
     test('enforce write contract', () {
-      StockRevisionClientBuildResolver.instance.setTestOverride(95);
+      initializeCompatibleStockClientBuildForTest(95);
       expect(
         () => enforceStockRevisionWriteContract(
           updateData: {
@@ -108,7 +112,7 @@ void main() {
 
   group('R8426 serviços — build 285 permitido no gate', () {
     test('venda prep não lança UPDATE_REQUIRED por build', () async {
-      StockRevisionClientBuildResolver.instance.setTestOverride(285);
+      initializeCompatibleStockClientBuildForTest(285);
       expect(
         () => StockRevisionOperationGate.assertAllowed(
           StockRevisionOperationKind.venda,
@@ -118,7 +122,7 @@ void main() {
     });
 
     test('enforce write contract com revision válida', () {
-      StockRevisionClientBuildResolver.instance.setTestOverride(285);
+      initializeCompatibleStockClientBuildForTest(285);
       expect(
         () => enforceStockRevisionWriteContract(
           updateData: {
@@ -135,9 +139,7 @@ void main() {
 
   group('R8426 fail-closed antes da inicialização', () {
     test('venda bloqueada sem resolver inicializado', () {
-      StockRevisionClientBuildResolver.instance.resetForTest(
-        leaveUninitialized: true,
-      );
+      resetStockClientBuildForTest();
       expect(
         () => StockRevisionOperationGate.assertAllowed(
           StockRevisionOperationKind.venda,

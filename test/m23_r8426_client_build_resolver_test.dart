@@ -5,12 +5,17 @@ import 'package:master_palm/core/produto_stock_write_enforcement.dart';
 import 'package:master_palm/core/stock_revision_client_build_resolver.dart';
 import 'package:master_palm/core/stock_revision_operation_gate.dart';
 
+import 'support/stock_revision_client_build_test_support.dart';
+
 void main() {
-  tearDown(StockRevisionOperationGate.resetDebugOverrides);
+  tearDown(() {
+    resetStockClientBuildForTest();
+    StockRevisionOperationGate.resetDebugOverrides();
+  });
 
   group('R8426 resolver parsing', () {
     void expectParsed(String raw, int expected) {
-      StockRevisionClientBuildResolver.instance.initializeFromRawForTest(raw);
+      initializeStockClientBuildFromRawForTest(raw);
       expect(
         StockRevisionClientBuildResolver.instance.requireBuildNumber(),
         expected,
@@ -22,7 +27,7 @@ void main() {
     }
 
     void expectFailClosed(String raw) {
-      StockRevisionClientBuildResolver.instance.initializeFromRawForTest(raw);
+      initializeStockClientBuildFromRawForTest(raw);
       expect(
         () => StockRevisionClientBuildResolver.instance.requireBuildNumber(),
         throwsA(isA<Exception>()),
@@ -40,7 +45,7 @@ void main() {
     });
 
     test('2 raw 283 blocked', () {
-      StockRevisionClientBuildResolver.instance.setTestOverride(283);
+      initializeCompatibleStockClientBuildForTest(283);
       expect(
         () => StockRevisionOperationGate.assertAllowed(
           StockRevisionOperationKind.venda,
@@ -94,8 +99,8 @@ void main() {
     });
 
     test('11 PackageInfo error path fail-closed', () {
-      StockRevisionClientBuildResolver.instance.resetForTest();
-      StockRevisionClientBuildResolver.instance.initializeFromRawForTest('');
+      resetStockClientBuildForTest();
+      initializeStockClientBuildFromRawForTest('');
       expect(
         StockRevisionClientBuildResolver.instance.currentState.source,
         StockRevisionClientBuildSource.invalid,
@@ -109,9 +114,7 @@ void main() {
     });
 
     test('12 resolver not initialized fail-closed', () {
-      StockRevisionClientBuildResolver.instance.resetForTest(
-        leaveUninitialized: true,
-      );
+      resetStockClientBuildForTest();
       expect(
         () => StockRevisionClientBuildResolver.instance.requireBuildNumber(),
         throwsA(isA<StockRevisionClientBuildUnavailableException>()),
@@ -119,7 +122,7 @@ void main() {
     });
 
     test('13 test override 95 blocked', () {
-      StockRevisionClientBuildResolver.instance.setTestOverride(95);
+      initializeCompatibleStockClientBuildForTest(95);
       expect(
         () => StockRevisionOperationGate.assertAllowed(
           StockRevisionOperationKind.entradaManual,
@@ -129,7 +132,7 @@ void main() {
     });
 
     test('14 test override 285 allowed', () {
-      StockRevisionClientBuildResolver.instance.setTestOverride(285);
+      initializeCompatibleStockClientBuildForTest(285);
       expect(
         () => StockRevisionOperationGate.assertAllowed(
           StockRevisionOperationKind.combo,
@@ -139,10 +142,8 @@ void main() {
     });
 
     test('15 override cleared returns uninitialized', () {
-      StockRevisionClientBuildResolver.instance.setTestOverride(285);
-      StockRevisionClientBuildResolver.instance.resetForTest(
-        leaveUninitialized: true,
-      );
+      initializeCompatibleStockClientBuildForTest(285);
+      resetStockClientBuildForTest();
       expect(
         StockRevisionClientBuildResolver.instance.isInitialized,
         isFalse,
@@ -152,7 +153,7 @@ void main() {
 
   group('R8426 enforceStockRevisionWriteContract uses resolver', () {
     test('build 95 blocks write contract', () {
-      StockRevisionClientBuildResolver.instance.setTestOverride(95);
+      initializeCompatibleStockClientBuildForTest(95);
       expect(
         () => enforceStockRevisionWriteContract(
           updateData: {
@@ -173,7 +174,7 @@ void main() {
     });
 
     test('build 285 allows write contract with revision fields', () {
-      StockRevisionClientBuildResolver.instance.setTestOverride(285);
+      initializeCompatibleStockClientBuildForTest(285);
       expect(
         () => enforceStockRevisionWriteContract(
           updateData: {

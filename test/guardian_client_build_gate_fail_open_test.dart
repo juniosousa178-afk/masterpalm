@@ -28,8 +28,7 @@ void main() {
         }
       }
       if (content.contains('setTestOverride') &&
-          !entity.path.contains('stock_revision_client_build_resolver.dart') &&
-          !entity.path.contains('stock_revision_operation_gate.dart')) {
+          !entity.path.contains('stock_revision_client_build_resolver.dart')) {
         violations.add('${entity.path}: setTestOverride outside resolver');
       }
     }

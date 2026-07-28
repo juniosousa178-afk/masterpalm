@@ -14,6 +14,8 @@ import 'package:master_palm/services/firestore_paths.dart';
 import 'package:master_palm/services/produtos_firestore_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/stock_revision_client_build_test_support.dart';
+
 void main() {
   late Directory hiveDir;
 
@@ -33,8 +35,13 @@ void main() {
   });
 
   tearDown(() {
+    resetStockClientBuildForTest();
     ProdutosFirestoreService.debugFirestoreOverride = null;
     ProdutosFirestoreService.resetDebugHiveSaveOverrides();
+  });
+
+  setUp(() {
+    initializeCompatibleStockClientBuildForTest(285);
   });
 
   group('D — DeleteField / no-overlap', () {
