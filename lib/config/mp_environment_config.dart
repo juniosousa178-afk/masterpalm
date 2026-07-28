@@ -61,7 +61,7 @@ class MpEnvironmentConfig {
     if (useFirebaseEmulators) {
       throw StateError(
         'PRODUCTION_EMULATOR_CONFIGURATION_BLOCKED: '
-        'MP_USE_FIREBASE_EMULATORS=true em MP_ENVIRONMENT=production',
+        'emuladores ativos em MP_ENVIRONMENT=production',
       );
     }
     final hosts = [

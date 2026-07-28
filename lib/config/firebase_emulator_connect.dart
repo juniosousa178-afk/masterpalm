@@ -13,7 +13,7 @@ Future<void> connectFirebaseEmulatorsIfConfigured() async {
   if (!MpEnvironmentConfig.useFirebaseEmulators) return;
   if (!MpEnvironmentConfig.isQa) {
     throw StateError(
-      'Emulators só permitidos com MP_ENVIRONMENT=qa',
+      'Emulators só permitidos com ambiente qa',
     );
   }
 

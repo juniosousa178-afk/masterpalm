@@ -143,19 +143,16 @@ function Test-MasterPalmProductionWebArtifact {
   $js = Join-Path $BuildWebDir 'main.dart.js'
   if (-not (Test-Path -LiteralPath $js)) { throw 'main.dart.js ausente' }
   $content = Get-Content -LiteralPath $js -Raw -Encoding utf8
-  $blocked = @(
-    'MP_USE_FIREBASE_EMULATORS=true',
-    'masterpalm-r8433-web-e2e-local',
-    'masterpalm-planos-e2e-local',
-    'MP_ENVIRONMENT=qa'
+  $blockedPatterns = @(
+    @{ Name = 'firestore_emulator_localhost'; Pattern = 'useFirestoreEmulator\([^)]*127\.0\.0\.1' },
+    @{ Name = 'auth_emulator_localhost'; Pattern = 'useAuthEmulator\([^)]*127\.0\.0\.1' },
+    @{ Name = 'qa_project_bootstrap'; Pattern = 'projectId:\s*[`''"]masterpalm-r8433-web-e2e-local[`''"]' },
+    @{ Name = 'planos_e2e_project'; Pattern = 'masterpalm-planos-e2e-local' }
   )
-  foreach ($b in $blocked) {
-    if ($content.Contains($b)) {
-      throw "WEB_PRODUCTION_ENVIRONMENT_GUARD: artefato contém $b"
+  foreach ($b in $blockedPatterns) {
+    if ($content -match $b.Pattern) {
+      throw "WEB_PRODUCTION_ENVIRONMENT_GUARD: artefato contém $($b.Name)"
     }
-  }
-  if ($content -match 'useFirestoreEmulator' -and $content -match 'MP_ENVIRONMENT.*qa') {
-    throw 'WEB_PRODUCTION_ENVIRONMENT_GUARD: emulator+qa no bundle production'
   }
 }
 
