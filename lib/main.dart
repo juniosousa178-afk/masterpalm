@@ -41,6 +41,7 @@ import 'utils/theme_notifier.dart';
 
 // Projeto
 import 'firebase_bootstrap_options.dart';
+import 'config/firebase_emulator_connect.dart';
 import 'firebase_options.dart';
 import 'themes/app_colors.dart';
 import 'app_routes.dart' as app_routes;
@@ -3000,6 +3001,8 @@ Future<bool> _initFirebaseCorePerform() async {
     await Firebase.initializeApp(
       options: firebaseOptionsForInit(),
     ).timeout(const Duration(seconds: 15));
+
+    await connectFirebaseEmulatorsIfConfigured();
 
     // Web: manter usuário logado; em `diag&netTest` / `diag&bootTrace` pula (WebKit: `setPersistence` pode
     // lançar "Null check" em interop) — o netTest chama `Firebase.initializeApp` isolado.

@@ -24,6 +24,8 @@ import 'package:master_palm/services/firestore_paths.dart';
 import 'package:master_palm/services/produtos_firestore_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/stock_revision_client_build_test_support.dart';
+
 void main() {
   const lojaId = 'loja_fs_persist';
   const produtoId = 'prod-fs-1';
@@ -74,6 +76,7 @@ void main() {
   });
 
   tearDown(() async {
+    resetStockClientBuildForTest();
     CompraFornecedorFirestoreService.debugFirestoreOverride = null;
     EstoqueTransactionService.debugFirestoreOverride = null;
     EstoqueService.debugFirestoreOverride = null;
@@ -260,6 +263,7 @@ void main() {
 
   group('Revenda detalhar — fluxo com Firestore', () {
     test('vincular produto persiste compra e estoque no Firestore', () async {
+      initializeCompatibleStockClientBuildForTest(285);
       await seedEstoqueRemoto(0);
       final prodBox = await Hive.openBox<Produto>(HiveBoxNames.produtos(lojaId));
       await prodBox.clear();
@@ -297,6 +301,7 @@ void main() {
     });
 
     test('editar item detalhado atualiza compra no Firestore', () async {
+      initializeCompatibleStockClientBuildForTest(285);
       await seedEstoqueRemoto(4);
       final prodBox = await Hive.openBox<Produto>(HiveBoxNames.produtos(lojaId));
       await prodBox.clear();
@@ -328,6 +333,7 @@ void main() {
     });
 
     test('excluir item detalhado remove da compra no Firestore', () async {
+      initializeCompatibleStockClientBuildForTest(285);
       await seedEstoqueRemoto(4);
       final prodBox = await Hive.openBox<Produto>(HiveBoxNames.produtos(lojaId));
       await prodBox.clear();
@@ -353,6 +359,7 @@ void main() {
     });
 
     test('editar/excluir item não cria CP extra no Hive', () async {
+      initializeCompatibleStockClientBuildForTest(285);
       await seedEstoqueRemoto(10);
       final prodBox = await Hive.openBox<Produto>(HiveBoxNames.produtos(lojaId));
       await prodBox.clear();
