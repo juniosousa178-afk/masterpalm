@@ -3,7 +3,6 @@
 import 'dart:convert';
 
 import 'package:master_palm/config/mp_environment_config.dart';
-import 'package:master_palm/core/produto_stock_write_enforcement.dart';
 
 /// Manifesto publicado em build/web/version.json.
 class WebReleaseVersionManifest {
