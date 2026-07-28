@@ -1,98 +1,88 @@
-# Build Web MasterPalm — release com PWA/SW desativados e artefactos validados.
+# Build Web MasterPalm — release reproduzível (R8.4.33).
 # Uso:
-#   .\scripts\build_web_release.ps1
-#   $env:CATALOG_BUILD_ID = "stable-20260503-XYZ-abc1234"; .\scripts\build_web_release.ps1
+#   .\scripts\build_web_release.ps1 -BuildId stable-r8433-f459bcd
 #
-# Não faz deploy nem commit.
+# Não faz deploy.
 
 param(
-  [string]$BuildId = $env:CATALOG_BUILD_ID
+  [Parameter(Mandatory = $true)]
+  [string]$BuildId,
+  [switch]$AllowDirtyTree
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = 'Stop'
 $ProjectRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location $ProjectRoot
 
-if (-not $BuildId -or $BuildId.Trim() -eq "") {
-  $short = ""
-  try {
-    $short = (git rev-parse --short HEAD 2>$null).Trim()
-  } catch { }
-  if (-not $short) { $short = "unknown" }
-  $BuildId = "local-$(Get-Date -Format 'yyyyMMdd-HHmmss')-$short"
+. (Join-Path $ProjectRoot 'scripts\web_version_manifest.ps1')
+
+if (-not $AllowDirtyTree) {
+  $status = git status --porcelain 2>$null
+  if ($status) {
+    throw "Working tree suja. Commit ou use -AllowDirtyTree apenas em dev local."
+  }
 }
 
-$env:CATALOG_BUILD_ID = $BuildId
-Write-Host "==> CATALOG_BUILD_ID=$BuildId" -ForegroundColor Cyan
+$head = (git rev-parse --short HEAD).Trim()
+Write-Host "==> HEAD=$head" -ForegroundColor Cyan
+Write-Host "==> BuildId=$BuildId" -ForegroundColor Cyan
 
-Write-Host "==> flutter build web --release --source-maps --pwa-strategy=none"
-flutter build web --release --source-maps --pwa-strategy=none "--dart-define=CATALOG_BUILD_ID=$BuildId"
+Write-Host '==> preflight stock client build'
+dart run scripts/preflight_stock_client_build_version.dart
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-Write-Host '==> Reparar artefactos web (manifests / SW - evita SPA fallback = HTML em URLs estaticas)'
-$bw = Join-Path $ProjectRoot "build\web"
-$assets = Join-Path $bw "assets"
-if (-not (Test-Path -LiteralPath $assets)) {
-  Write-Error "Pasta em falta após build: $assets"
-  exit 1
+$bw = Join-Path $ProjectRoot 'build\web'
+if (Test-Path -LiteralPath $bw) {
+  Remove-Item -LiteralPath $bw -Recurse -Force
 }
-$amJson = Join-Path $assets "AssetManifest.json"
+
+$defines = @(
+  "--dart-define=CATALOG_BUILD_ID=$BuildId",
+  '--dart-define=MP_ENVIRONMENT=production',
+  '--dart-define=MP_USE_FIREBASE_EMULATORS=false'
+)
+
+Write-Host '==> flutter build web --release --pwa-strategy=none (sem source maps)'
+Invoke-MasterPalmFlutterBuildWeb @('build', 'web', '--release', '--pwa-strategy=none') + $defines
+
+# Manifests / SW / version.json
+$assets = Join-Path $bw 'assets'
+if (-not (Test-Path -LiteralPath $assets)) { throw "Pasta em falta: $assets" }
+$amJson = Join-Path $assets 'AssetManifest.json'
 if (-not (Test-Path -LiteralPath $amJson)) {
-  Write-Warning 'AssetManifest.json ausente: criando JSON vazio {} (evita index.html do SPA neste URL).'
   Set-Content -LiteralPath $amJson -Value '{}' -Encoding utf8
 }
-$amBin = Join-Path $assets "AssetManifest.bin.json"
+$amBin = Join-Path $assets 'AssetManifest.bin.json'
 if (-not (Test-Path -LiteralPath $amBin)) {
   Copy-Item -LiteralPath $amJson -Destination $amBin -Force
-  Write-Host "==> AssetManifest.bin.json criado a partir de AssetManifest.json" -ForegroundColor Cyan
 }
-$fontM = Join-Path $assets "FontManifest.json"
+$fontM = Join-Path $assets 'FontManifest.json'
 if (-not (Test-Path -LiteralPath $fontM)) {
   Set-Content -LiteralPath $fontM -Value "[]`n" -Encoding utf8
-  Write-Host '==> FontManifest.json criado (JSON [])' -ForegroundColor Cyan
 }
-$rootManifest = Join-Path $bw "manifest.json"
-$webManifest = Join-Path $ProjectRoot "web\manifest.json"
-if (-not (Test-Path -LiteralPath $rootManifest)) {
-  if (Test-Path -LiteralPath $webManifest) {
-    Copy-Item -LiteralPath $webManifest -Destination $rootManifest -Force
-    Write-Host "==> manifest.json: copiado web/ -> build/web" -ForegroundColor Cyan
-  }
-  else {
-    $minimal = [ordered]@{
-      name       = "MasterPalm"
-      short_name = "MasterPalm"
-      start_url  = "."
-      display    = "standalone"
-    }
-    (($minimal | ConvertTo-Json -Compress) + "`n") | Set-Content -LiteralPath $rootManifest -Encoding utf8
-    Write-Host '==> manifest.json minimo MasterPalm criado' -ForegroundColor Cyan
-  }
+$rootManifest = Join-Path $bw 'manifest.json'
+$webManifest = Join-Path $ProjectRoot 'web\manifest.json'
+if (-not (Test-Path -LiteralPath $rootManifest) -and (Test-Path -LiteralPath $webManifest)) {
+  Copy-Item -LiteralPath $webManifest -Destination $rootManifest -Force
 }
-$fswSrc = Join-Path $ProjectRoot "web\flutter_service_worker.js"
-$fswOut = Join-Path $bw "flutter_service_worker.js"
-if (-not (Test-Path -LiteralPath $fswSrc)) {
-  Write-Error "web/flutter_service_worker.js em falta (stub obrigatório com --pwa-strategy=none)"
-  exit 1
-}
-Copy-Item -LiteralPath $fswSrc -Destination $fswOut -Force
-Write-Host "==> flutter_service_worker.js: stub web/ -> build/web" -ForegroundColor Cyan
 
-$gitShort = "unknown"
-try { $gitShort = (git rev-parse --short HEAD 2>$null).Trim() } catch { }
-$vjOut = Join-Path $ProjectRoot "build\web\version.json"
-$ver = [ordered]@{
-  buildId        = $BuildId
-  hostingTarget  = "masterpalm-58c46"
-  siteId         = "masterpalm-58c46"
-  expectedDomain = "app.mastepalm.com.br"
-  gitCommit      = $gitShort
-}
-($ver | ConvertTo-Json -Compress) + "`n" | Set-Content -LiteralPath $vjOut -Encoding utf8
-Write-Host "==> gravado $vjOut"
+Repair-MasterPalmWebServiceWorkerStub -ProjectRoot $ProjectRoot
 
-& (Join-Path $ProjectRoot "scripts\pre_deploy_web_check.ps1") -ValidateOnly -BuildId $BuildId
+$vjOut = Join-Path $bw 'version.json'
+Write-MasterPalmWebVersionManifest -ProjectRoot $ProjectRoot -OutPath $vjOut -BuildId $BuildId -GitCommit $head
+Test-MasterPalmWebVersionManifest -LiteralPath $vjOut -ExpectedBuildId $BuildId -ExpectedGitCommit $head
+
+Test-MasterPalmProductionWebArtifact -BuildWebDir $bw
+
+$shaJs = Get-MasterPalmFileSha256 -LiteralPath (Join-Path $bw 'main.dart.js')
+$shaVj = Get-MasterPalmFileSha256 -LiteralPath $vjOut
+$shaSw = Get-MasterPalmFileSha256 -LiteralPath (Join-Path $bw 'flutter_service_worker.js')
+Write-Host "SHA-256 main.dart.js=$shaJs"
+Write-Host "SHA-256 version.json=$shaVj"
+Write-Host "SHA-256 flutter_service_worker.js=$shaSw"
+
+& (Join-Path $ProjectRoot 'scripts\pre_deploy_web_check.ps1') -ValidateOnly -BuildId $BuildId -ExpectProduction
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-Write-Host ""
-Write-Host "Build OK. Próximo passo: firebase deploy --only hosting:masterpalm-58c46" -ForegroundColor Green
+Write-Host ''
+Write-Host 'Build OK. Próximo passo: firebase deploy --only hosting:masterpalm-58c46' -ForegroundColor Green
