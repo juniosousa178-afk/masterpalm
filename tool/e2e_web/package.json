@@ -1,0 +1,14 @@
+{
+  "name": "masterpalm-e2e-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "seed": "node seed/seed.mjs",
+    "test:packageinfo": "node run-packageinfo-probe.mjs",
+    "test:emulator": "node run-emulator-contract.mjs",
+    "test": "npm run test:packageinfo && npm run test:emulator"
+  },
+  "devDependencies": {
+    "playwright": "^1.51.0"
+  }
+}

@@ -41,7 +41,7 @@ import 'package:master_palm/services/firestore_paths.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
-
+import 'support/stock_revision_client_build_test_support.dart';
 
 void main() {
 
@@ -124,6 +124,7 @@ void main() {
 
 
   tearDown(() async {
+    resetStockClientBuildForTest();
     EstoqueTransactionService.debugFirestoreOverride = null;
     Future<void> clearBox<T>(String name) async {
       if (!Hive.isBoxOpen(name)) return;
@@ -370,6 +371,7 @@ void main() {
   group('EstoqueService — operação estorno_compra', () {
 
     test('aceita estorno_compra e mensagem não é baixa manual', () async {
+      initializeCompatibleStockClientBuildForTest(285);
 
       await _seedFirestoreEstoque(quantidade: 10);
 
@@ -526,6 +528,7 @@ void main() {
 
 
     test('estoque insuficiente bloqueia cancelamento e mantém CP', () async {
+      initializeCompatibleStockClientBuildForTest(285);
 
       final compraBox = await _openCompraBox();
 
@@ -604,6 +607,7 @@ void main() {
 
 
     test('estoque suficiente estorna e cancela CP', () async {
+      initializeCompatibleStockClientBuildForTest(285);
 
       final compraBox = await _openCompraBox();
 
@@ -692,6 +696,7 @@ void main() {
 
 
     test('custo alterado depois não é sobrescrito no cancelamento', () async {
+      initializeCompatibleStockClientBuildForTest(285);
 
       final compraBox = await _openCompraBox();
 
@@ -794,6 +799,7 @@ void main() {
 
 
     test('revenda detalhada cancelada não cria LF extra', () async {
+      initializeCompatibleStockClientBuildForTest(285);
 
       final compraBox = await _openCompraBox();
 
