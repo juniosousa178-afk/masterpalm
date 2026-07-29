@@ -34,7 +34,7 @@ import {
   attachConsoleCollector,
   fillLoginFields,
   submitLogin,
-  waitForFlutterShell,
+  waitForQaBootstrap,
   waitQaLabel,
 } from '../lib/flutter-semantics.mjs';
 import { serveStatic } from '../lib/serve-build.mjs';
@@ -59,8 +59,11 @@ async function waitMs(ms, label) {
 
 async function loginUi(page) {
   await page.goto(`http://127.0.0.1:${QA_SERVE_PORT}/login`, { waitUntil: 'load', timeout: 120_000 });
-  await waitForFlutterShell(page);
-  await fillLoginFields(page, USER_EMAIL, USER_PASSWORD);
+  await waitForQaBootstrap(page, { timeout: 180_000 });
+  if (!(await page.getByLabel('login-email', { exact: true }).count())) {
+    await page.getByRole('textbox', { name: /E-mail ou telefone/i }).first().waitFor({ timeout: 30_000 });
+  }
+  await fillLoginFields(page, USER_EMAIL, USER_PASSWORD, { skipBootstrap: true });
   await submitLogin(page);
   await waitQaLabel(page, 'home-ready', { timeout: 180_000 });
   await waitQaLabel(page, 'company-loaded', { timeout: 30_000 });
