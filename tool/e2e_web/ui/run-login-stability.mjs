@@ -30,7 +30,7 @@ const RUNS = Number(process.env.LOGIN_STABILITY_RUNS || 3);
 
 async function runLoginOnce(page, runIndex) {
   resetAccessibilityState();
-  await page.goto(`http://127.0.0.1:${QA_SERVE_PORT}/login`, {
+  await page.goto(`http://127.0.0.1:${QA_SERVE_PORT}/login?flutter-semantics`, {
     waitUntil: 'load',
     timeout: 120_000,
   });

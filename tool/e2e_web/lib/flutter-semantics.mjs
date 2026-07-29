@@ -1,5 +1,5 @@
 /**
- * Helper único — espera labels semânticos Flutter Web (R8.4.40).
+ * Helper único — espera labels semânticos Flutter Web (R8.4.41).
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -17,19 +17,24 @@ export async function collectVisibleLabels(page) {
   } catch (_) {}
   try {
     const nodes = await page.locator('[aria-label]').all();
-    for (const n of nodes.slice(0, 40)) {
+    for (const n of nodes.slice(0, 80)) {
       const v = await n.getAttribute('aria-label');
       if (v) labels.add(v);
     }
   } catch (_) {}
   try {
     const flt = await page.locator('flt-semantics').all();
-    for (const n of flt.slice(0, 40)) {
+    for (const n of flt.slice(0, 80)) {
       const v = await n.getAttribute('aria-label');
       if (v) labels.add(v);
     }
   } catch (_) {}
-  return [...labels].slice(0, 120);
+  return [...labels].slice(0, 160);
+}
+
+export async function hasQaLabel(page, label) {
+  const labels = await collectVisibleLabels(page);
+  return labels.includes(label);
 }
 
 export async function ensureFlutterAccessibility(page) {
@@ -145,28 +150,38 @@ export async function waitForQaBootstrap(page, { timeout = 180_000 } = {}) {
   );
 }
 
+async function typeIntoTextbox(page, locator, text) {
+  await locator.click({ timeout: 30_000 });
+  await page.waitForTimeout(150);
+  await page.keyboard.press('Control+A');
+  await page.keyboard.press('Backspace');
+  await page.keyboard.type(text, { delay: 20 });
+  await page.waitForTimeout(300);
+}
+
 export async function fillLoginFields(page, email, password, { skipBootstrap = false } = {}) {
   if (!skipBootstrap) await waitForQaBootstrap(page);
   await ensureFlutterAccessibility(page);
 
-  const textInput = page.locator('input[type="text"]').first();
-  const passInput = page.locator('input[type="password"]').first();
-  await textInput.waitFor({ state: 'attached', timeout: 60_000 });
-
-  await textInput.click();
-  await page.keyboard.press('Control+A');
-  await page.keyboard.press('Backspace');
-  await page.keyboard.insertText(email);
-  await page.waitForTimeout(500);
+  const emailBox = page.getByRole('textbox', { name: /E-mail ou telefone/i });
+  if (await emailBox.count()) {
+    await typeIntoTextbox(page, emailBox.first(), email);
+  } else {
+    const textInput = page.locator('input[type="text"]').first();
+    await textInput.waitFor({ state: 'attached', timeout: 60_000 });
+    await typeIntoTextbox(page, textInput, email);
+  }
 
   const passBox = page.getByRole('textbox', { name: /^Senha$/i });
-  await passBox.first().click({ timeout: 30_000 });
-  await page.waitForTimeout(200);
-  await page.keyboard.press('Control+A');
-  await page.keyboard.press('Backspace');
-  await page.keyboard.type(password, { delay: 25 });
-  await page.waitForTimeout(500);
+  if (await passBox.count()) {
+    await typeIntoTextbox(page, passBox.first(), password);
+  } else {
+    const passInput = page.locator('input[type="password"]').first();
+    await passInput.waitFor({ state: 'attached', timeout: 30_000 });
+    await typeIntoTextbox(page, passInput, password);
+  }
 
+  const passInput = page.locator('input[type="password"]').first();
   const passVal = await passInput.inputValue().catch(() => '');
   if (!passVal) {
     await passInput.click();
@@ -175,35 +190,135 @@ export async function fillLoginFields(page, email, password, { skipBootstrap = f
   }
 }
 
+/**
+ * Submit real via semântica Flutter — ordem R8.4.41.
+ * @returns {Promise<{ strategy: string, dispatched: boolean }>}
+ */
 export async function submitLogin(page) {
-  const triggered = await page.evaluate(() => {
-    if (typeof globalThis.__mpQaE2eLogin === 'function') {
-      globalThis.__mpQaE2eLogin();
-      return true;
-    }
-    return false;
-  }).catch(() => false);
+  const strategies = [
+    {
+      name: 'semantics-identifier-click',
+      run: async () => {
+        const el = page.locator('[flt-semantics-identifier="login-submit"]');
+        if (!(await el.count())) return false;
+        await el.first().click({ timeout: 60_000 });
+        return true;
+      },
+    },
+    {
+      name: 'role-button-click',
+      run: async () => {
+        const btn = page.getByRole('button', { name: /^login-submit$/i });
+        if (!(await btn.count())) {
+          const fallback = page.getByRole('button', { name: /entrar/i });
+          if (!(await fallback.count())) return false;
+          await fallback.first().click({ timeout: 60_000 });
+          return true;
+        }
+        await btn.first().click({ timeout: 60_000 });
+        return true;
+      },
+    },
+    {
+      name: 'button-focus-enter',
+      run: async () => {
+        const btn =
+          (await page.getByRole('button', { name: /^login-submit$/i }).count())
+            ? page.getByRole('button', { name: /^login-submit$/i })
+            : page.getByRole('button', { name: /entrar/i });
+        if (!(await btn.count())) return false;
+        await btn.first().focus();
+        await page.keyboard.press('Enter');
+        return true;
+      },
+    },
+    {
+      name: 'button-focus-space',
+      run: async () => {
+        const btn =
+          (await page.getByRole('button', { name: /^login-submit$/i }).count())
+            ? page.getByRole('button', { name: /^login-submit$/i })
+            : page.getByRole('button', { name: /entrar/i });
+        if (!(await btn.count())) return false;
+        await btn.first().focus();
+        await page.keyboard.press('Space');
+        return true;
+      },
+    },
+    {
+      name: 'login-submit-label-click',
+      run: async () => {
+        const el = page.getByLabel('login-submit', { exact: true });
+        if (!(await el.count())) return false;
+        await el.first().click({ timeout: 30_000 });
+        return true;
+      },
+    },
+    {
+      name: 'password-enter',
+      run: async () => {
+        const pass = page.getByRole('textbox', { name: /^Senha$/i });
+        if (!(await pass.count())) return false;
+        await pass.first().press('Enter');
+        return true;
+      },
+    },
+  ];
 
-  if (triggered) {
-    await page.waitForTimeout(1500);
-    return;
+  for (const { name, run } of strategies) {
+    const ran = await run().catch(() => false);
+    if (!ran) continue;
+    await page.waitForTimeout(1200);
+    const dispatched = await hasQaLabel(page, 'qa-login-submit-dispatched');
+    if (dispatched) return { strategy: name, dispatched: true };
   }
 
-  const passEl = page.getByRole('textbox', { name: /^Senha$/i });
-  if (await passEl.count()) {
-    await passEl.first().press('Enter');
-    await page.waitForTimeout(1500);
-    if (!page.url().includes('/login')) return;
-  }
-  const btn = page.getByRole('button', { name: /^Entrar$/i });
-  const n = await btn.count();
-  if (n > 0) {
-    const box = await btn.last().boundingBox();
-    if (box) await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-    else await btn.last().click({ timeout: 60_000, force: true });
-  }
+  const dispatched = await hasQaLabel(page, 'qa-login-submit-dispatched');
+  return { strategy: 'none', dispatched };
 }
 
 export function resetAccessibilityState() {
   // noop — re-click é idempotente por run
+}
+
+export function attachAuthEmulatorRequestCollector(page) {
+  const requests = [];
+  page.on('request', (req) => {
+    try {
+      const u = new URL(req.url());
+      if (
+        (u.hostname === '127.0.0.1' || u.hostname === 'localhost') &&
+        u.port === '9199' &&
+        u.pathname.includes('signInWithPassword')
+      ) {
+        requests.push({
+          method: req.method(),
+          host: u.hostname,
+          port: u.port,
+          path: u.pathname,
+        });
+      }
+    } catch (_) {}
+  });
+  page.on('response', async (res) => {
+    try {
+      const u = new URL(res.url());
+      if (
+        (u.hostname === '127.0.0.1' || u.hostname === 'localhost') &&
+        u.port === '9199' &&
+        u.pathname.includes('signInWithPassword')
+      ) {
+        const body = await res.text().catch(() => '');
+        requests.push({
+          status: res.status(),
+          host: u.hostname,
+          port: u.port,
+          path: u.pathname,
+          tokenPresent: body.includes('idToken'),
+        });
+      }
+    } catch (_) {}
+  });
+  page._qaAuthEmulatorRequests = requests;
+  return requests;
 }
