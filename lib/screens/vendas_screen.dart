@@ -34,6 +34,7 @@ import '../services/sync_queue_service.dart';
 import '../services/financeiro_firestore_service.dart';
 import '../utils/responsive.dart';
 import '../widgets/app_help_icon_button.dart';
+import '../widgets/mp_qa_semantics.dart';
 import '../widgets/empty_state_cta.dart';
 import '../widgets/vendas_resumo_sheet.dart';
 import 'nova_venda_modal.dart';
@@ -936,11 +937,15 @@ class _VendasScreenState extends State<VendasScreen>
             child: const Icon(Icons.auto_awesome, color: Colors.black87),
           ),
           const SizedBox(height: 12),
-          FloatingActionButton.extended(
+          mpQaSemantics(
+            'nav-new-sale',
+            FloatingActionButton.extended(
             onPressed: _abrirNovaVenda,
             backgroundColor: _successColor,
             icon: const Icon(Icons.add, color: Colors.white),
             label: const Text('Nova Venda', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+          ),
+            button: true,
           ),
         ],
       ),

@@ -26,6 +26,7 @@ import '../services/session_sanity.dart';
 import '../services/produtos_firestore_service.dart';
 import '../services/clientes_firestore_service.dart';
 import '../services/fornecedores_firestore_service.dart';
+import '../widgets/mp_qa_semantics.dart';
 import '../services/vendas_firestore_service.dart';
 import '../services/importar_vendas_firestore_service.dart';
 import '../services/reconciliacao_vendas_clientes_service.dart';
@@ -1452,7 +1453,9 @@ class _HomeScreenState extends State<HomeScreen>
     final bgColor = iconBgColor ?? _primaryColor.withOpacity(0.1);
     final trailingColor = theme.colorScheme.onSurface.withOpacity(0.5);
 
-    return ListTile(
+    return mpQaSemantics(
+      'nav${route.replaceAll('/', '-')}',
+      ListTile(
       dense: sidebarMode,
       visualDensity: sidebarMode ? const VisualDensity(vertical: -1) : null,
       leading: Container(
@@ -1496,6 +1499,8 @@ class _HomeScreenState extends State<HomeScreen>
           nav.pushNamed(route);
         }
       },
+    ),
+      button: true,
     );
   }
 

@@ -42,6 +42,8 @@ import 'utils/theme_notifier.dart';
 // Projeto
 import 'firebase_bootstrap_options.dart';
 import 'config/firebase_emulator_connect.dart';
+import 'config/mp_e2e_network_guard.dart';
+import 'config/mp_environment_config.dart';
 import 'firebase_options.dart';
 import 'themes/app_colors.dart';
 import 'app_routes.dart' as app_routes;
@@ -52,6 +54,7 @@ import 'web/platform_stub.dart' if (dart.library.html) 'web/platform_web.dart'
     as web_plat;
 import 'utils/web_nav_log_observer.dart';
 import 'widgets/admin_web_route_shell.dart';
+import 'widgets/mp_qa_semantics.dart';
 
 // Telas
 import 'screens/splash_screen.dart';
@@ -239,6 +242,12 @@ DateTime? _appCheckBackoffUntil;
 
 Future<void> initFirebaseAppCheck() async {
   logD('🛡️ [AppCheck] Iniciando ativação...');
+
+  if (MpEnvironmentConfig.isQa) {
+    logD('ℹ️ [AppCheck] Ambiente QA E2E: pulando App Check.');
+    _appCheckActivatedOnce = true;
+    return;
+  }
 
   if (!isAppCheckSupportedPlatform) {
     logD(
@@ -3103,6 +3112,8 @@ Future<void> main() async {
   CatalogStartupTrace.mark('CAT_START.main.enter');
   await runWithGlobalErrorHook(() async {
     WidgetsFlutterBinding.ensureInitialized();
+    mpQaEnsureSemanticsTree();
+    mpE2eLogQaGuardStatus();
     await StockRevisionClientBuildBootstrap.ensureInitialized();
     BootPerfLog.resetBoot();
     _installUltraEarlyCatalogErrorCapture();

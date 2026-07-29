@@ -17,6 +17,7 @@ import '../services/store_resolver_facade.dart';
 import '../services/store_resolver_service.dart';
 import '../services/auto_sync_service.dart';
 import '../utils/role_utils.dart';
+import '../widgets/mp_qa_semantics.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -1457,6 +1458,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
             controller: _loginController,
             focusNode: _loginFocusNode,
             label: 'E-mail ou telefone',
+            semanticsLabel: 'login-email',
             icon: Icons.person_outline,
             keyboardType: TextInputType.emailAddress,
             textInputAction: TextInputAction.next,
@@ -1475,6 +1477,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
             controller: _senhaController,
             focusNode: _senhaFocusNode,
             label: 'Senha',
+            semanticsLabel: 'login-password',
             icon: Icons.lock_outline,
             obscureText: !_mostrarSenha,
             keyboardType: TextInputType.visiblePassword,
@@ -1529,7 +1532,9 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
           const SizedBox(height: 24),
 
           // Login Button
-          SizedBox(
+          mpQaSemantics(
+            'login-submit',
+            SizedBox(
             width: double.infinity,
             height: 56,
             child: Container(
@@ -1587,6 +1592,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
               ),
             ),
           ),
+            button: true,
+          ),
         ],
       ),
     ),
@@ -1597,6 +1604,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     required TextEditingController controller,
     required FocusNode focusNode,
     required String label,
+    String? semanticsLabel,
     required IconData icon,
     bool obscureText = false,
     Widget? suffixIcon,
@@ -1607,7 +1615,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     VoidCallback? onTap,
     ValueChanged<String>? onSubmitted,
   }) {
-    return Container(
+    final field = Container(
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.05),
         borderRadius: BorderRadius.circular(12),
@@ -1639,6 +1647,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         ),
       ),
     );
+    if (semanticsLabel == null) return field;
+    return mpQaSemantics(semanticsLabel, field, textField: true);
   }
 
   Widget _buildFooterLinks(bool disableNav) {
