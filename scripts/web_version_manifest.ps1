@@ -147,7 +147,9 @@ function Test-MasterPalmProductionWebArtifact {
     @{ Name = 'firestore_emulator_localhost'; Pattern = 'useFirestoreEmulator\([^)]*127\.0\.0\.1' },
     @{ Name = 'auth_emulator_localhost'; Pattern = 'useAuthEmulator\([^)]*127\.0\.0\.1' },
     @{ Name = 'qa_project_bootstrap'; Pattern = 'projectId:\s*[`''"]masterpalm-r8433-web-e2e-local[`''"]' },
-    @{ Name = 'planos_e2e_project'; Pattern = 'masterpalm-planos-e2e-local' }
+    @{ Name = 'planos_e2e_project'; Pattern = 'masterpalm-planos-e2e-local' },
+    @{ Name = 'qa_direct_login_bridge'; Pattern = '__mpQaE2eLogin' },
+    @{ Name = 'qa_login_trigger_register'; Pattern = 'qaWebRegisterLoginTrigger' }
   )
   foreach ($b in $blockedPatterns) {
     if ($content -match $b.Pattern) {

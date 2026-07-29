@@ -42,6 +42,9 @@ import 'utils/theme_notifier.dart';
 // Projeto
 import 'firebase_bootstrap_options.dart';
 import 'config/firebase_emulator_connect.dart';
+import 'config/mp_e2e_network_guard.dart';
+import 'config/mp_environment_config.dart';
+import 'config/my_app_web_initial_route.dart';
 import 'firebase_options.dart';
 import 'themes/app_colors.dart';
 import 'app_routes.dart' as app_routes;
@@ -52,6 +55,8 @@ import 'web/platform_stub.dart' if (dart.library.html) 'web/platform_web.dart'
     as web_plat;
 import 'utils/web_nav_log_observer.dart';
 import 'widgets/admin_web_route_shell.dart';
+import 'widgets/mp_qa_semantics.dart';
+import 'widgets/qa_bootstrap_host.dart';
 
 // Telas
 import 'screens/splash_screen.dart';
@@ -239,6 +244,12 @@ DateTime? _appCheckBackoffUntil;
 
 Future<void> initFirebaseAppCheck() async {
   logD('🛡️ [AppCheck] Iniciando ativação...');
+
+  if (MpEnvironmentConfig.isQa) {
+    logD('ℹ️ [AppCheck] Ambiente QA E2E: pulando App Check.');
+    _appCheckActivatedOnce = true;
+    return;
+  }
 
   if (!isAppCheckSupportedPlatform) {
     logD(
@@ -3022,6 +3033,9 @@ Future<bool> _initFirebaseCorePerform() async {
     logD('✅ Firebase inicializado');
     return true;
   } on TimeoutException catch (e) {
+    if (MpEnvironmentConfig.isQa) {
+      throw StateError('QA_FIREBASE_INIT_TIMEOUT: $e');
+    }
     logD('! Firebase.initializeApp demorou demais (type=${e.runtimeType})');
     boot.mark('firebase.init.timeout', e);
     logD(
@@ -3055,6 +3069,9 @@ Future<bool> _initFirebaseCorePerform() async {
       rethrow;
     }
   } catch (e, st) {
+    if (MpEnvironmentConfig.isQa) {
+      throw StateError('QA_FIREBASE_INIT_FAILED: $e');
+    }
     // Tudo que não for Timeout / Firebase (ex.: null check / TypeError do JS, Auth interop)
     logD('! Firebase init genérico (type=${e.runtimeType}): $e  $st');
     boot.mark('firebase.init.unexpected', e);
@@ -3103,6 +3120,8 @@ Future<void> main() async {
   CatalogStartupTrace.mark('CAT_START.main.enter');
   await runWithGlobalErrorHook(() async {
     WidgetsFlutterBinding.ensureInitialized();
+    mpQaEnsureSemanticsTree();
+    mpE2eLogQaGuardStatus();
     await StockRevisionClientBuildBootstrap.ensureInitialized();
     BootPerfLog.resetBoot();
     _installUltraEarlyCatalogErrorCapture();
@@ -3405,6 +3424,18 @@ Future<void> main() async {
     }
 
     CatalogStartupTrace.mark('CAT_START.runApp.boot_app');
+
+    if (kIsWeb && MpEnvironmentConfig.isQa) {
+      CatalogStartupTrace.mark('CAT_START.runApp.qa_bootstrap_host');
+      runApp(
+        QaBootstrapHost(
+          runBootstrap: _bootstrapSafe,
+          mountApp: _mountMainAppAfterBootstrap,
+        ),
+      );
+      return;
+    }
+
     runApp(const _BootApp());
 
     try {
@@ -3415,177 +3446,7 @@ Future<void> main() async {
       _appStartMark('post_bootstrap.after_await_bootstrap');
       logD('🟩 [MAIN] _bootstrapSafe() concluído com sucesso');
 
-      try {
-        final lojaViaLojaService = await LojaIdService.get();
-        logD('🟪 [MAIN] Loja via LojaIdService.get() → $lojaViaLojaService');
-      } catch (e) {
-        logD(
-            '🟥 [MAIN] Erro ao obter loja via LojaIdService.get() (type=${e.runtimeType})');
-      }
-
-      if (kIsWeb) {
-        final uri = Uri.base;
-        if (uri.path == '/mp-oauth-callback') {
-          logD('🌐 [MAIN] Callback OAuth MP detectado em /mp-oauth-callback');
-          CatalogStartupTrace.mark('CAT_START.runApp.mp_oauth_callback');
-          runApp(MpOAuthCallbackScreen(uri: uri));
-          return;
-        }
-        final mpOAuth = uri.queryParameters['mp_oauth'];
-        if (mpOAuth == 'ok' || mpOAuth == 'error') {
-          logD('🌐 [MAIN] Redirect OAuth MP detectado: $mpOAuth');
-          CatalogStartupTrace.mark('CAT_START.runApp.mp_oauth_result');
-          runApp(MpOAuthResultPage(
-            success: mpOAuth == 'ok',
-            lojaId: uri.queryParameters['loja'],
-            errorMsg: uri.queryParameters['msg'],
-          ));
-          return;
-        }
-
-        logD(
-            '🌐 [MAIN] Rodando em Web. Verificando URL para catálogo público...');
-        // Em produção a path pode estar disponível só após load; usar Uri.base como fallback
-        if (Uri.base.path.contains('/loja')) {
-          _initialWebUri = Uri.base;
-          logD('🌐 [MAIN] URL para catálogo (atual): ${_initialWebUri?.path}');
-        }
-        final uriWeb = _initialWebUri ?? Uri.base;
-        _setCatalogPhase('route.detected');
-        if (_uriIsPagamentoPublicPath(uriWeb)) {
-          logD(
-              '🌐 [MAIN] Path /pagamento/* → MyApp (fluxo MP; não CatalogWebRoot)');
-          CatalogStartupTrace.mark('CAT_START.runApp.my_app.pagamento_path');
-          runApp(const MyApp());
-          registerWebPopStateLogger();
-          return;
-        }
-        final isCat = _isPublicCatalogUrl();
-        logD('🌐 [MAIN] _isPublicCatalogUrl() → $isCat');
-
-        if (isCat) {
-          final routePre = _catalogRouteDecisionForInitialWebUri();
-          if (routePre.kind == CatalogInitialRouteKind.lojaPathOrSlugInvalid ||
-              routePre.kind == CatalogInitialRouteKind.legacyQueryInvalid) {
-            runApp(InvalidPublicLojaPathApp(
-              uri: uriWeb,
-              buildId: kCatalogDiagBuildId,
-            ));
-            return;
-          }
-          _setCatalogPhase('catalog.slug.extracted');
-          final slugOuId = _lojaSlugOrIdFromUrl();
-          _setCatalogPhase('catalog.loja.load.start');
-          String lojaIdResolvido = slugOuId;
-          try {
-            lojaIdResolvido = await _resolveSlugToStoreIdIfNeeded(slugOuId);
-          } catch (e) {
-            logW(
-                '⚠️ [MAIN] Resolver slug falhou, usando slug da URL (type=${e.runtimeType})');
-          }
-          StoreResolverFacade.seedPublicCatalogResolveFromBootstrap(
-            urlSlugOrId: slugOuId,
-            resolvedCanonicalStoreId: lojaIdResolvido,
-          );
-          final vendedorRef = _vendedorRefFromUrl();
-          final indicacaoRef = _indicacaoRefFromUrl();
-          final produtoRef = _produtoRefFromUrl();
-
-          logD('🌐 [MAIN] Public Catalog slug/id resolvido');
-          CatalogStartupTrace.mark('CAT_START.runApp.catalog_web_root');
-          _setCatalogPhase('catalog.loja.load.done');
-          _setCatalogPhase('publicCatalogScreen.render');
-          runApp(CatalogWebRoot(
-            lojaId: lojaIdResolvido,
-            vendedorRef: vendedorRef,
-            indicacaoRef: indicacaoRef,
-            produtoRef: produtoRef,
-          ));
-        } else if (!isCat &&
-            AppUrls.isDefaultMasterPalmCatalogHost(uriWeb.host) &&
-            !_uriHasLojaPathPriority(uriWeb) &&
-            !_uriHasExplicitCatalogQueryOrFragment(uriWeb)) {
-          // Host do SPA (app / firebase web) na raiz: **não** bloquear em catalog_domains/Firestore
-          // (WebKit podia pendurar o await e deixar a splash "Preparando tudo…" para sempre).
-          _appStartMark('web.route',
-              detail: 'app_host_root_skip_catalog_domains',
-              finalDecision: 'my_app');
-          logD(
-            '🌐 [MAIN] Host admin canónico na raiz (sem /loja) → MyApp sem catalog_domains',
-          );
-          CatalogStartupTrace.mark('CAT_START.runApp.my_app.app_host_root');
-          runApp(const MyApp());
-          registerWebPopStateLogger();
-          return;
-        } else if (!_uriHasLojaPathPriority(uriWeb) &&
-            !_uriHasExplicitCatalogQueryOrFragment(uriWeb) &&
-            !isAdminWebAppPath(uriWeb) &&
-            !AppUrls.isFirebaseAdminAppPreviewHost(uriWeb.host) &&
-            _safeFirebaseAppsIsNotEmpty()) {
-          final hostNorm = normalizeCatalogDomainHost(uriWeb.host);
-          _setCatalogPhase('catalog.domain.resolve.start');
-          final fromMappedHost = await resolveLojaIdForPublicCatalogHost(
-            uriWeb.host,
-            useBrowserCache: true,
-          ).timeout(kCatalogDomainResolveBudget, onTimeout: () => null);
-          if (fromMappedHost != null && fromMappedHost.isNotEmpty) {
-            _setCatalogPhase('catalog.domain.resolve.done');
-            String lojaIdResolvido = fromMappedHost;
-            try {
-              lojaIdResolvido =
-                  await _fastResolveStoreIdFromDomainIndex(fromMappedHost);
-            } catch (e) {
-              logW(
-                  '⚠️ [MAIN] Resolver lojaId (domínio mapeado) falhou (type=${e.runtimeType})');
-            }
-            StoreResolverFacade.seedPublicCatalogResolveFromBootstrap(
-              urlSlugOrId: fromMappedHost,
-              resolvedCanonicalStoreId: lojaIdResolvido,
-            );
-            final vendedorRef = _vendedorRefFromUrl();
-            final indicacaoRef = _indicacaoRefFromUrl();
-            final produtoRef = _produtoRefFromUrl();
-            logD(
-                '🌐 [MAIN] Public Catalog via catalog_domains host=$hostNorm → $lojaIdResolvido');
-            CatalogStartupTrace.mark(
-                'CAT_START.runApp.catalog_web_root.domain_map');
-            _setCatalogPhase('catalog.loja.load.done');
-            _setCatalogPhase('publicCatalogScreen.render');
-            runApp(CatalogWebRoot(
-              lojaId: lojaIdResolvido,
-              vendedorRef: vendedorRef,
-              indicacaoRef: indicacaoRef,
-              produtoRef: produtoRef,
-            ));
-          } else if (_isPublicMarketingSite()) {
-            logD(
-                '🌐 [MAIN] Host site público → PublicMarketingWebApp (sem AppWeb admin na raiz)');
-            CatalogStartupTrace.mark('CAT_START.runApp.marketing_web_app');
-            runApp(const PublicMarketingWebApp());
-          } else {
-            logD('🌐 [MAIN] Web padrão → iniciando MyApp()');
-            CatalogStartupTrace.mark('CAT_START.runApp.my_app.web_default');
-            _appStartMark('runapp.my_app', detail: 'web_default_inner');
-            runApp(const MyApp());
-            registerWebPopStateLogger();
-          }
-        } else if (_isPublicMarketingSite()) {
-          logD(
-              '🌐 [MAIN] Host site público → PublicMarketingWebApp (sem AppWeb admin na raiz)');
-          CatalogStartupTrace.mark('CAT_START.runApp.marketing_web_app');
-          runApp(const PublicMarketingWebApp());
-        } else {
-          logD('🌐 [MAIN] Web padrão → iniciando MyApp()');
-          CatalogStartupTrace.mark('CAT_START.runApp.my_app.web_default');
-          _appStartMark('runapp.my_app', detail: 'web_default_outer');
-          runApp(const MyApp());
-          registerWebPopStateLogger();
-        }
-      } else {
-        logD('📱 [MAIN] Rodando em Mobile/Desktop → iniciando MyApp()');
-        CatalogStartupTrace.mark('CAT_START.runApp.my_app.native');
-        runApp(const MyApp());
-      }
+      await _mountMainAppAfterBootstrap();
     } catch (e, st) {
       logE('❌ Bootstrap ERROR (type=${e.runtimeType})', error: e, st: st);
       if (_isAppStartTraceQuery()) {
@@ -3737,6 +3598,10 @@ Future<void> _bootstrapSafe() async {
   BootPerfLog.markBoot('firebase_init_end', detail: 'ok=$firebaseOk');
   _appStartMark('firebase.done', detail: 'ok=$firebaseOk');
   logD('[BOOT-AUTH] firebaseOk=$firebaseOk');
+
+  if (MpEnvironmentConfig.isQa && !firebaseOk) {
+    throw StateError('QA_BOOTSTRAP_FAILS_CLOSED: Firebase não inicializado');
+  }
 
   final webCatalogMinimalBoot = kIsWeb &&
       firebaseOk &&
@@ -4158,6 +4023,185 @@ final LastRouteObserver _lastRouteObserver = LastRouteObserver();
 /// Web: correlaciona push/pop do Navigator com o histórico do browser.
 final WebNavLogObserver _webNavLogObserver = WebNavLogObserver();
 
+/// Rota inicial do [MyApp] no Web: respeita path admin (`/login`, `/home`, …).
+String _myAppWebInitialRoute() => myAppWebInitialRoute();
+
+/// Monta o app administrativo após bootstrap (Web + nativo).
+void _runAppAdminWidget(Widget app) {
+  final wrapped =
+      MpEnvironmentConfig.isQa ? qaBootstrapReadyWrapper(app) : app;
+  runApp(wrapped);
+  if (kIsWeb) registerWebPopStateLogger();
+}
+
+/// Pós-bootstrap: OAuth, catálogo ou MyApp (extraído para QaBootstrapHost).
+Future<void> _mountMainAppAfterBootstrap() async {
+  try {
+    final lojaViaLojaService = await LojaIdService.get();
+    logD('🟪 [MAIN] Loja via LojaIdService.get() → $lojaViaLojaService');
+  } catch (e) {
+    logD(
+        '🟥 [MAIN] Erro ao obter loja via LojaIdService.get() (type=${e.runtimeType})');
+  }
+
+  if (kIsWeb) {
+    final uri = Uri.base;
+    if (uri.path == '/mp-oauth-callback') {
+      logD('🌐 [MAIN] Callback OAuth MP detectado em /mp-oauth-callback');
+      CatalogStartupTrace.mark('CAT_START.runApp.mp_oauth_callback');
+      _runAppAdminWidget(MpOAuthCallbackScreen(uri: uri));
+      return;
+    }
+    final mpOAuth = uri.queryParameters['mp_oauth'];
+    if (mpOAuth == 'ok' || mpOAuth == 'error') {
+      logD('🌐 [MAIN] Redirect OAuth MP detectado: $mpOAuth');
+      CatalogStartupTrace.mark('CAT_START.runApp.mp_oauth_result');
+      _runAppAdminWidget(MpOAuthResultPage(
+        success: mpOAuth == 'ok',
+        lojaId: uri.queryParameters['loja'],
+        errorMsg: uri.queryParameters['msg'],
+      ));
+      return;
+    }
+
+    logD(
+        '🌐 [MAIN] Rodando em Web. Verificando URL para catálogo público...');
+    if (Uri.base.path.contains('/loja')) {
+      _initialWebUri = Uri.base;
+      logD('🌐 [MAIN] URL para catálogo (atual): ${_initialWebUri?.path}');
+    }
+    final uriWeb = _initialWebUri ?? Uri.base;
+    _setCatalogPhase('route.detected');
+    if (_uriIsPagamentoPublicPath(uriWeb)) {
+      logD(
+          '🌐 [MAIN] Path /pagamento/* → MyApp (fluxo MP; não CatalogWebRoot)');
+      CatalogStartupTrace.mark('CAT_START.runApp.my_app.pagamento_path');
+      _runAppAdminWidget(const MyApp());
+      return;
+    }
+    final isCat = _isPublicCatalogUrl();
+    logD('🌐 [MAIN] _isPublicCatalogUrl() → $isCat');
+
+    if (isCat) {
+      final routePre = _catalogRouteDecisionForInitialWebUri();
+      if (routePre.kind == CatalogInitialRouteKind.lojaPathOrSlugInvalid ||
+          routePre.kind == CatalogInitialRouteKind.legacyQueryInvalid) {
+        runApp(InvalidPublicLojaPathApp(
+          uri: uriWeb,
+          buildId: kCatalogDiagBuildId,
+        ));
+        return;
+      }
+      _setCatalogPhase('catalog.slug.extracted');
+      final slugOuId = _lojaSlugOrIdFromUrl();
+      _setCatalogPhase('catalog.loja.load.start');
+      String lojaIdResolvido = slugOuId;
+      try {
+        lojaIdResolvido = await _resolveSlugToStoreIdIfNeeded(slugOuId);
+      } catch (e) {
+        logW(
+            '⚠️ [MAIN] Resolver slug falhou, usando slug da URL (type=${e.runtimeType})');
+      }
+      StoreResolverFacade.seedPublicCatalogResolveFromBootstrap(
+        urlSlugOrId: slugOuId,
+        resolvedCanonicalStoreId: lojaIdResolvido,
+      );
+      final vendedorRef = _vendedorRefFromUrl();
+      final indicacaoRef = _indicacaoRefFromUrl();
+      final produtoRef = _produtoRefFromUrl();
+
+      logD('🌐 [MAIN] Public Catalog slug/id resolvido');
+      CatalogStartupTrace.mark('CAT_START.runApp.catalog_web_root');
+      _setCatalogPhase('catalog.loja.load.done');
+      _setCatalogPhase('publicCatalogScreen.render');
+      runApp(CatalogWebRoot(
+        lojaId: lojaIdResolvido,
+        vendedorRef: vendedorRef,
+        indicacaoRef: indicacaoRef,
+        produtoRef: produtoRef,
+      ));
+    } else if (!isCat &&
+        AppUrls.isDefaultMasterPalmCatalogHost(uriWeb.host) &&
+        !_uriHasLojaPathPriority(uriWeb) &&
+        !_uriHasExplicitCatalogQueryOrFragment(uriWeb)) {
+      _appStartMark('web.route',
+          detail: 'app_host_root_skip_catalog_domains',
+          finalDecision: 'my_app');
+      logD(
+        '🌐 [MAIN] Host admin canónico na raiz (sem /loja) → MyApp sem catalog_domains',
+      );
+      CatalogStartupTrace.mark('CAT_START.runApp.my_app.app_host_root');
+      _runAppAdminWidget(const MyApp());
+      return;
+    } else if (!_uriHasLojaPathPriority(uriWeb) &&
+        !_uriHasExplicitCatalogQueryOrFragment(uriWeb) &&
+        !isAdminWebAppPath(uriWeb) &&
+        !AppUrls.isFirebaseAdminAppPreviewHost(uriWeb.host) &&
+        _safeFirebaseAppsIsNotEmpty()) {
+      final hostNorm = normalizeCatalogDomainHost(uriWeb.host);
+      _setCatalogPhase('catalog.domain.resolve.start');
+      final fromMappedHost = await resolveLojaIdForPublicCatalogHost(
+        uriWeb.host,
+        useBrowserCache: true,
+      ).timeout(kCatalogDomainResolveBudget, onTimeout: () => null);
+      if (fromMappedHost != null && fromMappedHost.isNotEmpty) {
+        _setCatalogPhase('catalog.domain.resolve.done');
+        String lojaIdResolvido = fromMappedHost;
+        try {
+          lojaIdResolvido =
+              await _fastResolveStoreIdFromDomainIndex(fromMappedHost);
+        } catch (e) {
+          logW(
+              '⚠️ [MAIN] Resolver lojaId (domínio mapeado) falhou (type=${e.runtimeType})');
+        }
+        StoreResolverFacade.seedPublicCatalogResolveFromBootstrap(
+          urlSlugOrId: fromMappedHost,
+          resolvedCanonicalStoreId: lojaIdResolvido,
+        );
+        final vendedorRef = _vendedorRefFromUrl();
+        final indicacaoRef = _indicacaoRefFromUrl();
+        final produtoRef = _produtoRefFromUrl();
+        logD(
+            '🌐 [MAIN] Public Catalog via catalog_domains host=$hostNorm → $lojaIdResolvido');
+        CatalogStartupTrace.mark(
+            'CAT_START.runApp.catalog_web_root.domain_map');
+        _setCatalogPhase('catalog.loja.load.done');
+        _setCatalogPhase('publicCatalogScreen.render');
+        runApp(CatalogWebRoot(
+          lojaId: lojaIdResolvido,
+          vendedorRef: vendedorRef,
+          indicacaoRef: indicacaoRef,
+          produtoRef: produtoRef,
+        ));
+      } else if (_isPublicMarketingSite()) {
+        logD(
+            '🌐 [MAIN] Host site público → PublicMarketingWebApp (sem AppWeb admin na raiz)');
+        CatalogStartupTrace.mark('CAT_START.runApp.marketing_web_app');
+        runApp(const PublicMarketingWebApp());
+      } else {
+        logD('🌐 [MAIN] Web padrão → iniciando MyApp()');
+        CatalogStartupTrace.mark('CAT_START.runApp.my_app.web_default');
+        _appStartMark('runapp.my_app', detail: 'web_default_inner');
+        _runAppAdminWidget(const MyApp());
+      }
+    } else if (_isPublicMarketingSite()) {
+      logD(
+          '🌐 [MAIN] Host site público → PublicMarketingWebApp (sem AppWeb admin na raiz)');
+      CatalogStartupTrace.mark('CAT_START.runApp.marketing_web_app');
+      runApp(const PublicMarketingWebApp());
+    } else {
+      logD('🌐 [MAIN] Web padrão → iniciando MyApp()');
+      CatalogStartupTrace.mark('CAT_START.runApp.my_app.web_default');
+      _appStartMark('runapp.my_app', detail: 'web_default_outer');
+      _runAppAdminWidget(const MyApp());
+    }
+  } else {
+    logD('📱 [MAIN] Rodando em Mobile/Desktop → iniciando MyApp()');
+    CatalogStartupTrace.mark('CAT_START.runApp.my_app.native');
+    _runAppAdminWidget(const MyApp());
+  }
+}
+
 // ===========================================================================
 // 📱 APP PRINCIPAL (com Provider no topo)
 // ===========================================================================
@@ -4275,7 +4319,40 @@ class MyApp extends StatelessWidget {
               GlobalCupertinoLocalizations.delegate,
             ],
             supportedLocales: const [Locale('pt', 'BR')],
-            initialRoute: '/',
+            initialRoute: _myAppWebInitialRoute(),
+            onGenerateInitialRoutes: kIsWeb
+                ? (String initialRoute) {
+                    final route =
+                        initialRoute.trim().isEmpty ? '/' : initialRoute;
+                    switch (route) {
+                      case '/login':
+                        return [
+                          MaterialPageRoute<void>(
+                            settings: const RouteSettings(name: '/login'),
+                            builder: (_) => const LoginScreen(),
+                          ),
+                        ];
+                      case '/router':
+                        return [
+                          MaterialPageRoute<void>(
+                            settings: const RouteSettings(name: '/router'),
+                            builder: (_) => const AppStartRouter(),
+                          ),
+                        ];
+                      default:
+                        final generated = app_routes.onGenerateRoute(
+                          RouteSettings(name: route),
+                        );
+                        if (generated != null) return [generated];
+                        return [
+                          MaterialPageRoute<void>(
+                            settings: const RouteSettings(name: '/'),
+                            builder: (_) => const AppStartRouter(),
+                          ),
+                        ];
+                    }
+                  }
+                : null,
             builder: (context, child) {
               try {
                 DeepLinkHandler.instance.init();

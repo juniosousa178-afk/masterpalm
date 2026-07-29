@@ -32,6 +32,7 @@ import '../utils/moeda_input_formatter.dart';
 import '../utils/text_utils.dart';
 import 'barcode_scanner_screen.dart';
 import '../widgets/moeda_text_field.dart';
+import '../widgets/mp_qa_semantics.dart';
 import 'nova_venda/variacao_selection_sheet.dart';
 import 'nova_venda/combo_variacao_selection_sheet.dart';
 import 'nova_venda/finalizar_confirmacao_dialog.dart';
@@ -3372,7 +3373,9 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                         const SizedBox(width: 12),
                         Expanded(
                           flex: 2,
-                          child: ElevatedButton.icon(
+                          child: mpQaSemantics(
+                            'sale-complete',
+                            ElevatedButton.icon(
                             onPressed: _finalizacaoReentradaGuard.emAndamento
                                 ? null
                                 : _finalizarVenda,
@@ -3389,6 +3392,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                 borderRadius: BorderRadius.circular(12),
                               ),
                             ),
+                          ),
+                            button: true,
                           ),
                         ),
                       ],

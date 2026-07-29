@@ -29,6 +29,7 @@ node_modules/
 *.tmp
 *.cache
 .tmp_chrome_p1_trace/
+tool/e2e_web/chromedriver/
 
 # Assinatura release (NUNCA commitar)
 **/key.properties

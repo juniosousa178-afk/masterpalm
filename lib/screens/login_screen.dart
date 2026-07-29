@@ -17,6 +17,9 @@ import '../services/store_resolver_facade.dart';
 import '../services/store_resolver_service.dart';
 import '../services/auto_sync_service.dart';
 import '../utils/role_utils.dart';
+import '../config/mp_environment_config.dart';
+import '../widgets/mp_qa_semantics.dart';
+import '../widgets/mp_qa_login_trace.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -61,6 +64,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
   late AnimationController _shakeController;
+  bool _formReady = false;
 
   @override
   void initState() {
@@ -83,6 +87,9 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     );
 
     _animController.forward();
+    if (MpEnvironmentConfig.isQa && kIsWeb) {
+      mpQaEnsureSemanticsTree();
+    }
     // Google Sign-In web: inicializar antes do primeiro build (plugin exige init antes de renderButton).
     if (kIsWeb) _initGoogleSignInWeb();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -109,7 +116,21 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       if (!mounted) return;
       await _carregarPreferenciaManterLogado();
       if (mounted) _verificarLoginSalvo();
+      if (mounted) {
+        setState(() => _formReady = true);
+        mpQaLoginMark('qa-login-form-ready');
+      }
     });
+  }
+
+  /// Ponto único de submit (botão, Enter, semântica) — converge para [_login].
+  Future<void> _submitLogin() async {
+    if (_carregando) return;
+    mpQaLoginMark('qa-login-submit-dispatched');
+    if (mounted) setState(() {});
+    FocusScope.of(context).unfocus();
+    HapticFeedback.selectionClick();
+    await _login();
   }
 
   void _initGoogleSignInWeb() {
@@ -459,6 +480,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       return;
     }
 
+    mpQaLoginMark('qa-login-validation-passed');
+
     try {
     final usuariosBox = await _openBoxSafe<Usuario>('usuarios');
     final sessao = await _openBoxSafe<dynamic>('sessao');
@@ -473,6 +496,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         for (int attempt = 1; attempt <= 2; attempt++) {
           if (kDebugMode) debugPrint('[LOGIN-FIREBASE] signInWithEmailAndPassword tentativa $attempt');
           try {
+            mpQaLoginMark('qa-auth-request-started');
             cred = await FirebaseAuth.instance
                 .signInWithEmailAndPassword(email: login, password: senhaDigitada)
                 .timeout(const Duration(seconds: 20), onTimeout: () {
@@ -518,6 +542,9 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
 
         final uid = cred?.user?.uid ?? '';
         if (uid.isEmpty) throw Exception("UID vazio");
+
+        mpQaLoginMark('qa-auth-request-succeeded');
+        mpQaLoginMark('qa-app-authenticated');
 
         if (kDebugMode) {
           final authEmail =
@@ -589,6 +616,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         }
       }
     } on FirebaseAuthException catch (e) {
+      mpQaLoginMarkError(mpQaSanitizeAuthErrorCode(e.code));
       if (kDebugMode) {
         debugPrint('[LOGIN-FIREBASE] FirebaseAuthException: code=${e.code} message=${e.message}');
       }
@@ -1288,7 +1316,9 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
-        body: Container(
+        body: Stack(
+          children: [
+            Container(
           decoration: const BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topLeft,
@@ -1328,6 +1358,12 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
               ),
             ),
           ),
+        ),
+            MpQaLoginTraceMarkers(
+              formReady: _formReady,
+              loading: _carregando,
+            ),
+          ],
         ),
       ),
     );
@@ -1454,9 +1490,11 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
 
           // Email/Phone Field
           _buildModernTextField(
+            key: const ValueKey('login-email'),
             controller: _loginController,
             focusNode: _loginFocusNode,
             label: 'E-mail ou telefone',
+            semanticsLabel: 'login-email',
             icon: Icons.person_outline,
             keyboardType: TextInputType.emailAddress,
             textInputAction: TextInputAction.next,
@@ -1472,15 +1510,18 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
 
           // Password Field
           _buildModernTextField(
+            key: const ValueKey('login-password'),
             controller: _senhaController,
             focusNode: _senhaFocusNode,
             label: 'Senha',
+            semanticsLabel: 'login-password',
             icon: Icons.lock_outline,
             obscureText: !_mostrarSenha,
             keyboardType: TextInputType.visiblePassword,
             textInputAction: TextInputAction.done,
             autofillHints: const [AutofillHints.password],
-            onSubmitted: (_) => _login(),
+            onSubmitted: (_) => _submitLogin(),
+            onEditingComplete: _submitLogin,
             suffixIcon: IconButton(
               icon: Icon(
                 _mostrarSenha ? Icons.visibility : Icons.visibility_off,
@@ -1528,64 +1569,79 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
           ),
           const SizedBox(height: 24),
 
-          // Login Button
-          SizedBox(
-            width: double.infinity,
-            height: 56,
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [_primaryColor, _primaryColor.withOpacity(0.8)],
-                ),
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: _primaryColor.withOpacity(0.4),
-                    blurRadius: 12,
-                    offset: const Offset(0, 6),
-                  ),
-                ],
+          // Login Button — semântica única + Actions para ativação acessível/Playwright
+          Actions(
+            actions: <Type, Action<Intent>>{
+              ActivateIntent: CallbackAction<ActivateIntent>(
+                onInvoke: (ActivateIntent intent) {
+                  if (_carregando || disableNav) return null;
+                  _submitLogin();
+                  return null;
+                },
               ),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: _carregando
-                      ? null
-                      : () {
-                          FocusScope.of(context).unfocus();
-                          HapticFeedback.selectionClick();
-                          _login();
-                        },
-                  borderRadius: BorderRadius.circular(16),
-                  child: Center(
-                    child: _carregando
-                        ? const SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                              strokeWidth: 2.5,
-                            ),
-                          )
-                        : const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.login, color: Colors.white),
-                              SizedBox(width: 8),
-                              Text(
-                                'Entrar',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
+            },
+            child: Semantics(
+            identifier: 'login-submit',
+            label: 'login-submit',
+            button: true,
+            enabled: !(_carregando || disableNav),
+            onTap: (_carregando || disableNav) ? null : _submitLogin,
+            child: ExcludeSemantics(
+              child: SizedBox(
+                key: const ValueKey('login-submit'),
+                width: double.infinity,
+                height: 56,
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: (_carregando || disableNav) ? null : _submitLogin,
+                    borderRadius: BorderRadius.circular(16),
+                    child: Ink(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [_primaryColor, _primaryColor.withOpacity(0.8)],
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: _primaryColor.withOpacity(0.4),
+                            blurRadius: 12,
+                            offset: const Offset(0, 6),
                           ),
+                        ],
+                      ),
+                      child: Center(
+                        child: _carregando
+                            ? const SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2.5,
+                                ),
+                              )
+                            : const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.login, color: Colors.white),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Entrar',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                      ),
+                    ),
                   ),
                 ),
               ),
             ),
+          ),
           ),
         ],
       ),
@@ -1594,9 +1650,11 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   }
 
   Widget _buildModernTextField({
+    Key? key,
     required TextEditingController controller,
     required FocusNode focusNode,
     required String label,
+    String? semanticsLabel,
     required IconData icon,
     bool obscureText = false,
     Widget? suffixIcon,
@@ -1606,8 +1664,9 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     bool autofocus = false,
     VoidCallback? onTap,
     ValueChanged<String>? onSubmitted,
+    VoidCallback? onEditingComplete,
   }) {
-    return Container(
+    final field = Container(
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.05),
         borderRadius: BorderRadius.circular(12),
@@ -1616,6 +1675,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         ),
       ),
       child: TextField(
+        key: key,
         controller: controller,
         focusNode: focusNode,
         obscureText: obscureText,
@@ -1625,6 +1685,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         autofocus: autofocus,
         onTap: onTap,
         onSubmitted: onSubmitted,
+        onEditingComplete: onEditingComplete,
         style: const TextStyle(color: Colors.white, fontSize: 15),
         decoration: InputDecoration(
           labelText: label,
@@ -1639,6 +1700,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         ),
       ),
     );
+    if (semanticsLabel == null) return field;
+    return mpQaSemantics(semanticsLabel, field, textField: true);
   }
 
   Widget _buildFooterLinks(bool disableNav) {

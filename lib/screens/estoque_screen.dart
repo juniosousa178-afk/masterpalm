@@ -63,6 +63,7 @@ import '../services/ai_loja_service.dart';
 import '../services/ia_uso_limite_service.dart';
 import '../services/produto_exclusao_remota_service.dart';
 import '../widgets/app_help_icon_button.dart';
+import '../widgets/mp_qa_semantics.dart';
 import '../services/produto_sync_recovery_access.dart';
 import 'produto_sync_recovery_screen.dart';
 import 'catalogo_sync_diagnostics_screen.dart';
@@ -5435,12 +5436,16 @@ String _formatGradeTexto(Produto p) {
                                 : Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      _buildInfoChip(
+                                      mpQaSemantics(
+                                        'product-stock-${p.idFirebase.isNotEmpty ? p.idFirebase : p.nome}',
+                                        _buildInfoChip(
                                         Icons.inventory,
                                         'Qtd: ${p.quantidade}${p.quantidade > 0 && p.quantidade < 3 ? ' ⚠️' : ''}',
                                         p.quantidade == 0
                                             ? _errorColor
                                             : (p.quantidade < 3 ? _warningColor : _primaryColor),
+                                      ),
+                                        value: '${p.quantidade}',
                                       ),
                                       const SizedBox(width: 4),
                                       Material(

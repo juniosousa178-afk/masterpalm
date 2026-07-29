@@ -26,6 +26,8 @@ import '../services/session_sanity.dart';
 import '../services/produtos_firestore_service.dart';
 import '../services/clientes_firestore_service.dart';
 import '../services/fornecedores_firestore_service.dart';
+import '../widgets/mp_qa_semantics.dart';
+import '../widgets/mp_qa_readiness.dart';
 import '../services/vendas_firestore_service.dart';
 import '../services/importar_vendas_firestore_service.dart';
 import '../services/reconciliacao_vendas_clientes_service.dart';
@@ -151,6 +153,7 @@ class _HomeScreenState extends State<HomeScreen>
   /// URL pública do catálogo (domínio próprio ou hosted).
   String? _catalogOnlineUrl;
   bool _carregando = true;
+  bool _navReady = false;
   bool _vendedorSemPermissao =
       false; // ✅ Vendedor sem nenhuma permissão liberada
 
@@ -1452,7 +1455,9 @@ class _HomeScreenState extends State<HomeScreen>
     final bgColor = iconBgColor ?? _primaryColor.withOpacity(0.1);
     final trailingColor = theme.colorScheme.onSurface.withOpacity(0.5);
 
-    return ListTile(
+    return mpQaSemantics(
+      'nav${route.replaceAll('/', '-')}',
+      ListTile(
       dense: sidebarMode,
       visualDensity: sidebarMode ? const VisualDensity(vertical: -1) : null,
       leading: Container(
@@ -1496,6 +1501,8 @@ class _HomeScreenState extends State<HomeScreen>
           nav.pushNamed(route);
         }
       },
+    ),
+      button: true,
     );
   }
 
@@ -2786,6 +2793,29 @@ class _HomeScreenState extends State<HomeScreen>
     return onData(snap.data ?? <T>[]);
   }
 
+  Widget _wrapWithQaReadiness(Widget child) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        child,
+        MpQaReadinessMarkers(
+          authenticated: _usuario.isNotEmpty,
+          companyLoaded: _lojaIdInterno.isNotEmpty,
+          navigationReady: _navReady,
+          loading: _carregando,
+        ),
+      ],
+    );
+  }
+
+  void _markNavReadyIfNeeded(List<Widget> items) {
+    if (items.isNotEmpty && !_navReady && mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_navReady) setState(() => _navReady = true);
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // 🔥 CORREÇÃO: Mostrar landing page apenas se estiver na web E não tiver usuário logado
@@ -2803,7 +2833,8 @@ class _HomeScreenState extends State<HomeScreen>
     }
 
     if (_carregando) {
-      return Scaffold(
+      return _wrapWithQaReadiness(
+        Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         body: Center(
           child: Column(
@@ -2828,6 +2859,7 @@ class _HomeScreenState extends State<HomeScreen>
             ],
           ),
         ),
+      ),
       );
     }
 
@@ -2917,7 +2949,8 @@ class _HomeScreenState extends State<HomeScreen>
     if (desktopWeb) {
       final theme = Theme.of(context);
       final bgColor = theme.colorScheme.surface;
-      return Scaffold(
+      return _wrapWithQaReadiness(
+        Scaffold(
         backgroundColor: theme.scaffoldBackgroundColor,
         body: Row(
           children: [
@@ -2936,12 +2969,15 @@ class _HomeScreenState extends State<HomeScreen>
                       onRetry: () {
                         unawaited(_refreshPlanGates(force: true));
                       },
-                      onData: (items) => AdminSidebar(
+                      onData: (items) {
+                        _markNavReadyIfNeeded(items);
+                        return AdminSidebar(
                         usuario: _usuario,
                         tipo: _tipo,
                         menuItems: items,
                         onLogout: () => fazerLogout(context),
-                      ),
+                      );
+                      },
                     );
                   },
                 ),
@@ -3083,12 +3119,14 @@ class _HomeScreenState extends State<HomeScreen>
           foregroundColor: Colors.white,
         ),
         floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      ),
       );
     }
 
     // Mobile: layout original com Drawer (usa tema para modo escuro)
     final theme = Theme.of(context);
-    return Scaffold(
+    return _wrapWithQaReadiness(
+      Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: theme.colorScheme.surface,
@@ -3224,7 +3262,9 @@ class _HomeScreenState extends State<HomeScreen>
               onRetry: () {
                 unawaited(_refreshPlanGates(force: true));
               },
-              onData: (items) => ListView(
+              onData: (items) {
+                _markNavReadyIfNeeded(items);
+                return ListView(
                 padding: EdgeInsets.zero,
                 children: [
                   Container(
@@ -3280,7 +3320,8 @@ class _HomeScreenState extends State<HomeScreen>
                   ),
                   ...items,
                 ],
-              ),
+              );
+              },
             );
           },
         ),
@@ -3300,6 +3341,7 @@ class _HomeScreenState extends State<HomeScreen>
         foregroundColor: Colors.white,
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+    ),
     );
   }
 }

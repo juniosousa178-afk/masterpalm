@@ -6,6 +6,8 @@
     "seed": "node seed/seed.mjs",
     "test:packageinfo": "node run-packageinfo-probe.mjs",
     "test:emulator": "node run-emulator-contract.mjs",
+    "test:ui": "node ui/run-ui-e2e.mjs",
+    "test:ui:diagnose": "node ui/diagnose-login.mjs",
     "test": "npm run test:packageinfo && npm run test:emulator"
   },
   "devDependencies": {
