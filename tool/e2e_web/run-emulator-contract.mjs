@@ -25,7 +25,7 @@ async function main() {
     process.exit(2);
   }
 
-  const pedidoId = 'pedido-revenda-r8438-contract';
+  const pedidoId = 'pedido-revenda-r8439-contract';
 
   const est1 = await getDocPath(`lojas/${LOJA_ID}/estoque_produtos/${PROD_SIMPLES_ID}`);
   const qty1 = parseIntField(est1.fields, 'quantidade', -1);
