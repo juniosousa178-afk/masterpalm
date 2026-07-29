@@ -4169,6 +4169,15 @@ final LastRouteObserver _lastRouteObserver = LastRouteObserver();
 /// Web: correlaciona push/pop do Navigator com o histórico do browser.
 final WebNavLogObserver _webNavLogObserver = WebNavLogObserver();
 
+/// Rota inicial do [MyApp] no Web: respeita path admin (`/login`, `/home`, …).
+String _myAppWebInitialRoute() {
+  if (!kIsWeb) return '/';
+  final path = Uri.base.path.trim();
+  if (path.isEmpty || path == '/') return '/';
+  if (isAdminWebAppPath(Uri.base)) return path;
+  return '/';
+}
+
 // ===========================================================================
 // 📱 APP PRINCIPAL (com Provider no topo)
 // ===========================================================================
@@ -4286,7 +4295,40 @@ class MyApp extends StatelessWidget {
               GlobalCupertinoLocalizations.delegate,
             ],
             supportedLocales: const [Locale('pt', 'BR')],
-            initialRoute: '/',
+            initialRoute: _myAppWebInitialRoute(),
+            onGenerateInitialRoutes: kIsWeb
+                ? (String initialRoute) {
+                    final route =
+                        initialRoute.trim().isEmpty ? '/' : initialRoute;
+                    switch (route) {
+                      case '/login':
+                        return [
+                          MaterialPageRoute<void>(
+                            settings: const RouteSettings(name: '/login'),
+                            builder: (_) => const LoginScreen(),
+                          ),
+                        ];
+                      case '/router':
+                        return [
+                          MaterialPageRoute<void>(
+                            settings: const RouteSettings(name: '/router'),
+                            builder: (_) => const AppStartRouter(),
+                          ),
+                        ];
+                      default:
+                        final generated = app_routes.onGenerateRoute(
+                          RouteSettings(name: route),
+                        );
+                        if (generated != null) return [generated];
+                        return [
+                          MaterialPageRoute<void>(
+                            settings: const RouteSettings(name: '/'),
+                            builder: (_) => const AppStartRouter(),
+                          ),
+                        ];
+                    }
+                  }
+                : null,
             builder: (context, child) {
               try {
                 DeepLinkHandler.instance.init();
