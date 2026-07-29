@@ -8,6 +8,7 @@
 | **Observação externa** | Playwright | rede, console, pageerror, ARIA, guards de produção |
 
 **Login autoritativo:** `integration_test/r8442_web_login_emulator_test.dart`  
+**Persistência de sessão (R8.4.43):** `scripts/run_r8443_auth_persistence.ps1` (Fases A–C via `integration_test`; Playwright apenas auxiliar)  
 **Playwright NÃO** executa `submitLogin()` — removido em R8.4.42.
 
 Execução:

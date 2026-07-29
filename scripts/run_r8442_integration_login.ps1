@@ -191,7 +191,7 @@ try {
   }
 
   if ($passed -eq $Runs) {
-    Write-Host "WEB_BROWSER_INTEGRATION_LOGIN_${Runs}_OF_${Runs}_GREEN"
+    Write-Host "FLUTTER_WEB_INTEGRATION_LOGIN_${Runs}_OF_${Runs}_GREEN"
   } else {
     Write-Host "NO_GO: $passed/$Runs runs"
     exit 1

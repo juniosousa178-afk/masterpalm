@@ -10,6 +10,7 @@ export const LOJA_ID = 'loja-r8439-qa';
 export const USER_EMAIL = 'usuario-r8439-qa@masterpalm-e2e.local';
 export const USER_PASSWORD = 'E2eTestR8439!Seguro';
 export const USER_DISPLAY = 'usuario-r8439-qa';
+export const EMPRESA_NOME = 'Empresa QA R8439';
 export const CLIENTE_ID = 'cliente-r8439-sintetico';
 
 export const PROD_SIMPLES_ID = 'prod-r8439-simples';
