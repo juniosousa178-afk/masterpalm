@@ -18,6 +18,8 @@ import '../services/store_resolver_service.dart';
 import '../services/auto_sync_service.dart';
 import '../utils/role_utils.dart';
 import '../widgets/mp_qa_semantics.dart';
+import '../widgets/qa_web_text_input_sync.dart';
+import '../widgets/qa_web_e2e_bridge.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -84,6 +86,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     );
 
     _animController.forward();
+    qaWebRegisterLoginTrigger(_login);
     // Google Sign-In web: inicializar antes do primeiro build (plugin exige init antes de renderButton).
     if (kIsWeb) _initGoogleSignInWeb();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -434,6 +437,11 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   Future<void> _login() async {
     if (_carregando) return;
     setState(() => _carregando = true);
+
+    qaWebSyncLoginControllersIfNeeded(
+      login: _loginController,
+      senha: _senhaController,
+    );
 
     final isAndroid = !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
     if (kDebugMode) {
