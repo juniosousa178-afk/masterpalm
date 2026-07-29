@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 
 import '../config/mp_environment_config.dart';
+import 'mp_qa_keyed_marker.dart';
 
 /// Labels invisíveis (1×1) representando estado real da aplicação.
 class MpQaReadinessMarkers extends StatelessWidget {
@@ -42,45 +43,65 @@ class MpQaReadinessMarkers extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (loading)
+            if (loading) ...[
+              const MpQaKeyedMarker(markerKey: 'loading'),
               Semantics(label: 'loading', child: const SizedBox(width: 1, height: 1)),
-            if (error)
-              Semantics(label: 'visible-error', child: const SizedBox(width: 1, height: 1)),
-            if (authenticated)
-              Semantics(
-                label: 'app-authenticated',
-                child: const SizedBox(width: 1, height: 1),
-              ),
-            if (companyLoaded)
-              Semantics(
-                label: 'company-loaded',
-                child: const SizedBox(width: 1, height: 1),
-              ),
-            if (navigationReady)
-              Semantics(
-                label: 'navigation-ready',
-                child: const SizedBox(width: 1, height: 1),
-              ),
-            if (_homeReady)
-              Semantics(
-                label: 'home-ready',
-                child: const SizedBox(width: 1, height: 1),
-              ),
-            if (_homeReady)
-              Semantics(
-                label: 'qa-home-ready',
-                child: const SizedBox(width: 1, height: 1),
-              ),
-            if (loading)
+              const MpQaKeyedMarker(markerKey: 'qa-home-bootstrap-started'),
               Semantics(
                 label: 'qa-home-bootstrap-started',
                 child: const SizedBox(width: 1, height: 1),
               ),
-            if (authenticated)
+            ],
+            if (error)
+              Semantics(label: 'visible-error', child: const SizedBox(width: 1, height: 1)),
+            if (authenticated) ...[
+              const MpQaKeyedMarker(markerKey: 'app-authenticated'),
+              Semantics(
+                label: 'app-authenticated',
+                child: const SizedBox(width: 1, height: 1),
+              ),
+              const MpQaKeyedMarker(markerKey: 'qa-app-authenticated'),
               Semantics(
                 label: 'qa-app-authenticated',
                 child: const SizedBox(width: 1, height: 1),
               ),
+            ],
+            if (companyLoaded) ...[
+              const MpQaKeyedMarker(markerKey: 'company-loaded'),
+              Semantics(
+                label: 'company-loaded',
+                child: const SizedBox(width: 1, height: 1),
+              ),
+              const MpQaKeyedMarker(markerKey: 'qa-company-loaded'),
+              Semantics(
+                label: 'qa-company-loaded',
+                child: const SizedBox(width: 1, height: 1),
+              ),
+            ],
+            if (navigationReady) ...[
+              const MpQaKeyedMarker(markerKey: 'navigation-ready'),
+              Semantics(
+                label: 'navigation-ready',
+                child: const SizedBox(width: 1, height: 1),
+              ),
+              const MpQaKeyedMarker(markerKey: 'qa-navigation-ready'),
+              Semantics(
+                label: 'qa-navigation-ready',
+                child: const SizedBox(width: 1, height: 1),
+              ),
+            ],
+            if (_homeReady) ...[
+              const MpQaKeyedMarker(markerKey: 'home-ready'),
+              Semantics(
+                label: 'home-ready',
+                child: const SizedBox(width: 1, height: 1),
+              ),
+              const MpQaKeyedMarker(markerKey: 'qa-home-ready'),
+              Semantics(
+                label: 'qa-home-ready',
+                child: const SizedBox(width: 1, height: 1),
+              ),
+            ],
           ],
         ),
       ),

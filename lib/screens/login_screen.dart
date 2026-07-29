@@ -20,7 +20,6 @@ import '../utils/role_utils.dart';
 import '../config/mp_environment_config.dart';
 import '../widgets/mp_qa_semantics.dart';
 import '../widgets/mp_qa_login_trace.dart';
-import '../widgets/qa_web_text_input_sync.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -129,12 +128,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     if (_carregando) return;
     mpQaLoginMark('qa-login-submit-dispatched');
     if (mounted) setState(() {});
-    if (MpEnvironmentConfig.isQa && kIsWeb) {
-      qaWebSyncLoginControllersIfNeeded(
-        login: _loginController,
-        senha: _senhaController,
-      );
-    }
     FocusScope.of(context).unfocus();
     HapticFeedback.selectionClick();
     await _login();
@@ -1497,6 +1490,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
 
           // Email/Phone Field
           _buildModernTextField(
+            key: const ValueKey('login-email'),
             controller: _loginController,
             focusNode: _loginFocusNode,
             label: 'E-mail ou telefone',
@@ -1516,6 +1510,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
 
           // Password Field
           _buildModernTextField(
+            key: const ValueKey('login-password'),
             controller: _senhaController,
             focusNode: _senhaFocusNode,
             label: 'Senha',
@@ -1593,6 +1588,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
             onTap: (_carregando || disableNav) ? null : _submitLogin,
             child: ExcludeSemantics(
               child: SizedBox(
+                key: const ValueKey('login-submit'),
                 width: double.infinity,
                 height: 56,
                 child: Material(
@@ -1654,6 +1650,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   }
 
   Widget _buildModernTextField({
+    Key? key,
     required TextEditingController controller,
     required FocusNode focusNode,
     required String label,
@@ -1678,6 +1675,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         ),
       ),
       child: TextField(
+        key: key,
         controller: controller,
         focusNode: focusNode,
         obscureText: obscureText,

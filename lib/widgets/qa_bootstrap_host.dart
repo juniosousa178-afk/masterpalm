@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import '../config/mp_environment_config.dart';
 import '../config/qa_bootstrap_runner.dart';
 import 'mp_qa_semantics.dart';
+import 'mp_qa_keyed_marker.dart';
 
 /// Monta UI de bootstrap imediatamente; executa [runBootstrap] e só então [mountApp].
 class QaBootstrapHost extends StatefulWidget {
@@ -124,6 +125,8 @@ class _QaBootstrapHostState extends State<QaBootstrapHost> {
         body: Stack(
           children: [
             Center(child: child),
+            for (final label in extraLabels)
+              MpQaKeyedMarker(markerKey: label),
             // Texto estável para Playwright headless (fallback além de Semantics).
             Positioned(
               left: 8,
@@ -238,5 +241,11 @@ String _qaBootstrapSemanticLabel(QaBootstrapStage stage) {
 /// Envolve o app montado com label `qa-bootstrap-ready` (somente QA).
 Widget qaBootstrapReadyWrapper(Widget child) {
   if (!MpEnvironmentConfig.isQa) return child;
-  return mpQaSemantics('qa-bootstrap-ready', child);
+  return Stack(
+    fit: StackFit.expand,
+    children: [
+      mpQaSemantics('qa-bootstrap-ready', child),
+      const MpQaKeyedMarker(markerKey: 'qa-bootstrap-ready'),
+    ],
+  );
 }
