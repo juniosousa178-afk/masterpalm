@@ -1,5 +1,8 @@
 /**
- * Helper único — espera labels semânticos Flutter Web (R8.4.41).
+ * Helper único — espera labels semânticos Flutter Web (R8.4.42).
+ *
+ * Login interno: integration_test (WidgetTester.tap) — autoritativo.
+ * Playwright: observação externa (rede, console, ARIA) — não executa login.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -190,91 +193,11 @@ export async function fillLoginFields(page, email, password, { skipBootstrap = f
   }
 }
 
-/**
- * Submit real via semântica Flutter — ordem R8.4.41.
- * @returns {Promise<{ strategy: string, dispatched: boolean }>}
- */
 export async function submitLogin(page) {
-  const strategies = [
-    {
-      name: 'semantics-identifier-click',
-      run: async () => {
-        const el = page.locator('[flt-semantics-identifier="login-submit"]');
-        if (!(await el.count())) return false;
-        await el.first().click({ timeout: 60_000 });
-        return true;
-      },
-    },
-    {
-      name: 'role-button-click',
-      run: async () => {
-        const btn = page.getByRole('button', { name: /^login-submit$/i });
-        if (!(await btn.count())) {
-          const fallback = page.getByRole('button', { name: /entrar/i });
-          if (!(await fallback.count())) return false;
-          await fallback.first().click({ timeout: 60_000 });
-          return true;
-        }
-        await btn.first().click({ timeout: 60_000 });
-        return true;
-      },
-    },
-    {
-      name: 'button-focus-enter',
-      run: async () => {
-        const btn =
-          (await page.getByRole('button', { name: /^login-submit$/i }).count())
-            ? page.getByRole('button', { name: /^login-submit$/i })
-            : page.getByRole('button', { name: /entrar/i });
-        if (!(await btn.count())) return false;
-        await btn.first().focus();
-        await page.keyboard.press('Enter');
-        return true;
-      },
-    },
-    {
-      name: 'button-focus-space',
-      run: async () => {
-        const btn =
-          (await page.getByRole('button', { name: /^login-submit$/i }).count())
-            ? page.getByRole('button', { name: /^login-submit$/i })
-            : page.getByRole('button', { name: /entrar/i });
-        if (!(await btn.count())) return false;
-        await btn.first().focus();
-        await page.keyboard.press('Space');
-        return true;
-      },
-    },
-    {
-      name: 'login-submit-label-click',
-      run: async () => {
-        const el = page.getByLabel('login-submit', { exact: true });
-        if (!(await el.count())) return false;
-        await el.first().click({ timeout: 30_000 });
-        return true;
-      },
-    },
-    {
-      name: 'password-enter',
-      run: async () => {
-        const pass = page.getByRole('textbox', { name: /^Senha$/i });
-        if (!(await pass.count())) return false;
-        await pass.first().press('Enter');
-        return true;
-      },
-    },
-  ];
-
-  for (const { name, run } of strategies) {
-    const ran = await run().catch(() => false);
-    if (!ran) continue;
-    await page.waitForTimeout(1200);
-    const dispatched = await hasQaLabel(page, 'qa-login-submit-dispatched');
-    if (dispatched) return { strategy: name, dispatched: true };
-  }
-
-  const dispatched = await hasQaLabel(page, 'qa-login-submit-dispatched');
-  return { strategy: 'none', dispatched };
+  throw new Error(
+    'submitLogin via Playwright descontinuado (R8.4.42). ' +
+      'Use integration_test/r8442_web_login_emulator_test.dart para login interno.',
+  );
 }
 
 export function resetAccessibilityState() {
