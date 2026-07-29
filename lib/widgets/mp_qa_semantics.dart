@@ -10,6 +10,7 @@ import '../config/mp_environment_config.dart';
 Widget mpQaSemantics(
   String label,
   Widget child, {
+  String? identifier,
   bool button = false,
   bool textField = false,
   bool header = false,
@@ -17,6 +18,7 @@ Widget mpQaSemantics(
 }) {
   if (!MpEnvironmentConfig.isQa) return child;
   return Semantics(
+    identifier: identifier ?? label,
     label: label,
     button: button,
     textField: textField,

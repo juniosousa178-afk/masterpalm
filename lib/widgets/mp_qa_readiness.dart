@@ -66,6 +66,21 @@ class MpQaReadinessMarkers extends StatelessWidget {
                 label: 'home-ready',
                 child: const SizedBox(width: 1, height: 1),
               ),
+            if (_homeReady)
+              Semantics(
+                label: 'qa-home-ready',
+                child: const SizedBox(width: 1, height: 1),
+              ),
+            if (loading)
+              Semantics(
+                label: 'qa-home-bootstrap-started',
+                child: const SizedBox(width: 1, height: 1),
+              ),
+            if (authenticated)
+              Semantics(
+                label: 'qa-app-authenticated',
+                child: const SizedBox(width: 1, height: 1),
+              ),
           ],
         ),
       ),
