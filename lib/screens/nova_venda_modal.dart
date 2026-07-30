@@ -1261,6 +1261,19 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     }
 
     final total = _calcularTotal();
+
+    // Validate that all product lines are properly resolved (have productId)
+    for (final item in produtosSelecionados) {
+      final produtoNome = (item['produto'] ?? '').toString().trim();
+      if (produtoNome.isNotEmpty) {
+        final productId = (item['productId'] as String?)?.trim();
+        if (productId == null || productId.isEmpty) {
+          await _mostrarErro('Produto não encontrado para o código informado.');
+          return;
+        }
+      }
+    }
+
     final resumoProdutos = produtosSelecionados
         .where((p) => (p['produto'] ?? '').toString().trim().isNotEmpty)
         .map((p) => {
@@ -2577,13 +2590,19 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                                 nomeExibido: v,
                                               )) {
                                             linha.remove('productId');
+                                            linha.remove('variationId');
+                                            linha['preco'] = 0.0;
+                                            linha['tamanho'] = '';
+                                            linha['cor'] = '';
                                           }
                                         }
+                                        final trimmed = normalizeText(v);
                                         final p =
                                             produtosDaLoja.firstWhereOrNull(
                                           (x) =>
-                                              x.nome.toLowerCase() ==
-                                              v.trim().toLowerCase(),
+                                              normalizeText(x.nome) == trimmed ||
+                                              (x.codigoBarras.trim().isNotEmpty &&
+                                                  normalizeText(x.codigoBarras) == trimmed),
                                         );
                                         if (_linhaComboProtegida(linha)) {
                                           if (p != null) {
@@ -2593,6 +2612,10 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                                     : null;
                                           } else {
                                             linha.remove('productId');
+                                            linha.remove('variationId');
+                                            linha['preco'] = 0.0;
+                                            linha['tamanho'] = '';
+                                            linha['cor'] = '';
                                           }
                                           return;
                                         }
@@ -2602,8 +2625,16 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                               p.idFirebase.trim().isNotEmpty
                                                   ? p.idFirebase
                                                   : null;
+                                          if (normalizeText(p.nome) != trimmed &&
+                                              normalizeText(p.codigoBarras) == trimmed) {
+                                            linha['produto'] = p.nome;
+                                          }
                                         } else {
                                           linha.remove('productId');
+                                          linha.remove('variationId');
+                                          linha['preco'] = 0.0;
+                                          linha['tamanho'] = '';
+                                          linha['cor'] = '';
                                         }
                                       });
                                     },
@@ -3604,6 +3635,12 @@ class _ProdutoDropdown extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final todosNomes = produtos.map((p) => p.nome).toSet().toList();
+    final codigoBarrasMap = <String, String>{};
+    for (final p in produtos) {
+      if (p.codigoBarras.trim().isNotEmpty) {
+        codigoBarrasMap[p.codigoBarras.trim()] = p.nome;
+      }
+    }
     return Autocomplete<String>(
       initialValue: TextEditingValue(text: valorAtual),
       optionsBuilder: (textEditingValue) {
@@ -3613,13 +3650,18 @@ class _ProdutoDropdown extends StatelessWidget {
           final resto = todosNomes.where((n) => !favs.contains(n)).toList();
           return [...favs, ...resto];
         }
-        final lower = textEditingValue.text.toLowerCase();
+        final lower = normalizeText(textEditingValue.text);
         final filtrados =
-            todosNomes.where((n) => n.toLowerCase().contains(lower)).toList();
+            todosNomes.where((n) => normalizeText(n).contains(lower)).toList();
+        final filtradosPorCodigo = codigoBarrasMap.entries
+            .where((e) => normalizeText(e.key) == lower)
+            .map((e) => e.value)
+            .toList();
+        final todosFiltrados = {...filtrados, ...filtradosPorCodigo}.toList();
         final favsFiltrados =
-            produtosFavoritos.where((n) => filtrados.contains(n)).toList();
+            produtosFavoritos.where((n) => todosFiltrados.contains(n)).toList();
         final restoFiltrados =
-            filtrados.where((n) => !favsFiltrados.contains(n)).toList();
+            todosFiltrados.where((n) => !favsFiltrados.contains(n)).toList();
         return [...favsFiltrados, ...restoFiltrados];
       },
       onSelected: (value) async {
