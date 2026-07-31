@@ -1,0 +1,80 @@
+{
+  "schemaVersion": "1",
+  "description": "Marcadores reais R8.4.43 — fonte única para driver Dart e validador PowerShell",
+  "productionCounters": {
+    "PRODUCTION_REQUEST_ATTEMPTED_COUNT": "0",
+    "PRODUCTION_REQUEST_COMPLETED_COUNT": "0"
+  },
+  "envelopeKeys": [
+    "schemaVersion",
+    "runId",
+    "testCaseId",
+    "reportTimestampMs"
+  ],
+  "cases": {
+    "phase_a": {
+      "target": "integration_test/r8443_web_auth_persistence_phase_a_test.dart",
+      "requiredMarkers": {
+        "SESSION_PHASE_A_AUTHENTICATED": "true",
+        "SESSION_PHASE_A_HOME_READY": "true"
+      },
+      "optionalMarkers": [
+        "SESSION_PHASE_A_UID_MATCH",
+        "uid"
+      ]
+    },
+    "phase_b": {
+      "target": "integration_test/r8443_web_auth_persistence_phase_b_test.dart",
+      "requiredMarkers": {
+        "PHASE_B_CURRENT_USER_RESTORED": "true",
+        "PHASE_B_SIGN_IN_WITH_PASSWORD_COUNT": "0",
+        "FLUTTER_WEB_AUTH_SESSION_RESTORED_NEW_PROCESS": "true",
+        "FLUTTER_WEB_AUTH_PERSISTENCE_BROWSER_RESTART_GREEN": "true"
+      },
+      "optionalMarkers": [
+        "uid"
+      ]
+    },
+    "phase_c": {
+      "target": "integration_test/r8443_web_auth_persistence_phase_c_test.dart",
+      "requiredMarkers": {
+        "WEB_REAL_RELOAD_AUTH_PERSISTENCE_GREEN": "true",
+        "PHASE_C_SIGN_IN_WITH_PASSWORD_COUNT": "0"
+      },
+      "optionalMarkers": [
+        "PHASE_C_UID_BEFORE_RELOAD",
+        "uid"
+      ]
+    },
+    "negative_clean": {
+      "target": "integration_test/r8443_web_auth_persistence_negative_clean_test.dart",
+      "requiredMarkers": {
+        "WEB_CLEAN_PROFILE_REQUIRES_LOGIN": "true"
+      },
+      "optionalMarkers": []
+    },
+    "negative_origin": {
+      "target": "integration_test/r8443_web_auth_persistence_negative_origin_test.dart",
+      "requiredMarkers": {
+        "WEB_AUTH_STORAGE_ORIGIN_ISOLATION_CONFIRMED": "true"
+      },
+      "optionalMarkers": [
+        "isolation_port"
+      ]
+    },
+    "fail_closed": {
+      "target": "integration_test/r8443_web_auth_persistence_fail_closed_test.dart",
+      "requiredMarkers": {
+        "PERSISTED_SESSION_QA_EMULATOR_FAILS_CLOSED": "true"
+      },
+      "optionalMarkers": []
+    },
+    "control_positive": {
+      "target": "integration_test/r8443_control_valid_report_test.dart",
+      "requiredMarkers": {
+        "R8443_CONTROL_POSITIVE_GREEN": "true"
+      },
+      "optionalMarkers": []
+    }
+  }
+}

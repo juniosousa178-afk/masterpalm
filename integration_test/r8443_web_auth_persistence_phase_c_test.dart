@@ -49,5 +49,6 @@ void main() {
     binding.reportData!['WEB_REAL_RELOAD_AUTH_PERSISTENCE_GREEN'] = 'true';
     binding.reportData!['PHASE_C_SIGN_IN_WITH_PASSWORD_COUNT'] = '0';
     binding.reportData!['uid'] = uid;
+    r8443StampReportEnvelope(binding);
   });
 }

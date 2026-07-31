@@ -34,5 +34,6 @@ void main() {
             : 'false';
     binding.reportData!['SESSION_PHASE_A_HOME_READY'] = 'true';
     binding.reportData!['uid'] = user.uid;
+    r8443StampReportEnvelope(binding);
   });
 }

@@ -21,5 +21,6 @@ void main() {
     expect(find.byKey(const ValueKey<String>('home-ready')), findsNothing);
 
     binding.reportData!['WEB_CLEAN_PROFILE_REQUIRES_LOGIN'] = 'true';
+    r8443StampReportEnvelope(binding);
   });
 }
