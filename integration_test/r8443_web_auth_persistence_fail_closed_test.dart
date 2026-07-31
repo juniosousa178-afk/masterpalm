@@ -9,6 +9,7 @@ import 'package:master_palm/main.dart' as app;
 
 import 'support/r8442_pump_helpers.dart';
 import 'support/r8442_qa_constants.dart';
+import 'support/r8443_auth_helpers.dart';
 
 const _failMode = String.fromEnvironment('R8443_FAIL_CLOSED_MODE');
 
@@ -18,7 +19,7 @@ Future<void> _startApp(WidgetTester tester) async {
 }
 
 void main() {
-  IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+  final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   if (_failMode != 'persisted-firestore') {
     test('skip — defina R8443_FAIL_CLOSED_MODE=persisted-firestore', () {});
@@ -44,5 +45,9 @@ void main() {
 
     expect(find.byKey(const ValueKey<String>('home-ready')), findsNothing);
     expect(Firebase.app().options.projectId, isNot(kR8442ProductionProjectId));
+
+    binding.reportData ??= <String, String>{};
+    binding.reportData!['PERSISTED_SESSION_QA_EMULATOR_FAILS_CLOSED'] = 'true';
+    r8443StampReportEnvelope(binding);
   });
 }

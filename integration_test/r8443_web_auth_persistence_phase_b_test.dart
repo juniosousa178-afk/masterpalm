@@ -29,5 +29,6 @@ void main() {
       binding.reportData!['PHASE_B_SIGN_IN_WITH_PASSWORD_COUNT'],
       '0',
     );
+    r8443StampReportEnvelope(binding);
   });
 }

@@ -30,5 +30,6 @@ void main() {
 
     binding.reportData!['WEB_AUTH_STORAGE_ORIGIN_ISOLATION_CONFIRMED'] = 'true';
     binding.reportData!['isolation_port'] = _isolationPort;
+    r8443StampReportEnvelope(binding);
   });
 }

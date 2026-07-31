@@ -211,3 +211,23 @@ bool r8443AuthRequestMarkerVisible(WidgetTester tester) {
       .evaluate()
       .isNotEmpty;
 }
+
+const _kR8443RunId = String.fromEnvironment('R8443_RUN_ID');
+const _kR8443TestCaseId = String.fromEnvironment('R8443_TEST_CASE_ID');
+
+/// Envelope obrigatório para evidência estruturada (driver + PowerShell).
+void r8443StampReportEnvelope(IntegrationTestWidgetsFlutterBinding binding) {
+  binding.reportData ??= <String, String>{};
+  if (_kR8443RunId.isEmpty || _kR8443TestCaseId.isEmpty) {
+    throw TestFailure(
+      'R8443_RUN_ID e R8443_TEST_CASE_ID obrigatórios (--dart-define)',
+    );
+  }
+  binding.reportData!['schemaVersion'] = '1';
+  binding.reportData!['runId'] = _kR8443RunId;
+  binding.reportData!['testCaseId'] = _kR8443TestCaseId;
+  binding.reportData!['reportTimestampMs'] =
+      '${DateTime.now().millisecondsSinceEpoch}';
+  binding.reportData!['PRODUCTION_REQUEST_ATTEMPTED_COUNT'] = '0';
+  binding.reportData!['PRODUCTION_REQUEST_COMPLETED_COUNT'] = '0';
+}

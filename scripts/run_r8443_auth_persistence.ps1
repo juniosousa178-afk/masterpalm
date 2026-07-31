@@ -4,12 +4,15 @@ param(
   [int]$WebPort = 8811,
   [int]$IsolationPort = 8812,
   [int]$ChromeDriverPort = 4444,
-  [string]$ExpectedHead = '8eda11a7198bb4afd6b493ff1b7577ece9d3a106'
+  [string]$ExpectedHead = 'de16b7ec1466114f3c3125c9b4e149afe5c20bbc'
 )
 
 $ErrorActionPreference = 'Stop'
 $ProjectRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
+$env:R8443_PROJECT_ROOT = $ProjectRoot
 Set-Location $ProjectRoot
+
+. (Join-Path $ProjectRoot 'scripts/r8443_report_validator.ps1')
 
 $WebHost = '127.0.0.1'
 $WebOrigin = "http://${WebHost}:$WebPort"
@@ -85,33 +88,73 @@ function Invoke-FlutterDrive {
   param(
     [string]$Target,
     [string]$ProfilePath,
+    [string]$TestCaseId,
     [int]$Port = $WebPort,
     [string[]]$ExtraDefines = @()
   )
+
+  $runId = [guid]::NewGuid().ToString()
+  $responseFile = Get-R8443ResponseFilePath -TestCaseId $TestCaseId -RunId $runId
+  Remove-R8443ResponseArtifact -FilePath $responseFile
+  $phaseStartMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+
+  Write-Host "R8443_RUN_ID=$runId"
+  Write-Host "R8443_TEST_CASE_ID=$TestCaseId"
+  Write-Host "R8443_RESPONSE_FILE=$responseFile"
+
   $userDataFlag = "--user-data-dir=$($ProfilePath -replace '\\','/')"
+  $responseFlag = $responseFile -replace '\\', '/'
   $defines = @(
     '--dart-define=MP_ENVIRONMENT=qa',
     '--dart-define=MP_USE_FIREBASE_EMULATORS=true',
     '--dart-define=MP_AUTH_EMULATOR_HOST=127.0.0.1:9199',
     '--dart-define=MP_FIRESTORE_EMULATOR_HOST=127.0.0.1:8180',
-    '--dart-define=MP_STORAGE_EMULATOR_HOST=127.0.0.1:9199'
+    '--dart-define=MP_STORAGE_EMULATOR_HOST=127.0.0.1:9199',
+    "--dart-define=R8443_RUN_ID=$runId",
+    "--dart-define=R8443_TEST_CASE_ID=$TestCaseId",
+    "--dart-define=R8443_RESPONSE_FILE=$responseFlag"
   ) + $ExtraDefines
 
+  $stdout = @()
+  $env:R8443_RUN_ID = $runId
+  $env:R8443_TEST_CASE_ID = $TestCaseId
+  $env:R8443_RESPONSE_FILE = $responseFile
   $prevEap = $ErrorActionPreference
   $ErrorActionPreference = 'Continue'
   flutter drive `
-    --driver=test_driver/integration_test.dart `
+    --driver=test_driver/r8443_guarded_driver.dart `
     --target=$Target `
     -d chrome `
     --release `
+    --driver-port=$ChromeDriverPort `
     --web-hostname=$WebHost `
     --web-port=$Port `
     --web-browser-flag=$userDataFlag `
     --web-browser-flag="--headless=new" `
-    @defines 2>&1 | ForEach-Object { Write-Host $_ }
+    @defines 2>&1 | ForEach-Object {
+      $stdout += $_.ToString()
+      Write-Host $_
+    }
   $exit = $LASTEXITCODE
   $ErrorActionPreference = $prevEap
-  if ($exit -ne 0) { throw "flutter drive falhou: $Target (exit=$exit)" }
+  $joinedStdout = $stdout -join "`n"
+
+  if ($exit -ne 0) {
+    throw "flutter drive falhou: $Target (exit=$exit) testCase=$TestCaseId"
+  }
+
+  Assert-R8443SuccessTextWithEvidence `
+    -DriveStdout $joinedStdout `
+    -EvidenceFilePath $responseFile `
+    -ExpectedTestCaseId $TestCaseId `
+    -ExpectedRunId $runId `
+    -PhaseStartMs $phaseStartMs
+
+  return @{
+    RunId = $runId
+    ResponseFile = $responseFile
+    TestCaseId = $TestCaseId
+  }
 }
 
 function Start-StaticServer {
@@ -239,6 +282,7 @@ try {
     Invoke-FlutterDrive `
       -Target 'integration_test/r8443_web_auth_persistence_phase_a_test.dart' `
       -ProfilePath $runProfile `
+      -TestCaseId 'phase_a' `
       -ExtraDefines @("--dart-define=R8442_EXPECTED_UID=$uid")
 
     Stop-ProfileChrome -ProfilePath $runProfile
@@ -248,6 +292,7 @@ try {
     Invoke-FlutterDrive `
       -Target 'integration_test/r8443_web_auth_persistence_phase_b_test.dart' `
       -ProfilePath $runProfile `
+      -TestCaseId 'phase_b' `
       -ExtraDefines @("--dart-define=R8442_EXPECTED_UID=$uid")
 
     Stop-ProfileChrome -ProfilePath $runProfile
@@ -257,6 +302,7 @@ try {
     Invoke-FlutterDrive `
       -Target 'integration_test/r8443_web_auth_persistence_phase_c_test.dart' `
       -ProfilePath $runProfile `
+      -TestCaseId 'phase_c' `
       -ExtraDefines @("--dart-define=R8442_EXPECTED_UID=$uid")
 
     Stop-ProfileChrome -ProfilePath $runProfile
@@ -266,6 +312,7 @@ try {
     Invoke-FlutterDrive `
       -Target 'integration_test/r8443_web_auth_persistence_negative_clean_test.dart' `
       -ProfilePath $runNegProfile `
+      -TestCaseId 'negative_clean' `
       -ExtraDefines @("--dart-define=R8442_EXPECTED_UID=$uid")
 
     Stop-ProfileChrome -ProfilePath $runNegProfile
@@ -275,6 +322,7 @@ try {
     Invoke-FlutterDrive `
       -Target 'integration_test/r8443_web_auth_persistence_negative_origin_test.dart' `
       -ProfilePath $runNegProfile `
+      -TestCaseId 'negative_origin' `
       -Port $IsolationPort `
       -ExtraDefines @(
         "--dart-define=R8442_EXPECTED_UID=$uid",
@@ -285,6 +333,7 @@ try {
     Invoke-FlutterDrive `
       -Target 'integration_test/r8443_web_auth_persistence_fail_closed_test.dart' `
       -ProfilePath $runProfile `
+      -TestCaseId 'fail_closed' `
       -ExtraDefines @(
         "--dart-define=R8442_EXPECTED_UID=$uid",
         '--dart-define=MP_FIRESTORE_EMULATOR_HOST=127.0.0.1:1',
