@@ -15,6 +15,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
+import '../core/produto_stock_revision.dart';
 import '../core/produto_variacao_extra.dart';
 import '../models/produto.dart';
 import 'combo_kit_stock_service.dart';
@@ -77,6 +78,14 @@ class EstoqueService {
   @visibleForTesting
   static void touchProdutoUpdatedAtParaDevolucaoHive(Produto p) {
     p.updatedAt = DateTime.now();
+    if (!hasPendingStockMutation(p)) {
+      markPendingStockMutation(
+        p,
+        operationId: newStockOperationId(),
+        baseRevision: p.stockRevision,
+      );
+    }
+    p.stockUpdatedAt = DateTime.now();
   }
 
   /// Após ajuste manual no filho, recalibra só combos que referenciam esse [productId] (teto ou piso).

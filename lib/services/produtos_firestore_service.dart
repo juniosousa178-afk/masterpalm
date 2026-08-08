@@ -4,11 +4,14 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart' show debugPrint, kDebugMode, kIsWeb;
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode, kIsWeb, visibleForTesting;
 import 'package:firebase_storage/firebase_storage.dart';
 
 import '../core/combo_config_canonical.dart';
 import '../core/hive_box_names.dart';
+import '../core/produto_estoque_grade_snapshot.dart';
+import '../core/produto_stock_revision.dart';
+import '../core/produto_stock_version_fields.dart';
 import '../core/produto_variacao_extra.dart';
 import 'firestore_paths.dart';
 import '../core/logger.dart';
@@ -49,7 +52,10 @@ enum ProdutoSyncRemotoStatus {
 }
 
 class ProdutosFirestoreService {
-  static final FirebaseFirestore _db = FirebaseFirestore.instance;
+  static FirebaseFirestore? debugFirestoreOverride;
+
+  static FirebaseFirestore get _db =>
+      debugFirestoreOverride ?? FirebaseFirestore.instance;
 
   /// Com `merge:true`, mapas aninhados podem preservar chaves antigas no remoto.
   /// Antes do upsert, limpa campos de variação para garantir sobrescrita total.
@@ -297,6 +303,42 @@ class ProdutosFirestoreService {
     return u is Timestamp ? u.toDate() : null;
   }
 
+  static DateTime? parseFirestoreStockUpdatedAt(Map<String, dynamic> data) {
+    final u = data[kProdutoStockUpdatedAtField];
+    return u is Timestamp ? u.toDate() : null;
+  }
+
+  /// Pull: regressão de grade remota (por célula) sem janela temporal arbitrária.
+  @visibleForTesting
+  static bool shouldPreserveLocalStockOnRemoteRegression({
+    required Produto local,
+    required Map<String, dynamic> remoteData,
+  }) {
+    final decision = evaluatePullStockMerge(
+      local: local,
+      remoteData: remoteData,
+      remoteStockUpdatedAt: parseFirestoreStockUpdatedAt(remoteData),
+      localStockUpdatedAt: local.stockUpdatedAt,
+      localStockUpdatedAtServer: local.stockUpdatedAtServer,
+    );
+    return decision == PullStockMergeDecision.preserveLocalGrade;
+  }
+
+  @visibleForTesting
+  static bool shouldSkipStaleProdutoPushOnAutoSync({
+    required Produto local,
+    required Map<String, dynamic>? existingData,
+    required bool bumpHiveTimestamp,
+    DateTime? updatedAtBeforeBump,
+    bool forcePushFromCadastro = false,
+  }) {
+    return evaluatePushStockSkip(
+      local: local,
+      existingData: existingData,
+      forcePushFromCadastro: forcePushFromCadastro,
+    );
+  }
+
   static DateTime? _maxDateTime(DateTime? a, DateTime? b) {
     if (a == null) return b;
     if (b == null) return a;
@@ -384,6 +426,7 @@ class ProdutosFirestoreService {
     String? lojaId,
     bool bumpHiveTimestamp = true,
     bool enqueueOnFailure = true,
+    String? writeOrigin,
   }) async {
     try {
       final storeId = lojaId ?? await StoreResolverFacade.resolveForAdminApp();
@@ -494,6 +537,8 @@ class ProdutosFirestoreService {
             '✅ [PRODUTOS-SYNC] Imagens atualizadas no Hive com URLs do Firebase');
       }
 
+      final updatedAtBeforeBump = produto.updatedAt;
+
       if (bumpHiveTimestamp) {
         produto.updatedAt = DateTime.now();
         await produto.save();
@@ -507,6 +552,20 @@ class ProdutosFirestoreService {
       final docSnap = await docRef.get();
       final existingData = docSnap.data();
       final dynamic createdAtPersistido = existingData?['createdAt'];
+
+      if (shouldSkipStaleProdutoPushOnAutoSync(
+        local: produto,
+        existingData: docSnap.exists ? existingData : null,
+        bumpHiveTimestamp: bumpHiveTimestamp,
+        updatedAtBeforeBump: updatedAtBeforeBump,
+      )) {
+        logW(
+          '[PUSH_STALE_GUARD] push ignorado — snapshot local stale '
+          '(doc=$produtoId origin=${writeOrigin ?? "(n/a)"} bump=$bumpHiveTimestamp)',
+          tag: 'PUSH_STALE_GUARD',
+        );
+        return ProdutoSyncRemotoStatus.semMudancas;
+      }
 
       // Não registrar tombstone de variação via diff remoto×local no sync geral: payload
       // local pode estar incompleto (pull parcial, import, race) e marcar célula ativa como "excluída".
@@ -983,13 +1042,19 @@ class ProdutosFirestoreService {
                     includeDeadLetter: true,
                   )
                 : false;
+            final preserveStockRegression =
+                shouldPreserveLocalStockOnRemoteRegression(
+              local: p,
+              remoteData: data,
+            );
             final preserveLocalQuantidade = !preferRemoteQuantity &&
                 (pendingProdutoSync ||
                     shouldPreserveLocalQuantidadeOnFirestorePull(
                       localUpdatedAt: p.updatedAt,
                       remoteUpdatedAt: remoteUpdatedAtForPull,
                     ));
-            final preserveLocalEdits = preserveLocalQuantidade;
+            final preserveLocalEdits =
+                preserveLocalQuantidade || preserveStockRegression;
 
             final custoAntes = p.custoReal;
             final pesoAntes = p.peso;
@@ -997,7 +1062,9 @@ class ProdutosFirestoreService {
             if (preserveLocalEdits) {
               final motivo = pendingProdutoSync
                   ? 'sync pendente na fila'
-                  : 'updatedAt local mais recente que remoto';
+                  : preserveStockRegression
+                      ? 'regressão de grade remota (snapshot stale)'
+                      : 'updatedAt local mais recente que remoto';
               logD(
                 '[PULL_EDIT_GUARD] doc=$produtoId mantendo edição local ($motivo)',
               );
@@ -1215,10 +1282,18 @@ class ProdutosFirestoreService {
               if (updatedAt is Timestamp) {
                 p.updatedAt = _maxDateTime(p.updatedAt, updatedAt.toDate());
               }
+              if (preserveStockRegression) {
+                tryConfirmStockFromRemote(p, data);
+              }
             } else {
               if (updatedAt != null && updatedAt is Timestamp) {
                 p.updatedAt = updatedAt.toDate();
               }
+              final stockAt = data[kProdutoStockUpdatedAtField];
+              if (stockAt is Timestamp) {
+                applyServerStockVersionToProduto(p, stockAt.toDate());
+              }
+              tryConfirmStockFromRemote(p, data);
             }
             if ((p.custoReal - custoAntes).abs() > 0.0001 ||
                 (p.peso - pesoAntes).abs() > 0.0001) {

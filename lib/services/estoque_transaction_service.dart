@@ -10,6 +10,8 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
+import '../core/produto_stock_revision.dart';
+import '../core/produto_stock_version_fields.dart';
 import '../core/produto_variacao_extra.dart';
 import '../core/strict_product_resolution.dart';
 import '../models/produto.dart';
@@ -26,6 +28,9 @@ class EstoqueTransactionResult {
   final Map<String, dynamic>? variacoesAtualizadas;
   final Map<String, int>? estoquePorTamanhoAtualizado;
   final int quantidadeTotalAtualizada;
+  final int? newStockRevision;
+  final String? stockOperationId;
+  final int? stockBaseRevision;
 
   EstoqueTransactionResult({
     required this.produtoId,
@@ -35,18 +40,55 @@ class EstoqueTransactionResult {
     this.variacoesAtualizadas,
     this.estoquePorTamanhoAtualizado,
     required this.quantidadeTotalAtualizada,
+    this.newStockRevision,
+    this.stockOperationId,
+    this.stockBaseRevision,
   });
 }
 
 /// Serviço de baixa de estoque atômica via Firestore Transaction
 class EstoqueTransactionService {
-  static final FirebaseFirestore _db = FirebaseFirestore.instance;
+  @visibleForTesting
+  static FirebaseFirestore? debugFirestoreOverride;
+
+  @visibleForTesting
+  static void debugClearOverrides() {
+    debugFirestoreOverride = null;
+  }
+
+  static FirebaseFirestore get _db =>
+      debugFirestoreOverride ?? FirebaseFirestore.instance;
 
   /// Hive: atualiza [Produto.updatedAt] ao persistir saldo após transação em [atualizarHiveAposTransacao].
   /// Mesmo critério do +/- na lista e da devolução: evita pull com snapshot remoto velho se Hive e nuvem desalinharem.
   @visibleForTesting
   static void touchProdutoUpdatedAtParaHivePosTransacao(Produto p) {
     p.updatedAt = DateTime.now();
+  }
+
+  @visibleForTesting
+  static void touchProdutoStockUpdatedAtParaHivePosTransacao(
+    Produto p, {
+    String? operationId,
+    int? baseRevision,
+  }) {
+    final op = operationId ?? newStockOperationId();
+    markPendingStockMutation(p, operationId: op, baseRevision: baseRevision);
+    p.stockUpdatedAt = DateTime.now();
+  }
+
+  static void _attachStockContractFields(
+    Map<String, dynamic> updateData,
+    Map<String, dynamic> existingData,
+  ) {
+    final baseRev = parseStockRevisionFromRemote(existingData);
+    final opId = newStockOperationId();
+    updateData[kProdutoStockUpdatedAtField] = FieldValue.serverTimestamp();
+    attachStockRevisionFields(
+      updateData,
+      nextRevision: baseRev + 1,
+      operationId: opId,
+    );
   }
 
   static Exception _erroProdutoNaoSincronizado({
@@ -302,6 +344,10 @@ class EstoqueTransactionService {
       if (novoEstoquePorTamanho != null) {
         updateData['estoquePorTamanho'] = novoEstoquePorTamanho;
       }
+      final stockBaseRev = parseStockRevisionFromRemote(data);
+      _attachStockContractFields(updateData, data);
+      final nextStockRev = parseStockRevisionFromRemote(updateData);
+      final stockOpId = parseStockOperationIdFromRemote(updateData);
 
       transaction.update(produtoRef, updateData);
 
@@ -336,6 +382,9 @@ class EstoqueTransactionService {
         estoquePorTamanhoAtualizado:
             estoquePorTamanhoParaVariacao ?? novoEstoquePorTamanho,
         quantidadeTotalAtualizada: novaQuantidadeTotal,
+        newStockRevision: nextStockRev,
+        stockOperationId: stockOpId,
+        stockBaseRevision: stockBaseRev,
       );
       }).timeout(
         const Duration(seconds: 20),
@@ -780,22 +829,43 @@ class EstoqueTransactionService {
 
     Future<List<EstoqueTransactionResult>> executarTransacao() {
       return _db.runTransaction<List<EstoqueTransactionResult>>((transaction) async {
-      // FASE 1: Todas as leituras antes de qualquer escrita (regra do Firestore)
-      final updates = <({DocumentReference<Map<String, dynamic>> ref, DocumentReference<Map<String, dynamic>>? estoqueRef, Map<String, dynamic> updateData, EstoqueTransactionResult result})>[];
+      // FASE 1: leituras + débitos em memória (mesmo doc = um único write com revision +1)
+      final pendingByPath = <String, ({
+        DocumentReference<Map<String, dynamic>> ref,
+        Map<String, dynamic> workingData,
+        Map<String, dynamic> initialSnapshot,
+        List<EstoqueTransactionResult> lineResults,
+      })>{};
 
       for (final resolved in resolvedItems) {
-        final produtoSnap = await transaction.get(resolved.ref);
+        final path = resolved.ref.path;
+        Map<String, dynamic> data;
+        String docId;
+        String produtoNome;
+        Map<String, dynamic> initialSnapshot;
 
-        if (!produtoSnap.exists) {
-          throw Exception(
-            'Produto não encontrado no servidor: ${resolved.ref.id}. '
-            'Verifique se o produto foi sincronizado ou sua conexão com a internet.',
-          );
+        if (pendingByPath.containsKey(path)) {
+          final pending = pendingByPath[path]!;
+          data = pending.workingData;
+          docId = pending.lineResults.first.produtoId;
+          produtoNome = pending.lineResults.first.produtoNome;
+          initialSnapshot = pending.initialSnapshot;
+        } else {
+          final produtoSnap = await transaction.get(resolved.ref);
+
+          if (!produtoSnap.exists) {
+            throw Exception(
+              'Produto não encontrado no servidor: ${resolved.ref.id}. '
+              'Verifique se o produto foi sincronizado ou sua conexão com a internet.',
+            );
+          }
+
+          initialSnapshot = Map<String, dynamic>.from(produtoSnap.data()!);
+          data = Map<String, dynamic>.from(initialSnapshot);
+          docId = produtoSnap.reference.id;
+          produtoNome = (data['nome'] ?? '').toString();
         }
 
-        final data = produtoSnap.data()!;
-        final docId = produtoSnap.reference.id;
-        final produtoNome = (data['nome'] ?? '').toString();
         final quantidade = resolved.quantidade;
         final tamanho = resolved.tamanho;
         final cor = resolved.cor;
@@ -914,19 +984,107 @@ class EstoqueTransactionService {
               _estoquePorTamanhoAgregadoDeVariacoes(novasVariacoes);
         }
 
-        final updateData = <String, dynamic>{
-          'quantidade': novaQuantidadeTotal,
-          'updatedAt': FieldValue.serverTimestamp(),
-        };
+        final workingNext = Map<String, dynamic>.from(data);
+        workingNext['quantidade'] = novaQuantidadeTotal;
         if (novasVariacoes != null) {
-          updateData['variacoes'] =
+          workingNext['variacoes'] =
               ProdutoVariacaoExtra.sanitizeVariacoesMapForFirestore(
             Map<String, dynamic>.from(novasVariacoes),
           );
-          updateData['estoquePorTamanho'] = estoquePorTamanhoParaVariacao!;
+          workingNext['estoquePorTamanho'] = estoquePorTamanhoParaVariacao!;
         }
         if (novoEstoquePorTamanho != null) {
-          updateData['estoquePorTamanho'] = novoEstoquePorTamanho;
+          workingNext['estoquePorTamanho'] = novoEstoquePorTamanho;
+        }
+
+        final slugVal = (data['slug'] ?? '').toString().trim();
+        final lineResult = EstoqueTransactionResult(
+          produtoId: docId,
+          produtoNome: produtoNome,
+          produtoSlug: slugVal.isNotEmpty ? slugVal : null,
+          quantidadeDebitada: quantidade,
+          variacoesAtualizadas: novasVariacoes,
+          estoquePorTamanhoAtualizado:
+              estoquePorTamanhoParaVariacao ?? novoEstoquePorTamanho,
+          quantidadeTotalAtualizada: novaQuantidadeTotal,
+        );
+
+        final existing = pendingByPath[path];
+        if (existing != null) {
+          pendingByPath[path] = (
+            ref: existing.ref,
+            workingData: workingNext,
+            initialSnapshot: existing.initialSnapshot,
+            lineResults: [...existing.lineResults, lineResult],
+          );
+        } else {
+          pendingByPath[path] = (
+            ref: resolved.ref,
+            workingData: workingNext,
+            initialSnapshot: initialSnapshot,
+            lineResults: [lineResult],
+          );
+        }
+      }
+
+      final updates = <({
+        DocumentReference<Map<String, dynamic>> ref,
+        DocumentReference<Map<String, dynamic>>? estoqueRef,
+        Map<String, dynamic> updateData,
+        EstoqueTransactionResult result,
+      })>{};
+      final allResults = <EstoqueTransactionResult>[];
+
+      for (final pending in pendingByPath.values) {
+        final docId = pending.lineResults.first.produtoId;
+        final updateData = <String, dynamic>{
+          'quantidade': pending.workingData['quantidade'],
+          'updatedAt': FieldValue.serverTimestamp(),
+        };
+        final wVar = pending.workingData['variacoes'];
+        if (wVar is Map) {
+          updateData['variacoes'] = wVar;
+          final wTam = pending.workingData['estoquePorTamanho'];
+          if (wTam != null) {
+            updateData['estoquePorTamanho'] = wTam;
+          }
+        } else {
+          final wTamOnly = pending.workingData['estoquePorTamanho'];
+          if (wTamOnly is Map) {
+            updateData['estoquePorTamanho'] = wTamOnly;
+          }
+        }
+
+        final stockBaseRev = parseStockRevisionFromRemote(pending.initialSnapshot);
+        _attachStockContractFields(updateData, pending.initialSnapshot);
+        final nextStockRev = parseStockRevisionFromRemote(updateData);
+        final stockOpId = parseStockOperationIdFromRemote(updateData);
+
+        final finalVar = updateData['variacoes'] as Map<String, dynamic>?;
+        Map<String, int>? finalTam;
+        final tamRaw = updateData['estoquePorTamanho'];
+        if (tamRaw is Map) {
+          finalTam = tamRaw.map(
+            (k, v) => MapEntry(k.toString(), (v as num).toInt()),
+          );
+        }
+        final finalQty = (updateData['quantidade'] as num).toInt();
+
+        for (final lr in pending.lineResults) {
+          allResults.add(
+            EstoqueTransactionResult(
+              produtoId: lr.produtoId,
+              produtoNome: lr.produtoNome,
+              produtoSlug: lr.produtoSlug,
+              quantidadeDebitada: lr.quantidadeDebitada,
+              variacoesAtualizadas: finalVar,
+              estoquePorTamanhoAtualizado: finalTam,
+              quantidadeTotalAtualizada: finalQty,
+              newStockRevision: nextStockRev,
+              stockOperationId: stockOpId,
+              stockBaseRevision: stockBaseRev,
+            ),
+          );
         }
 
         final estoqueRef = _db
@@ -935,21 +1093,11 @@ class EstoqueTransactionService {
             .collection(FSPaths.estoqueProdutosCol)
             .doc(docId);
 
-        final slugVal = (data['slug'] ?? '').toString().trim();
         updates.add((
-          ref: resolved.ref,
+          ref: pending.ref,
           estoqueRef: estoqueRef,
           updateData: updateData,
-          result: EstoqueTransactionResult(
-            produtoId: docId,
-            produtoNome: produtoNome,
-            produtoSlug: slugVal.isNotEmpty ? slugVal : null,
-            quantidadeDebitada: quantidade,
-            variacoesAtualizadas: novasVariacoes,
-            estoquePorTamanhoAtualizado:
-                estoquePorTamanhoParaVariacao ?? novoEstoquePorTamanho,
-            quantidadeTotalAtualizada: novaQuantidadeTotal,
-          ),
+          result: allResults.last,
         ));
       }
 
@@ -968,7 +1116,7 @@ class EstoqueTransactionService {
         transaction.set(produtosRef, u.updateData, SetOptions(merge: true));
       }
 
-      final results = updates.map((u) => u.result).toList();
+      final results = allResults;
       return results;
       }).timeout(
         const Duration(seconds: 25),
@@ -1246,6 +1394,18 @@ class EstoqueTransactionService {
         produto.estoquePorTamanho = result.estoquePorTamanhoAtualizado!;
       }
       touchProdutoUpdatedAtParaHivePosTransacao(produto);
+      if (result.stockOperationId != null) {
+        touchProdutoStockUpdatedAtParaHivePosTransacao(
+          produto,
+          operationId: result.stockOperationId,
+          baseRevision: result.stockBaseRevision,
+        );
+        if (result.newStockRevision != null) {
+          produto.stockRevision = result.newStockRevision!;
+        }
+      } else {
+        touchProdutoStockUpdatedAtParaHivePosTransacao(produto);
+      }
       await produto.save();
       debugPrint('[ESTOQUE-TX] Hive atualizado: ${produto.nome}');
     }
