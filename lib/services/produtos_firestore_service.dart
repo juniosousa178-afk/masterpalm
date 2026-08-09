@@ -14,6 +14,9 @@ import '../core/produto_custo_guard.dart';
 import '../core/produto_estoque_grade_canonical_guard.dart';
 import '../core/produto_form_grade_hydration.dart';
 import '../core/produto_variacao_extra.dart';
+import '../core/produto_estoque_grade_snapshot.dart';
+import '../core/produto_stock_revision.dart';
+import '../core/produto_stock_version_fields.dart';
 import 'firestore_paths.dart';
 import '../core/logger.dart';
 import 'package:hive/hive.dart';
@@ -876,6 +879,21 @@ class ProdutosFirestoreService {
     return localUpdatedAt.isAfter(remoteUpdatedAt);
   }
 
+  /// Pull com guard de quantidade: ainda aplicar código de barras remoto quando
+  /// o local está vazio ou desatualizado (cross-device).
+  static void mergeRemoteCodigoBarrasWhenPreservingLocalEdits({
+    required Produto local,
+    required Map<String, dynamic> remoteData,
+  }) {
+    if (!remoteData.containsKey('codigoBarras')) return;
+    final remote = (remoteData['codigoBarras'] ?? '').toString().trim();
+    if (remote.isEmpty) return;
+    final localCode = local.codigoBarras.trim();
+    if (localCode.isEmpty) {
+      local.codigoBarras = remote;
+    }
+  }
+
   /// Push: não sobrescrever remoto mais novo com Hive stale.
   ///
   /// Usa [updatedAtBeforeBump] (capturado antes de `bumpHiveTimestamp`) para que
@@ -890,8 +908,22 @@ class ProdutosFirestoreService {
     bool forcePushFromCadastro = false,
   }) {
     if (forcePushFromCadastro) return false;
-    if (existingData == null) return false;
-    final remoteAt = _firestoreUpdatedAtToDate(existingData['updatedAt']);
+    if (existingData == null || existingData.isEmpty) return false;
+
+    // Mutação de estoque pendente no Hive deve conseguir push (R8.4).
+    if (hasPendingStockMutation(local)) return false;
+
+    if (evaluatePushStockSkip(
+      local: local,
+      existingData: existingData,
+      forcePushFromCadastro: false,
+    )) {
+      return true;
+    }
+
+    // Baseline aae9c74: produto stale por updatedAt (combo/convergência, cadastro).
+    final remoteAt = parseFirestoreUpdatedAt(existingData) ??
+        _firestoreUpdatedAtToDate(existingData['updatedAt']);
     final localAt = updatedAtBeforeBump ?? local.updatedAt;
     if (localAt == null || remoteAt == null) return false;
     return remoteAt.isAfter(localAt.add(const Duration(seconds: 2)));
@@ -900,6 +932,27 @@ class ProdutosFirestoreService {
   static DateTime? parseFirestoreUpdatedAt(Map<String, dynamic> data) {
     final u = data['updatedAt'];
     return u is Timestamp ? u.toDate() : null;
+  }
+
+  static DateTime? parseFirestoreStockUpdatedAt(Map<String, dynamic> data) {
+    final u = data[kProdutoStockUpdatedAtField];
+    return u is Timestamp ? u.toDate() : null;
+  }
+
+  /// Pull: regressão de grade remota (por célula) sem janela temporal arbitrária.
+  @visibleForTesting
+  static bool shouldPreserveLocalStockOnRemoteRegression({
+    required Produto local,
+    required Map<String, dynamic> remoteData,
+  }) {
+    final decision = evaluatePullStockMerge(
+      local: local,
+      remoteData: remoteData,
+      remoteStockUpdatedAt: parseFirestoreStockUpdatedAt(remoteData),
+      localStockUpdatedAt: local.stockUpdatedAt,
+      localStockUpdatedAtServer: local.stockUpdatedAtServer,
+    );
+    return decision == PullStockMergeDecision.preserveLocalGrade;
   }
 
   static DateTime? _maxDateTime(DateTime? a, DateTime? b) {
@@ -2139,7 +2192,13 @@ class ProdutosFirestoreService {
                       localUpdatedAt: p.updatedAt,
                       remoteUpdatedAt: remoteUpdatedAtForPull,
                     ));
-            final preserveLocalEdits = preserveLocalQuantidade;
+            final preserveStockRegression =
+                shouldPreserveLocalStockOnRemoteRegression(
+              local: p,
+              remoteData: data,
+            );
+            final preserveLocalEdits =
+                preserveLocalQuantidade || preserveStockRegression;
 
             final custoAntes = p.custoReal;
             final pesoAntes = p.peso;
@@ -2147,10 +2206,19 @@ class ProdutosFirestoreService {
             if (preserveLocalEdits) {
               final motivo = pendingProdutoSync
                   ? 'sync pendente na fila'
-                  : 'updatedAt local mais recente que remoto';
+                  : preserveStockRegression
+                      ? 'regressão de grade remota (snapshot stale)'
+                      : 'updatedAt local mais recente que remoto';
               logD(
                 '[PULL_EDIT_GUARD] doc=$produtoId mantendo edição local ($motivo)',
               );
+              if (!custoManualLocal) {
+                ProdutoCustoGuard.applyRemoteCustoOnExistingProduct(
+                  local: p,
+                  remoteData: data,
+                  logContext: 'sync_pull_preserve_edits',
+                );
+              }
             } else {
               p.nome = data['nome'] ?? p.nome;
               p.quantidade =
@@ -2276,13 +2344,25 @@ class ProdutosFirestoreService {
             }
             final updatedAt = data['updatedAt'];
             if (preserveLocalEdits) {
+              mergeRemoteCodigoBarrasWhenPreservingLocalEdits(
+                local: p,
+                remoteData: data,
+              );
               if (updatedAt is Timestamp) {
                 p.updatedAt = _maxDateTime(p.updatedAt, updatedAt.toDate());
+              }
+              if (preserveStockRegression) {
+                tryConfirmStockFromRemote(p, data);
               }
             } else {
               if (updatedAt != null && updatedAt is Timestamp) {
                 p.updatedAt = updatedAt.toDate();
               }
+              final stockAt = data[kProdutoStockUpdatedAtField];
+              if (stockAt is Timestamp) {
+                applyServerStockVersionToProduto(p, stockAt.toDate());
+              }
+              tryConfirmStockFromRemote(p, data);
             }
             if ((p.custoReal - custoAntes).abs() > 0.0001 ||
                 (p.peso - pesoAntes).abs() > 0.0001) {

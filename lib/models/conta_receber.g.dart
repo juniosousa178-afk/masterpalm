@@ -30,10 +30,10 @@ class ContaReceberAdapter extends TypeAdapter<ContaReceber> {
       parcelaTotal: fields[10] as int,
       lembrete2DiasEnviado: fields[11] as bool,
       valorOriginal: fields[12] as double?,
-      valorPago: (fields[13] as double?) ?? 0,
+      valorPago: fields[13] as double,
       status: fields[14] as String?,
-      historicoPagamentosJson: (fields[15] as String?) ?? '[]',
-      vendaIdFirebase: (fields[16] as String?) ?? '',
+      historicoPagamentosJson: fields[15] as String,
+      vendaIdFirebase: fields[16] as String,
     );
   }
 

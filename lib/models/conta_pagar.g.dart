@@ -33,8 +33,8 @@ class ContaPagarAdapter extends TypeAdapter<ContaPagar> {
       formaPagamento: fields[13] as String,
       observacao: fields[14] as String,
       lancamentoFinanceiroId: fields[15] == null ? '' : fields[15] as String,
-      criadoEm: fields[16] as DateTime,
-      atualizadoEm: fields[17] as DateTime,
+      criadoEm: fields[16] as DateTime?,
+      atualizadoEm: fields[17] as DateTime?,
       dataCompra: fields[18] as DateTime,
       idFirebase: fields[19] == null ? '' : fields[19] as String,
     );
