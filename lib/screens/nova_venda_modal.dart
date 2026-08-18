@@ -9,6 +9,7 @@ import '../core/combo_configuravel_resumo.dart';
 import '../core/dart_error_unwrap.dart';
 import '../core/nova_venda_pos_save_ui_policy.dart';
 import '../core/logger.dart';
+import '../core/nova_venda_line_identity.dart';
 import '../core/access_scope_service.dart';
 import '../core/produto_cadastro_gate.dart';
 import '../core/produto_variacao_extra.dart';
@@ -132,17 +133,10 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       _pdvSaleIntentLifecycle;
 
   /// produtos: produto, preço, qtd, tamanho, cor, extraValor (técnico), variacaoExtraResumo (exibição)
-  List<Map<String, dynamic>> produtosSelecionados = [
-    {
-      'produto': '',
-      'preco': 0.0,
-      'quantidade': 1,
-      'tamanho': '',
-      'cor': '',
-      'extraValor': '',
-      'variacaoExtraResumo': '',
-    },
-  ];
+  List<Map<String, dynamic>> produtosSelecionados = [novaVendaEmptyLine()];
+
+  /// lineIds já removidos nesta sessão — impede double tap de apagar a linha seguinte.
+  final Set<String> _linhasVendaJaRemovidas = <String>{};
 
   late String lojaId;
 
@@ -159,8 +153,11 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     descontoController = TextEditingController();
     _valorControllers.add(TextEditingController());
 
-    // Prefill síncrono (Catálogo Interno): evita 1º frame com card vazio.
-    if (widget.vendaParaEditar == null) {
+    // Prefill síncrono: edição e catálogo interno no 1º frame, para o
+    // Autocomplete não montar com initialValue vazio e reusar Key de índice.
+    if (widget.vendaParaEditar != null) {
+      _carregarVendaParaEdicao(widget.vendaParaEditar!, notify: false);
+    } else {
       final pref = _normalizeItensIniciais(widget.itensIniciais);
       if (pref != null) {
         produtosSelecionados = pref;
@@ -175,22 +172,15 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
           descontoController.text = _formatPercentualCampo(desc);
         }
       }
-    }
-
-    for (final item in produtosSelecionados) {
-      final q = item['quantidade'] ?? 1;
-      _quantityControllers.add(TextEditingController(
-          text: (q is int ? q : int.tryParse(q.toString()) ?? 1).toString()));
+      ensureNovaVendaLineIds(produtosSelecionados);
+      for (final item in produtosSelecionados) {
+        final q = item['quantidade'] ?? 1;
+        _quantityControllers.add(TextEditingController(
+            text: (q is int ? q : int.tryParse(q.toString()) ?? 1).toString()));
+      }
     }
 
     _carregarConfigRoleta();
-    if (widget.vendaParaEditar != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && widget.vendaParaEditar != null) {
-          _carregarVendaParaEdicao(widget.vendaParaEditar!);
-        }
-      });
-    }
   }
 
   /// Normaliza maps do catálogo interno — descarta linhas sem nome de produto.
@@ -205,7 +195,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     return out.isEmpty ? null : out;
   }
 
-  void _carregarVendaParaEdicao(Venda v) {
+  void _carregarVendaParaEdicao(Venda v, {bool notify = true}) {
     clienteController.text = v.clienteNome;
     observacaoController.text = v.observacao;
     frete = v.frete;
@@ -295,13 +285,14 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       c.dispose();
     }
     _quantityControllers.clear();
+    ensureNovaVendaLineIds(produtosSelecionados);
     for (final item in produtosSelecionados) {
       final q = item['quantidade'] ?? 1;
       _quantityControllers.add(TextEditingController(
           text: (q is int ? q : int.tryParse(q.toString()) ?? 1).toString()));
     }
 
-    setState(() {});
+    if (notify && mounted) setState(() {});
   }
 
   Future<void> _carregarConfigRoleta() async {
@@ -824,6 +815,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                     'productId': i.productId,
                 })
             .toList();
+        ensureNovaVendaLineIds(produtosSelecionados);
         frete = venda.frete;
         desconto = venda.desconto;
         _descontoEmReais = false;
@@ -860,6 +852,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
             'variacaoExtraResumo': '',
           },
         ];
+        ensureNovaVendaLineIds(produtosSelecionados);
         frete = venda.frete;
         desconto = venda.desconto;
         _descontoEmReais = false;
@@ -1380,6 +1373,31 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     }
   }
 
+  /// Remove a linha escolhida pelo usuário (lineId / instância), não o primeiro
+  /// productId nem um índice stale de double tap.
+  void _removerLinhaVendaExata(Map<String, dynamic> item) {
+    final lineId = novaVendaLineIdOf(item);
+    if (lineId != null && _linhasVendaJaRemovidas.contains(lineId)) return;
+    final idx = indexOfExactNovaVendaLine(
+      produtosSelecionados,
+      lineId: lineId,
+      instance: item,
+    );
+    if (idx < 0) return;
+    if (lineId != null) _linhasVendaJaRemovidas.add(lineId);
+    setState(() {
+      if (idx < _quantityControllers.length) {
+        _quantityControllers[idx].dispose();
+        _quantityControllers.removeAt(idx);
+      }
+      produtosSelecionados.removeAt(idx);
+      if (produtosSelecionados.isEmpty) {
+        produtosSelecionados.add(novaVendaEmptyLine());
+        _quantityControllers.add(TextEditingController(text: '1'));
+      }
+    });
+  }
+
   (List<VendaItem>, Map<int, List<Map<String, dynamic>>>?) _montarItensVendaAtual() {
     final itens = <VendaItem>[];
     final itensComboSelecaoPorIndice = <int, List<Map<String, dynamic>>>{};
@@ -1468,6 +1486,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     required String cor,
     required String extraValor,
     int? indiceRemoverNaLista,
+    String? lineIdRemover,
     bool validarDisponibilidade = true,
   }) async {
     if (prod.ehCombo) {
@@ -1539,7 +1558,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
               : '$msg\n\nO que deseja fazer?',
         ),
         actions: [
-          if (indiceRemoverNaLista != null)
+          if (indiceRemoverNaLista != null ||
+              (lineIdRemover != null && lineIdRemover.trim().isNotEmpty))
             TextButton(
               onPressed: () => Navigator.pop(context, 'remover'),
               child: const Text('Remover da venda'),
@@ -1558,18 +1578,31 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       ),
     );
 
-    if (acao == 'remover' && indiceRemoverNaLista != null) {
-      produtosSelecionados.removeAt(indiceRemoverNaLista);
+    if (acao == 'remover' &&
+        (lineIdRemover != null || indiceRemoverNaLista != null)) {
+      final id = lineIdRemover?.trim();
+      final idx = (id != null && id.isNotEmpty)
+          ? indexOfExactNovaVendaLine(
+              produtosSelecionados,
+              lineId: id,
+            )
+          : indiceRemoverNaLista;
+      if (idx != null && idx >= 0 && idx < produtosSelecionados.length) {
+        if (id != null && id.isNotEmpty) {
+          if (_linhasVendaJaRemovidas.contains(id)) return false;
+          _linhasVendaJaRemovidas.add(id);
+        }
+        if (idx < _quantityControllers.length) {
+          _quantityControllers[idx].dispose();
+          _quantityControllers.removeAt(idx);
+        }
+        produtosSelecionados.removeAt(idx);
+      }
       if (produtosSelecionados.isEmpty) {
-        produtosSelecionados.add({
-          'produto': '',
-          'preco': 0.0,
-          'quantidade': 1,
-          'tamanho': '',
-          'cor': '',
-          'extraValor': '',
-          'variacaoExtraResumo': '',
-        });
+        produtosSelecionados.add(novaVendaEmptyLine());
+        if (_quantityControllers.isEmpty) {
+          _quantityControllers.add(TextEditingController(text: '1'));
+        }
       }
       setState(() {});
       return false;
@@ -1875,6 +1908,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
             cor: cor,
             extraValor: extraValor,
             indiceRemoverNaLista: i,
+            lineIdRemover: novaVendaLineIdOf(item),
           );
           if (!okEstoque) return;
         }
@@ -2456,7 +2490,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                           'R\$ ${precoVal.toDouble().toStringAsFixed(2).replaceAll('.', ',')}';
 
                       return Container(
-                        key: ValueKey('produto_row_$index'),
+                        key: novaVendaLineWidgetKey(item, 'produto_row_'),
                         margin: const EdgeInsets.only(bottom: 12),
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
@@ -2479,7 +2513,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                               children: [
                                 Expanded(
                                   child: _ProdutoDropdown(
-                                    key: ValueKey('dropdown_produto_$index'),
+                                    key: novaVendaLineWidgetKey(
+                                        item, 'dropdown_produto_'),
                                     valorAtual: valorAtual,
                                     produtos: produtosDaLoja,
                                     lojaId: lojaId,
@@ -2748,15 +2783,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                           color: Colors.green.shade600),
                                       onPressed: () {
                                         setState(() {
-                                          produtosSelecionados.add({
-                                            'produto': '',
-                                            'preco': 0.0,
-                                            'quantidade': 1,
-                                            'tamanho': '',
-                                            'cor': '',
-                                            'extraValor': '',
-                                            'variacaoExtraResumo': '',
-                                          });
+                                          produtosSelecionados
+                                              .add(novaVendaEmptyLine());
                                           _quantityControllers.add(
                                               TextEditingController(text: '1'));
                                         });
@@ -2766,19 +2794,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                       IconButton(
                                         icon: Icon(Icons.remove_circle_outline,
                                             color: Colors.red.shade400),
-                                        onPressed: () {
-                                          setState(() {
-                                            if (index <
-                                                _quantityControllers.length) {
-                                              _quantityControllers[index]
-                                                  .dispose();
-                                              _quantityControllers
-                                                  .removeAt(index);
-                                            }
-                                            produtosSelecionados
-                                                .removeAt(index);
-                                          });
-                                        },
+                                        onPressed: () =>
+                                            _removerLinhaVendaExata(item),
                                       ),
                                   ],
                                 ),
@@ -2820,9 +2837,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                         index < _quantityControllers.length
                                             ? _quantityControllers[index]
                                             : null,
-                                    key: index < _quantityControllers.length
-                                        ? null
-                                        : ValueKey('qtd_$index'),
+                                    key: novaVendaLineWidgetKey(item, 'qtd_'),
                                     initialValue: index <
                                             _quantityControllers.length
                                         ? null
