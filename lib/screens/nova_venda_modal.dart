@@ -2113,6 +2113,19 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
           return;
         case NovaVendaPosSaveUiAction.showSuccess:
           _pdvSaleIntentLifecycle.clearOnSuccess();
+          if (mensagemErro != null &&
+              VendaSalvaComPendenciaSyncException.isPendenciaMessage(
+                  mensagemErro)) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(mensagemErro),
+                  backgroundColor: Colors.orange.shade800,
+                  duration: const Duration(seconds: 6),
+                ),
+              );
+            }
+          }
           if (numeroSorte != null && numeroSorte.isNotEmpty) {
             await _mostrarDialogNumeroSorte(numeroSorte, nomeClienteFinal);
           }
@@ -2168,35 +2181,40 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
   }) async {
     try {
       if (vendaParaEditar != null) {
-        await VendasService.editarVendaMulti(
-          vendaOriginal: vendaParaEditar,
-          produtosBox: produtosBox,
-          clientesBox: clientesBox,
-          vendasBox: vendasBox,
-          clienteNome: nomeClienteFinal,
-          itens: itens,
-          dinheiro: valorDinheiro,
-          pix: valorPix,
-          cartao: valorCartao,
-          vendedor: vendedor,
-          vendedorUid: vendedorUid,
-          vendedorNome: vendedorNome,
-          vendedorEmail: vendedorEmail,
-          observacao: observacao,
-          frete: frete,
-          descontoPct: _descontoPctEquivalenteParaSalvar(),
-          lojaId: lojaId,
-          clienteExistente: cliente,
-          onSyncError: onErro,
-          isFiado: isFiado,
-          dataVencimentoFiado: isFiado
-              ? DateTime.now().add(Duration(days: diasVencimentoFiado))
-              : null,
-          quantidadeParcelasFiado: quantidadeParcelasFiado,
-          intervaloParcelasDias: intervaloParcelasDias,
-          itensComboSelecaoPorIndice: itensComboSelecaoPorIndice,
-        );
-        return (true, null, null);
+        try {
+          await VendasService.editarVendaMulti(
+            vendaOriginal: vendaParaEditar,
+            produtosBox: produtosBox,
+            clientesBox: clientesBox,
+            vendasBox: vendasBox,
+            clienteNome: nomeClienteFinal,
+            itens: itens,
+            dinheiro: valorDinheiro,
+            pix: valorPix,
+            cartao: valorCartao,
+            vendedor: vendedor,
+            vendedorUid: vendedorUid,
+            vendedorNome: vendedorNome,
+            vendedorEmail: vendedorEmail,
+            observacao: observacao,
+            frete: frete,
+            descontoPct: _descontoPctEquivalenteParaSalvar(),
+            lojaId: lojaId,
+            clienteExistente: cliente,
+            onSyncError: onErro,
+            isFiado: isFiado,
+            dataVencimentoFiado: isFiado
+                ? DateTime.now().add(Duration(days: diasVencimentoFiado))
+                : null,
+            quantidadeParcelasFiado: quantidadeParcelasFiado,
+            intervaloParcelasDias: intervaloParcelasDias,
+            itensComboSelecaoPorIndice: itensComboSelecaoPorIndice,
+          );
+          return (true, null, null);
+        } on VendaSalvaComPendenciaSyncException catch (e) {
+          // Local sale+CR OK — aviso de sync; UI fecha como sucesso local.
+          return (true, null, e.message);
+        }
       }
 
       final guard = LimitsGuard();
@@ -3195,6 +3213,30 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                               'Troco: R\$ ${troco.toStringAsFixed(2).replaceAll('.', ',')}',
                               style: TextStyle(
                                 color: Colors.green.shade800,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else if (falta > 0 && _pendenteFiado)
+                      Container(
+                        margin: const EdgeInsets.only(top: 12),
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade50,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.orange.shade200),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.schedule, color: Colors.orange.shade800),
+                            const SizedBox(width: 12),
+                            Text(
+                              'Saldo fiado: R\$ ${falta.toStringAsFixed(2).replaceAll('.', ',')}',
+                              style: TextStyle(
+                                color: Colors.orange.shade900,
                                 fontWeight: FontWeight.bold,
                                 fontSize: 16,
                               ),

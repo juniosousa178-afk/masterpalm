@@ -56,6 +56,28 @@ class VendaPersistenciaInconsistenciaCritica implements Exception {
       'Verifique o estoque na nuvem antes de tentar novamente.';
 }
 
+/// Venda e conta a receber locais OK; sincronização remota da CR ficou pendente.
+/// Não é falha de persistência local — a UI deve fechar como salva e avisar sync.
+class VendaSalvaComPendenciaSyncException implements Exception {
+  const VendaSalvaComPendenciaSyncException([this.message = defaultMessage]);
+
+  static const String defaultMessage =
+      'Venda salva. A conta a receber ficou pendente de sincronização '
+      'e será necessário tentar sincronizar novamente.';
+
+  final String message;
+
+  static bool isPendenciaMessage(String? raw) {
+    final m = raw?.trim() ?? '';
+    if (m.isEmpty) return false;
+    return m == defaultMessage ||
+        m.contains('conta a receber ficou pendente de sincronização');
+  }
+
+  @override
+  String toString() => message;
+}
+
 class VendasService {
   @visibleForTesting
   static Future<dynamic> Function(Box<Venda> box, Venda venda)?
@@ -523,12 +545,16 @@ class VendasService {
     if (stack != null) debugPrint('$stack');
   }
 
+  /// Timeout só para sync remota de CR (não aplica a Hive local).
+  static const Duration _remoteCrSyncTimeout = Duration(seconds: 15);
+
   static Future<void> _persistirContasReceberNaBox({
     required Box<ContaReceber> crBox,
     required List<ContaReceber> contas,
     required String lojaId,
     required String vendaIdVinculo,
     required int? vendaHiveKey,
+    bool remoteBestEffort = false,
   }) async {
     final dbg = debugPersistirContasReceberNaBoxOverride;
     if (dbg != null) {
@@ -545,6 +571,7 @@ class VendasService {
     var falhasFirestore = 0;
     for (var i = 0; i < contas.length; i++) {
       final conta = contas[i];
+      // LOCAL_RECEIVABLE_COMMIT_POINT — Hive add/save (obrigatório).
       await crBox.add(conta);
       try {
         await conta.save();
@@ -552,26 +579,62 @@ class VendasService {
         debugPrint(
           '⚠️ [VENDAS-SERVICE] conta.save após add falhou (parcela ${i + 1}, type=${e.runtimeType})',
         );
+        if (!conta.isInBox) {
+          rethrow;
+        }
       }
       normalizarContaReceberId(conta);
       final docId = resolveContaReceberDocId(conta);
-      final publicado = await ContaReceberFirestoreService.upsertContaReceber(
-        conta,
-        lastWriteOrigin: 'venda_fiada',
-      );
-      if (!publicado) {
+      // REMOTE_CR_SYNC_START_POINT — só após commit local da parcela.
+      try {
+        final Future<bool> upsertFuture =
+            ContaReceberFirestoreService.upsertContaReceber(
+          conta,
+          lastWriteOrigin: 'venda_fiada',
+        );
+        final bool publicado;
+        if (remoteBestEffort) {
+          publicado = await upsertFuture.timeout(
+            _remoteCrSyncTimeout,
+            onTimeout: () {
+              debugPrint(
+                '⚠️ [VENDAS-SERVICE] conta Firestore upsert TIMEOUT '
+                'parcela ${i + 1} docId=$docId lojaId=$lojaId '
+                'limite=${_remoteCrSyncTimeout.inSeconds}s',
+              );
+              return false;
+            },
+          );
+        } else {
+          publicado = await upsertFuture;
+        }
+        if (!publicado) {
+          falhasFirestore++;
+          debugPrint(
+            '⚠️ [VENDAS-SERVICE] conta Firestore upsert FALHOU parcela ${i + 1} '
+            'docId=$docId lojaId=$lojaId',
+          );
+        }
+      } catch (e) {
         falhasFirestore++;
         debugPrint(
-          '⚠️ [VENDAS-SERVICE] conta Firestore upsert FALHOU parcela ${i + 1} '
-          'docId=$docId lojaId=$lojaId',
+          '⚠️ [VENDAS-SERVICE] conta Firestore upsert EXCEÇÃO parcela ${i + 1} '
+          'docId=$docId lojaId=$lojaId type=${e.runtimeType}',
         );
+        if (!remoteBestEffort) {
+          rethrow;
+        }
       }
     }
     if (falhasFirestore > 0) {
       debugPrint(
         '⚠️ [VENDAS-SERVICE] $falhasFirestore conta(s) não publicadas no Firestore '
-        'lojaId=$lojaId vendaIdFirebase=$vendaIdVinculo',
+        'lojaId=$lojaId vendaIdFirebase=$vendaIdVinculo '
+        'remoteBestEffort=$remoteBestEffort',
       );
+      if (remoteBestEffort) {
+        throw const VendaSalvaComPendenciaSyncException();
+      }
       throw StateError(
         'Não foi possível publicar $falhasFirestore parcela(s) no servidor. '
         'Verifique a conexão e tente novamente.',
@@ -1301,6 +1364,8 @@ class VendasService {
         lojaId: lojaId,
         vendaIdVinculo: vendaIdVinculo,
         vendaHiveKey: vk,
+        // Edição: CR remota best-effort após Hive local (create mantém throw+rollback).
+        remoteBestEffort: true,
       );
       return;
     }
@@ -2862,19 +2927,25 @@ class VendasService {
 
     await venda.save();
 
-    await _atualizarContasReceberAposEdicaoVenda(
-      venda: venda,
-      lojaId: lojaEfetiva,
-      isFiado: isFiado,
-      saldoFiado: saldoFiado,
-      dataVencimentoFiado: dataVencimentoFiado,
-      quantidadeParcelasFiado: quantidadeParcelasFiado,
-      intervaloParcelasDias: intervaloParcelasDias,
-      observacao: observacao,
-      clienteNome: cliente.nome,
-      itensEquivalentes: itensEquivalentes,
-      totalAnterior: totalAnterior,
-    );
+    VendaSalvaComPendenciaSyncException? pendenciaCrRemota;
+    try {
+      await _atualizarContasReceberAposEdicaoVenda(
+        venda: venda,
+        lojaId: lojaEfetiva,
+        isFiado: isFiado,
+        saldoFiado: saldoFiado,
+        dataVencimentoFiado: dataVencimentoFiado,
+        quantidadeParcelasFiado: quantidadeParcelasFiado,
+        intervaloParcelasDias: intervaloParcelasDias,
+        observacao: observacao,
+        clienteNome: cliente.nome,
+        itensEquivalentes: itensEquivalentes,
+        totalAnterior: totalAnterior,
+      );
+    } on VendaSalvaComPendenciaSyncException catch (e) {
+      // LOCAL_SALE + LOCAL_CR já commitados — segue syncs e propaga aviso.
+      pendenciaCrRemota = e;
+    }
 
     try {
       await ClientesFirestoreService.syncCliente(cliente, lojaId: lojaEfetiva);
@@ -2906,6 +2977,10 @@ class VendasService {
       onSyncError?.call(
         'Venda salva localmente, mas não sincronizou na nuvem. Verifique a conexão ou tente sincronizar novamente.',
       );
+    }
+
+    if (pendenciaCrRemota != null) {
+      throw pendenciaCrRemota;
     }
 
     return venda;
