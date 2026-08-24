@@ -4,7 +4,8 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb, visibleForTesting;
+import 'package:flutter/foundation.dart'
+    show kDebugMode, kIsWeb, visibleForTesting;
 import 'package:firebase_storage/firebase_storage.dart';
 
 import '../core/combo_config_canonical.dart';
@@ -17,6 +18,7 @@ import '../core/produto_variacao_extra.dart';
 import '../core/produto_estoque_grade_snapshot.dart';
 import '../core/produto_stock_revision.dart';
 import '../core/produto_stock_version_fields.dart';
+import '../core/produto_stock_write_enforcement.dart';
 import 'firestore_paths.dart';
 import '../core/logger.dart';
 import 'package:hive/hive.dart';
@@ -40,7 +42,8 @@ import '../core/produto_firestore_doc_id_validator.dart';
 import 'produto_pull_skip_guard.dart';
 import 'sync_mass_delete_guard.dart';
 import '../src/blob_fetch_stub.dart'
-    if (dart.library.html) '../src/blob_fetch_web.dart' as blob_fetch;
+    if (dart.library.html) '../src/blob_fetch_web.dart'
+    as blob_fetch;
 
 /// Serviço para sincronizar produtos com Firestore.
 ///
@@ -71,7 +74,8 @@ class ProdutosFirestoreService {
   static FirebaseFirestore? debugFirestoreOverride;
 
   @visibleForTesting
-  static bool get debugForbidFirestoreAccess => FirestoreAccessGuard.forbidAccess;
+  static bool get debugForbidFirestoreAccess =>
+      FirestoreAccessGuard.forbidAccess;
 
   @visibleForTesting
   static set debugForbidFirestoreAccess(bool value) {
@@ -81,9 +85,8 @@ class ProdutosFirestoreService {
   @visibleForTesting
   static int get debugFirestoreAccessCount => FirestoreAccessGuard.accessCount;
 
-  static FirebaseFirestore get _db => FirestoreAccessGuard.resolve(
-        override: debugFirestoreOverride,
-      );
+  static FirebaseFirestore get _db =>
+      FirestoreAccessGuard.resolve(override: debugFirestoreOverride);
 
   /// Chaves de variação/grade no Firestore.
   @visibleForTesting
@@ -204,6 +207,10 @@ class ProdutosFirestoreService {
         '${sanitize.adjustedPaths.join(' | ')}',
       );
     }
+    enforceStockRevisionWriteContract(
+      updateData: sanitize.payload,
+      existingData: existingData,
+    );
     await ref.set(sanitize.payload);
   }
 
@@ -225,7 +232,8 @@ class ProdutosFirestoreService {
   static bool localTemGradeManualPersistida(Produto local) {
     final localVars = local.variacoes;
     if (localVars != null && localVars.isNotEmpty) return true;
-    if (local.custoEditadoNoCadastro == true && local.estoquePorTamanho.isNotEmpty) {
+    if (local.custoEditadoNoCadastro == true &&
+        local.estoquePorTamanho.isNotEmpty) {
       return true;
     }
     if (local.custoEditadoNoCadastro == true && local.tamanhos.isNotEmpty) {
@@ -365,8 +373,7 @@ class ProdutosFirestoreService {
           local.variacoesExtraTipo = null;
           logD('[VARIACAO_PULL] variacoesExtraTipo remoto {} → limpo');
         } else {
-          local.variacoesExtraTipo =
-              _parseVariacoesExtraTipoFromFirestore(vet);
+          local.variacoesExtraTipo = _parseVariacoesExtraTipoFromFirestore(vet);
         }
       }
     } else {
@@ -488,14 +495,14 @@ class ProdutosFirestoreService {
     final raw = data['estoquePorTamanho'];
     if (raw is! Map || raw.isEmpty) return {};
     return raw.map(
-      (k, v) => MapEntry(
-        k.toString(),
-        ProdutoVariacaoExtra.valorFirestoreComoInt(v),
-      ),
+      (k, v) =>
+          MapEntry(k.toString(), ProdutoVariacaoExtra.valorFirestoreComoInt(v)),
     );
   }
 
-  static List<String> _tamanhosParaPushFromRemoteData(Map<String, dynamic> data) {
+  static List<String> _tamanhosParaPushFromRemoteData(
+    Map<String, dynamic> data,
+  ) {
     final raw = data['tamanhos'];
     if (raw is! List || raw.isEmpty) return [];
     return _dedupeStringListPreserveOrder(
@@ -528,8 +535,9 @@ class ProdutosFirestoreService {
 
     final vetData = existingData['variacoesExtraTipo'];
     if (vetData is Map && vetData.isNotEmpty) {
-      produto.variacoesExtraTipo =
-          _parseVariacoesExtraTipoFromFirestore(vetData);
+      produto.variacoesExtraTipo = _parseVariacoesExtraTipoFromFirestore(
+        vetData,
+      );
     }
 
     final ppt = _precoPorTamanhoParaPushFromRemoteData(existingData);
@@ -564,7 +572,8 @@ class ProdutosFirestoreService {
     Map<String, double>? precoPorTamanho,
     List<String> tamanhos,
     bool rehydrateLocalFromRemote,
-  }) resolveVariationFieldsForFirestorePush({
+  })
+  resolveVariationFieldsForFirestorePush({
     required Produto local,
     required Map<String, dynamic>? existingData,
     required Map<String, dynamic> variacoesPush,
@@ -602,8 +611,7 @@ class ProdutosFirestoreService {
       estoquePorTamanho: _estoquePorTamanhoParaPushFromRemoteData(data),
       precoPorTamanho:
           _precoPorTamanhoParaPushFromRemoteData(data) ?? precoPorTamanhoPush,
-      tamanhos:
-          tamanhosRemotos.isNotEmpty ? tamanhosRemotos : tamanhosLocal,
+      tamanhos: tamanhosRemotos.isNotEmpty ? tamanhosRemotos : tamanhosLocal,
       rehydrateLocalFromRemote: true,
     );
   }
@@ -675,7 +683,8 @@ class ProdutosFirestoreService {
       final produtoId = raw.trim();
       if (produtoId.isEmpty) continue;
 
-      final already = !forceRefreshFromRemoto &&
+      final already =
+          !forceRefreshFromRemoto &&
           produtosBox.values.any(
             (p) =>
                 p.lojaId == lid &&
@@ -707,8 +716,9 @@ class ProdutosFirestoreService {
         }
 
         final uAt = data['updatedAt'];
-        final updatedAtDt =
-            uAt != null && uAt is Timestamp ? uAt.toDate() : null;
+        final updatedAtDt = uAt != null && uAt is Timestamp
+            ? uAt.toDate()
+            : null;
         final comboNovo = comboFieldsForNewProductPull(
           data,
           produtosBox: produtosBox,
@@ -722,16 +732,19 @@ class ProdutosFirestoreService {
           frete: (data['frete'] as num?)?.toDouble() ?? 0.0,
           gastosFixos: (data['gastosFixos'] as num?)?.toDouble() ?? 0.0,
           gastosVariaveis: (data['gastosVariaveis'] as num?)?.toDouble() ?? 0.0,
-          precoSugerido: (data['precoSugerido'] as num?)?.toDouble() ??
+          precoSugerido:
+              (data['precoSugerido'] as num?)?.toDouble() ??
               (data['preco'] as num?)?.toDouble() ??
               0.0,
           precoFinal: (data['preco'] as num?)?.toDouble() ?? 0.0,
-          precoUnitario: (data['precoUnitario'] as num?)?.toDouble() ??
+          precoUnitario:
+              (data['precoUnitario'] as num?)?.toDouble() ??
               (data['preco'] as num?)?.toDouble() ??
               0.0,
           quantidade: (data['quantidade'] as num?)?.toInt() ?? 0,
           categoria: data['categoria'] ?? '',
-          categoriasExtras: (data['categoriasExtras'] as List?)
+          categoriasExtras:
+              (data['categoriasExtras'] as List?)
                   ?.map((e) => e.toString())
                   .toList() ??
               const [],
@@ -743,7 +756,8 @@ class ProdutosFirestoreService {
           slug: data['slug'] ?? '',
           lojaId: lid,
           subcategoria: data['subcategoria'] ?? '',
-          subcategoriasExtras: (data['subcategoriasExtras'] as List?)
+          subcategoriasExtras:
+              (data['subcategoriasExtras'] as List?)
                   ?.map((e) => e.toString())
                   .toList() ??
               const [],
@@ -751,16 +765,19 @@ class ProdutosFirestoreService {
           tamanhos: _dedupeStringListPreserveOrder(
             (data['tamanhos'] as List?)?.map((e) => e.toString()).toList(),
           ),
-          estoquePorTamanho:
-              Map<String, int>.from(data['estoquePorTamanho'] ?? {}),
+          estoquePorTamanho: Map<String, int>.from(
+            data['estoquePorTamanho'] ?? {},
+          ),
           cores: _dedupeStringListPreserveOrder(
             (data['cores'] as List?)?.map((e) => e.toString()).toList(),
           ),
           variacoes: parseVariacoesFromFirestore(data['variacoes']),
-          variacoesExtraTipo:
-              _parseVariacoesExtraTipoFromFirestore(data['variacoesExtraTipo']),
-          precoPorTamanho:
-              parsePrecoPorTamanhoFromFirestore(data['precoPorTamanho']),
+          variacoesExtraTipo: _parseVariacoesExtraTipoFromFirestore(
+            data['variacoesExtraTipo'],
+          ),
+          precoPorTamanho: parsePrecoPorTamanhoFromFirestore(
+            data['precoPorTamanho'],
+          ),
           tipoProduto: comboNovo.$1,
           itensCombo: comboNovo.$2,
           comboConfig: comboNovo.$3,
@@ -792,7 +809,8 @@ class ProdutosFirestoreService {
               ? (data['dataFimPromo'] as Timestamp).toDate()
               : null,
           videoUrl: (data['videoUrl'] ?? '').toString(),
-          marketplaces: (data['marketplaces'] as List?)
+          marketplaces:
+              (data['marketplaces'] as List?)
                   ?.map((e) => e.toString())
                   .toList() ??
               const [],
@@ -922,7 +940,8 @@ class ProdutosFirestoreService {
     }
 
     // Baseline aae9c74: produto stale por updatedAt (combo/convergência, cadastro).
-    final remoteAt = parseFirestoreUpdatedAt(existingData) ??
+    final remoteAt =
+        parseFirestoreUpdatedAt(existingData) ??
         _firestoreUpdatedAtToDate(existingData['updatedAt']);
     final localAt = updatedAtBeforeBump ?? local.updatedAt;
     if (localAt == null || remoteAt == null) return false;
@@ -972,7 +991,8 @@ class ProdutosFirestoreService {
   static Map<String, dynamic> _variacoesParaFirestorePush(Produto p) {
     if (p.variacoes != null && p.variacoes!.isNotEmpty) {
       return sanitizeVariacoesForFirestore(
-          Map<String, dynamic>.from(p.variacoes!));
+        Map<String, dynamic>.from(p.variacoes!),
+      );
     }
     return <String, dynamic>{};
   }
@@ -1067,7 +1087,9 @@ class ProdutosFirestoreService {
   }
 
   static List<ProdutoCatalogoUpsertFalha> get falhasUpsertCatalogo =>
-      List<ProdutoCatalogoUpsertFalha>.unmodifiable(ultimasFalhasUpsertCatalogo);
+      List<ProdutoCatalogoUpsertFalha>.unmodifiable(
+        ultimasFalhasUpsertCatalogo,
+      );
 
   static bool get temFalhasUpsertCatalogo =>
       ultimasFalhasUpsertCatalogo.isNotEmpty;
@@ -1134,10 +1156,10 @@ class ProdutosFirestoreService {
         ? Map<String, dynamic>.from(gradeDecision.variacoes!)
         : null;
     produto.variacoesExtraTipo = gradeDecision.variacoesExtraTipo;
-    produto.estoquePorTamanho =
-        Map<String, int>.from(gradeDecision.estoquePorTamanho!);
-    if (gradeDecision.tamanhos != null &&
-        gradeDecision.tamanhos!.isNotEmpty) {
+    produto.estoquePorTamanho = Map<String, int>.from(
+      gradeDecision.estoquePorTamanho!,
+    );
+    if (gradeDecision.tamanhos != null && gradeDecision.tamanhos!.isNotEmpty) {
       produto.tamanhos = List<String>.from(gradeDecision.tamanhos!);
     }
     if (gradeDecision.precoPorTamanho != null) {
@@ -1163,7 +1185,8 @@ class ProdutosFirestoreService {
     final remoteMap = Map<String, dynamic>.from(remoteV);
     final localTam = localV.keys.map((k) => k.toString()).toSet();
     final remoteTam = remoteMap.keys.map((k) => k.toString()).toSet();
-    if (localTam.every(remoteTam.contains) && localTam.length < remoteTam.length) {
+    if (localTam.every(remoteTam.contains) &&
+        localTam.length < remoteTam.length) {
       return true;
     }
     return remoteTam.length > localTam.length &&
@@ -1191,17 +1214,20 @@ class ProdutosFirestoreService {
           .get();
       if (!snap.exists) return false;
       final data = Map<String, dynamic>.from(snap.data() ?? {});
-      if (!deveAtualizarGradeRemotaAoAbrirForm(local: produto, remoteData: data)) {
+      if (!deveAtualizarGradeRemotaAoAbrirForm(
+        local: produto,
+        remoteData: data,
+      )) {
         return false;
       }
 
       final baseline = ProdutoFormGradeBaseline.capture(produto);
       final gradeDecision =
           ProdutoEstoqueGradeCanonicalGuard.resolveForRehydrate(
-        local: produto,
-        remoteData: data,
-        baseline: baseline,
-      );
+            local: produto,
+            remoteData: data,
+            baseline: baseline,
+          );
 
       ProdutoRemoteSyncGuard.applyingRemoteToHive = true;
       try {
@@ -1235,7 +1261,7 @@ class ProdutosFirestoreService {
 
   /// Após save confirmado em estoque_produtos, alinha Hive com o doc remoto canônico.
   static Future<ProdutoRehydratePosSaveResult>
-      rehydrateProdutoConfirmadoFromEstoqueRemoto(
+  rehydrateProdutoConfirmadoFromEstoqueRemoto(
     Produto produto, {
     required String lojaId,
     ProdutoFormGradeBaseline? gradeBaseline,
@@ -1267,10 +1293,10 @@ class ProdutosFirestoreService {
       final data = Map<String, dynamic>.from(snap.data() ?? {});
       final gradeDecision =
           ProdutoEstoqueGradeCanonicalGuard.resolveForRehydrate(
-        local: produto,
-        remoteData: data,
-        baseline: gradeBaseline,
-      );
+            local: produto,
+            remoteData: data,
+            baseline: gradeBaseline,
+          );
       await _applyEstoqueRemotoConfirmadoToProdutoLocal(
         produto,
         data,
@@ -1315,7 +1341,8 @@ class ProdutosFirestoreService {
       produto.nome = (data['nome'] ?? produto.nome).toString();
       produto.precoFinal =
           (data['preco'] as num?)?.toDouble() ?? produto.precoFinal;
-      produto.precoUnitario = (data['precoUnitario'] as num?)?.toDouble() ??
+      produto.precoUnitario =
+          (data['precoUnitario'] as num?)?.toDouble() ??
           (data['preco'] as num?)?.toDouble() ??
           produto.precoUnitario;
       produto.publicadoNoCatalogo =
@@ -1380,8 +1407,8 @@ class ProdutosFirestoreService {
       final produtoIdRaw = produto.idFirebase.isNotEmpty
           ? produto.idFirebase
           : produto.slug.isNotEmpty
-              ? produto.slug
-              : DateTime.now().millisecondsSinceEpoch.toString();
+          ? produto.slug
+          : DateTime.now().millisecondsSinceEpoch.toString();
 
       final idValidation = ProdutoFirestoreDocIdValidator.validate(
         storeId: storeId,
@@ -1392,7 +1419,8 @@ class ProdutosFirestoreService {
           '[PRODUTOS-SYNC] docId inválido (${idValidation.code}) — push abortado',
           tag: 'PRODUTO_ID',
         );
-        ultimoErroSyncSanitizado = idValidation.sanitizedMessage ??
+        ultimoErroSyncSanitizado =
+            idValidation.sanitizedMessage ??
             ProdutoSyncErroUtil.sanitizar(
               null,
               status: ProdutoSyncRemotoStatus.produtoInvalido,
@@ -1407,12 +1435,14 @@ class ProdutosFirestoreService {
         lojaId: storeId,
       );
       if (prep.recuperacaoManual) {
-        ultimoErroSyncSanitizado = prep.mensagem ??
+        ultimoErroSyncSanitizado =
+            prep.mensagem ??
             'Produto requer recuperação manual antes da sincronização.';
         return ProdutoSyncRemotoStatus.recuperacaoManualNecessaria;
       }
       if (prep.tentativasEsgotadas) {
-        ultimoErroSyncSanitizado = prep.mensagem ??
+        ultimoErroSyncSanitizado =
+            prep.mensagem ??
             'Não foi possível sincronizar o produto importado.';
         return ProdutoSyncRemotoStatus.falhaRemota;
       }
@@ -1444,7 +1474,8 @@ class ProdutosFirestoreService {
       for (final imagemPath in produto.imagens) {
         if (ImageUploadService.isLocalPath(imagemPath)) {
           logD(
-              '📤 [PRODUTOS-SYNC] Fazendo upload da imagem (ficheiro original): $imagemPath');
+            '📤 [PRODUTOS-SYNC] Fazendo upload da imagem (ficheiro original): $imagemPath',
+          );
           final url = await ImageUploadService.uploadImage(
             imagePath: imagemPath,
             folder: 'produtos',
@@ -1488,7 +1519,8 @@ class ProdutosFirestoreService {
                   imagensAtualizadas = true;
                   blobConvertido = true;
                   logD(
-                      '[PRODUTOS-SYNC] blob: URL convertida para Firebase: $url');
+                    '[PRODUTOS-SYNC] blob: URL convertida para Firebase: $url',
+                  );
                 }
               }
             } catch (_) {
@@ -1497,7 +1529,8 @@ class ProdutosFirestoreService {
           }
           if (!blobConvertido) {
             logW(
-                '[PRODUTOS-SYNC] blob: URL ignorada (não persiste fora do browser): $imagemPath');
+              '[PRODUTOS-SYNC] blob: URL ignorada (não persiste fora do browser): $imagemPath',
+            );
           }
         } else {
           imagensFinais.add(imagemPath);
@@ -1509,7 +1542,8 @@ class ProdutosFirestoreService {
         produto.imagens = imagensFinais;
         await produto.save();
         logD(
-            '✅ [PRODUTOS-SYNC] Imagens atualizadas no Hive com URLs do Firebase');
+          '✅ [PRODUTOS-SYNC] Imagens atualizadas no Hive com URLs do Firebase',
+        );
       }
 
       final updatedAtBeforeBump = produto.updatedAt;
@@ -1559,36 +1593,37 @@ class ProdutosFirestoreService {
       );
       var variacoesExtraPush =
           ProdutoExclusaoTombstoneService.filtrarVariacoesExtraTipo(
-        storeId,
-        produtoId,
-        unfilteredExtra,
-      );
+            storeId,
+            produtoId,
+            unfilteredExtra,
+          );
       var estoquePorTamPush =
           ProdutoExclusaoTombstoneService.filtrarEstoquePorTamanho(
-        storeId,
-        produtoId,
-        unfilteredEstoque,
+            storeId,
+            produtoId,
+            unfilteredEstoque,
+          );
+      var precoPorTamanhoPush = _sanitizePrecoPorTamanhoForFirestore(
+        produto.precoPorTamanho,
       );
-      var precoPorTamanhoPush =
-          _sanitizePrecoPorTamanhoForFirestore(produto.precoPorTamanho);
 
       final gradeCompleted =
           ProdutoEstoqueGradeCanonicalGuard.completeForEstoquePush(
-        lojaId: storeId,
-        produtoId: produtoId,
-        variacoesPush: variacoesPush,
-        variacoesExtraPush: variacoesExtraPush,
-        estoquePorTamPush: estoquePorTamPush,
-        tamanhosPush: List<String>.from(produto.tamanhos),
-        precoPorTamanhoPush: precoPorTamanhoPush,
-        quantidade: produto.quantidade,
-        existingEstoqueData: docSnap.exists ? existingData : null,
-        localUnfilteredVariacoes: unfilteredVariacoes,
-        localUnfilteredEstoque: unfilteredEstoque,
-        localUnfilteredExtra: unfilteredExtra,
-        localUnfilteredTamanhos: List<String>.from(produto.tamanhos),
-        baseline: gradeBaseline,
-      );
+            lojaId: storeId,
+            produtoId: produtoId,
+            variacoesPush: variacoesPush,
+            variacoesExtraPush: variacoesExtraPush,
+            estoquePorTamPush: estoquePorTamPush,
+            tamanhosPush: List<String>.from(produto.tamanhos),
+            precoPorTamanhoPush: precoPorTamanhoPush,
+            quantidade: produto.quantidade,
+            existingEstoqueData: docSnap.exists ? existingData : null,
+            localUnfilteredVariacoes: unfilteredVariacoes,
+            localUnfilteredEstoque: unfilteredEstoque,
+            localUnfilteredExtra: unfilteredExtra,
+            localUnfilteredTamanhos: List<String>.from(produto.tamanhos),
+            baseline: gradeBaseline,
+          );
       variacoesPush = gradeCompleted.variacoes;
       variacoesExtraPush = gradeCompleted.variacoesExtraTipo;
       estoquePorTamPush = gradeCompleted.estoquePorTamanho;
@@ -1611,11 +1646,13 @@ class ProdutosFirestoreService {
         estoquePorTamPush: estoquePorTamPush,
         precoPorTamanhoPush: precoPorTamanhoPush,
       );
-      if (resolvedVariationPush.rehydrateLocalFromRemote && existingData != null) {
+      if (resolvedVariationPush.rehydrateLocalFromRemote &&
+          existingData != null) {
         await _rehydrateLocalGradeFromRemoteOnStalePush(produto, existingData);
       }
       final variacoesPushEfetivo = resolvedVariationPush.variacoes;
-      final variacoesExtraPushEfetivo = resolvedVariationPush.variacoesExtraTipo;
+      final variacoesExtraPushEfetivo =
+          resolvedVariationPush.variacoesExtraTipo;
       final estoquePorTamPushEfetivo = resolvedVariationPush.estoquePorTamanho;
       final precoPorTamanhoPushEfetivo = resolvedVariationPush.precoPorTamanho;
       final tamanhosPushEfetivo = gradeCompleted.tamanhos.isNotEmpty
@@ -1674,8 +1711,9 @@ class ProdutosFirestoreService {
         'maxParcelasSemJuros': produto.maxParcelasSemJuros,
 
         'videoUrl': produto.videoUrl.isNotEmpty ? produto.videoUrl : null,
-        'codigoBarras':
-            produto.codigoBarras.isNotEmpty ? produto.codigoBarras : null,
+        'codigoBarras': produto.codigoBarras.isNotEmpty
+            ? produto.codigoBarras
+            : null,
         'sku': produto.sku.isNotEmpty ? produto.sku : null,
         'estoqueMinimo': produto.estoqueMinimo,
         'fornecedor': produto.fornecedor.isNotEmpty ? produto.fornecedor : null,
@@ -1692,7 +1730,8 @@ class ProdutosFirestoreService {
           'lastWriteReason': writeOrigin,
         'lastWriteAtClient': Timestamp.fromDate(DateTime.now()),
         'lastWriteBumpHiveTimestamp': bumpHiveTimestamp,
-        'lastWritePath': 'lojas/$storeId/${FSPaths.estoqueProdutosCol}/$produtoId',
+        'lastWritePath':
+            'lojas/$storeId/${FSPaths.estoqueProdutosCol}/$produtoId',
         'lastWriteBuildId': const String.fromEnvironment(
           'CATALOG_BUILD_ID',
           defaultValue: 'dev',
@@ -1706,10 +1745,36 @@ class ProdutosFirestoreService {
           produtoData['createdAt'] = FieldValue.serverTimestamp();
         }
         _dlog(
-            '[ProdutoSync] update estoque_produtos/$produtoId (createdAt preservado)');
+          '[ProdutoSync] update estoque_produtos/$produtoId (createdAt preservado)',
+        );
       } else {
         produtoData['createdAt'] = FieldValue.serverTimestamp();
         _dlog('[ProdutoSync] create estoque_produtos/$produtoId');
+      }
+
+      final remoteGradeBeforePush = docSnap.exists && existingData != null
+          ? ProdutoEstoqueGradeSnapshot.fromRemote(existingData)
+          : null;
+      final localGradePush = ProdutoEstoqueGradeSnapshot.fromProduto(produto);
+      if (remoteGradeBeforePush == null ||
+          localGradePush.gradeDiffersFrom(remoteGradeBeforePush)) {
+        produtoData[kProdutoStockUpdatedAtField] = FieldValue.serverTimestamp();
+        final remoteRev = parseStockRevisionFromRemote(existingData);
+        final opId = hasPendingStockMutation(produto)
+            ? produto.pendingStockOperationId!
+            : newStockOperationId();
+        if (!hasPendingStockMutation(produto)) {
+          markPendingStockMutation(
+            produto,
+            operationId: opId,
+            baseRevision: remoteRev,
+          );
+        }
+        attachStockRevisionFields(
+          produtoData,
+          nextRevision: remoteRev + 1,
+          operationId: opId,
+        );
       }
 
       final variationKeysToRemove = <String>{};
@@ -1736,12 +1801,19 @@ class ProdutosFirestoreService {
         );
       }
 
-      await _upsertProdutoDocument(
-        docRef,
-        sanitizeEstoque.payload,
-        existingData: docSnap.exists ? docSnap.data() : null,
-        forceRemoveKeys: variationKeysToRemove,
-      );
+      try {
+        await _upsertProdutoDocument(
+          docRef,
+          sanitizeEstoque.payload,
+          existingData: docSnap.exists ? docSnap.data() : null,
+          forceRemoveKeys: variationKeysToRemove,
+        );
+      } on FirebaseException catch (e) {
+        if (e.code == 'permission-denied' && hasPendingStockMutation(produto)) {
+          markStockConflict(produto);
+        }
+        rethrow;
+      }
 
       // 🔹 TAMBÉM atualizar no catálogo público (produtos) se o produto está publicado
       if (produto.publicadoNoCatalogo) {
@@ -1811,8 +1883,9 @@ class ProdutosFirestoreService {
               'valorPromo': produto.valorPromo,
               'peso': produto.peso,
               'tipoEmbalagem': produto.tipoEmbalagem,
-              'codigoBarras':
-                  produto.codigoBarras.isNotEmpty ? produto.codigoBarras : null,
+              'codigoBarras': produto.codigoBarras.isNotEmpty
+                  ? produto.codigoBarras
+                  : null,
               'sku': produto.sku.isNotEmpty ? produto.sku : null,
               'estoqueMinimo': produto.estoqueMinimo,
               // Custo e campos internos: removidos no doc final via forceRemoveKeys (set sem merge).
@@ -1860,8 +1933,10 @@ class ProdutosFirestoreService {
                 firestoreMethod: 'set',
                 mutationIntent: CatalogoSyncMutationIntent.set,
                 documentStateHint: publicoSnap.exists
-                    ? CatalogoSyncDocumentStateHint.knownPresentFromExistingState
-                    : CatalogoSyncDocumentStateHint.knownAbsentFromExistingState,
+                    ? CatalogoSyncDocumentStateHint
+                          .knownPresentFromExistingState
+                    : CatalogoSyncDocumentStateHint
+                          .knownAbsentFromExistingState,
                 sourceMethod: 'ProdutosFirestoreService.syncProdutoComStatus',
               );
             }
@@ -1925,16 +2000,18 @@ class ProdutosFirestoreService {
         ultimoErroSyncSanitizado = e.message;
       }
       logE(
-          '❌ [PRODUTOS-SYNC] Erro ao sincronizar produto (type=${e.runtimeType})'
-          '${ultimoErroSyncSanitizado != null ? " detalhe=$ultimoErroSyncSanitizado" : ""}',
-          error: e,
-          st: st);
+        '❌ [PRODUTOS-SYNC] Erro ao sincronizar produto (type=${e.runtimeType})'
+        '${ultimoErroSyncSanitizado != null ? " detalhe=$ultimoErroSyncSanitizado" : ""}',
+        error: e,
+        st: st,
+      );
       if (!enqueueOnFailure) {
         return ProdutoSyncRemotoStatus.falhaRemota;
       }
       final storeId = lojaId ?? await StoreResolverFacade.resolveForAdminApp();
       final key = produto.key;
-      final boxName = produto.box?.name ??
+      final boxName =
+          produto.box?.name ??
           (storeId != null ? HiveBoxNames.produtos(storeId) : null);
       if (storeId != null && key != null && boxName != null) {
         final parsedKey = key is int ? key : int.tryParse(key.toString());
@@ -1953,9 +2030,9 @@ class ProdutosFirestoreService {
           lastError: ultimoErroSyncSanitizado,
           catalogoPublishPlan:
               catalogoLiveInlinePolicy ==
-                      CatalogoLiveInlinePolicy.ignorarPorquePosSaveCanonico
-                  ? CatalogoQueuePublishPlan.canonicoAposEstoque
-                  : CatalogoQueuePublishPlan.legadoInline,
+                  CatalogoLiveInlinePolicy.ignorarPorquePosSaveCanonico
+              ? CatalogoQueuePublishPlan.canonicoAposEstoque
+              : CatalogoQueuePublishPlan.legadoInline,
           catalogoPublishPhase: CatalogoQueuePublishPhase.aguardandoEstoque,
           catalogoQueueSourceOrigin: CatalogoQueueSourceOrigins.sanitizar(
             writeOrigin,
@@ -1974,7 +2051,9 @@ class ProdutosFirestoreService {
       s != null && s.trim().toLowerCase().startsWith('blob:');
 
   static Future<String?> _uploadDataImageUrl(
-      String dataUrl, String lojaId) async {
+    String dataUrl,
+    String lojaId,
+  ) async {
     try {
       final uri = Uri.parse(dataUrl.trim());
       final data = uri.data;
@@ -1984,14 +2063,12 @@ class ProdutosFirestoreService {
       final path =
           'lojas/$lojaId/produtos/img_${DateTime.now().millisecondsSinceEpoch}.$ext';
       final ref = FirebaseStorage.instance.ref(path);
-      await ref.putData(
-        bytes,
-        SettableMetadata(contentType: data.mimeType),
-      );
+      await ref.putData(bytes, SettableMetadata(contentType: data.mimeType));
       return await ref.getDownloadURL();
     } catch (e) {
       logE(
-          '[PRODUTOS-SYNC] Erro ao fazer upload de data:image (type=${e.runtimeType})');
+        '[PRODUTOS-SYNC] Erro ao fazer upload de data:image (type=${e.runtimeType})',
+      );
       return null;
     }
   }
@@ -2010,16 +2087,19 @@ class ProdutosFirestoreService {
         await syncProduto(produto, lojaId: lojaId);
       } catch (e, st) {
         logE(
-            '❌ [PRODUTOS-SYNC] Erro sync item hiveKey=$k (type=${e.runtimeType})',
-            error: e,
-            st: st);
+          '❌ [PRODUTOS-SYNC] Erro sync item hiveKey=$k (type=${e.runtimeType})',
+          error: e,
+          st: st,
+        );
       }
     }
   }
 
   /// Sincroniza todos os produtos locais para o Firestore (Hive → Firestore)
-  static Future<void> syncTodosProdutos(
-      {required String boxName, required String lojaId}) async {
+  static Future<void> syncTodosProdutos({
+    required String boxName,
+    required String lojaId,
+  }) async {
     try {
       logD('🔄 [PRODUTOS-SYNC] Iniciando sync de todos os produtos...');
 
@@ -2035,17 +2115,24 @@ class ProdutosFirestoreService {
             synced++;
           } catch (e, st) {
             errors++;
-            logE('❌ [PRODUTOS-SYNC] Erro no produto (type=${e.runtimeType})',
-                error: e, st: st);
+            logE(
+              '❌ [PRODUTOS-SYNC] Erro no produto (type=${e.runtimeType})',
+              error: e,
+              st: st,
+            );
           }
         }
       }
 
       logD(
-          '✅ [PRODUTOS-SYNC] Sync completo: $synced produtos sincronizados, $errors erros');
+        '✅ [PRODUTOS-SYNC] Sync completo: $synced produtos sincronizados, $errors erros',
+      );
     } catch (e, st) {
-      logE('❌ [PRODUTOS-SYNC] Erro geral (type=${e.runtimeType})',
-          error: e, st: st);
+      logE(
+        '❌ [PRODUTOS-SYNC] Erro geral (type=${e.runtimeType})',
+        error: e,
+        st: st,
+      );
     }
   }
 
@@ -2085,7 +2172,8 @@ class ProdutosFirestoreService {
       }
 
       logD(
-          '📦 [PRODUTOS-SYNC] Encontrados ${allDocs.length} produtos no Firestore');
+        '📦 [PRODUTOS-SYNC] Encontrados ${allDocs.length} produtos no Firestore',
+      );
 
       int sincronizados = 0;
       int atualizados = 0;
@@ -2128,7 +2216,9 @@ class ProdutosFirestoreService {
           }
 
           if (await ProdutoPullSkipGuard.shouldSkipDoc(
-              lojaId: lojaId, docId: produtoId)) {
+            lojaId: lojaId,
+            docId: produtoId,
+          )) {
             for (final k in produtosBox.keys.toList()) {
               final loc = produtosBox.get(k);
               if (loc != null &&
@@ -2186,7 +2276,8 @@ class ProdutosFirestoreService {
                     includeDeadLetter: true,
                   )
                 : false;
-            final preserveLocalQuantidade = !preferRemoteQuantity &&
+            final preserveLocalQuantidade =
+                !preferRemoteQuantity &&
                 (pendingProdutoSync ||
                     shouldPreserveLocalQuantidadeOnFirestorePull(
                       localUpdatedAt: p.updatedAt,
@@ -2194,9 +2285,9 @@ class ProdutosFirestoreService {
                     ));
             final preserveStockRegression =
                 shouldPreserveLocalStockOnRemoteRegression(
-              local: p,
-              remoteData: data,
-            );
+                  local: p,
+                  remoteData: data,
+                );
             final preserveLocalEdits =
                 preserveLocalQuantidade || preserveStockRegression;
 
@@ -2207,8 +2298,8 @@ class ProdutosFirestoreService {
               final motivo = pendingProdutoSync
                   ? 'sync pendente na fila'
                   : preserveStockRegression
-                      ? 'regressão de grade remota (snapshot stale)'
-                      : 'updatedAt local mais recente que remoto';
+                  ? 'regressão de grade remota (snapshot stale)'
+                  : 'updatedAt local mais recente que remoto';
               logD(
                 '[PULL_EDIT_GUARD] doc=$produtoId mantendo edição local ($motivo)',
               );
@@ -2244,8 +2335,9 @@ class ProdutosFirestoreService {
                   (data['gastosFixos'] as num?)?.toDouble() ?? p.gastosFixos;
               p.gastosVariaveis =
                   (data['gastosVariaveis'] as num?)?.toDouble() ??
-                      p.gastosVariaveis;
-              p.precoSugerido = (data['precoSugerido'] as num?)?.toDouble() ??
+                  p.gastosVariaveis;
+              p.precoSugerido =
+                  (data['precoSugerido'] as num?)?.toDouble() ??
                   p.precoSugerido;
               final pesoDados = data['peso'];
               if (pesoDados is num) {
@@ -2260,8 +2352,8 @@ class ProdutosFirestoreService {
                   p.peso = pr;
                 }
               }
-              p.tipoEmbalagem =
-                  (data['tipoEmbalagem'] ?? p.tipoEmbalagem).toString();
+              p.tipoEmbalagem = (data['tipoEmbalagem'] ?? p.tipoEmbalagem)
+                  .toString();
               p.categoria = data['categoria'] ?? p.categoria;
               p.subcategoria = data['subcategoria'] ?? p.subcategoria;
               if (data.containsKey('categoriasExtras')) {
@@ -2280,8 +2372,8 @@ class ProdutosFirestoreService {
               p.imagens =
                   (data['imagens'] as List?)?.cast<String>() ?? p.imagens;
               p.slug = data['slug'] ?? p.slug;
-              p.codigoBarras =
-                  (data['codigoBarras'] ?? p.codigoBarras ?? '').toString();
+              p.codigoBarras = (data['codigoBarras'] ?? p.codigoBarras ?? '')
+                  .toString();
               p.sku = (data['sku'] ?? p.sku ?? '').toString();
               p.estoqueMinimo = (data['estoqueMinimo'] is num)
                   ? (data['estoqueMinimo'] as num).toInt()
@@ -2298,7 +2390,8 @@ class ProdutosFirestoreService {
               p.publicadoNoCatalogo =
                   data['publicadoNoCatalogo'] ?? p.publicadoNoCatalogo;
               applyRemoteVariationFieldsToExistingOnPull(local: p, data: data);
-              p.precoUnitario = (data['precoUnitario'] as num?)?.toDouble() ??
+              p.precoUnitario =
+                  (data['precoUnitario'] as num?)?.toDouble() ??
                   (data['preco'] as num?)?.toDouble() ??
                   p.precoUnitario;
               applyComboMetadataPullForExisting(
@@ -2319,8 +2412,8 @@ class ProdutosFirestoreService {
                 p.emPromocao = data['emPromocao'] == true;
               }
               if (data.containsKey('percentualPromo')) {
-                p.percentualPromo =
-                    (data['percentualPromo'] as num?)?.toDouble();
+                p.percentualPromo = (data['percentualPromo'] as num?)
+                    ?.toDouble();
               }
               if (data.containsKey('valorPromo')) {
                 p.valorPromo = (data['valorPromo'] as num?)?.toDouble();
@@ -2375,8 +2468,7 @@ class ProdutosFirestoreService {
             if (p.idFirebase.isEmpty) {
               p.idFirebase = produtoId;
             }
-            ProdutoExclusaoTombstoneService
-                .filtrarMapasLocaisDoProdutoPeloTombstone(
+            ProdutoExclusaoTombstoneService.filtrarMapasLocaisDoProdutoPeloTombstone(
               lojaId,
               produtoId,
               p,
@@ -2398,8 +2490,9 @@ class ProdutosFirestoreService {
             }
             // Criar novo produto
             final uAt = data['updatedAt'];
-            final updatedAtDt =
-                uAt != null && uAt is Timestamp ? uAt.toDate() : null;
+            final updatedAtDt = uAt != null && uAt is Timestamp
+                ? uAt.toDate()
+                : null;
             final comboNovo = comboFieldsForNewProductPull(
               data,
               produtosBox: produtosBox,
@@ -2414,16 +2507,19 @@ class ProdutosFirestoreService {
               gastosFixos: (data['gastosFixos'] as num?)?.toDouble() ?? 0.0,
               gastosVariaveis:
                   (data['gastosVariaveis'] as num?)?.toDouble() ?? 0.0,
-              precoSugerido: (data['precoSugerido'] as num?)?.toDouble() ??
+              precoSugerido:
+                  (data['precoSugerido'] as num?)?.toDouble() ??
                   (data['preco'] as num?)?.toDouble() ??
                   0.0,
               precoFinal: (data['preco'] as num?)?.toDouble() ?? 0.0,
-              precoUnitario: (data['precoUnitario'] as num?)?.toDouble() ??
+              precoUnitario:
+                  (data['precoUnitario'] as num?)?.toDouble() ??
                   (data['preco'] as num?)?.toDouble() ??
                   0.0,
               quantidade: (data['quantidade'] as num?)?.toInt() ?? 0,
               categoria: data['categoria'] ?? '',
-              categoriasExtras: (data['categoriasExtras'] as List?)
+              categoriasExtras:
+                  (data['categoriasExtras'] as List?)
                       ?.map((e) => e.toString())
                       .toList() ??
                   const [],
@@ -2435,7 +2531,8 @@ class ProdutosFirestoreService {
               slug: data['slug'] ?? '',
               lojaId: lojaId,
               subcategoria: data['subcategoria'] ?? '',
-              subcategoriasExtras: (data['subcategoriasExtras'] as List?)
+              subcategoriasExtras:
+                  (data['subcategoriasExtras'] as List?)
                       ?.map((e) => e.toString())
                       .toList() ??
                   const [],
@@ -2443,16 +2540,19 @@ class ProdutosFirestoreService {
               tamanhos: _dedupeStringListPreserveOrder(
                 (data['tamanhos'] as List?)?.map((e) => e.toString()).toList(),
               ),
-              estoquePorTamanho:
-                  Map<String, int>.from(data['estoquePorTamanho'] ?? {}),
+              estoquePorTamanho: Map<String, int>.from(
+                data['estoquePorTamanho'] ?? {},
+              ),
               cores: _dedupeStringListPreserveOrder(
                 (data['cores'] as List?)?.map((e) => e.toString()).toList(),
               ),
               variacoes: parseVariacoesFromFirestore(data['variacoes']),
               variacoesExtraTipo: _parseVariacoesExtraTipoFromFirestore(
-                  data['variacoesExtraTipo']),
-              precoPorTamanho:
-                  parsePrecoPorTamanhoFromFirestore(data['precoPorTamanho']),
+                data['variacoesExtraTipo'],
+              ),
+              precoPorTamanho: parsePrecoPorTamanhoFromFirestore(
+                data['precoPorTamanho'],
+              ),
               tipoProduto: comboNovo.$1,
               itensCombo: comboNovo.$2,
               comboConfig: comboNovo.$3,
@@ -2464,7 +2564,7 @@ class ProdutosFirestoreService {
                   ? (data['maxParcelasSemJuros'] as num).toInt()
                   : 12,
               codigoBarras: (data['codigoBarras'] ?? '').toString(),
-          sku: (data['sku'] ?? '').toString(),
+              sku: (data['sku'] ?? '').toString(),
               estoqueMinimo: (data['estoqueMinimo'] is num)
                   ? (data['estoqueMinimo'] as num).toInt()
                   : 0,
@@ -2484,7 +2584,8 @@ class ProdutosFirestoreService {
                   ? (data['dataFimPromo'] as Timestamp).toDate()
                   : null,
               videoUrl: (data['videoUrl'] ?? '').toString(),
-              marketplaces: (data['marketplaces'] as List?)
+              marketplaces:
+                  (data['marketplaces'] as List?)
                       ?.map((e) => e.toString())
                       .toList() ??
                   const [],
@@ -2498,9 +2599,10 @@ class ProdutosFirestoreService {
           }
         } catch (e, st) {
           logE(
-              '❌ [PRODUTOS-SYNC] Erro ao sincronizar produto (type=${e.runtimeType})',
-              error: e,
-              st: st);
+            '❌ [PRODUTOS-SYNC] Erro ao sincronizar produto (type=${e.runtimeType})',
+            error: e,
+            st: st,
+          );
         }
       }
 
@@ -2525,17 +2627,20 @@ class ProdutosFirestoreService {
       for (final k in toRemove) {
         await produtosBox.delete(k);
         logD(
-            '🗑️ [PRODUTOS-SYNC] Produto local removido (excluído no Firestore): $k');
+          '🗑️ [PRODUTOS-SYNC] Produto local removido (excluído no Firestore): $k',
+        );
       }
 
       logD(
-          '✅ [PRODUTOS-SYNC] Sync completo: $sincronizados novos, $atualizados atualizados, ${toRemove.length} removidos');
+        '✅ [PRODUTOS-SYNC] Sync completo: $sincronizados novos, $atualizados atualizados, ${toRemove.length} removidos',
+      );
       return sincronizados + atualizados;
     } catch (e, st) {
       logE(
-          '❌ [PRODUTOS-SYNC] Erro ao sincronizar do Firestore (type=${e.runtimeType})',
-          error: e,
-          st: st);
+        '❌ [PRODUTOS-SYNC] Erro ao sincronizar do Firestore (type=${e.runtimeType})',
+        error: e,
+        st: st,
+      );
       return 0;
     } finally {
       ProdutoRemoteSyncGuard.applyingRemoteToHive = false;
@@ -2615,7 +2720,8 @@ class ProdutosFirestoreService {
         if (parsed != null && parsed.isNotEmpty) {
           p.itensCombo = parsed;
           logD(
-              '[COMBO_PULL_APPLY] doc=$docId itensCombo aplicados (${parsed.length} itens)');
+            '[COMBO_PULL_APPLY] doc=$docId itensCombo aplicados (${parsed.length} itens)',
+          );
         } else if (_receitaLocalNaoVazia(p)) {
           logW(
             '[COMBO_PULL_GUARD] doc=$docId parse de itensCombo não produziu lista válida — '
@@ -2722,8 +2828,9 @@ class ProdutosFirestoreService {
   static (
     String tipoProduto,
     List<Map<String, dynamic>>? itensCombo,
-    Map<String, dynamic>? comboConfig
-  ) comboFieldsForNewProductPull(
+    Map<String, dynamic>? comboConfig,
+  )
+  comboFieldsForNewProductPull(
     Map<String, dynamic> data, {
     required Box<Produto> produtosBox,
     required String lojaId,
@@ -2734,7 +2841,8 @@ class ProdutosFirestoreService {
         : 'simples';
     if (!data.containsKey('tipoProduto')) {
       logD(
-          '[COMBO_PULL_APPLY] novo doc=$docId tipoProduto ausente — default simples');
+        '[COMBO_PULL_APPLY] novo doc=$docId tipoProduto ausente — default simples',
+      );
     }
 
     List<Map<String, dynamic>>? itensCombo;
@@ -2788,7 +2896,8 @@ class ProdutosFirestoreService {
     if (!data.containsKey('comboConfig')) {
       comboConfig = null;
       logD(
-          '[COMBO_CONFIG_PULL_APPLY] novo doc=$docId comboConfig ausente — null');
+        '[COMBO_CONFIG_PULL_APPLY] novo doc=$docId comboConfig ausente — null',
+      );
     } else {
       final cc = data['comboConfig'];
       if (cc == null) {
@@ -2879,9 +2988,9 @@ class ProdutosFirestoreService {
       final v = entry.value is num
           ? (entry.value as num).toDouble()
           : double.tryParse(
-                (entry.value?.toString() ?? '').trim().replaceAll(',', '.'),
-              ) ??
-              0.0;
+                  (entry.value?.toString() ?? '').trim().replaceAll(',', '.'),
+                ) ??
+                0.0;
       if (v > 0) result[k] = v;
     }
     return result.isEmpty ? null : result;
@@ -2937,14 +3046,16 @@ class ProdutosFirestoreService {
             m[k] = q;
           }
           if (m.isNotEmpty) {
-            final hasMeta =
-                m.containsKey(ProdutoVariacaoExtra.kMetaCustoUnitarioKey);
+            final hasMeta = m.containsKey(
+              ProdutoVariacaoExtra.kMetaCustoUnitarioKey,
+            );
             if (!hasMeta &&
                 m.length == 1 &&
                 (m.containsKey(ProdutoVariacaoExtra.kSemExtraKey) ||
                     m.containsKey(ProdutoVariacaoExtra.kSemExtraKeyLegacy) ||
                     m.containsKey(''))) {
-              mapaCor[cor] = m[ProdutoVariacaoExtra.kSemExtraKey] ??
+              mapaCor[cor] =
+                  m[ProdutoVariacaoExtra.kSemExtraKey] ??
                   m[ProdutoVariacaoExtra.kSemExtraKeyLegacy] ??
                   m[''] ??
                   0;
@@ -2953,14 +3064,16 @@ class ProdutosFirestoreService {
             }
           }
         } else {
-          final qtd =
-              v is num ? v.toInt() : int.tryParse(v?.toString() ?? '') ?? 0;
+          final qtd = v is num
+              ? v.toInt()
+              : int.tryParse(v?.toString() ?? '') ?? 0;
           mapaCor[cor] = qtd;
         }
       }
       if (mapaCor.containsKey('sem-cor')) {
-        final temCorReal =
-            mapaCor.keys.any((k) => k.trim().isNotEmpty && k != 'sem-cor');
+        final temCorReal = mapaCor.keys.any(
+          (k) => k.trim().isNotEmpty && k != 'sem-cor',
+        );
         if (temCorReal) {
           mapaCor.remove('sem-cor');
           logD(
@@ -2975,7 +3088,8 @@ class ProdutosFirestoreService {
 
   /// { tamanho: { cor: { extraValor: extraTipo } } }
   static Map<String, dynamic>? _parseVariacoesExtraTipoFromFirestore(
-      dynamic d) {
+    dynamic d,
+  ) {
     if (d == null || d is! Map) return null;
     final out = <String, dynamic>{};
     for (final te in d.entries) {
@@ -3009,8 +3123,7 @@ class ProdutosFirestoreService {
 
   static Map<String, dynamic>? parseVariacoesExtraTipoFromFirestoreForPull(
     dynamic d,
-  ) =>
-      _parseVariacoesExtraTipoFromFirestore(d);
+  ) => _parseVariacoesExtraTipoFromFirestore(d);
 
   /// Atualiza apenas a quantidade de um produto no Firestore
   static Future<void> atualizarQuantidade({
@@ -3044,12 +3157,14 @@ class ProdutosFirestoreService {
           .update(updateData);
 
       logD(
-          '✅ [PRODUTOS-SYNC] Quantidade atualizada: $produtoId = $novaQuantidade');
+        '✅ [PRODUTOS-SYNC] Quantidade atualizada: $produtoId = $novaQuantidade',
+      );
     } catch (e, st) {
       logE(
-          '❌ [PRODUTOS-SYNC] Erro ao atualizar quantidade (type=${e.runtimeType})',
-          error: e,
-          st: st);
+        '❌ [PRODUTOS-SYNC] Erro ao atualizar quantidade (type=${e.runtimeType})',
+        error: e,
+        st: st,
+      );
     }
   }
 
@@ -3069,9 +3184,10 @@ class ProdutosFirestoreService {
       return remoteCount > localCount;
     } catch (e, st) {
       logE(
-          '❌ [PRODUTOS-SYNC] Erro ao verificar dados para importar (type=${e.runtimeType})',
-          error: e,
-          st: st);
+        '❌ [PRODUTOS-SYNC] Erro ao verificar dados para importar (type=${e.runtimeType})',
+        error: e,
+        st: st,
+      );
       return false;
     }
   }
@@ -3169,14 +3285,16 @@ class ProdutosFirestoreService {
 
       if (toDelete.isNotEmpty) {
         logD(
-            '🗑️ [PRODUTOS-SYNC] ${toDelete.length} produto(s) excedente(s) removido(s) do Firestore');
+          '🗑️ [PRODUTOS-SYNC] ${toDelete.length} produto(s) excedente(s) removido(s) do Firestore',
+        );
       }
       return toDelete.length;
     } catch (e, st) {
       logE(
-          '❌ [PRODUTOS-SYNC] Erro ao limpar excedentes (type=${e.runtimeType})',
-          error: e,
-          st: st);
+        '❌ [PRODUTOS-SYNC] Erro ao limpar excedentes (type=${e.runtimeType})',
+        error: e,
+        st: st,
+      );
       return 0;
     }
   }
@@ -3204,8 +3322,11 @@ class ProdutosFirestoreService {
 
       logD('🗑️ [PRODUTOS-SYNC] Produto $produtoId deletado do Firestore');
     } catch (e, st) {
-      logE('❌ [PRODUTOS-SYNC] Erro ao deletar produto (type=${e.runtimeType})',
-          error: e, st: st);
+      logE(
+        '❌ [PRODUTOS-SYNC] Erro ao deletar produto (type=${e.runtimeType})',
+        error: e,
+        st: st,
+      );
       rethrow;
     }
   }
@@ -3270,7 +3391,8 @@ class ProdutosFirestoreService {
         );
       }
       logD(
-          '[DELETE_FALLBACK] estoque removido docId=$d (idFirebase vazio, match forte)');
+        '[DELETE_FALLBACK] estoque removido docId=$d (idFirebase vazio, match forte)',
+      );
       return true;
     }
 

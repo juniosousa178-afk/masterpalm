@@ -11,11 +11,7 @@ const String kProdutoStockRevisionField = 'stockRevision';
 const String kProdutoStockOperationIdField = 'stockOperationId';
 
 /// Estado explícito de sincronização de estoque no Hive.
-enum StockSyncState {
-  confirmed,
-  pendingLocal,
-  conflict,
-}
+enum StockSyncState { confirmed, pendingLocal, conflict }
 
 /// Campo Firestore/Hive persistido quando há conflito irreconciliável.
 const String kProdutoStockSyncStateField = 'stockSyncState';
@@ -61,10 +57,7 @@ bool shouldMarkStockConflictOnPull({
 }
 
 /// Classificação do escritor remoto para coexistência legado/novo.
-enum LegacyStockWriterKind {
-  newApp,
-  legacyApp,
-}
+enum LegacyStockWriterKind { newApp, legacyApp }
 
 int parseStockRevisionFromRemote(Map<String, dynamic>? data) =>
     (data?[kProdutoStockRevisionField] as num?)?.toInt() ?? 0;
@@ -122,7 +115,8 @@ bool tryConfirmStockFromRemote(Produto p, Map<String, dynamic> remote) {
 
   if (hasPendingStockMutation(p)) {
     final pendingOp = p.pendingStockOperationId!.trim();
-    if (remoteOp == pendingOp && remoteRev > (p.pendingStockBaseRevision ?? 0)) {
+    if (remoteOp == pendingOp &&
+        remoteRev > (p.pendingStockBaseRevision ?? 0)) {
       confirmStockMutation(
         p,
         operationId: remoteOp!,
@@ -212,7 +206,8 @@ PullStockMergeDecision evaluatePullStockMergeByRevision({
     return PullStockMergeDecision.preserveLocalGrade;
   }
 
-  if (classifyRemoteStockWriter(remoteData) == LegacyStockWriterKind.legacyApp &&
+  if (classifyRemoteStockWriter(remoteData) ==
+          LegacyStockWriterKind.legacyApp &&
       localRev > 0) {
     return PullStockMergeDecision.preserveLocalGrade;
   }
@@ -256,14 +251,13 @@ bool evaluatePushStockSkipByRevision({
 
   final localGrade = ProdutoEstoqueGradeSnapshot.fromProduto(local);
   final remoteGrade = ProdutoEstoqueGradeSnapshot.fromRemote(existingData);
+  if (!localGrade.gradeDiffersFrom(remoteGrade)) return true;
 
   final remoteRev = parseStockRevisionFromRemote(existingData);
   final localRev = local.stockRevision;
 
   if (remoteRev > localRev) return true;
   if (remoteRev < localRev) return false;
-
-  if (!localGrade.gradeDiffersFrom(remoteGrade)) return false;
 
   // Conversão estrutural (simples↔grade, limpeza de células) — não bloquear.
   final localKeys = localGrade.cells.keys.toSet();
@@ -277,18 +271,7 @@ bool evaluatePushStockSkipByRevision({
   }
 
   final localDominates = localGrade.cellsStrictlyGreaterThan(remoteGrade);
-  if (localDominates.isNotEmpty) {
-    final remoteProdAt = _parseRemoteProductUpdatedAt(existingData);
-    final localProdAt = local.updatedAt;
-    if (remoteProdAt == null) {
-      return false;
-    }
-    if (localProdAt != null &&
-        remoteProdAt.isAfter(localProdAt.add(const Duration(seconds: 2)))) {
-      return true;
-    }
-    return false;
-  }
+  if (localDominates.isNotEmpty) return true;
 
   final remoteOp = parseStockOperationIdFromRemote(existingData);
   if (remoteOp != null &&
@@ -298,15 +281,4 @@ bool evaluatePushStockSkipByRevision({
   }
 
   return false;
-}
-
-DateTime? _parseRemoteProductUpdatedAt(Map<String, dynamic> data) {
-  final u = data['updatedAt'];
-  if (u == null) return null;
-  if (u is DateTime) return u;
-  try {
-    return (u as dynamic).toDate() as DateTime;
-  } catch (_) {
-    return null;
-  }
 }
