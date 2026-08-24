@@ -81,7 +81,7 @@ class VendaSalvaComPendenciaSyncException implements Exception {
 class VendasService {
   @visibleForTesting
   static Future<dynamic> Function(Box<Venda> box, Venda venda)?
-      debugVendasBoxAddOverride;
+  debugVendasBoxAddOverride;
 
   /// Somente testes — simula falha em [estornarBaixaPosFalhaAntesDePersistirVendaHive].
   @visibleForTesting
@@ -99,7 +99,8 @@ class VendasService {
     required String lojaId,
     required String vendaIdVinculo,
     required int? vendaHiveKey,
-  })? debugPersistirContasReceberNaBoxOverride;
+  })?
+  debugPersistirContasReceberNaBoxOverride;
 
   /// Somente testes — barreira determinística imediatamente antes da baixa remota.
   @visibleForTesting
@@ -111,7 +112,29 @@ class VendasService {
 
   /// Somente testes — simula crash após Hive persistido e antes de complete remoto.
   @visibleForTesting
-  static Future<void> Function()? debugAfterHiveSalePersistedBeforeSaleIntentComplete;
+  static Future<void> Function()?
+  debugAfterHiveSalePersistedBeforeSaleIntentComplete;
+
+  /// Somente testes — substitui syncCliente no caminho de [editarVendaMulti].
+  @visibleForTesting
+  static Future<void> Function(Cliente cliente, {required String lojaId})?
+  debugEditarVendaSyncClienteOverride;
+
+  /// Somente testes — substitui syncVenda no caminho de [editarVendaMulti].
+  @visibleForTesting
+  static Future<bool> Function(Venda venda, {required String lojaId})?
+  debugEditarVendaSyncVendaOverride;
+
+  /// Somente testes — falha a transição local de CR após a validação de auditoria.
+  @visibleForTesting
+  static Future<void> Function()? debugForcarFalhaTransicaoCrLocalEdicao;
+
+  /// Somente testes — falha o delta de estoque na edição antes de [venda.save].
+  @visibleForTesting
+  static Future<void> Function()? debugForcarFalhaEstoqueEdicaoAntesSave;
+
+  static const String mensagemNaoPodeRemoverFiadoComRecebimentosParciais =
+      'Não é possível remover o fiado: existem recebimentos parciais nesta venda.';
 
   static final Map<String, Future<Venda>> _registrarVendaCoalesce = {};
 
@@ -142,18 +165,15 @@ class VendasService {
     final reuse = (idFirebaseToReuse ?? '').trim();
     if (reuse.isNotEmpty) return 'reuse:$reuse';
 
-    final linhas = itens
-        .map((it) {
-          final pid = (it.productId ?? '').trim();
-          return '$pid|${it.produtoNome.trim()}|${it.quantidade}|'
-              '${it.precoUnitario}|${it.tamanho.trim()}|${it.cor.trim()}';
-        })
-        .toList()
-      ..sort();
+    final linhas = itens.map((it) {
+      final pid = (it.productId ?? '').trim();
+      return '$pid|${it.produtoNome.trim()}|${it.quantidade}|'
+          '${it.precoUnitario}|${it.tamanho.trim()}|${it.cor.trim()}';
+    }).toList()..sort();
     final comboJson =
         VendaComboEstoqueExpansion.serializeItensComboSelecaoPorIndice(
-      itensComboSelecaoPorIndice,
-    );
+          itensComboSelecaoPorIndice,
+        );
     return [
       'loja:${(lojaId ?? '').trim()}',
       'cli:${clienteNome.trim()}',
@@ -178,6 +198,7 @@ class VendasService {
     final o = (venda.origemVenda ?? '').trim().toLowerCase();
     return o == 'catalogo_web' || o.startsWith('catalogo');
   }
+
   static List<double> _parcelarValores(double total, int parcelas) {
     final qtd = parcelas.clamp(1, 48);
     final totalCentavos = (total * 100).round();
@@ -209,7 +230,10 @@ class VendasService {
     if (totalPagoAgora > total + 0.01) {
       throw ArgumentError('Pagamento informado maior que o total da venda.');
     }
-    final saldoFiado = calcularSaldoFiado(total: total, totalPagoAgora: totalPagoAgora);
+    final saldoFiado = calcularSaldoFiado(
+      total: total,
+      totalPagoAgora: totalPagoAgora,
+    );
     if (saldoFiado <= 0.01) return;
     if (dataVencimentoFiado == null) {
       throw ArgumentError('Informe a data de vencimento da venda fiada.');
@@ -224,10 +248,7 @@ class VendasService {
     required double total,
     required double totalPagoAgora,
   }) =>
-      crv.calcularSaldoFiadoVenda(
-        total: total,
-        totalPagoAgora: totalPagoAgora,
-      );
+      crv.calcularSaldoFiadoVenda(total: total, totalPagoAgora: totalPagoAgora);
 
   /// Atualiza histórico do cliente sem abortar a venda (HiveList pode falhar no web).
   static void _adicionarVendaHistoricoClienteSeguro({
@@ -278,13 +299,12 @@ class VendasService {
     required String lojaId,
     int? vendaKey,
     String? vendaIdFirebase,
-  }) =>
-      crv.contaReceberVinculadaAVenda(
-        conta: conta,
-        lojaId: lojaId,
-        vendaKey: vendaKey,
-        vendaIdFirebase: vendaIdFirebase,
-      );
+  }) => crv.contaReceberVinculadaAVenda(
+    conta: conta,
+    lojaId: lojaId,
+    vendaKey: vendaKey,
+    vendaIdFirebase: vendaIdFirebase,
+  );
 
   /// Resolve chave Hive após [Box.add] — no Web o retorno/[HiveObject.key] pode falhar.
   static int? resolverVendaHiveKeyAposAdd({
@@ -463,12 +483,13 @@ class VendasService {
       await forcarFalha();
     }
 
-    final results = await EstoqueTransactionService.devolverEstoqueTransactionBatch(
-      lojaId: lojaId,
-      itens: itensDevolucao,
-      vendaIdParaIdempotencia: vendaIdEstorno,
-      estornoOrigemCatalogo: 'venda_persistencia_falhou',
-    );
+    final results =
+        await EstoqueTransactionService.devolverEstoqueTransactionBatch(
+          lojaId: lojaId,
+          itens: itensDevolucao,
+          vendaIdParaIdempotencia: vendaIdEstorno,
+          estornoOrigemCatalogo: 'venda_persistencia_falhou',
+        );
     for (final result in results) {
       await EstoqueTransactionService.atualizarHiveAposTransacao(
         produtosBox: produtosBox,
@@ -589,9 +610,9 @@ class VendasService {
       try {
         final Future<bool> upsertFuture =
             ContaReceberFirestoreService.upsertContaReceber(
-          conta,
-          lastWriteOrigin: 'venda_fiada',
-        );
+              conta,
+              lastWriteOrigin: 'venda_fiada',
+            );
         final bool publicado;
         if (remoteBestEffort) {
           publicado = await upsertFuture.timeout(
@@ -679,9 +700,7 @@ class VendasService {
       );
       debugPrint('[VENDAS-DELETE][OK] vendaId=$idV');
     } catch (e) {
-      debugPrint(
-        '[VENDAS-SERVICE] removerContasReceberVinculadasAVenda: $e',
-      );
+      debugPrint('[VENDAS-SERVICE] removerContasReceberVinculadasAVenda: $e');
     }
   }
 
@@ -760,12 +779,9 @@ class VendasService {
 
     // 1) productId / idFirebase (ou slug canônico antes do primeiro sync)
     if (idTrim != null && idTrim.isNotEmpty) {
-      final p = lista.firstWhereOrNull(
-            (prod) => prod.idFirebase.trim() == idTrim,
-          ) ??
-          lista.firstWhereOrNull(
-            (prod) => prod.slug.trim() == idTrim,
-          );
+      final p =
+          lista.firstWhereOrNull((prod) => prod.idFirebase.trim() == idTrim) ??
+          lista.firstWhereOrNull((prod) => prod.slug.trim() == idTrim);
       if (p != null) return p;
     }
 
@@ -784,9 +800,9 @@ class VendasService {
 
     // 3) nome
     if (lowNome != null && lowNome.isNotEmpty) {
-      final matches = lista.where(
-        (prod) => prod.nome.trim().toLowerCase() == lowNome,
-      ).toList();
+      final matches = lista
+          .where((prod) => prod.nome.trim().toLowerCase() == lowNome)
+          .toList();
       if (matches.length == 1) {
         debugPrint(
           '[PRODUTO_FALLBACK] Resolução por nome | lojaId=$lojaId | nome=$lowNome | productId=${matches.single.idFirebase} | matches=1',
@@ -853,9 +869,7 @@ class VendasService {
 
     final rawJson = venda.itensComboSelecaoJson;
     final selecaoPersistida =
-        VendaComboEstoqueExpansion.parseItensComboSelecaoPorIndiceJson(
-      rawJson,
-    );
+        VendaComboEstoqueExpansion.parseItensComboSelecaoPorIndiceJson(rawJson);
     final snapKeys = selecaoPersistida?.keys.toList() ?? <int>[];
     final jsonVazio = rawJson == null || rawJson.trim().isEmpty;
     debugPrint(
@@ -867,25 +881,30 @@ class VendasService {
       );
     }
 
-    final (itensDevolucao, produtosEnc, linhaFlags) =
-        VendaComboEstoqueExpansion.expandirCombos(
+    final (
+      itensDevolucao,
+      produtosEnc,
+      linhaFlags,
+    ) = VendaComboEstoqueExpansion.expandirCombos(
       itens: itensVenda,
       produtosBox: produtosBox,
       lojaId: lojaId,
       itensComboSelecaoPorIndice: selecaoPersistida,
     );
 
-    final Map<String,
-            ({
-              String? productId,
-              String? slug,
-              String nomeOriginal,
-              String tam,
-              String cor,
-              String extra,
-              int qtd
-            })>
-        agrupado = {};
+    final Map<
+      String,
+      ({
+        String? productId,
+        String? slug,
+        String nomeOriginal,
+        String tam,
+        String cor,
+        String extra,
+        int qtd,
+      })
+    >
+    agrupado = {};
 
     for (var i = 0; i < itensDevolucao.length; i++) {
       if (i >= linhaFlags.length || i >= produtosEnc.length) break;
@@ -903,13 +922,15 @@ class VendasService {
       }
       final it = itensDevolucao[i];
       final pComp = produtosEnc[i];
-      final pidLog =
-          (it.productId ?? '').trim().isNotEmpty ? it.productId!.trim() : pComp.idFirebase.trim();
+      final pidLog = (it.productId ?? '').trim().isNotEmpty
+          ? it.productId!.trim()
+          : pComp.idFirebase.trim();
       debugPrint(
         '[COMBO-DEVOLUCAO] vendaId=$vendaIdLog item=$i tipo=componente produtoId=$pidLog nome=${it.produtoNome} qtd=${it.quantidade}',
       );
-      final pid =
-          (it.productId ?? '').trim().isNotEmpty ? it.productId!.trim() : null;
+      final pid = (it.productId ?? '').trim().isNotEmpty
+          ? it.productId!.trim()
+          : null;
       final slugComp = pComp.slug.trim().isNotEmpty ? pComp.slug.trim() : null;
       final nomeLower = it.produtoNome.trim().toLowerCase();
       final nomeOriginal = it.produtoNome.trim();
@@ -990,10 +1011,13 @@ class VendasService {
 
     final selecao =
         VendaComboEstoqueExpansion.parseItensComboSelecaoPorIndiceJson(
-      venda.itensComboSelecaoJson,
-    );
-    final (itensExp, produtosEnc, linhaFlags) =
-        VendaComboEstoqueExpansion.expandirCombos(
+          venda.itensComboSelecaoJson,
+        );
+    final (
+      itensExp,
+      produtosEnc,
+      linhaFlags,
+    ) = VendaComboEstoqueExpansion.expandirCombos(
       itens: itensVenda,
       produtosBox: produtosBox,
       lojaId: lojaId,
@@ -1025,7 +1049,8 @@ class VendasService {
     Map<int, List<Map<String, dynamic>>>? itensComboSelecaoPorIndice,
     String? itensComboSelecaoJson,
   }) {
-    final comboJson = itensComboSelecaoJson ??
+    final comboJson =
+        itensComboSelecaoJson ??
         VendaComboEstoqueExpansion.serializeItensComboSelecaoPorIndice(
           itensComboSelecaoPorIndice,
         );
@@ -1053,7 +1078,8 @@ class VendasService {
   }
 
   /// Validação pré-salvamento na UI: edição administrativa pula estoque; mudança de itens valida só o delta de baixa.
-  static VendaEdicaoValidacaoPreSalvamentoUi resolverValidacaoEstoquePreSalvamentoEdicao({
+  static VendaEdicaoValidacaoPreSalvamentoUi
+  resolverValidacaoEstoquePreSalvamentoEdicao({
     required Venda vendaOriginal,
     required List<VendaItem> itensNovos,
     required Box<Produto> produtosBox,
@@ -1062,8 +1088,8 @@ class VendasService {
   }) {
     final comboJsonNovo =
         VendaComboEstoqueExpansion.serializeItensComboSelecaoPorIndice(
-      itensComboSelecaoPorIndice,
-    );
+          itensComboSelecaoPorIndice,
+        );
     if (VendaEdicaoEstoqueDiff.itensVendaEquivalentes(
       antigos: vendaOriginal.itens ?? <VendaItem>[],
       novos: itensNovos,
@@ -1163,6 +1189,175 @@ class VendasService {
     }
   }
 
+  static bool _edicaoRequerRemocaoContasReceber({
+    required bool isFiado,
+    required double saldoFiado,
+  }) => !isFiado || saldoFiado <= 0.01;
+
+  static void _assertContasReceberRemoviveisSemRecebimentosParciais(
+    Iterable<ContaReceber> contas,
+  ) {
+    if (contas.any((c) => c.valorPago > 0.01)) {
+      throw ArgumentError(mensagemNaoPodeRemoverFiadoComRecebimentosParciais);
+    }
+  }
+
+  static Future<List<ContaReceber>> _contasReceberVinculadasAVenda({
+    required Venda venda,
+    required String lojaId,
+  }) async {
+    final vk = hiveKeyOrNull(venda.key);
+    final vendaIdVinculo = idVendaEstavelParaVinculo(venda);
+    if (vk == null && vendaIdVinculo.isEmpty) return const [];
+
+    final crBox = await ContaReceberService.openBoxLoja(lojaId);
+    return crBox.values
+        .where(
+          (c) => contaReceberVinculadaAVenda(
+            conta: c,
+            lojaId: lojaId,
+            vendaKey: vk,
+            vendaIdFirebase: vendaIdVinculo,
+          ),
+        )
+        .toList();
+  }
+
+  /// Auditoria pré-mutação: não apagar CR com baixas se a edição removeria o fiado.
+  static Future<void> _validarRemocaoContasReceberAntesDeMutarVenda({
+    required Venda vendaOriginal,
+    required String lojaId,
+    required bool isFiado,
+    required double saldoFiado,
+  }) async {
+    if (!_edicaoRequerRemocaoContasReceber(
+      isFiado: isFiado,
+      saldoFiado: saldoFiado,
+    )) {
+      return;
+    }
+    final contas = await _contasReceberVinculadasAVenda(
+      venda: vendaOriginal,
+      lojaId: lojaId,
+    );
+    _assertContasReceberRemoviveisSemRecebimentosParciais(contas);
+  }
+
+  static double _saldoFiadoPreviewEdicao({
+    required bool isFiado,
+    required double totalPreview,
+    required double dinheiro,
+    required double pix,
+    required double cartao,
+  }) {
+    var d = dinheiro;
+    var p = pix;
+    var c = cartao;
+    if (!isFiado && d == 0 && p == 0 && c == 0) {
+      d = totalPreview;
+    }
+    final totalPagoAgora = d + p + c;
+    return isFiado
+        ? calcularSaldoFiado(
+            total: totalPreview,
+            totalPagoAgora: totalPagoAgora,
+          )
+        : 0.0;
+  }
+
+  static Future<void> _syncClienteAposEdicaoLocal({
+    required Cliente cliente,
+    required String lojaId,
+  }) async {
+    final override = debugEditarVendaSyncClienteOverride;
+    if (override != null) {
+      await override(cliente, lojaId: lojaId);
+      return;
+    }
+    await ClientesFirestoreService.syncCliente(cliente, lojaId: lojaId);
+  }
+
+  static Future<bool> _syncVendaAposEdicaoLocal({
+    required Venda venda,
+    required String lojaId,
+  }) async {
+    final override = debugEditarVendaSyncVendaOverride;
+    if (override != null) {
+      return override(venda, lojaId: lojaId);
+    }
+    return VendasFirestoreService.syncVenda(venda, lojaId: lojaId);
+  }
+
+  static void _agendarSyncRemotoAposEdicaoLocal({
+    required Cliente cliente,
+    required Venda venda,
+    required String lojaEfetiva,
+    required bool isFiado,
+    required double saldoFiado,
+    void Function(String message)? onSyncError,
+  }) {
+    unawaited(() async {
+      try {
+        await _syncClienteAposEdicaoLocal(
+          cliente: cliente,
+          lojaId: lojaEfetiva,
+        );
+      } catch (e) {
+        debugPrint(
+          '⚠️ Erro ao sincronizar cliente com Firestore (type=${e.runtimeType})',
+        );
+        try {
+          onSyncError?.call('Cliente não sincronizado. Verifique a conexão.');
+        } catch (e2) {
+          debugPrint(
+            '⚠️ [VENDA-EDICAO] onSyncError cliente falhou (type=${e2.runtimeType})',
+          );
+        }
+      }
+      try {
+        final ok = await _syncVendaAposEdicaoLocal(
+          venda: venda,
+          lojaId: lojaEfetiva,
+        );
+        if (!ok) {
+          try {
+            onSyncError?.call(
+              'Venda salva localmente, mas não sincronizou na nuvem. Verifique a conexão ou tente sincronizar novamente.',
+            );
+          } catch (e2) {
+            debugPrint(
+              '⚠️ [VENDA-EDICAO] onSyncError venda falhou (type=${e2.runtimeType})',
+            );
+          }
+        } else if (isFiado && saldoFiado > 0.01) {
+          try {
+            await ContaReceberVendaBackfillService.republicarContasVinculadasAVenda(
+              lojaId: lojaEfetiva,
+              venda: venda,
+            );
+          } catch (e) {
+            debugPrint(
+              '⚠️ [VENDAS-SERVICE] Falha ao republicar contas fiado (edição) (type=${e.runtimeType})',
+            );
+          }
+        }
+      } catch (e) {
+        debugPrint(
+          '⚠️ Erro inesperado ao sincronizar venda com Firestore (type=${e.runtimeType})',
+        );
+        try {
+          onSyncError?.call(
+            'Venda salva localmente, mas não sincronizou na nuvem. Verifique a conexão ou tente sincronizar novamente.',
+          );
+        } catch (e2) {
+          debugPrint(
+            '⚠️ [VENDA-EDICAO] onSyncError venda falhou (type=${e2.runtimeType})',
+          );
+        }
+      }
+    }());
+  }
+
   static Future<void> _aplicarDeltaEstoqueEdicaoVenda({
     required String lojaId,
     required Box<Produto> produtosBox,
@@ -1171,11 +1366,11 @@ class VendasService {
     required String vendaIdLog,
   }) async {
     if (delta.semMovimento) {
-      debugPrint(
-        '[VENDA-EDICAO] sem_movimento_estoque vendaId=$vendaIdLog',
-      );
+      debugPrint('[VENDA-EDICAO] sem_movimento_estoque vendaId=$vendaIdLog');
       return;
     }
+
+    await debugForcarFalhaEstoqueEdicaoAntesSave?.call();
 
     var devolucaoResults = <EstoqueTransactionResult>[];
     if (delta.devolver.isNotEmpty) {
@@ -1184,9 +1379,9 @@ class VendasService {
       );
       devolucaoResults =
           await EstoqueTransactionService.devolverEstoqueTransactionBatch(
-        lojaId: lojaId,
-        itens: delta.devolver,
-      );
+            lojaId: lojaId,
+            itens: delta.devolver,
+          );
       for (final r in devolucaoResults) {
         await EstoqueTransactionService.atualizarHiveAposTransacao(
           produtosBox: produtosBox,
@@ -1196,9 +1391,9 @@ class VendasService {
       }
       final pisoResults =
           await ComboKitStockService.aplicarPisoEstoqueComboAposDevolucao(
-        lojaId: lojaId,
-        produtosBox: produtosBox,
-      );
+            lojaId: lojaId,
+            produtosBox: produtosBox,
+          );
       devolucaoResults = [...devolucaoResults, ...pisoResults];
       await CatalogoWebAposEstoqueService.sincronizarAposResultadosTransacao(
         lojaId: lojaId,
@@ -1217,18 +1412,21 @@ class VendasService {
         lojaId: lojaId,
         produtos: produtosBox.values
             .where((p) => p.lojaId == lojaId)
-            .where((p) => delta.baixar.any((m) {
-                  final pid = (m['productId'] ?? '').toString().trim();
-                  final nome = (m['nome'] ?? '').toString().trim().toLowerCase();
-                  return (pid.isNotEmpty && p.idFirebase.trim() == pid) ||
-                      p.nome.trim().toLowerCase() == nome;
-                }))
+            .where(
+              (p) => delta.baixar.any((m) {
+                final pid = (m['productId'] ?? '').toString().trim();
+                final nome = (m['nome'] ?? '').toString().trim().toLowerCase();
+                return (pid.isNotEmpty && p.idFirebase.trim() == pid) ||
+                    p.nome.trim().toLowerCase() == nome;
+              }),
+            )
             .toList(),
       );
-      baixaResults = await EstoqueTransactionService.baixarEstoqueTransactionBatch(
-        lojaId: lojaId,
-        itens: delta.baixar,
-      );
+      baixaResults =
+          await EstoqueTransactionService.baixarEstoqueTransactionBatch(
+            lojaId: lojaId,
+            itens: delta.baixar,
+          );
       await EstoqueTransactionService.removerDoCatalogoSeEstoqueZerado(
         lojaId,
         baixaResults,
@@ -1251,11 +1449,11 @@ class VendasService {
       }
       final tetoResults =
           await ComboKitStockService.aplicarTetoEstoqueComboAposBaixaSemAbortarVenda(
-        lojaId: lojaId,
-        produtosBox: produtosBox,
-        produtoIdsDebitadosNaVenda:
-            ComboKitStockService.produtoIdsDeResultadosBaixa(baixaResults),
-      );
+            lojaId: lojaId,
+            produtosBox: produtosBox,
+            produtoIdsDebitadosNaVenda:
+                ComboKitStockService.produtoIdsDeResultadosBaixa(baixaResults),
+          );
       baixaResults = [...baixaResults, ...tetoResults];
       await CatalogoWebAposEstoqueService.sincronizarAposResultadosTransacao(
         lojaId: lojaId,
@@ -1311,12 +1509,12 @@ class VendasService {
         )
         .toList();
 
-    if (!isFiado || saldoFiado <= 0.01) {
-      if (contasVinculadas.any((c) => c.valorPago > 0.01)) {
-        throw ArgumentError(
-          'Não é possível remover o fiado: existem recebimentos parciais nesta venda.',
-        );
-      }
+    if (_edicaoRequerRemocaoContasReceber(
+      isFiado: isFiado,
+      saldoFiado: saldoFiado,
+    )) {
+      _assertContasReceberRemoviveisSemRecebimentosParciais(contasVinculadas);
+      await debugForcarFalhaTransicaoCrLocalEdicao?.call();
       for (final c in contasVinculadas) {
         await c.delete();
       }
@@ -1352,7 +1550,9 @@ class VendasService {
             vendaIdFirebase: _vendaIdFirebaseParaContaReceber(vendaIdVinculo),
             observacao: qtdParcelas > 1
                 ? 'Parcela ${i + 1}/$qtdParcelas${observacao.trim().isNotEmpty ? ' - ${observacao.trim()}' : ''}'
-                : (observacao.trim().isEmpty ? 'Venda fiada' : observacao.trim()),
+                : (observacao.trim().isEmpty
+                      ? 'Venda fiada'
+                      : observacao.trim()),
             parcelaNumero: i + 1,
             parcelaTotal: qtdParcelas,
           ),
@@ -1370,9 +1570,14 @@ class VendasService {
       return;
     }
 
-    final totalPagoContas =
-        contasVinculadas.fold<double>(0, (s, c) => s + c.valorPago);
-    final novoSaldoAberto = (saldoFiado - totalPagoContas).clamp(0.0, double.infinity);
+    final totalPagoContas = contasVinculadas.fold<double>(
+      0,
+      (s, c) => s + c.valorPago,
+    );
+    final novoSaldoAberto = (saldoFiado - totalPagoContas).clamp(
+      0.0,
+      double.infinity,
+    );
 
     if (itensEquivalentes && (totalAnterior - venda.total).abs() < 0.01) {
       for (final c in contasVinculadas) {
@@ -1399,8 +1604,10 @@ class VendasService {
     }
 
     // Várias parcelas: ajusta saldo proporcional preservando histórico de pagamentos.
-    final saldoAnterior =
-        contasVinculadas.fold<double>(0, (s, c) => s + c.valor);
+    final saldoAnterior = contasVinculadas.fold<double>(
+      0,
+      (s, c) => s + c.valor,
+    );
     if (saldoAnterior <= 0.01) return;
     final fator = novoSaldoAberto / saldoAnterior;
     for (final c in contasVinculadas) {
@@ -1479,12 +1686,13 @@ class VendasService {
         '[COMBO-DEVOLUCAO-ITEM] productId=${m['productId']} slug=${m['slug']} nome=${m['nome']} qtd=${m['quantidade']}',
       );
     }
-    final results = await EstoqueTransactionService.devolverEstoqueTransactionBatch(
-      lojaId: lojaId,
-      itens: itens,
-      vendaIdParaIdempotencia: vendaId,
-      estornoOrigemCatalogo: estornoOrigemCatalogo,
-    );
+    final results =
+        await EstoqueTransactionService.devolverEstoqueTransactionBatch(
+          lojaId: lojaId,
+          itens: itens,
+          vendaIdParaIdempotencia: vendaId,
+          estornoOrigemCatalogo: estornoOrigemCatalogo,
+        );
     final ids = results.map((r) => r.produtoId).join(',');
     debugPrint(
       '[COMBO-DEVOLUCAO-RESULT] vendaId=$vendaId count=${results.length} ids=$ids',
@@ -1521,9 +1729,7 @@ class VendasService {
     final lower = clienteNome.trim().toLowerCase();
 
     final existente = clientesBox.values.firstWhereOrNull(
-      (c) =>
-          c.lojaId == lojaId &&
-          c.nome.trim().toLowerCase() == lower,
+      (c) => c.lojaId == lojaId && c.nome.trim().toLowerCase() == lower,
     );
 
     if (existente != null) {
@@ -1574,7 +1780,9 @@ class VendasService {
       precoUnitario: produto.precoFinal,
       tamanho: tamanho,
       cor: cor,
-      productId: produto.idFirebase.trim().isNotEmpty ? produto.idFirebase : null,
+      productId: produto.idFirebase.trim().isNotEmpty
+          ? produto.idFirebase
+          : null,
       custoUnitario: produto.custoUnitarioVariacao(tamanho, cor),
     );
 
@@ -1664,7 +1872,10 @@ class VendasService {
 
     final placeholder = Completer<Venda>();
     final promessa = placeholder.future;
-    final existente = _registrarVendaCoalesce.putIfAbsent(chave, () => promessa);
+    final existente = _registrarVendaCoalesce.putIfAbsent(
+      chave,
+      () => promessa,
+    );
     if (!identical(existente, promessa)) return existente;
 
     (() async {
@@ -1727,14 +1938,18 @@ class VendasService {
     double frete = 0.0,
     double descontoPct = 0.0,
     String? lojaId, // 🔹 multi-loja
-    Cliente? clienteExistente, // 🔹 quando já identificado (evita matching errado)
-    String? idFirebaseToReuse, // 🔹 em edição: reutiliza o id da venda antiga (evita duplicata)
-    void Function(String message)? onSyncError, // 🔹 feedback ao usuário quando sync Firestore falhar
+    Cliente?
+    clienteExistente, // 🔹 quando já identificado (evita matching errado)
+    String?
+    idFirebaseToReuse, // 🔹 em edição: reutiliza o id da venda antiga (evita duplicata)
+    void Function(String message)?
+    onSyncError, // 🔹 feedback ao usuário quando sync Firestore falhar
     bool isFiado = false, // 🔹 venda fiada: gera conta a receber
     DateTime? dataVencimentoFiado, // 🔹 vencimento da conta (quando isFiado)
     int quantidadeParcelasFiado = 1, // 🔹 número de parcelas do fiado
     int intervaloParcelasDias = 30, // 🔹 intervalo em dias entre parcelas
-    Map<int, List<Map<String, dynamic>>>? itensComboSelecaoPorIndice, // 🔹 seleção do cliente para combos
+    Map<int, List<Map<String, dynamic>>>?
+    itensComboSelecaoPorIndice, // 🔹 seleção do cliente para combos
     void Function(String? numeroSorte)? onNumeroSorteGerado,
     String? saleIntentId,
     String? saleIntentOrigin,
@@ -1761,10 +1976,11 @@ class VendasService {
       isFiado: isFiado,
       dataVencimentoFiado: dataVencimentoFiado,
       clienteNome: clienteExistente?.nome ?? clienteNome,
-      total: itens.fold<double>(
-        0.0,
-        (acc, it) => acc + (it.precoUnitario * it.quantidade),
-      ) *
+      total:
+          itens.fold<double>(
+                0.0,
+                (acc, it) => acc + (it.precoUnitario * it.quantidade),
+              ) *
               (1 - descontoPct / 100) +
           frete,
       quantidadeParcelasFiado: quantidadeParcelasFiado,
@@ -1790,8 +2006,11 @@ class VendasService {
     }
 
     // 2) expande combos e encontra produtos (para baixa de estoque)
-    final (itensParaEstoque, produtosEncontrados, linhaContaCustoMercadoria) =
-        VendaComboEstoqueExpansion.expandirCombos(
+    final (
+      itensParaEstoque,
+      produtosEncontrados,
+      linhaContaCustoMercadoria,
+    ) = VendaComboEstoqueExpansion.expandirCombos(
       itens: itens,
       produtosBox: produtosBox,
       lojaId: lojaEfetiva,
@@ -1858,7 +2077,8 @@ class VendasService {
       saleIntentId: isCoordinatedPdv ? coordinatedIntentId : null,
     );
 
-    final coordinatedOrigin = (saleIntentOrigin ?? SaleIntentOrigins.pdvManual).trim();
+    final coordinatedOrigin = (saleIntentOrigin ?? SaleIntentOrigins.pdvManual)
+        .trim();
     SaleIntentReservation? saleIntentReservation;
     var saleIntentStatus = SaleIntentStatus.reserved;
 
@@ -1896,10 +2116,10 @@ class VendasService {
       lojaId: lojaEfetiva,
       operationKey: operationKey,
       stockEffectHash: stockEffectHash,
-      requiredOperationId:
-          isCoordinatedPdv ? saleIntentReservation!.operationId : null,
-      explicitOperationId:
-          isCoordinatedPdv ? null : idFirebaseToReuse?.trim(),
+      requiredOperationId: isCoordinatedPdv
+          ? saleIntentReservation!.operationId
+          : null,
+      explicitOperationId: isCoordinatedPdv ? null : idFirebaseToReuse?.trim(),
     );
     final idFirebaseReservado = journalEntry.operationId;
     debugPrint(
@@ -1924,324 +2144,335 @@ class VendasService {
     late final String formasPagamentoTexto;
 
     try {
-    debugPrint(
-      '[H1-TRACE] stage=before_prep_remoto lojaId=$lojaEfetiva '
-      'produtos=${produtosEncontrados.length}',
-    );
-    await VendaEstoqueRemotoPrepService.garantirProdutosProntosParaBaixa(
-      lojaId: lojaEfetiva,
-      produtos: produtosEncontrados,
-    );
-    debugPrint('[H1-TRACE] stage=after_prep_remoto lojaId=$lojaEfetiva');
-
-    await debugAntesBaixaEstoqueBarrier?.call();
-
-    debugPrint(
-      '[H1-TRACE] stage=before_batch_idempotent '
-      'lojaId=$lojaEfetiva itemCount=${txItems.length} '
-      'coordinated=$isCoordinatedPdv stockPath=batch_idempotent',
-    );
-    debugPrint(
-      '[M39-ESTOQUE-VENDA] stage=start lojaId=$lojaEfetiva '
-      'sellerUid=${(vendedorUid ?? '').trim()} '
-      'itemCount=${txItems.length} operationId=$idFirebaseReservado '
-      'saleIntentId=$coordinatedIntentId',
-    );
-    for (final it in txItems) {
-      final pid = (it['productId'] ?? it['produtoId'] ?? it['id'] ?? '')
-          .toString();
-      final qtd = it['quantidade'] ?? it['qtd'] ?? '';
-      final tam = (it['tamanho'] ?? it['size'] ?? '').toString().trim();
-      final cor = (it['cor'] ?? it['color'] ?? '').toString().trim();
-      final extra =
-          (it['extraValor'] ?? it['variacaoExtra'] ?? '').toString().trim();
-      final stockKey = EstoqueTransactionService.stockItemKey(
+      debugPrint(
+        '[H1-TRACE] stage=before_prep_remoto lojaId=$lojaEfetiva '
+        'produtos=${produtosEncontrados.length}',
+      );
+      await VendaEstoqueRemotoPrepService.garantirProdutosProntosParaBaixa(
         lojaId: lojaEfetiva,
-        produtoId: pid,
-        tamanho: tam,
-        cor: cor,
-        variacaoExtra: extra,
+        produtos: produtosEncontrados,
+      );
+      debugPrint('[H1-TRACE] stage=after_prep_remoto lojaId=$lojaEfetiva');
+
+      await debugAntesBaixaEstoqueBarrier?.call();
+
+      debugPrint(
+        '[H1-TRACE] stage=before_batch_idempotent '
+        'lojaId=$lojaEfetiva itemCount=${txItems.length} '
+        'coordinated=$isCoordinatedPdv stockPath=batch_idempotent',
       );
       debugPrint(
-        '[M39-ESTOQUE-VARIACAO] stage=start vendaId=$idFirebaseReservado '
-        'produtoId=$pid variacaoId=${[
-          if (tam.isNotEmpty) tam,
-          if (cor.isNotEmpty) cor,
-          if (extra.isNotEmpty) extra,
-        ].join('/')} sku= stockItemKey=$stockKey '
-        'qtdVendida=$qtd operationId=$idFirebaseReservado',
+        '[M39-ESTOQUE-VENDA] stage=start lojaId=$lojaEfetiva '
+        'sellerUid=${(vendedorUid ?? '').trim()} '
+        'itemCount=${txItems.length} operationId=$idFirebaseReservado '
+        'saleIntentId=$coordinatedIntentId',
+      );
+      for (final it in txItems) {
+        final pid = (it['productId'] ?? it['produtoId'] ?? it['id'] ?? '')
+            .toString();
+        final qtd = it['quantidade'] ?? it['qtd'] ?? '';
+        final tam = (it['tamanho'] ?? it['size'] ?? '').toString().trim();
+        final cor = (it['cor'] ?? it['color'] ?? '').toString().trim();
+        final extra = (it['extraValor'] ?? it['variacaoExtra'] ?? '')
+            .toString()
+            .trim();
+        final stockKey = EstoqueTransactionService.stockItemKey(
+          lojaId: lojaEfetiva,
+          produtoId: pid,
+          tamanho: tam,
+          cor: cor,
+          variacaoExtra: extra,
+        );
+        debugPrint(
+          '[M39-ESTOQUE-VARIACAO] stage=start vendaId=$idFirebaseReservado '
+          'produtoId=$pid variacaoId=${[if (tam.isNotEmpty) tam, if (cor.isNotEmpty) cor, if (extra.isNotEmpty) extra].join('/')} sku= stockItemKey=$stockKey '
+          'qtdVendida=$qtd operationId=$idFirebaseReservado',
+        );
+        debugPrint(
+          '[M39-ESTOQUE-VENDA] produtoId=$pid qtdVendida=$qtd '
+          'tamanho=$tam cor=$cor sellerUid=${(vendedorUid ?? '').trim()}',
+        );
+      }
+      final baixaOp =
+          await EstoqueTransactionService.baixarEstoqueTransactionBatchIdempotente(
+            lojaId: lojaEfetiva,
+            itens: txItems,
+            operationId: idFirebaseReservado,
+          );
+      debugPrint(
+        '[H1-TRACE] stage=after_batch_idempotent '
+        'lojaId=$lojaEfetiva opId=$idFirebaseReservado '
+        'baixaAplicada=${baixaOp.baixaAplicadaNestaExecucao}',
       );
       debugPrint(
-        '[M39-ESTOQUE-VENDA] produtoId=$pid qtdVendida=$qtd '
-        'tamanho=$tam cor=$cor sellerUid=${(vendedorUid ?? '').trim()}',
+        '[M39-ESTOQUE-VENDA] stage=firestore '
+        'applied=${baixaOp.baixaAplicadaNestaExecucao} '
+        'alreadyApplied=${baixaOp.baixaJaAplicadaAnteriormente} '
+        'operationId=$idFirebaseReservado',
       );
-    }
-    final baixaOp =
-        await EstoqueTransactionService.baixarEstoqueTransactionBatchIdempotente(
-      lojaId: lojaEfetiva,
-      itens: txItems,
-      operationId: idFirebaseReservado,
-    );
-    debugPrint(
-      '[H1-TRACE] stage=after_batch_idempotent '
-      'lojaId=$lojaEfetiva opId=$idFirebaseReservado '
-      'baixaAplicada=${baixaOp.baixaAplicadaNestaExecucao}',
-    );
-    debugPrint(
-      '[M39-ESTOQUE-VENDA] stage=firestore '
-      'applied=${baixaOp.baixaAplicadaNestaExecucao} '
-      'alreadyApplied=${baixaOp.baixaJaAplicadaAnteriormente} '
-      'operationId=$idFirebaseReservado',
-    );
-    txResults = baixaOp.transactionResults;
-    baixaEstoqueConcluida = true;
-    baixaEstoqueAplicadaNestaExecucao = baixaOp.baixaAplicadaNestaExecucao;
+      txResults = baixaOp.transactionResults;
+      baixaEstoqueConcluida = true;
+      baixaEstoqueAplicadaNestaExecucao = baixaOp.baixaAplicadaNestaExecucao;
 
-    if (isCoordinatedPdv && saleIntentStatus == SaleIntentStatus.reserved) {
-      saleIntentStatus = await _coordinatedSaleIntentAdvance(
+      if (isCoordinatedPdv && saleIntentStatus == SaleIntentStatus.reserved) {
+        saleIntentStatus = await _coordinatedSaleIntentAdvance(
+          lojaId: lojaEfetiva,
+          saleIntentId: coordinatedIntentId,
+          operationId: idFirebaseReservado,
+          current: saleIntentStatus,
+          target: SaleIntentStatus.stockApplied,
+        );
+      }
+
+      await EstoqueTransactionService.removerDoCatalogoSeEstoqueZerado(
+        lojaEfetiva,
+        txResults,
+      );
+
+      for (final result in txResults) {
+        await EstoqueTransactionService.atualizarHiveAposTransacao(
+          produtosBox: produtosBox,
+          lojaId: lojaEfetiva,
+          result: result,
+        );
+        debugPrint(
+          '[M39-ESTOQUE-VENDA] stage=hive produtoId=${result.produtoId} '
+          'qtdVendida=${result.quantidadeDebitada} '
+          'qtdDepois=${result.quantidadeTotalAtualizada}',
+        );
+      }
+      debugPrint('[M39-ESTOQUE-VENDA] stage=done vendaOp=$idFirebaseReservado');
+
+      txResultsComboCap =
+          await ComboKitStockService.aplicarTetoEstoqueComboAposBaixaSemAbortarVenda(
+            lojaId: lojaEfetiva,
+            produtosBox: produtosBox,
+            produtoIdsDebitadosNaVenda:
+                ComboKitStockService.produtoIdsDeResultadosBaixa(txResults),
+          );
+
+      await CatalogoWebAposEstoqueService.sincronizarAposResultadosTransacao(
         lojaId: lojaEfetiva,
-        saleIntentId: coordinatedIntentId,
-        operationId: idFirebaseReservado,
-        current: saleIntentStatus,
-        target: SaleIntentStatus.stockApplied,
-      );
-    }
-
-    await EstoqueTransactionService.removerDoCatalogoSeEstoqueZerado(lojaEfetiva, txResults);
-
-    for (final result in txResults) {
-      await EstoqueTransactionService.atualizarHiveAposTransacao(
         produtosBox: produtosBox,
+        resultadosPrincipais: txResults,
+        resultadosComboExtra: txResultsComboCap,
+      );
+
+      // 3.1) Histórico de movimentação – registra saída por item (não bloqueia)
+      for (final result in txResults) {
+        MovimentacaoEstoqueService.registrar(
+          lojaId: lojaEfetiva,
+          produtoId: result.produtoId,
+          produtoNome: result.produtoNome,
+          tipo: 'saida',
+          quantidade: result.quantidadeDebitada,
+          motivo: 'Venda',
+          usuario: vendedor,
+        ).catchError((_) {});
+      }
+      for (final result in txResultsComboCap) {
+        MovimentacaoEstoqueService.registrar(
+          lojaId: lojaEfetiva,
+          produtoId: result.produtoId,
+          produtoNome: result.produtoNome,
+          tipo: 'saida',
+          quantidade: result.quantidadeDebitada,
+          motivo: 'Venda (ajuste kit combo)',
+          usuario: vendedor,
+        ).catchError((_) {});
+      }
+
+      // 4) subtotal / total
+      subtotal = itens.fold<double>(
+        0.0,
+        (acc, it) => acc + (it.precoUnitario * it.quantidade),
+      );
+      total = subtotal * (1 - descontoPct / 100) + frete;
+
+      // 5) custo de mercadoria (custo real) e taxa legado APK — separados; combo = só componentes
+      final custoProdutos = VendaCustoMercadoria.somarCustoReal(
+        itens: itensParaEstoque,
+        produtos: produtosEncontrados,
+        linhaContaCustoMercadoria: linhaContaCustoMercadoria,
+      );
+      VendaCustoMercadoria.aplicarRastreioOrigemAposSomarCustoReal(
+        itens: itensParaEstoque,
+        produtos: produtosEncontrados,
+        linhaContaCustoMercadoria: linhaContaCustoMercadoria,
+        tinhaCustoUnitarioExplicitoAntesDoResolver: explicitExp,
+      );
+      VendaCustoMercadoria.aplicarRastreioOrigemAposSomarCustoReal(
+        itens: itens,
+        produtos: produtosLinhaOriginal,
+        linhaContaCustoMercadoria: List<bool>.filled(itens.length, true),
+        tinhaCustoUnitarioExplicitoAntesDoResolver: explicitOrig,
+      );
+      final origensAtivas = <String?>[];
+      for (var i = 0; i < itensParaEstoque.length; i++) {
+        if (linhaContaCustoMercadoria[i]) {
+          origensAtivas.add(itensParaEstoque[i].origemCustoItem);
+        }
+      }
+      final origemCustoVenda = VendaCustoMercadoria.agregarOrigemCustoVenda(
+        custoProdutos: custoProdutos,
+        origensLinhasAtivas: origensAtivas,
+      );
+      final totalUnidades = VendaCustoMercadoria.unidadesMercadoria(
+        itens: itensParaEstoque,
+        linhaContaCustoMercadoria: linhaContaCustoMercadoria,
+      );
+      final taxas = VendaCustoMercadoria.taxasLegadoVendaApk(
+        custoMercadoria: custoProdutos,
+        unidadesMercadoria: totalUnidades,
+      );
+
+      // 6) se nenhum pagamento foi informado e não for fiado, joga tudo em dinheiro
+      if (!isFiado && dinheiro == 0 && pix == 0 && cartao == 0) {
+        dinheiro = total;
+      }
+
+      totalPagoAgora = dinheiro + pix + cartao;
+      saldoFiado = isFiado
+          ? calcularSaldoFiado(total: total, totalPagoAgora: totalPagoAgora)
+          : 0.0;
+
+      // 7) textos
+      final linhas = itens
+          .map((it) {
+            final variacoes = <String>[];
+            if (it.tamanho.isNotEmpty) variacoes.add('Tam: ${it.tamanho}');
+            if (it.cor.isNotEmpty) variacoes.add('Cor: ${it.cor}');
+            if (it.variacaoExtraResumo.isNotEmpty) {
+              variacoes.add(it.variacaoExtraResumo);
+            }
+            final variacoesStr = variacoes.isNotEmpty
+                ? ' (${variacoes.join(', ')})'
+                : '';
+            return "${it.quantidade} x ${it.produtoNome}$variacoesStr - R\$ ${_fmt2(it.precoUnitario)}";
+          })
+          .join('\n');
+
+      final produtosDescricao =
+          "$linhas\n"
+          "Frete: R\$ ${_fmt2(frete)}\n"
+          "Desconto: ${descontoPct.toStringAsFixed(0)}%\n"
+          "Total: R\$ ${_fmt2(total)}";
+
+      final vencStr = dataVencimentoFiado != null
+          ? 'Vencimento: ${dataVencimentoFiado.day.toString().padLeft(2, '0')}/${dataVencimentoFiado.month.toString().padLeft(2, '0')}/${dataVencimentoFiado.year}'
+          : '';
+      final linhasPagamento = <String>[
+        if (dinheiro > 0) "Pagamento Dinheiro: R\$ ${_fmt2(dinheiro)}",
+        if (pix > 0) "Pagamento Pix: R\$ ${_fmt2(pix)}",
+        if (cartao > 0) "Pagamento Cartão: R\$ ${_fmt2(cartao)}",
+      ];
+      if (isFiado && saldoFiado > 0.01) {
+        var fiadoLinha = 'Fiado - R\$ ${_fmt2(saldoFiado)}. $vencStr';
+        if (quantidadeParcelasFiado > 1) {
+          fiadoLinha +=
+              ' Parcelas fiado: $quantidadeParcelasFiado. Intervalo: $intervaloParcelasDias dias.';
+        }
+        linhasPagamento.add(fiadoLinha);
+      } else if (isFiado && linhasPagamento.isEmpty) {
+        linhasPagamento.add('Fiado - R\$ ${_fmt2(total)}. $vencStr');
+      }
+      formasPagamentoTexto = linhasPagamento.join('\n');
+
+      // 8) cria venda (com todos os itens + clienteId estável)
+      venda = Venda(
+        clienteNome: cliente.nome,
+        produtosDescricao: "$produtosDescricao\n$formasPagamentoTexto",
+        quantidade: itens.length,
+        preco: subtotal,
+        total: total,
+        formasPagamento: formasPagamentoTexto,
+        data: DateTime.now(),
+        tamanho: '',
+        vendedor: vendedor,
+        frete: frete,
+        desconto: descontoPct,
+        observacao: observacao.trim(),
+        itens: itens,
+        pagamentoDinheiro: dinheiro,
+        pagamentoPix: pix,
+        pagamentoCartao: cartao,
+        taxas: taxas,
+        custoProdutos: custoProdutos,
+        descontoValor: subtotal * (descontoPct / 100),
         lojaId: lojaEfetiva,
-        result: result,
+        clienteId: cliente.key?.toString() ?? cliente.idFirebase,
+        origemCusto: origemCustoVenda,
+        itensComboSelecaoJson:
+            VendaComboEstoqueExpansion.serializeItensComboSelecaoPorIndice(
+              itensComboSelecaoPorIndice,
+            ),
+        vendedorUid: (vendedorUid ?? '').trim().isEmpty
+            ? null
+            : vendedorUid!.trim(),
+        vendedorNome: (vendedorNome ?? '').trim().isEmpty
+            ? null
+            : vendedorNome!.trim(),
+        vendedorEmail: (vendedorEmail ?? '').trim().isEmpty
+            ? null
+            : vendedorEmail!.trim().toLowerCase(),
+      );
+
+      // Em edição: reutiliza idFirebase da venda antiga (evita duplicata no Firestore)
+      _garantirIdFirebaseVendaAntesDeSalvar(
+        venda: venda,
+        idFirebaseToReuse: idFirebaseReservado,
+      );
+
+      debugPrint(
+        '💾 [VENDAS-SERVICE] Salvando venda - Dinheiro: R\$ ${_fmt2(dinheiro)}, Pix: R\$ ${_fmt2(pix)}, Cartão: R\$ ${_fmt2(cartao)}, Total: R\$ ${_fmt2(total)}',
       );
       debugPrint(
-        '[M39-ESTOQUE-VENDA] stage=hive produtoId=${result.produtoId} '
-        'qtdVendida=${result.quantidadeDebitada} '
-        'qtdDepois=${result.quantidadeTotalAtualizada}',
+        '📤 [SYNC-DEBUG] VendasService.salvarVenda → lojaId=$lojaEfetiva | cliente=${cliente.nome} | total=R\$ ${_fmt2(total)}',
       );
-    }
-    debugPrint('[M39-ESTOQUE-VENDA] stage=done vendaOp=$idFirebaseReservado');
 
-    txResultsComboCap =
-        await ComboKitStockService.aplicarTetoEstoqueComboAposBaixaSemAbortarVenda(
-      lojaId: lojaEfetiva,
-      produtosBox: produtosBox,
-      produtoIdsDebitadosNaVenda:
-          ComboKitStockService.produtoIdsDeResultadosBaixa(txResults),
-    );
+      await debugAfterRemoteStockAppliedBeforeHivePersist?.call();
 
-    await CatalogoWebAposEstoqueService.sincronizarAposResultadosTransacao(
-      lojaId: lojaEfetiva,
-      produtosBox: produtosBox,
-      resultadosPrincipais: txResults,
-      resultadosComboExtra: txResultsComboCap,
-    );
+      final vendaExistentePorOpId = _findVendaHivePorIdFirebase(
+        vendasBox,
+        idFirebaseReservado,
+        lojaEfetiva,
+      );
+      if (vendaExistentePorOpId != null) {
+        venda = vendaExistentePorOpId;
+        addedKey = venda.key;
+        if (isCoordinatedPdv &&
+            saleIntentStatus == SaleIntentStatus.stockApplied &&
+            !(isFiado && saldoFiado > 0.01)) {
+          saleIntentStatus = await _coordinatedSaleIntentAdvance(
+            lojaId: lojaEfetiva,
+            saleIntentId: coordinatedIntentId,
+            operationId: idFirebaseReservado,
+            current: saleIntentStatus,
+            target: SaleIntentStatus.salePersisted,
+          );
+        }
+      } else {
+        addedKey = debugVendasBoxAddOverride != null
+            ? await debugVendasBoxAddOverride!(vendasBox, venda)
+            : await vendasBox.add(venda);
 
-    // 3.1) Histórico de movimentação – registra saída por item (não bloqueia)
-    for (final result in txResults) {
-      MovimentacaoEstoqueService.registrar(
+        if (isCoordinatedPdv &&
+            saleIntentStatus == SaleIntentStatus.stockApplied &&
+            !(isFiado && saldoFiado > 0.01)) {
+          saleIntentStatus = await _coordinatedSaleIntentAdvance(
+            lojaId: lojaEfetiva,
+            saleIntentId: coordinatedIntentId,
+            operationId: idFirebaseReservado,
+            current: saleIntentStatus,
+            target: SaleIntentStatus.salePersisted,
+          );
+        }
+      }
+
+      await VendaOperationJournalService.complete(
         lojaId: lojaEfetiva,
-        produtoId: result.produtoId,
-        produtoNome: result.produtoNome,
-        tipo: 'saida',
-        quantidade: result.quantidadeDebitada,
-        motivo: 'Venda',
-        usuario: vendedor,
-      ).catchError((_) {});
-    }
-    for (final result in txResultsComboCap) {
-      MovimentacaoEstoqueService.registrar(
-        lojaId: lojaEfetiva,
-        produtoId: result.produtoId,
-        produtoNome: result.produtoNome,
-        tipo: 'saida',
-        quantidade: result.quantidadeDebitada,
-        motivo: 'Venda (ajuste kit combo)',
-        usuario: vendedor,
-      ).catchError((_) {});
-    }
-
-    // 4) subtotal / total
-    subtotal = itens.fold<double>(
-      0.0,
-      (acc, it) => acc + (it.precoUnitario * it.quantidade),
-    );
-    total = subtotal * (1 - descontoPct / 100) + frete;
-
-    // 5) custo de mercadoria (custo real) e taxa legado APK — separados; combo = só componentes
-    final custoProdutos = VendaCustoMercadoria.somarCustoReal(
-      itens: itensParaEstoque,
-      produtos: produtosEncontrados,
-      linhaContaCustoMercadoria: linhaContaCustoMercadoria,
-    );
-    VendaCustoMercadoria.aplicarRastreioOrigemAposSomarCustoReal(
-      itens: itensParaEstoque,
-      produtos: produtosEncontrados,
-      linhaContaCustoMercadoria: linhaContaCustoMercadoria,
-      tinhaCustoUnitarioExplicitoAntesDoResolver: explicitExp,
-    );
-    VendaCustoMercadoria.aplicarRastreioOrigemAposSomarCustoReal(
-      itens: itens,
-      produtos: produtosLinhaOriginal,
-      linhaContaCustoMercadoria: List<bool>.filled(itens.length, true),
-      tinhaCustoUnitarioExplicitoAntesDoResolver: explicitOrig,
-    );
-    final origensAtivas = <String?>[];
-    for (var i = 0; i < itensParaEstoque.length; i++) {
-      if (linhaContaCustoMercadoria[i]) {
-        origensAtivas.add(itensParaEstoque[i].origemCustoItem);
-      }
-    }
-    final origemCustoVenda = VendaCustoMercadoria.agregarOrigemCustoVenda(
-      custoProdutos: custoProdutos,
-      origensLinhasAtivas: origensAtivas,
-    );
-    final totalUnidades = VendaCustoMercadoria.unidadesMercadoria(
-      itens: itensParaEstoque,
-      linhaContaCustoMercadoria: linhaContaCustoMercadoria,
-    );
-    final taxas = VendaCustoMercadoria.taxasLegadoVendaApk(
-      custoMercadoria: custoProdutos,
-      unidadesMercadoria: totalUnidades,
-    );
-
-    // 6) se nenhum pagamento foi informado e não for fiado, joga tudo em dinheiro
-    if (!isFiado && dinheiro == 0 && pix == 0 && cartao == 0) {
-      dinheiro = total;
-    }
-
-    totalPagoAgora = dinheiro + pix + cartao;
-    saldoFiado = isFiado
-        ? calcularSaldoFiado(total: total, totalPagoAgora: totalPagoAgora)
-        : 0.0;
-
-    // 7) textos
-    final linhas = itens.map((it) {
-      final variacoes = <String>[];
-      if (it.tamanho.isNotEmpty) variacoes.add('Tam: ${it.tamanho}');
-      if (it.cor.isNotEmpty) variacoes.add('Cor: ${it.cor}');
-      if (it.variacaoExtraResumo.isNotEmpty) {
-        variacoes.add(it.variacaoExtraResumo);
-      }
-      final variacoesStr = variacoes.isNotEmpty ? ' (${variacoes.join(', ')})' : '';
-      return "${it.quantidade} x ${it.produtoNome}$variacoesStr - R\$ ${_fmt2(it.precoUnitario)}";
-    }).join('\n');
-
-    final produtosDescricao = "$linhas\n"
-        "Frete: R\$ ${_fmt2(frete)}\n"
-        "Desconto: ${descontoPct.toStringAsFixed(0)}%\n"
-        "Total: R\$ ${_fmt2(total)}";
-
-    final vencStr = dataVencimentoFiado != null
-        ? 'Vencimento: ${dataVencimentoFiado.day.toString().padLeft(2, '0')}/${dataVencimentoFiado.month.toString().padLeft(2, '0')}/${dataVencimentoFiado.year}'
-        : '';
-    final linhasPagamento = <String>[
-      if (dinheiro > 0) "Pagamento Dinheiro: R\$ ${_fmt2(dinheiro)}",
-      if (pix > 0) "Pagamento Pix: R\$ ${_fmt2(pix)}",
-      if (cartao > 0) "Pagamento Cartão: R\$ ${_fmt2(cartao)}",
-    ];
-    if (isFiado && saldoFiado > 0.01) {
-      var fiadoLinha = 'Fiado - R\$ ${_fmt2(saldoFiado)}. $vencStr';
-      if (quantidadeParcelasFiado > 1) {
-        fiadoLinha +=
-            ' Parcelas fiado: $quantidadeParcelasFiado. Intervalo: $intervaloParcelasDias dias.';
-      }
-      linhasPagamento.add(fiadoLinha);
-    } else if (isFiado && linhasPagamento.isEmpty) {
-      linhasPagamento.add('Fiado - R\$ ${_fmt2(total)}. $vencStr');
-    }
-    formasPagamentoTexto = linhasPagamento.join('\n');
-
-    // 8) cria venda (com todos os itens + clienteId estável)
-    venda = Venda(
-      clienteNome: cliente.nome,
-      produtosDescricao: "$produtosDescricao\n$formasPagamentoTexto",
-      quantidade: itens.length,
-      preco: subtotal,
-      total: total,
-      formasPagamento: formasPagamentoTexto,
-      data: DateTime.now(),
-      tamanho: '',
-      vendedor: vendedor,
-      frete: frete,
-      desconto: descontoPct,
-      observacao: observacao.trim(),
-      itens: itens,
-      pagamentoDinheiro: dinheiro,
-      pagamentoPix: pix,
-      pagamentoCartao: cartao,
-      taxas: taxas,
-      custoProdutos: custoProdutos,
-      descontoValor: subtotal * (descontoPct / 100),
-      lojaId: lojaEfetiva,
-      clienteId: cliente.key?.toString() ?? cliente.idFirebase,
-      origemCusto: origemCustoVenda,
-      itensComboSelecaoJson:
-          VendaComboEstoqueExpansion.serializeItensComboSelecaoPorIndice(
-        itensComboSelecaoPorIndice,
-      ),
-      vendedorUid: (vendedorUid ?? '').trim().isEmpty ? null : vendedorUid!.trim(),
-      vendedorNome: (vendedorNome ?? '').trim().isEmpty
-          ? null
-          : vendedorNome!.trim(),
-      vendedorEmail: (vendedorEmail ?? '').trim().isEmpty
-          ? null
-          : vendedorEmail!.trim().toLowerCase(),
-    );
-
-    // Em edição: reutiliza idFirebase da venda antiga (evita duplicata no Firestore)
-    _garantirIdFirebaseVendaAntesDeSalvar(
-      venda: venda,
-      idFirebaseToReuse: idFirebaseReservado,
-    );
-
-    debugPrint('💾 [VENDAS-SERVICE] Salvando venda - Dinheiro: R\$ ${_fmt2(dinheiro)}, Pix: R\$ ${_fmt2(pix)}, Cartão: R\$ ${_fmt2(cartao)}, Total: R\$ ${_fmt2(total)}');
-    debugPrint('📤 [SYNC-DEBUG] VendasService.salvarVenda → lojaId=$lojaEfetiva | cliente=${cliente.nome} | total=R\$ ${_fmt2(total)}');
-
-    await debugAfterRemoteStockAppliedBeforeHivePersist?.call();
-
-    final vendaExistentePorOpId = _findVendaHivePorIdFirebase(
-      vendasBox,
-      idFirebaseReservado,
-      lojaEfetiva,
-    );
-    if (vendaExistentePorOpId != null) {
-      venda = vendaExistentePorOpId;
-      addedKey = venda.key;
-      if (isCoordinatedPdv &&
-          saleIntentStatus == SaleIntentStatus.stockApplied &&
-          !(isFiado && saldoFiado > 0.01)) {
-        saleIntentStatus = await _coordinatedSaleIntentAdvance(
-          lojaId: lojaEfetiva,
-          saleIntentId: coordinatedIntentId,
-          operationId: idFirebaseReservado,
-          current: saleIntentStatus,
-          target: SaleIntentStatus.salePersisted,
-        );
-      }
-    } else {
-      addedKey = debugVendasBoxAddOverride != null
-          ? await debugVendasBoxAddOverride!(vendasBox, venda)
-          : await vendasBox.add(venda);
-
-      if (isCoordinatedPdv &&
-          saleIntentStatus == SaleIntentStatus.stockApplied &&
-          !(isFiado && saldoFiado > 0.01)) {
-        saleIntentStatus = await _coordinatedSaleIntentAdvance(
-          lojaId: lojaEfetiva,
-          saleIntentId: coordinatedIntentId,
-          operationId: idFirebaseReservado,
-          current: saleIntentStatus,
-          target: SaleIntentStatus.salePersisted,
-        );
-      }
-    }
-
-    await VendaOperationJournalService.complete(
-      lojaId: lojaEfetiva,
-      operationKey: operationKey,
-    );
+        operationKey: operationKey,
+      );
     } catch (e, st) {
       if (e is VendaOperationInterruptedException) {
         rethrow;
@@ -2258,9 +2489,7 @@ class VendasService {
           );
         } catch (estE) {
           erroEstorno = estE;
-          debugPrint(
-            '[VENDAS-SERVICE] Estorno pós-falha antes de Hive: $estE',
-          );
+          debugPrint('[VENDAS-SERVICE] Estorno pós-falha antes de Hive: $estE');
         }
         if (erroEstorno != null) {
           await VendaOperationJournalService.markCritical(
@@ -2311,10 +2540,10 @@ class VendasService {
         : 'hive_${vendaHiveKey ?? venda.key}';
     final snapRaw = venda.itensComboSelecaoJson;
     final snapKeys =
-        VendaComboEstoqueExpansion.parseItensComboSelecaoPorIndiceJson(snapRaw)
-                ?.keys
-                .toList() ??
-            <int>[];
+        VendaComboEstoqueExpansion.parseItensComboSelecaoPorIndiceJson(
+          snapRaw,
+        )?.keys.toList() ??
+        <int>[];
     final snapVazio = snapRaw == null || snapRaw.trim().isEmpty;
     debugPrint(
       '[COMBO-SNAPSHOT-SAVE] vendaId=$vIdSnapshot json_vazio=$snapVazio keys=$snapKeys',
@@ -2401,7 +2630,9 @@ class VendasService {
               vendaIdFirebase: _vendaIdFirebaseParaContaReceber(vendaIdVinculo),
               observacao: qtdParcelas > 1
                   ? 'Parcela ${i + 1}/$qtdParcelas${observacao.trim().isNotEmpty ? ' - ${observacao.trim()}' : ''}'
-                  : (observacao.trim().isEmpty ? 'Venda fiada' : observacao.trim()),
+                  : (observacao.trim().isEmpty
+                        ? 'Venda fiada'
+                        : observacao.trim()),
               parcelaNumero: i + 1,
               parcelaTotal: qtdParcelas,
             ),
@@ -2446,7 +2677,8 @@ class VendasService {
           '⚠️ [VENDAS-SERVICE] Erro ao criar conta a receber '
           '(type=${e.runtimeType}) detalhe=$detalheErro',
         );
-        final msgUsuario = detalheErro.contains('conta a receber') ||
+        final msgUsuario =
+            detalheErro.contains('conta a receber') ||
                 detalheErro.contains('ContaReceber')
             ? detalheErro
             : 'Não foi possível gerar a conta a receber. $detalheErro';
@@ -2508,7 +2740,8 @@ class VendasService {
 
     // R4.2 — checkpoint UI após Hive+Journal(+fiado); sync/campanha seguem depois.
     final fiadoAtivo = isFiado && saldoFiado > 0.01;
-    final salePersistedOrSkipped = !isCoordinatedPdv ||
+    final salePersistedOrSkipped =
+        !isCoordinatedPdv ||
         saleIntentStatus == SaleIntentStatus.salePersisted ||
         saleIntentStatus == SaleIntentStatus.completed;
     if (onLocalPersistUiReady != null &&
@@ -2556,23 +2789,32 @@ class VendasService {
     try {
       await ClientesFirestoreService.syncCliente(cliente, lojaId: lojaEfetiva);
     } catch (e) {
-      debugPrint('⚠️ Erro ao sincronizar cliente com Firestore (type=${e.runtimeType})');
+      debugPrint(
+        '⚠️ Erro ao sincronizar cliente com Firestore (type=${e.runtimeType})',
+      );
       onSyncError?.call('Cliente não sincronizado. Verifique a conexão.');
     }
 
     // 10) sincroniza venda com Firestore
     try {
-      final ok = await VendasFirestoreService.syncVenda(venda, lojaId: lojaEfetiva);
+      final ok = await VendasFirestoreService.syncVenda(
+        venda,
+        lojaId: lojaEfetiva,
+      );
       if (!ok) {
-        debugPrint('⚠️ [VENDAS-SERVICE] Venda não sincronizada com Firestore (lojaId=$lojaEfetiva, key=${venda.key})');
-        onSyncError?.call('Venda salva localmente, mas não sincronizou na nuvem. Verifique a conexão ou tente sincronizar novamente.');
+        debugPrint(
+          '⚠️ [VENDAS-SERVICE] Venda não sincronizada com Firestore (lojaId=$lojaEfetiva, key=${venda.key})',
+        );
+        onSyncError?.call(
+          'Venda salva localmente, mas não sincronizou na nuvem. Verifique a conexão ou tente sincronizar novamente.',
+        );
       } else if (isFiado && saldoFiado > 0.01) {
         try {
           final rep =
               await ContaReceberVendaBackfillService.republicarContasVinculadasAVenda(
-            lojaId: lojaEfetiva,
-            venda: venda,
-          );
+                lojaId: lojaEfetiva,
+                venda: venda,
+              );
           if (rep > 0) {
             debugPrint(
               '[VENDAS-SERVICE] contas_receber republicadas pós-sync qtd=$rep vendaId=$vendaIdVinculo',
@@ -2585,8 +2827,12 @@ class VendasService {
         }
       }
     } catch (e) {
-      debugPrint('⚠️ Erro inesperado ao sincronizar venda com Firestore (type=${e.runtimeType})');
-      onSyncError?.call('Venda salva localmente, mas não sincronizou na nuvem. Verifique a conexão ou tente sincronizar novamente.');
+      debugPrint(
+        '⚠️ Erro inesperado ao sincronizar venda com Firestore (type=${e.runtimeType})',
+      );
+      onSyncError?.call(
+        'Venda salva localmente, mas não sincronizou na nuvem. Verifique a conexão ou tente sincronizar novamente.',
+      );
     }
 
     // 11) 🎯 Registra participação em campanhas de sorteio (CENTRALIZADO)
@@ -2598,14 +2844,16 @@ class VendasService {
         clienteNome: cliente.nome,
         clienteId: cliente.key?.toString(),
         telefone: cliente.telefone, // 🔥 Adicionado para WhatsApp
-        email: cliente.email,       // 🔥 Adicionado para Email
+        email: cliente.email, // 🔥 Adicionado para Email
         valorTotal: total,
         origem: 'manual',
         nomeLoja: lojaEfetiva,
       );
 
       if (resultado.sucesso) {
-        debugPrint('🎫 [VENDA-MANUAL] Número da sorte gerado: ${resultado.numero}');
+        debugPrint(
+          '🎫 [VENDA-MANUAL] Número da sorte gerado: ${resultado.numero}',
+        );
         onNumeroSorteGerado?.call(resultado.numero);
       } else if (resultado.erro != null) {
         debugPrint('ℹ️ [VENDA-MANUAL] Campanha: ${resultado.erro}');
@@ -2679,10 +2927,24 @@ class VendasService {
       lojaId: lojaEfetiva,
     );
 
+    final saldoFiadoPreview = _saldoFiadoPreviewEdicao(
+      isFiado: isFiado,
+      totalPreview: totalPreview,
+      dinheiro: dinheiro,
+      pix: pix,
+      cartao: cartao,
+    );
+    await _validarRemocaoContasReceberAntesDeMutarVenda(
+      vendaOriginal: vendaOriginal,
+      lojaId: lojaEfetiva,
+      isFiado: isFiado,
+      saldoFiado: saldoFiadoPreview,
+    );
+
     final comboJsonNovo =
         VendaComboEstoqueExpansion.serializeItensComboSelecaoPorIndice(
-      itensComboSelecaoPorIndice,
-    );
+          itensComboSelecaoPorIndice,
+        );
     final itensAntigos = vendaOriginal.itens ?? <VendaItem>[];
     final itensEquivalentes = VendaEdicaoEstoqueDiff.itensVendaEquivalentes(
       antigos: itensAntigos,
@@ -2710,8 +2972,11 @@ class VendasService {
         itensComboSelecaoJson: comboJsonNovo,
       );
 
-      final (itensParaEstoque, produtosEncontrados, _) =
-          VendaComboEstoqueExpansion.expandirCombos(
+      final (
+        itensParaEstoque,
+        produtosEncontrados,
+        _,
+      ) = VendaComboEstoqueExpansion.expandirCombos(
         itens: itens,
         produtosBox: produtosBox,
         lojaId: lojaEfetiva,
@@ -2766,8 +3031,11 @@ class VendasService {
       clienteExistente: clienteExistente,
     );
 
-    final (itensParaCusto, produtosEncCusto, linhaContaCustoMercadoria) =
-        VendaComboEstoqueExpansion.expandirCombos(
+    final (
+      itensParaCusto,
+      produtosEncCusto,
+      linhaContaCustoMercadoria,
+    ) = VendaComboEstoqueExpansion.expandirCombos(
       itens: itens,
       produtosBox: produtosBox,
       lojaId: lojaEfetiva,
@@ -2779,8 +3047,10 @@ class VendasService {
       (i) => itensParaCusto[i].custoUnitario != null,
     );
     for (var i = 0; i < itensParaCusto.length; i++) {
-      itensParaCusto[i].custoUnitario =
-          _resolverCustoItem(produtosEncCusto[i], itensParaCusto[i]);
+      itensParaCusto[i].custoUnitario = _resolverCustoItem(
+        produtosEncCusto[i],
+        itensParaCusto[i],
+      );
     }
 
     final explicitOrig = List<bool>.generate(
@@ -2818,19 +3088,23 @@ class VendasService {
         ? calcularSaldoFiado(total: total, totalPagoAgora: totalPagoAgora)
         : 0.0;
 
-    final linhas = itens.map((it) {
-      final variacoes = <String>[];
-      if (it.tamanho.isNotEmpty) variacoes.add('Tam: ${it.tamanho}');
-      if (it.cor.isNotEmpty) variacoes.add('Cor: ${it.cor}');
-      if (it.variacaoExtraResumo.isNotEmpty) {
-        variacoes.add(it.variacaoExtraResumo);
-      }
-      final variacoesStr =
-          variacoes.isNotEmpty ? ' (${variacoes.join(', ')})' : '';
-      return "${it.quantidade} x ${it.produtoNome}$variacoesStr - R\$ ${_fmt2(it.precoUnitario)}";
-    }).join('\n');
+    final linhas = itens
+        .map((it) {
+          final variacoes = <String>[];
+          if (it.tamanho.isNotEmpty) variacoes.add('Tam: ${it.tamanho}');
+          if (it.cor.isNotEmpty) variacoes.add('Cor: ${it.cor}');
+          if (it.variacaoExtraResumo.isNotEmpty) {
+            variacoes.add(it.variacaoExtraResumo);
+          }
+          final variacoesStr = variacoes.isNotEmpty
+              ? ' (${variacoes.join(', ')})'
+              : '';
+          return "${it.quantidade} x ${it.produtoNome}$variacoesStr - R\$ ${_fmt2(it.precoUnitario)}";
+        })
+        .join('\n');
 
-    final produtosDescricao = "$linhas\n"
+    final produtosDescricao =
+        "$linhas\n"
         "Frete: R\$ ${_fmt2(frete)}\n"
         "Desconto: ${descontoPct.toStringAsFixed(0)}%\n"
         "Total: R\$ ${_fmt2(total)}";
@@ -2943,41 +3217,19 @@ class VendasService {
         totalAnterior: totalAnterior,
       );
     } on VendaSalvaComPendenciaSyncException catch (e) {
-      // LOCAL_SALE + LOCAL_CR já commitados — segue syncs e propaga aviso.
+      // LOCAL_SALE + LOCAL_CR já commitados — remotes best-effort; propaga aviso.
       pendenciaCrRemota = e;
     }
 
-    try {
-      await ClientesFirestoreService.syncCliente(cliente, lojaId: lojaEfetiva);
-    } catch (e) {
-      debugPrint('⚠️ Erro ao sincronizar cliente com Firestore (type=${e.runtimeType})');
-      onSyncError?.call('Cliente não sincronizado. Verifique a conexão.');
-    }
-
-    try {
-      final ok = await VendasFirestoreService.syncVenda(venda, lojaId: lojaEfetiva);
-      if (!ok) {
-        onSyncError?.call(
-          'Venda salva localmente, mas não sincronizou na nuvem. Verifique a conexão ou tente sincronizar novamente.',
-        );
-      } else if (isFiado && saldoFiado > 0.01) {
-        try {
-          await ContaReceberVendaBackfillService.republicarContasVinculadasAVenda(
-            lojaId: lojaEfetiva,
-            venda: venda,
-          );
-        } catch (e) {
-          debugPrint(
-            '⚠️ [VENDAS-SERVICE] Falha ao republicar contas fiado (edição) (type=${e.runtimeType})',
-          );
-        }
-      }
-    } catch (e) {
-      debugPrint('⚠️ Erro inesperado ao sincronizar venda com Firestore (type=${e.runtimeType})');
-      onSyncError?.call(
-        'Venda salva localmente, mas não sincronizou na nuvem. Verifique a conexão ou tente sincronizar novamente.',
-      );
-    }
+    // Local sale+CR OK: remotes não fazem parte da fronteira de sucesso da UI.
+    _agendarSyncRemotoAposEdicaoLocal(
+      cliente: cliente,
+      venda: venda,
+      lojaEfetiva: lojaEfetiva,
+      isFiado: isFiado,
+      saldoFiado: saldoFiado,
+      onSyncError: onSyncError,
+    );
 
     if (pendenciaCrRemota != null) {
       throw pendenciaCrRemota;
@@ -2999,7 +3251,9 @@ class VendasService {
     // Evitar fallback 'default': usar loja da venda ou do nome da box (vendas_lojaId).
     String lojaId = (venda.lojaId ?? '').trim().isNotEmpty
         ? venda.lojaId!.trim()
-        : (vendasBox.name.startsWith('vendas_') ? vendasBox.name.substring(7) : '');
+        : (vendasBox.name.startsWith('vendas_')
+              ? vendasBox.name.substring(7)
+              : '');
     if (lojaId.isEmpty) {
       return; // Não desfazer sem loja definida (evita operar na loja errada).
     }
@@ -3013,7 +3267,8 @@ class VendasService {
             vendaIdMarcador,
           )
         : EstoqueBaixaPagamentoMarcador.ausente;
-    final skipEstornoCatalogo = (marcador.existe &&
+    final skipEstornoCatalogo =
+        (marcador.existe &&
             (marcador.estornoAplicado || !marcador.baixaAplicada)) ||
         (_vendaOrigemCatalogo(venda) && !marcador.existe);
     if (marcador.existe && marcador.estornoAplicado) {
@@ -3033,10 +3288,10 @@ class VendasService {
           : 'hive_${venda.key}';
       final vendaId =
           await EstoqueTransactionService.resolverVendaIdIdempotenciaDevolucao(
-        lojaId: lojaId,
-        vendaIdMarcadorCatalogo: vendaIdMarcador,
-        vendaIdFallback: vendaIdFallback,
-      );
+            lojaId: lojaId,
+            vendaIdMarcadorCatalogo: vendaIdMarcador,
+            vendaIdFallback: vendaIdFallback,
+          );
       final itensDevolucao = _resolverItensDevolucaoParaVenda(
         venda: venda,
         produtosBox: produtosBox,
@@ -3085,9 +3340,9 @@ class VendasService {
     try {
       pisoResults =
           await ComboKitStockService.aplicarPisoEstoqueComboAposDevolucao(
-        lojaId: lojaId,
-        produtosBox: produtosBox,
-      );
+            lojaId: lojaId,
+            produtosBox: produtosBox,
+          );
       for (final r in pisoResults) {
         final q = r.quantidadeDebitada.abs();
         if (q <= 0) continue;
@@ -3124,9 +3379,7 @@ class VendasService {
 
     // remove do histórico (apenas se cliente existir na box - evita erro em vendas catálogo sem cliente)
     final Cliente? cliente = clientesBox.values.firstWhereOrNull(
-      (c) =>
-          c.lojaId == venda.lojaId &&
-          c.nome == venda.clienteNome,
+      (c) => c.lojaId == venda.lojaId && c.nome == venda.clienteNome,
     );
 
     if (cliente != null && cliente.historico != null) {
@@ -3139,20 +3392,27 @@ class VendasService {
       try {
         await ClientesFirestoreService.syncCliente(cliente, lojaId: lojaId);
       } catch (e) {
-        debugPrint('⚠️ Erro ao sincronizar cliente com Firestore (type=${e.runtimeType})');
+        debugPrint(
+          '⚠️ Erro ao sincronizar cliente com Firestore (type=${e.runtimeType})',
+        );
       }
     }
 
     // ✅ DELETAR do Firestore (estoque_vendas) para não voltar na sync
     try {
       if (venda.idFirebase != null && venda.idFirebase!.isNotEmpty) {
-        await VendasFirestoreService.deleteVenda(venda.idFirebase!, lojaId: lojaId);
+        await VendasFirestoreService.deleteVenda(
+          venda.idFirebase!,
+          lojaId: lojaId,
+        );
         debugPrint('✅ Venda deletada do Firestore: ${venda.idFirebase}');
       } else {
         debugPrint('⚠️ Venda sem idFirebase, não pode deletar do Firestore');
       }
     } catch (e) {
-      debugPrint('⚠️ Erro ao deletar venda do Firestore (type=${e.runtimeType})');
+      debugPrint(
+        '⚠️ Erro ao deletar venda do Firestore (type=${e.runtimeType})',
+      );
     }
 
     // Deletar do Hive (local)
@@ -3168,7 +3428,8 @@ class VendasService {
     String estornoOrigem = 'venda_delete',
     int? vendaHiveKeyMarcador,
   }) async {
-    final vendaIdMarcador = vendaHiveKeyMarcador != null && vendaHiveKeyMarcador >= 0
+    final vendaIdMarcador =
+        vendaHiveKeyMarcador != null && vendaHiveKeyMarcador >= 0
         ? vendaHiveKeyMarcador.toString()
         : EstoqueTransactionService.vendaIdMarcadorCatalogoFromKey(venda.key);
     final marcador = vendaIdMarcador != null
@@ -3200,11 +3461,12 @@ class VendasService {
     final vendaIdFallback = (venda.idFirebase ?? '').trim().isNotEmpty
         ? venda.idFirebase!.trim()
         : 'hive_${venda.key}';
-    final vendaId = await EstoqueTransactionService.resolverVendaIdIdempotenciaDevolucao(
-      lojaId: lojaId,
-      vendaIdMarcadorCatalogo: vendaIdMarcador,
-      vendaIdFallback: vendaIdFallback,
-    );
+    final vendaId =
+        await EstoqueTransactionService.resolverVendaIdIdempotenciaDevolucao(
+          lojaId: lojaId,
+          vendaIdMarcadorCatalogo: vendaIdMarcador,
+          vendaIdFallback: vendaIdFallback,
+        );
     debugPrint(
       '[VENDA_DELETE] devolucao_estoque_inicio vendaId=$vendaId '
       'marcador=$vendaIdMarcador baixa=${marcador.baixaAplicada}',
@@ -3237,9 +3499,7 @@ class VendasService {
         debugPrint(
           '[VENDA_DELETE] devolucao_estoque_falhou vendaId=$vendaId erro=$e',
         );
-        debugPrint(
-          '[VENDA_DELETE] exclusao_abortada_por_estoque (lote itens)',
-        );
+        debugPrint('[VENDA_DELETE] exclusao_abortada_por_estoque (lote itens)');
         Error.throwWithStackTrace(e, st);
       }
     } else if (venda.itens != null && venda.itens!.isNotEmpty) {
@@ -3256,9 +3516,9 @@ class VendasService {
     try {
       pisoResultsExclusao =
           await ComboKitStockService.aplicarPisoEstoqueComboAposDevolucao(
-        lojaId: lojaId,
-        produtosBox: produtosBox,
-      );
+            lojaId: lojaId,
+            produtosBox: produtosBox,
+          );
       for (final r in pisoResultsExclusao) {
         final q = r.quantidadeDebitada.abs();
         if (q <= 0) continue;
@@ -3296,16 +3556,13 @@ class VendasService {
     }
 
     debugPrint('[VENDA_DELETE] devolucao_estoque_sucesso vendaId=$vendaId');
-    await EstoqueTransactionService.marcarDevolucaoLocalEmTodosIds(
-      lojaId,
-      [
-        vendaId,
-        if ((vendaIdMarcador ?? '').trim().isNotEmpty) vendaIdMarcador!,
-        if ((venda.idFirebase ?? '').trim().isNotEmpty) venda.idFirebase!.trim(),
-        if (vendaHiveKeyMarcador != null && vendaHiveKeyMarcador >= 0)
-          'hive_$vendaHiveKeyMarcador',
-      ],
-    );
+    await EstoqueTransactionService.marcarDevolucaoLocalEmTodosIds(lojaId, [
+      vendaId,
+      if ((vendaIdMarcador ?? '').trim().isNotEmpty) vendaIdMarcador!,
+      if ((venda.idFirebase ?? '').trim().isNotEmpty) venda.idFirebase!.trim(),
+      if (vendaHiveKeyMarcador != null && vendaHiveKeyMarcador >= 0)
+        'hive_$vendaHiveKeyMarcador',
+    ]);
   }
 
   /// Reaplica baixa de estoque após desfazer exclusão (devolução já tinha sido feita no soft delete).
@@ -3317,20 +3574,25 @@ class VendasService {
     final lid = lojaId.trim();
     if (lid.isEmpty) return;
     if (venda.itens == null || venda.itens!.isEmpty) {
-      debugPrint('[VENDA_UNDO] Sem itens estruturados; não reaplica baixa automática');
+      debugPrint(
+        '[VENDA_UNDO] Sem itens estruturados; não reaplica baixa automática',
+      );
       return;
     }
     final selecaoUndo =
         VendaComboEstoqueExpansion.parseItensComboSelecaoPorIndiceJson(
-      venda.itensComboSelecaoJson,
-    );
+          venda.itensComboSelecaoJson,
+        );
     if (selecaoUndo != null) {
       debugPrint(
         '[COMBO-DEVOLUCAO] vendaId=${(venda.idFirebase ?? '').trim().isNotEmpty ? venda.idFirebase! : 'hive_${venda.key}'} undo_baixa fonte=itensComboSelecaoJson',
       );
     }
-    final (itensParaBaixa, produtosEnc, linhaFlags) =
-        VendaComboEstoqueExpansion.expandirCombos(
+    final (
+      itensParaBaixa,
+      produtosEnc,
+      linhaFlags,
+    ) = VendaComboEstoqueExpansion.expandirCombos(
       itens: venda.itens!,
       produtosBox: produtosBox,
       lojaId: lid,
@@ -3355,11 +3617,15 @@ class VendasService {
     );
     if (txItems.isEmpty) return;
 
-    final txResults = await EstoqueTransactionService.baixarEstoqueTransactionBatch(
-      lojaId: lid,
-      itens: txItems,
+    final txResults =
+        await EstoqueTransactionService.baixarEstoqueTransactionBatch(
+          lojaId: lid,
+          itens: txItems,
+        );
+    await EstoqueTransactionService.removerDoCatalogoSeEstoqueZerado(
+      lid,
+      txResults,
     );
-    await EstoqueTransactionService.removerDoCatalogoSeEstoqueZerado(lid, txResults);
     for (final result in txResults) {
       await EstoqueTransactionService.atualizarHiveAposTransacao(
         produtosBox: produtosBox,
@@ -3369,11 +3635,11 @@ class VendasService {
     }
     final txCap =
         await ComboKitStockService.aplicarTetoEstoqueComboAposBaixaSemAbortarVenda(
-      lojaId: lid,
-      produtosBox: produtosBox,
-      produtoIdsDebitadosNaVenda:
-          ComboKitStockService.produtoIdsDeResultadosBaixa(txResults),
-    );
+          lojaId: lid,
+          produtosBox: produtosBox,
+          produtoIdsDebitadosNaVenda:
+              ComboKitStockService.produtoIdsDeResultadosBaixa(txResults),
+        );
     await CatalogoWebAposEstoqueService.sincronizarAposResultadosTransacao(
       lojaId: lid,
       produtosBox: produtosBox,
@@ -3403,7 +3669,8 @@ class VendasService {
         'hive_$vendaHiveKeyOriginal',
     ];
 
-    final jaEstornado = estoqueJaEstornadoNoSchedule ||
+    final jaEstornado =
+        estoqueJaEstornadoNoSchedule ||
         await EstoqueTransactionService.devolucaoVendaJaAplicadaEmQualquerId(
           lojaId,
           candidatos,
@@ -3415,9 +3682,7 @@ class VendasService {
         'scheduleFlag=$estoqueJaEstornadoNoSchedule ids=$candidatos',
       );
     } else {
-      debugPrint(
-        '[VENDA_DELETE] permanent_estorno_fallback ids=$candidatos',
-      );
+      debugPrint('[VENDA_DELETE] permanent_estorno_fallback ids=$candidatos');
       await devolverEstoqueParaVendaRemovida(
         venda: venda,
         produtosBox: produtosBox,
@@ -3427,7 +3692,10 @@ class VendasService {
     }
 
     if (venda.idFirebase != null && venda.idFirebase!.isNotEmpty) {
-      await VendasFirestoreService.deleteVenda(venda.idFirebase!, lojaId: lojaId);
+      await VendasFirestoreService.deleteVenda(
+        venda.idFirebase!,
+        lojaId: lojaId,
+      );
     }
   }
 }

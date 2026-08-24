@@ -175,8 +175,11 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       ensureNovaVendaLineIds(produtosSelecionados);
       for (final item in produtosSelecionados) {
         final q = item['quantidade'] ?? 1;
-        _quantityControllers.add(TextEditingController(
-            text: (q is int ? q : int.tryParse(q.toString()) ?? 1).toString()));
+        _quantityControllers.add(
+          TextEditingController(
+            text: (q is int ? q : int.tryParse(q.toString()) ?? 1).toString(),
+          ),
+        );
       }
     }
 
@@ -202,22 +205,25 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     desconto = v.desconto;
     _descontoEmReais = false;
     freteController.text = MoedaInputFormatter.format(v.frete);
-    descontoController.text =
-        v.desconto > 0 ? _formatPercentualCampo(v.desconto) : '';
+    descontoController.text = v.desconto > 0
+        ? _formatPercentualCampo(v.desconto)
+        : '';
 
     if (v.itens != null && v.itens!.isNotEmpty) {
       produtosSelecionados = v.itens!
-          .map((i) => {
-                'produto': i.produtoNome,
-                'preco': i.precoUnitario,
-                'quantidade': i.quantidade,
-                'tamanho': i.tamanho,
-                'cor': i.cor,
-                'extraValor': i.extraValor,
-                'variacaoExtraResumo': i.variacaoExtraResumo,
-                if (i.productId != null && i.productId!.trim().isNotEmpty)
-                  'productId': i.productId,
-              })
+          .map(
+            (i) => {
+              'produto': i.produtoNome,
+              'preco': i.precoUnitario,
+              'quantidade': i.quantidade,
+              'tamanho': i.tamanho,
+              'cor': i.cor,
+              'extraValor': i.extraValor,
+              'variacaoExtraResumo': i.variacaoExtraResumo,
+              if (i.productId != null && i.productId!.trim().isNotEmpty)
+                'productId': i.productId,
+            },
+          )
           .toList();
     } else {
       // Parsing defensivo para vendas legadas (sem itens)
@@ -278,8 +284,9 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     _valorControllers.clear();
     for (final p in pagamentos) {
       final val = (p['valor'] as num?)?.toDouble() ?? 0.0;
-      _valorControllers
-          .add(TextEditingController(text: MoedaInputFormatter.format(val)));
+      _valorControllers.add(
+        TextEditingController(text: MoedaInputFormatter.format(val)),
+      );
     }
     for (final c in _quantityControllers) {
       c.dispose();
@@ -288,8 +295,11 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     ensureNovaVendaLineIds(produtosSelecionados);
     for (final item in produtosSelecionados) {
       final q = item['quantidade'] ?? 1;
-      _quantityControllers.add(TextEditingController(
-          text: (q is int ? q : int.tryParse(q.toString()) ?? 1).toString()));
+      _quantityControllers.add(
+        TextEditingController(
+          text: (q is int ? q : int.tryParse(q.toString()) ?? 1).toString(),
+        ),
+      );
     }
 
     if (notify && mounted) setState(() {});
@@ -316,15 +326,14 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
           valorMinimoRoleta = vm;
           _premiosRoleta = premiosRaw
               .where((p) => (p['ativo'] ?? true) == true)
-              .map<Map<String, dynamic>>(
-            (p) {
-              return {
-                'label': p['label'] ?? '',
-                'tipo': p['tipo'] ?? 'percent',
-                'valor': (p['valor'] as num?)?.toDouble() ?? 0.0,
-              };
-            },
-          ).toList();
+              .map<Map<String, dynamic>>((p) {
+                return {
+                  'label': p['label'] ?? '',
+                  'tipo': p['tipo'] ?? 'percent',
+                  'valor': (p['valor'] as num?)?.toDouble() ?? 0.0,
+                };
+              })
+              .toList();
 
           if (_premiosRoleta.isEmpty) {
             _premiosRoleta = List<Map<String, dynamic>>.from(
@@ -346,9 +355,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       setState(() {
         _roletaAtiva = false;
         valorMinimoRoleta = 150.0;
-        _premiosRoleta = List<Map<String, dynamic>>.from(
-          _premiosRoletaDefault,
-        );
+        _premiosRoleta = List<Map<String, dynamic>>.from(_premiosRoletaDefault);
       });
     }
   }
@@ -406,14 +413,17 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     setState(() {
       if (paraReais) {
         final pct = desconto;
-        desconto =
-            subtotal > 0 ? (subtotal * (pct / 100)).clamp(0.0, subtotal) : 0.0;
-        descontoController.text =
-            desconto > 0 ? MoedaInputFormatter.format(desconto) : '';
+        desconto = subtotal > 0
+            ? (subtotal * (pct / 100)).clamp(0.0, subtotal)
+            : 0.0;
+        descontoController.text = desconto > 0
+            ? MoedaInputFormatter.format(desconto)
+            : '';
       } else {
         final reais = desconto.clamp(0.0, subtotal > 0 ? subtotal : 0.0);
-        desconto =
-            subtotal > 0 ? ((reais / subtotal) * 100).clamp(0.0, 100.0) : 0.0;
+        desconto = subtotal > 0
+            ? ((reais / subtotal) * 100).clamp(0.0, 100.0)
+            : 0.0;
         descontoController.text = _formatPercentualCampo(desconto);
       }
       _descontoEmReais = paraReais;
@@ -537,10 +547,10 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       final selecao = (item['itensComboComSelecao'] is List)
           ? List<Map<String, dynamic>>.from(
               (item['itensComboComSelecao'] as List).whereType<Map>().map(
-                    (e) => Map<String, dynamic>.from(
-                      e.map((k, v) => MapEntry(k.toString(), v)),
-                    ),
-                  ),
+                (e) => Map<String, dynamic>.from(
+                  e.map((k, v) => MapEntry(k.toString(), v)),
+                ),
+              ),
             )
           : const <Map<String, dynamic>>[];
       setState(() {
@@ -612,18 +622,14 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     if (nomeCliente.trim().isEmpty) return [];
     final lower = nomeCliente.trim().toLowerCase();
     final scope = _scope;
-    return widget.vendasBox.values
-        .where((v) {
-          if (!(v.lojaId == lojaId || v.lojaId == null)) return false;
-          if (v.clienteNome.trim().toLowerCase() != lower) return false;
-          if (scope != null &&
-              !AccessScopeService.canSeeHistory(scope, v)) {
-            return false;
-          }
-          return true;
-        })
-        .toList()
-      ..sort((a, b) => b.data.compareTo(a.data));
+    return widget.vendasBox.values.where((v) {
+      if (!(v.lojaId == lojaId || v.lojaId == null)) return false;
+      if (v.clienteNome.trim().toLowerCase() != lower) return false;
+      if (scope != null && !AccessScopeService.canSeeHistory(scope, v)) {
+        return false;
+      }
+      return true;
+    }).toList()..sort((a, b) => b.data.compareTo(a.data));
   }
 
   /// Produtos mais vendidos (para sugerir no topo)
@@ -655,8 +661,9 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     pagamentos[0]['valor'] = total;
     if (_valorControllers.isNotEmpty) {
       _valorControllers[0].text = MoedaInputFormatter.format(total);
-      _valorControllers[0].selection =
-          TextSelection.collapsed(offset: _valorControllers[0].text.length);
+      _valorControllers[0].selection = TextSelection.collapsed(
+        offset: _valorControllers[0].text.length,
+      );
     }
     setState(() {});
   }
@@ -673,7 +680,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       (p) => p.lojaId == lojaId && p.nome.toLowerCase() == nome.toLowerCase(),
     );
     final ehCombo = prod != null && prod.ehCombo;
-    final temVariacao = prod != null &&
+    final temVariacao =
+        prod != null &&
         (prod.usaVariacoes ||
             prod.estoquePorTamanho.isNotEmpty ||
             prod.temVariacaoSoloCor);
@@ -682,7 +690,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     final extraResumo = (item['variacaoExtraResumo'] ?? '').toString().trim();
     final sel = item['itensComboComSelecao'];
     final temComboSelecao = sel is List && sel.isNotEmpty;
-    final temSelecao = tam.isNotEmpty ||
+    final temSelecao =
+        tam.isNotEmpty ||
         cor.isNotEmpty ||
         extraResumo.isNotEmpty ||
         temComboSelecao;
@@ -755,23 +764,27 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
             color: ehCombo ? Colors.orange.shade50 : Colors.blue.shade50,
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
-                color: ehCombo ? Colors.orange.shade200 : Colors.blue.shade200),
+              color: ehCombo ? Colors.orange.shade200 : Colors.blue.shade200,
+            ),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon,
-                  size: 16,
-                  color:
-                      ehCombo ? Colors.orange.shade700 : Colors.blue.shade700),
+              Icon(
+                icon,
+                size: 16,
+                color: ehCombo ? Colors.orange.shade700 : Colors.blue.shade700,
+              ),
               const SizedBox(width: 6),
               Text(
                 label,
                 style: TextStyle(
-                    fontSize: 13,
-                    color:
-                        ehCombo ? Colors.orange.shade900 : Colors.blue.shade900,
-                    fontWeight: FontWeight.w500),
+                  fontSize: 13,
+                  color: ehCombo
+                      ? Colors.orange.shade900
+                      : Colors.blue.shade900,
+                  fontWeight: FontWeight.w500,
+                ),
                 overflow: TextOverflow.ellipsis,
               ),
             ],
@@ -781,8 +794,12 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     );
   }
 
-  int _obterEstoqueProduto(Produto p, String tamanho, String cor,
-      [String extra = '']) {
+  int _obterEstoqueProduto(
+    Produto p,
+    String tamanho,
+    String cor, [
+    String extra = '',
+  ]) {
     final ex = extra.trim();
     if (p.temVariacaoSoloCor && cor.isNotEmpty) {
       return p.obterEstoqueVariacao('', cor, ex);
@@ -803,25 +820,28 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     if (venda.itens != null && venda.itens!.isNotEmpty) {
       setState(() {
         produtosSelecionados = venda.itens!
-            .map((i) => {
-                  'produto': i.produtoNome,
-                  'preco': i.precoUnitario,
-                  'quantidade': i.quantidade,
-                  'tamanho': i.tamanho,
-                  'cor': i.cor,
-                  'extraValor': i.extraValor,
-                  'variacaoExtraResumo': i.variacaoExtraResumo,
-                  if (i.productId != null && i.productId!.trim().isNotEmpty)
-                    'productId': i.productId,
-                })
+            .map(
+              (i) => {
+                'produto': i.produtoNome,
+                'preco': i.precoUnitario,
+                'quantidade': i.quantidade,
+                'tamanho': i.tamanho,
+                'cor': i.cor,
+                'extraValor': i.extraValor,
+                'variacaoExtraResumo': i.variacaoExtraResumo,
+                if (i.productId != null && i.productId!.trim().isNotEmpty)
+                  'productId': i.productId,
+              },
+            )
             .toList();
         ensureNovaVendaLineIds(produtosSelecionados);
         frete = venda.frete;
         desconto = venda.desconto;
         _descontoEmReais = false;
         freteController.text = MoedaInputFormatter.format(venda.frete);
-        descontoController.text =
-            venda.desconto > 0 ? _formatPercentualCampo(venda.desconto) : '';
+        descontoController.text = venda.desconto > 0
+            ? _formatPercentualCampo(venda.desconto)
+            : '';
         if (pagamentos.isNotEmpty) {
           pagamentos[0]['valor'] = venda.total;
           if (_valorControllers.isNotEmpty) {
@@ -834,9 +854,11 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         _quantityControllers.clear();
         for (final item in produtosSelecionados) {
           final q = item['quantidade'] ?? 1;
-          _quantityControllers.add(TextEditingController(
-              text:
-                  (q is int ? q : int.tryParse(q.toString()) ?? 1).toString()));
+          _quantityControllers.add(
+            TextEditingController(
+              text: (q is int ? q : int.tryParse(q.toString()) ?? 1).toString(),
+            ),
+          );
         }
       });
     } else {
@@ -857,8 +879,9 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         desconto = venda.desconto;
         _descontoEmReais = false;
         freteController.text = MoedaInputFormatter.format(venda.frete);
-        descontoController.text =
-            venda.desconto > 0 ? _formatPercentualCampo(venda.desconto) : '';
+        descontoController.text = venda.desconto > 0
+            ? _formatPercentualCampo(venda.desconto)
+            : '';
         if (pagamentos.isNotEmpty) {
           pagamentos[0]['valor'] = venda.total;
           if (_valorControllers.isNotEmpty) {
@@ -871,9 +894,11 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         _quantityControllers.clear();
         for (final item in produtosSelecionados) {
           final q = item['quantidade'] ?? 1;
-          _quantityControllers.add(TextEditingController(
-              text:
-                  (q is int ? q : int.tryParse(q.toString()) ?? 1).toString()));
+          _quantityControllers.add(
+            TextEditingController(
+              text: (q is int ? q : int.tryParse(q.toString()) ?? 1).toString(),
+            ),
+          );
         }
       });
     }
@@ -898,8 +923,9 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         if (_descontoEmReais) {
           desconto += sub * (valor / 100);
           if (sub > 0) desconto = desconto.clamp(0.0, sub);
-          descontoController.text =
-              desconto > 0 ? MoedaInputFormatter.format(desconto) : '';
+          descontoController.text = desconto > 0
+              ? MoedaInputFormatter.format(desconto)
+              : '';
         } else {
           desconto += valor;
         }
@@ -962,8 +988,10 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
   }
 
   String? _extrairPathFirestore(String texto) {
-    final m =
-        RegExp(r'lojas\/[^\s,)]+', caseSensitive: false).firstMatch(texto);
+    final m = RegExp(
+      r'lojas\/[^\s,)]+',
+      caseSensitive: false,
+    ).firstMatch(texto);
     return m?.group(0);
   }
 
@@ -1042,10 +1070,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
           style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
         ),
         content: SingleChildScrollView(
-          child: Text(
-            mensagem,
-            style: const TextStyle(fontSize: 16),
-          ),
+          child: Text(mensagem, style: const TextStyle(fontSize: 16)),
         ),
         actions: [
           TextButton(
@@ -1084,8 +1109,10 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green.shade600,
                 foregroundColor: Colors.white,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
+                ),
               ),
             ),
           ),
@@ -1096,14 +1123,14 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
 
   /// Mostra dialog com número da sorte gerado pelo CampaignEngine.
   Future<void> _mostrarDialogNumeroSorte(
-      String numeroSorte, String nomeClienteFinal) async {
+    String numeroSorte,
+    String nomeClienteFinal,
+  ) async {
     if (!mounted) return;
     await showDialog<void>(
       context: context,
       builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text(
           'Número da sorte gerado!',
           style: TextStyle(fontWeight: FontWeight.bold),
@@ -1117,10 +1144,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
               style: const TextStyle(fontSize: 14),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Número da sorte:',
-              style: TextStyle(fontSize: 13),
-            ),
+            const Text('Número da sorte:', style: TextStyle(fontSize: 13)),
             const SizedBox(height: 4),
             Center(
               child: Text(
@@ -1246,118 +1270,129 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     if (!_finalizacaoReentradaGuard.tentarIniciar()) return;
     if (mounted) setState(() {});
     try {
-    // 🔹 Valida dados obrigatórios ANTES de abrir o dialog (evita bug ao voltar)
-    final nomeClienteDigitado = clienteController.text.trim();
-    if (nomeClienteDigitado.isEmpty) {
-      await _mostrarErro('Informe o nome do cliente para finalizar a venda.');
-      return;
-    }
+      // 🔹 Valida dados obrigatórios ANTES de abrir o dialog (evita bug ao voltar)
+      final nomeClienteDigitado = clienteController.text.trim();
+      if (nomeClienteDigitado.isEmpty) {
+        await _mostrarErro('Informe o nome do cliente para finalizar a venda.');
+        return;
+      }
 
-    final total = _calcularTotal();
+      final total = _calcularTotal();
 
-    for (final item in produtosSelecionados) {
-      final produtoNome = (item['produto'] ?? '').toString().trim();
-      if (produtoNome.isNotEmpty) {
-        final productId = (item['productId'] as String?)?.trim();
-        if (productId == null || productId.isEmpty) {
-          await _mostrarErro('Produto não encontrado para o código informado.');
-          return;
+      for (final item in produtosSelecionados) {
+        final produtoNome = (item['produto'] ?? '').toString().trim();
+        if (produtoNome.isNotEmpty) {
+          final productId = (item['productId'] as String?)?.trim();
+          if (productId == null || productId.isEmpty) {
+            await _mostrarErro(
+              'Produto não encontrado para o código informado.',
+            );
+            return;
+          }
         }
       }
-    }
 
-    final resumoProdutos = produtosSelecionados
-        .where((p) => (p['produto'] ?? '').toString().trim().isNotEmpty)
-        .map((p) => {
+      final resumoProdutos = produtosSelecionados
+          .where((p) => (p['produto'] ?? '').toString().trim().isNotEmpty)
+          .map(
+            (p) => {
               'produto': p['produto'],
               'quantidade': p['quantidade'] ?? 1,
               'preco': p['preco'] ?? 0.0,
-            })
-        .toList();
+            },
+          )
+          .toList();
 
-    if (resumoProdutos.isEmpty) {
-      await _mostrarErro('Adicione pelo menos um produto.');
-      return;
-    }
+      if (resumoProdutos.isEmpty) {
+        await _mostrarErro('Adicione pelo menos um produto.');
+        return;
+      }
 
-    final subtotal = _calcularSubtotal();
-    final descontoValor = _descontoValorAplicadoSobreSubtotal(subtotal);
+      final subtotal = _calcularSubtotal();
+      final descontoValor = _descontoValorAplicadoSobreSubtotal(subtotal);
 
-    // Sincroniza valores dos controllers com pagamentos e quantidades antes de abrir o dialog
-    for (var i = 0;
+      // Sincroniza valores dos controllers com pagamentos e quantidades antes de abrir o dialog
+      for (
+        var i = 0;
         i < pagamentos.length && i < _valorControllers.length;
-        i++) {
-      final v = MoedaInputFormatter.parse(_valorControllers[i].text);
-      pagamentos[i]['valor'] = v;
-    }
-    for (var i = 0;
+        i++
+      ) {
+        final v = MoedaInputFormatter.parse(_valorControllers[i].text);
+        pagamentos[i]['valor'] = v;
+      }
+      for (
+        var i = 0;
         i < produtosSelecionados.length && i < _quantityControllers.length;
-        i++) {
-      final q = int.tryParse(_quantityControllers[i].text) ?? 1;
-      produtosSelecionados[i]['quantidade'] = q < 1 ? 1 : q;
-    }
+        i++
+      ) {
+        final q = int.tryParse(_quantityControllers[i].text) ?? 1;
+        produtosSelecionados[i]['quantidade'] = q < 1 ? 1 : q;
+      }
 
-    // Abre dialog de confirmação com pagamento split e troco
-    // Passa pagamentos atuais para preservar Pix/Dinheiro/Cartão selecionado
-    final result = await FinalizarVendaConfirmacaoDialog.show(
-      context,
-      total: total,
-      resumoProdutos: resumoProdutos,
-      frete: frete,
-      desconto: descontoValor,
-      initialPagamentos: pagamentos
-          .map((p) => {
+      // Abre dialog de confirmação com pagamento split e troco
+      // Passa pagamentos atuais para preservar Pix/Dinheiro/Cartão selecionado
+      final result = await FinalizarVendaConfirmacaoDialog.show(
+        context,
+        total: total,
+        resumoProdutos: resumoProdutos,
+        frete: frete,
+        desconto: descontoValor,
+        initialPagamentos: pagamentos
+            .map(
+              (p) => {
                 'forma': p['forma'],
                 'valor': (p['valor'] as num?)?.toDouble() ?? 0.0,
-              })
-          .toList(),
-    );
-
-    if (result == null || !mounted) return;
-
-    if (result.isFiado) {
-      _pendenteFiado = true;
-      _pendenteDiasVencimento = result.diasVencimento;
-      _pendenteQtdParcelasFiado = result.quantidadeParcelasFiado;
-      _pendenteIntervaloParcelasDias = result.intervaloParcelasDias;
-    } else {
-      _pendenteFiado = false;
-      _pendenteQtdParcelasFiado = 1;
-      _pendenteIntervaloParcelasDias = 30;
-    }
-
-    // Atualiza pagamentos com o que veio do dialog
-    pagamentos = result.pagamentos.map((p) {
-      return {
-        'forma': p['forma'],
-        'valor': (p['valor'] as num?)?.toDouble() ?? 0.0,
-      };
-    }).toList();
-
-    // Sincroniza controllers
-    while (_valorControllers.length < pagamentos.length) {
-      _valorControllers.add(TextEditingController());
-    }
-    for (var i = 0; i < pagamentos.length; i++) {
-      final v = (pagamentos[i]['valor'] as num?)?.toDouble() ?? 0.0;
-      pagamentos[i]['valor'] = v;
-      if (i < _valorControllers.length) {
-        _valorControllers[i].text = MoedaInputFormatter.format(v);
-      }
-    }
-
-    // Mostra troco se houver
-    if (result.trocoTotal > 0 && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-              'Troco a dar: R\$ ${result.trocoTotal.toStringAsFixed(2).replaceAll('.', ',')}'),
-          backgroundColor: Colors.green,
-        ),
+              },
+            )
+            .toList(),
       );
-    }
 
-    await _executarFinalizacaoVenda();
+      if (result == null || !mounted) return;
+
+      if (result.isFiado) {
+        _pendenteFiado = true;
+        _pendenteDiasVencimento = result.diasVencimento;
+        _pendenteQtdParcelasFiado = result.quantidadeParcelasFiado;
+        _pendenteIntervaloParcelasDias = result.intervaloParcelasDias;
+      } else {
+        _pendenteFiado = false;
+        _pendenteQtdParcelasFiado = 1;
+        _pendenteIntervaloParcelasDias = 30;
+      }
+
+      // Atualiza pagamentos com o que veio do dialog
+      pagamentos = result.pagamentos.map((p) {
+        return {
+          'forma': p['forma'],
+          'valor': (p['valor'] as num?)?.toDouble() ?? 0.0,
+        };
+      }).toList();
+
+      // Sincroniza controllers
+      while (_valorControllers.length < pagamentos.length) {
+        _valorControllers.add(TextEditingController());
+      }
+      for (var i = 0; i < pagamentos.length; i++) {
+        final v = (pagamentos[i]['valor'] as num?)?.toDouble() ?? 0.0;
+        pagamentos[i]['valor'] = v;
+        if (i < _valorControllers.length) {
+          _valorControllers[i].text = MoedaInputFormatter.format(v);
+        }
+      }
+
+      // Mostra troco se houver
+      if (result.trocoTotal > 0 && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Troco a dar: R\$ ${result.trocoTotal.toStringAsFixed(2).replaceAll('.', ',')}',
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+
+      await _executarFinalizacaoVenda();
     } finally {
       _finalizacaoReentradaGuard.liberar();
       if (mounted) setState(() {});
@@ -1365,9 +1400,11 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
   }
 
   void _sincronizarQuantidadesDosControllers() {
-    for (var i = 0;
-        i < produtosSelecionados.length && i < _quantityControllers.length;
-        i++) {
+    for (
+      var i = 0;
+      i < produtosSelecionados.length && i < _quantityControllers.length;
+      i++
+    ) {
       final q = int.tryParse(_quantityControllers[i].text) ?? 1;
       produtosSelecionados[i]['quantidade'] = q < 1 ? 1 : q;
     }
@@ -1398,7 +1435,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     });
   }
 
-  (List<VendaItem>, Map<int, List<Map<String, dynamic>>>?) _montarItensVendaAtual() {
+  (List<VendaItem>, Map<int, List<Map<String, dynamic>>>?)
+  _montarItensVendaAtual() {
     final itens = <VendaItem>[];
     final itensComboSelecaoPorIndice = <int, List<Map<String, dynamic>>>{};
     for (var i = 0; i < produtosSelecionados.length; i++) {
@@ -1430,8 +1468,9 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
           tamanho: (m['tamanho'] ?? '').toString(),
           cor: (m['cor'] ?? '').toString(),
           lojaId: lojaId,
-          productId:
-              productId != null && productId.isNotEmpty ? productId : null,
+          productId: productId != null && productId.isNotEmpty
+              ? productId
+              : null,
           variacaoExtraResumo: (m['variacaoExtraResumo'] ?? '').toString(),
           extraValor: (m['extraValor'] ?? '').toString(),
         ),
@@ -1506,8 +1545,11 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       return false;
     }
 
-    final opcoesExtra =
-        ProdutoVariacaoExtra.opcoesExtraPara(prod.variacoes, tamanho, cor);
+    final opcoesExtra = ProdutoVariacaoExtra.opcoesExtraPara(
+      prod.variacoes,
+      tamanho,
+      cor,
+    );
     if (opcoesExtra.isNotEmpty && extraValor.isEmpty) {
       await _mostrarErro(
         'Selecione a personalização (letra, estampa, etc.) para o produto "$nome".',
@@ -1582,10 +1624,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         (lineIdRemover != null || indiceRemoverNaLista != null)) {
       final id = lineIdRemover?.trim();
       final idx = (id != null && id.isNotEmpty)
-          ? indexOfExactNovaVendaLine(
-              produtosSelecionados,
-              lineId: id,
-            )
+          ? indexOfExactNovaVendaLine(produtosSelecionados, lineId: id)
           : indiceRemoverNaLista;
       if (idx != null && idx >= 0 && idx < produtosSelecionados.length) {
         if (id != null && id.isNotEmpty) {
@@ -1624,7 +1663,9 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     return false;
   }
 
-  Future<bool> _validarEstoquePreSalvamentoEdicaoVenda(Venda vendaOriginal) async {
+  Future<bool> _validarEstoquePreSalvamentoEdicaoVenda(
+    Venda vendaOriginal,
+  ) async {
     final montagem = _montarItensVendaAtual();
     if (montagem.$1.isEmpty) {
       await _mostrarErro('Adicione pelo menos um produto.');
@@ -1773,10 +1814,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
             if (!mounted) return;
             await Navigator.of(context).pushNamed(
               '/estoque',
-              arguments: {
-                'nomeInicial': nome,
-                'lojaId': lojaId,
-              },
+              arguments: {'nomeInicial': nome, 'lojaId': lojaId},
             );
           }
           return;
@@ -1868,10 +1906,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
             if (!mounted) return;
             await Navigator.of(context).pushNamed(
               '/estoque',
-              arguments: {
-                'nomeInicial': nome,
-                'lojaId': lojaId,
-              },
+              arguments: {'nomeInicial': nome, 'lojaId': lojaId},
             );
           }
           return;
@@ -1940,18 +1975,21 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
           }
         }
         final productId = (m['productId'] as String?)?.trim();
-        itens.add(VendaItem(
-          produtoNome: nome,
-          quantidade: (m['quantidade'] ?? 1) as int,
-          precoUnitario: (m['preco'] ?? 0.0) as double,
-          tamanho: (m['tamanho'] ?? '').toString(),
-          cor: (m['cor'] ?? '').toString(),
-          lojaId: lojaId,
-          productId:
-              productId != null && productId.isNotEmpty ? productId : null,
-          variacaoExtraResumo: (m['variacaoExtraResumo'] ?? '').toString(),
-          extraValor: (m['extraValor'] ?? '').toString(),
-        ));
+        itens.add(
+          VendaItem(
+            produtoNome: nome,
+            quantidade: (m['quantidade'] ?? 1) as int,
+            precoUnitario: (m['preco'] ?? 0.0) as double,
+            tamanho: (m['tamanho'] ?? '').toString(),
+            cor: (m['cor'] ?? '').toString(),
+            lojaId: lojaId,
+            productId: productId != null && productId.isNotEmpty
+                ? productId
+                : null,
+            variacaoExtraResumo: (m['variacaoExtraResumo'] ?? '').toString(),
+            extraValor: (m['extraValor'] ?? '').toString(),
+          ),
+        );
       }
       if (itens.isEmpty) {
         await _mostrarErro('Adicione pelo menos um produto.');
@@ -1975,14 +2013,15 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
           .fold(0.0, (s, p) => s + valorPagamento(p['valor']));
 
       logD(
-          '💰 [VENDA] Pagamentos - Dinheiro: R\$ ${valorDinheiro.toStringAsFixed(2)}, Pix: R\$ ${valorPix.toStringAsFixed(2)}, Cartão: R\$ ${valorCartao.toStringAsFixed(2)}');
+        '💰 [VENDA] Pagamentos - Dinheiro: R\$ ${valorDinheiro.toStringAsFixed(2)}, Pix: R\$ ${valorPix.toStringAsFixed(2)}, Cartão: R\$ ${valorCartao.toStringAsFixed(2)}',
+      );
 
       // 🔹 Nome que será usado tanto na venda quanto no número da sorte (cliente não é null aqui)
       final nomeClienteFinal = cliente.nome.isNotEmpty
           ? cliente.nome
           : (nomeClienteDigitado.isEmpty
-              ? 'Cliente'
-              : capitalizeWords(nomeClienteDigitado.trim()));
+                ? 'Cliente'
+                : capitalizeWords(nomeClienteDigitado.trim()));
 
       // Captura referências antes de qualquer await; não usar widget/context após pop.
       final onErro = widget.onErroAoFinalizar;
@@ -1995,8 +2034,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       final vendedorNome = scope.displayName.isNotEmpty
           ? scope.displayName
           : (vendedor.trim().isNotEmpty && !vendedor.contains('@')
-              ? vendedor.trim()
-              : null);
+                ? vendedor.trim()
+                : null);
       final vendedorEmail = scope.email.isNotEmpty
           ? scope.email
           : (vendedor.contains('@') ? vendedor.trim().toLowerCase() : null);
@@ -2018,31 +2057,33 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
           );
           return;
         }
-        unawaited((() async {
-          try {
-            await _mostrarSucessoVenda();
-            if (!mounted) return;
-            onVendaFinalizadaRef();
-            Navigator.of(context).pop(true);
-          } catch (uiE, uiSt) {
-            _logErroSalvarVenda(
-              etapa: 'UI_POS_SUCCESS_EARLY',
-              erro: uiE,
-              st: uiSt,
-            );
-            if (mounted) {
-              await _mostrarErro(
-                'A venda pode ter sido concluída, mas a tela foi atualizada. '
-                'Verifique o histórico de vendas.',
+        unawaited(
+          (() async {
+            try {
+              await _mostrarSucessoVenda();
+              if (!mounted) return;
+              onVendaFinalizadaRef();
+              Navigator.of(context).pop(true);
+            } catch (uiE, uiSt) {
+              _logErroSalvarVenda(
+                etapa: 'UI_POS_SUCCESS_EARLY',
+                erro: uiE,
+                st: uiSt,
               );
-            } else {
-              onErro?.call(
-                'A venda pode ter sido concluída, mas a tela foi atualizada. '
-                'Verifique o histórico de vendas.',
-              );
+              if (mounted) {
+                await _mostrarErro(
+                  'A venda pode ter sido concluída, mas a tela foi atualizada. '
+                  'Verifique o histórico de vendas.',
+                );
+              } else {
+                onErro?.call(
+                  'A venda pode ter sido concluída, mas a tela foi atualizada. '
+                  'Verifique o histórico de vendas.',
+                );
+              }
             }
-          }
-        })());
+          })(),
+        );
       }
 
       final (ok, numeroSorte, mensagemErro) = await _salvarVendaEmBackground(
@@ -2083,9 +2124,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       );
 
       if (uiReleasedEarly) {
-        if (numeroSorte != null &&
-            numeroSorte.isNotEmpty &&
-            mounted) {
+        if (numeroSorte != null && numeroSorte.isNotEmpty && mounted) {
           unawaited(_mostrarDialogNumeroSorte(numeroSorte, nomeClienteFinal));
         }
         return;
@@ -2115,7 +2154,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
           _pdvSaleIntentLifecycle.clearOnSuccess();
           if (mensagemErro != null &&
               VendaSalvaComPendenciaSyncException.isPendenciaMessage(
-                  mensagemErro)) {
+                mensagemErro,
+              )) {
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
@@ -2145,9 +2185,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     } catch (e, stackTrace) {
       if (!mounted) return;
       _logErroSalvarVenda(etapa: 'UI_FINALIZAR', erro: e, st: stackTrace);
-      await _mostrarErro(
-        formatSalvarVendaErrorForUser(e),
-      );
+      await _mostrarErro(formatSalvarVendaErrorForUser(e));
     }
   }
 
@@ -2182,6 +2220,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     try {
       if (vendaParaEditar != null) {
         try {
+          // Sucesso de edição = fronteira local (Hive + CR + stock se itens).
+          // syncCliente/syncVenda são best-effort após o return do serviço.
           await VendasService.editarVendaMulti(
             vendaOriginal: vendaParaEditar,
             produtosBox: produtosBox,
@@ -2201,7 +2241,15 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
             descontoPct: _descontoPctEquivalenteParaSalvar(),
             lojaId: lojaId,
             clienteExistente: cliente,
-            onSyncError: onErro,
+            onSyncError: (message) {
+              if (!mounted) {
+                debugPrint(
+                  '[VENDA-EDICAO] sync remoto após fechar editor: $message',
+                );
+                return;
+              }
+              onErro?.call(message);
+            },
             isFiado: isFiado,
             dataVencimentoFiado: isFiado
                 ? DateTime.now().add(Duration(days: diasVencimentoFiado))
@@ -2338,11 +2386,11 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                     ),
                     Text(
                       _modoEdicao ? 'Editar venda' : 'Nova Venda',
-                      style:
-                          Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: -0.5,
-                              ),
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: -0.5,
+                          ),
                     ),
                     const SizedBox(height: 20),
 
@@ -2355,20 +2403,23 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                         if (textEditingValue.text.isEmpty) {
                           return const Iterable<Cliente>.empty();
                         }
-                        final lower =
-                            textEditingValue.text.toLowerCase().trim();
-                        return widget.clientesBox.values.where((c) {
-                          if (c.lojaId != lojaId) return false;
-                          final blob = [
-                            c.nome,
-                            c.telefone,
-                            c.cidade,
-                            c.email ?? '',
-                            c.endereco ?? '',
-                            c.cep,
-                          ].join(' ').toLowerCase();
-                          return blob.contains(lower);
-                        }).take(20);
+                        final lower = textEditingValue.text
+                            .toLowerCase()
+                            .trim();
+                        return widget.clientesBox.values
+                            .where((c) {
+                              if (c.lojaId != lojaId) return false;
+                              final blob = [
+                                c.nome,
+                                c.telefone,
+                                c.cidade,
+                                c.email ?? '',
+                                c.endereco ?? '',
+                                c.cep,
+                              ].join(' ').toLowerCase();
+                              return blob.contains(lower);
+                            })
+                            .take(20);
                       },
                       displayStringForOption: (c) => c.nome,
                       onSelected: (c) {
@@ -2391,11 +2442,11 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                   final c = options.elementAt(index);
                                   final sub =
                                       AccessScopeService.customerSearchSubtitle(
-                                    telefone: c.telefone,
-                                    cidade: c.cidade,
-                                    cpf: c.cep,
-                                    endereco: c.endereco,
-                                  );
+                                        telefone: c.telefone,
+                                        cidade: c.cidade,
+                                        cpf: c.cep,
+                                        endereco: c.endereco,
+                                      );
                                   return ListTile(
                                     dense: true,
                                     title: Text(c.nome),
@@ -2410,31 +2461,31 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                       },
                       fieldViewBuilder:
                           (context, controller, focusNode, onSubmit) {
-                        // Mantém sync com clienteController externo.
-                        if (controller.text != clienteController.text &&
-                            clienteController.text.isNotEmpty &&
-                            controller.text.isEmpty) {
-                          controller.text = clienteController.text;
-                        }
-                        return TextFormField(
-                          controller: controller,
-                          focusNode: focusNode,
-                          decoration: InputDecoration(
-                            labelText: 'Cliente',
-                            hintText: 'Nome, telefone, cidade, CPF…',
-                            filled: true,
-                            fillColor: Colors.grey.shade50,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide.none,
-                            ),
-                          ),
-                          onChanged: (v) {
-                            clienteController.text = v;
+                            // Mantém sync com clienteController externo.
+                            if (controller.text != clienteController.text &&
+                                clienteController.text.isNotEmpty &&
+                                controller.text.isEmpty) {
+                              controller.text = clienteController.text;
+                            }
+                            return TextFormField(
+                              controller: controller,
+                              focusNode: focusNode,
+                              decoration: InputDecoration(
+                                labelText: 'Cliente',
+                                hintText: 'Nome, telefone, cidade, CPF…',
+                                filled: true,
+                                fillColor: Colors.grey.shade50,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: BorderSide.none,
+                                ),
+                              ),
+                              onChanged: (v) {
+                                clienteController.text = v;
+                              },
+                              onFieldSubmitted: (_) => onSubmit(),
+                            );
                           },
-                          onFieldSubmitted: (_) => onSubmit(),
-                        );
-                      },
                     ),
 
                     // Histórico rápido do cliente (oculto em modo edição)
@@ -2443,8 +2494,9 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                         if (_modoEdicao) return const SizedBox.shrink();
                         final nomeCliente = clienteController.text.trim();
                         if (nomeCliente.isEmpty) return const SizedBox.shrink();
-                        final vendasCliente =
-                            _ultimasVendasCliente(nomeCliente);
+                        final vendasCliente = _ultimasVendasCliente(
+                          nomeCliente,
+                        );
                         if (vendasCliente.isEmpty) {
                           return const SizedBox.shrink();
                         }
@@ -2461,15 +2513,19 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                               ),
                               child: Row(
                                 children: [
-                                  Icon(Icons.history,
-                                      size: 20, color: Colors.blue.shade700),
+                                  Icon(
+                                    Icons.history,
+                                    size: 20,
+                                    color: Colors.blue.shade700,
+                                  ),
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: Text(
                                       'Última: R\$ ${ultima.total.toStringAsFixed(2)} ? ${ultima.data.day.toString().padLeft(2, '0')}/${ultima.data.month}',
                                       style: TextStyle(
-                                          fontSize: 13,
-                                          color: Colors.blue.shade900),
+                                        fontSize: 13,
+                                        color: Colors.blue.shade900,
+                                      ),
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
@@ -2484,8 +2540,9 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: Colors.blue.shade700,
                                 side: BorderSide(color: Colors.blue.shade300),
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 12),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
                               ),
                             ),
                           ],
@@ -2532,12 +2589,15 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                 Expanded(
                                   child: _ProdutoDropdown(
                                     key: novaVendaLineWidgetKey(
-                                        item, 'dropdown_produto_'),
+                                      item,
+                                      'dropdown_produto_',
+                                    ),
                                     valorAtual: valorAtual,
                                     produtos: produtosDaLoja,
                                     lojaId: lojaId,
-                                    produtosFavoritos:
-                                        _produtosMaisVendidos(limit: 8),
+                                    produtosFavoritos: _produtosMaisVendidos(
+                                      limit: 8,
+                                    ),
                                     precoDoProduto: _precoDoProduto,
                                     onChanged: (nome, preco, productId) {
                                       setState(() {
@@ -2548,23 +2608,26 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                         produtosSelecionados[index]['tamanho'] =
                                             '';
                                         produtosSelecionados[index]['cor'] = '';
-                                        produtosSelecionados[index]
-                                            ['extraValor'] = '';
-                                        produtosSelecionados[index]
-                                            ['variacaoExtraResumo'] = '';
-                                        produtosSelecionados[index]
-                                            .remove('itensComboComSelecao');
-                                        produtosSelecionados[index]
-                                            .remove('comboConfiguravelResumo');
-                                        produtosSelecionados[index]
-                                            ['quantidade'] = 1;
+                                        produtosSelecionados[index]['extraValor'] =
+                                            '';
+                                        produtosSelecionados[index]['variacaoExtraResumo'] =
+                                            '';
+                                        produtosSelecionados[index].remove(
+                                          'itensComboComSelecao',
+                                        );
+                                        produtosSelecionados[index].remove(
+                                          'comboConfiguravelResumo',
+                                        );
+                                        produtosSelecionados[index]['quantidade'] =
+                                            1;
                                         if (productId != null &&
                                             productId.isNotEmpty) {
-                                          produtosSelecionados[index]
-                                              ['productId'] = productId;
+                                          produtosSelecionados[index]['productId'] =
+                                              productId;
                                         } else {
-                                          produtosSelecionados[index]
-                                              .remove('productId');
+                                          produtosSelecionados[index].remove(
+                                            'productId',
+                                          );
                                         }
                                       });
                                     },
@@ -2581,40 +2644,39 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                         context,
                                         produto: produto,
                                         preco: _precoDoProduto(produto),
-                                        onConfirmar: (tam, cor, qtd, extraEv,
-                                            extraResumo) {
+                                        onConfirmar: (tam, cor, qtd, extraEv, extraResumo) {
                                           setState(() {
                                             final precoLinha =
                                                 _precoDoProdutoComVariacao(
-                                              produto,
-                                              tam,
-                                            );
-                                            produtosSelecionados[index]
-                                                ['produto'] = produto.nome;
-                                            produtosSelecionados[index]
-                                                ['productId'] = produto
-                                                    .idFirebase
+                                                  produto,
+                                                  tam,
+                                                );
+                                            produtosSelecionados[index]['produto'] =
+                                                produto.nome;
+                                            produtosSelecionados[index]['productId'] =
+                                                produto.idFirebase
                                                     .trim()
                                                     .isNotEmpty
                                                 ? produto.idFirebase
                                                 : null;
-                                            produtosSelecionados[index]
-                                                ['preco'] = precoLinha;
-                                            produtosSelecionados[index]
-                                                ['tamanho'] = tam;
+                                            produtosSelecionados[index]['preco'] =
+                                                precoLinha;
+                                            produtosSelecionados[index]['tamanho'] =
+                                                tam;
                                             produtosSelecionados[index]['cor'] =
                                                 cor;
-                                            produtosSelecionados[index]
-                                                ['quantidade'] = qtd;
-                                            produtosSelecionados[index]
-                                                ['extraValor'] = extraEv;
-                                            produtosSelecionados[index]
-                                                    ['variacaoExtraResumo'] =
+                                            produtosSelecionados[index]['quantidade'] =
+                                                qtd;
+                                            produtosSelecionados[index]['extraValor'] =
+                                                extraEv;
+                                            produtosSelecionados[index]['variacaoExtraResumo'] =
                                                 extraResumo;
-                                            produtosSelecionados[index]
-                                                .remove('itensComboComSelecao');
                                             produtosSelecionados[index].remove(
-                                                'comboConfiguravelResumo');
+                                              'itensComboComSelecao',
+                                            );
+                                            produtosSelecionados[index].remove(
+                                              'comboConfiguravelResumo',
+                                            );
                                           });
                                         },
                                       );
@@ -2630,11 +2692,12 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                                 ?.trim();
                                         if (pidAtual != null &&
                                             pidAtual.isNotEmpty) {
-                                          final pPorId =
-                                              produtosDaLoja.firstWhereOrNull(
-                                            (x) =>
-                                                x.idFirebase.trim() == pidAtual,
-                                          );
+                                          final pPorId = produtosDaLoja
+                                              .firstWhereOrNull(
+                                                (x) =>
+                                                    x.idFirebase.trim() ==
+                                                    pidAtual,
+                                              );
                                           if (pPorId != null &&
                                               productIdIncoerenteComNomeExibido(
                                                 nomeProdutoResolvido:
@@ -2645,21 +2708,25 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                           }
                                         }
                                         final trimmed = normalizeText(v);
-                                        final p =
-                                            produtosDaLoja.firstWhereOrNull(
-                                          (x) =>
-                                              normalizeText(x.nome) == trimmed ||
-                                              (x.codigoBarras.trim().isNotEmpty &&
-                                                  normalizeText(
-                                                          x.codigoBarras) ==
-                                                      trimmed),
-                                        );
+                                        final p = produtosDaLoja
+                                            .firstWhereOrNull(
+                                              (x) =>
+                                                  normalizeText(x.nome) ==
+                                                      trimmed ||
+                                                  (x.codigoBarras
+                                                          .trim()
+                                                          .isNotEmpty &&
+                                                      normalizeText(
+                                                            x.codigoBarras,
+                                                          ) ==
+                                                          trimmed),
+                                            );
                                         if (_linhaComboProtegida(linha)) {
                                           if (p != null) {
                                             linha['productId'] =
                                                 p.idFirebase.trim().isNotEmpty
-                                                    ? p.idFirebase
-                                                    : null;
+                                                ? p.idFirebase
+                                                : null;
                                           } else {
                                             linha.remove('productId');
                                           }
@@ -2669,9 +2736,10 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                           linha['preco'] = _precoDoProduto(p);
                                           linha['productId'] =
                                               p.idFirebase.trim().isNotEmpty
-                                                  ? p.idFirebase
-                                                  : null;
-                                          if (normalizeText(p.nome) != trimmed &&
+                                              ? p.idFirebase
+                                              : null;
+                                          if (normalizeText(p.nome) !=
+                                                  trimmed &&
                                               normalizeText(p.codigoBarras) ==
                                                   trimmed) {
                                             linha['produto'] = p.nome;
@@ -2692,15 +2760,19 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                   children: [
                                     IconButton(
                                       tooltip: 'Ler código de barras',
-                                      icon: Icon(Icons.qr_code_scanner,
-                                          color: Colors.grey[700]),
+                                      icon: Icon(
+                                        Icons.qr_code_scanner,
+                                        color: Colors.grey[700],
+                                      ),
                                       onPressed: () async {
-                                        final messenger =
-                                            ScaffoldMessenger.of(context);
+                                        final messenger = ScaffoldMessenger.of(
+                                          context,
+                                        );
                                         final navigator = Navigator.of(context);
                                         final code =
                                             await BarcodeScannerScreen.scan(
-                                                context);
+                                              context,
+                                            );
                                         if (code == null ||
                                             code.isEmpty ||
                                             !mounted) {
@@ -2708,18 +2780,22 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                         }
                                         final prod = widget.produtosBox.values
                                             .firstWhereOrNull(
-                                          (p) =>
-                                              p.lojaId == lojaId &&
-                                              p.codigoBarras.isNotEmpty &&
-                                              normalizeText(p.codigoBarras) ==
-                                                  normalizeText(code),
-                                        );
+                                              (p) =>
+                                                  p.lojaId == lojaId &&
+                                                  p.codigoBarras.isNotEmpty &&
+                                                  normalizeText(
+                                                        p.codigoBarras,
+                                                      ) ==
+                                                      normalizeText(code),
+                                            );
                                         if (prod == null) {
                                           if (!mounted) return;
                                           messenger.showSnackBar(
                                             const SnackBar(
-                                                content: Text(
-                                                    'Nenhum produto encontrado com esse código de barras')),
+                                              content: Text(
+                                                'Nenhum produto encontrado com esse código de barras',
+                                              ),
+                                            ),
                                           );
                                           return;
                                         }
@@ -2728,8 +2804,9 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                             index: index,
                                             combo: prod,
                                             quantidadeInicial: 1,
-                                            precoFallback:
-                                                _precoDoProduto(prod),
+                                            precoFallback: _precoDoProduto(
+                                              prod,
+                                            ),
                                           );
                                         } else if (prod.usaVariacoes ||
                                             prod.estoquePorTamanho.isNotEmpty) {
@@ -2737,81 +2814,83 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                             navigator.context,
                                             produto: prod,
                                             preco: _precoDoProduto(prod),
-                                            onConfirmar: (tam, cor, qtd,
-                                                extraEv, extraResumo) {
+                                            onConfirmar: (tam, cor, qtd, extraEv, extraResumo) {
                                               if (!mounted) return;
                                               setState(() {
                                                 final precoLinha =
                                                     _precoDoProdutoComVariacao(
-                                                  prod,
-                                                  tam,
-                                                );
-                                                produtosSelecionados[index]
-                                                    ['produto'] = prod.nome;
-                                                produtosSelecionados[index]
-                                                    ['productId'] = prod
-                                                        .idFirebase
+                                                      prod,
+                                                      tam,
+                                                    );
+                                                produtosSelecionados[index]['produto'] =
+                                                    prod.nome;
+                                                produtosSelecionados[index]['productId'] =
+                                                    prod.idFirebase
                                                         .trim()
                                                         .isNotEmpty
                                                     ? prod.idFirebase
                                                     : null;
-                                                produtosSelecionados[index]
-                                                    ['preco'] = precoLinha;
-                                                produtosSelecionados[index]
-                                                    ['tamanho'] = tam;
-                                                produtosSelecionados[index]
-                                                    ['cor'] = cor;
-                                                produtosSelecionados[index]
-                                                    ['quantidade'] = qtd;
-                                                produtosSelecionados[index]
-                                                    ['extraValor'] = extraEv;
-                                                produtosSelecionados[index][
-                                                        'variacaoExtraResumo'] =
+                                                produtosSelecionados[index]['preco'] =
+                                                    precoLinha;
+                                                produtosSelecionados[index]['tamanho'] =
+                                                    tam;
+                                                produtosSelecionados[index]['cor'] =
+                                                    cor;
+                                                produtosSelecionados[index]['quantidade'] =
+                                                    qtd;
+                                                produtosSelecionados[index]['extraValor'] =
+                                                    extraEv;
+                                                produtosSelecionados[index]['variacaoExtraResumo'] =
                                                     extraResumo;
                                               });
                                             },
                                           );
                                         } else {
                                           setState(() {
-                                            produtosSelecionados[index]
-                                                ['produto'] = prod.nome;
-                                            produtosSelecionados[index]
-                                                ['productId'] = prod.idFirebase
+                                            produtosSelecionados[index]['produto'] =
+                                                prod.nome;
+                                            produtosSelecionados[index]['productId'] =
+                                                prod.idFirebase
                                                     .trim()
                                                     .isNotEmpty
                                                 ? prod.idFirebase
                                                 : null;
-                                            produtosSelecionados[index]
-                                                    ['preco'] =
+                                            produtosSelecionados[index]['preco'] =
                                                 _precoDoProduto(prod);
-                                            produtosSelecionados[index]
-                                                ['tamanho'] = '';
+                                            produtosSelecionados[index]['tamanho'] =
+                                                '';
                                             produtosSelecionados[index]['cor'] =
                                                 '';
-                                            produtosSelecionados[index]
-                                                ['extraValor'] = '';
-                                            produtosSelecionados[index]
-                                                ['variacaoExtraResumo'] = '';
+                                            produtosSelecionados[index]['extraValor'] =
+                                                '';
+                                            produtosSelecionados[index]['variacaoExtraResumo'] =
+                                                '';
                                           });
                                         }
                                       },
                                     ),
                                     IconButton(
-                                      icon: Icon(Icons.add_circle,
-                                          color: Colors.green.shade600),
+                                      icon: Icon(
+                                        Icons.add_circle,
+                                        color: Colors.green.shade600,
+                                      ),
                                       onPressed: () {
                                         setState(() {
-                                          produtosSelecionados
-                                              .add(novaVendaEmptyLine());
+                                          produtosSelecionados.add(
+                                            novaVendaEmptyLine(),
+                                          );
                                           _quantityControllers.add(
-                                              TextEditingController(text: '1'));
+                                            TextEditingController(text: '1'),
+                                          );
                                         });
                                       },
                                     ),
                                     if (produtosSelecionados.length > 1)
                                       IconButton(
-                                        icon: Icon(Icons.remove_circle_outline,
-                                            color: Colors.red.shade400),
+                                        icon: Icon(
+                                          Icons.remove_circle_outline,
+                                          color: Colors.red.shade400,
+                                        ),
                                         onPressed: () =>
                                             _removerLinhaVendaExata(item),
                                       ),
@@ -2823,14 +2902,16 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                               builder: (context) {
                                 final comboTxt =
                                     ComboConfiguravelResumo.textoParaItemMap(
-                                  Map<String, dynamic>.from(item),
-                                );
+                                      Map<String, dynamic>.from(item),
+                                    );
                                 if (comboTxt.isEmpty) {
                                   return const SizedBox.shrink();
                                 }
                                 return Padding(
-                                  padding:
-                                      const EdgeInsets.only(top: 6, bottom: 2),
+                                  padding: const EdgeInsets.only(
+                                    top: 6,
+                                    bottom: 2,
+                                  ),
                                   child: Text(
                                     comboTxt,
                                     style: TextStyle(
@@ -2853,11 +2934,11 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                   child: TextFormField(
                                     controller:
                                         index < _quantityControllers.length
-                                            ? _quantityControllers[index]
-                                            : null,
+                                        ? _quantityControllers[index]
+                                        : null,
                                     key: novaVendaLineWidgetKey(item, 'qtd_'),
-                                    initialValue: index <
-                                            _quantityControllers.length
+                                    initialValue:
+                                        index < _quantityControllers.length
                                         ? null
                                         : (item['quantidade'] ?? 1).toString(),
                                     keyboardType: TextInputType.number,
@@ -2874,20 +2955,21 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                     onChanged: (value) {
                                       setState(() {
                                         final qtd = int.tryParse(value) ?? 1;
-                                        produtosSelecionados[index]
-                                            ['quantidade'] = qtd < 1 ? 1 : qtd;
+                                        produtosSelecionados[index]['quantidade'] =
+                                            qtd < 1 ? 1 : qtd;
                                       });
                                     },
                                   ),
                                 ),
                                 Container(
                                   padding: const EdgeInsets.symmetric(
-                                      horizontal: 12, vertical: 10),
+                                    horizontal: 12,
+                                    vertical: 10,
+                                  ),
                                   decoration: BoxDecoration(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .primary
-                                        .withOpacity(0.08),
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.primary.withOpacity(0.08),
                                     borderRadius: BorderRadius.circular(10),
                                   ),
                                   child: Text(
@@ -2895,8 +2977,9 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                     style: TextStyle(
                                       fontSize: 15,
                                       fontWeight: FontWeight.w700,
-                                      color:
-                                          Theme.of(context).colorScheme.primary,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.primary,
                                     ),
                                   ),
                                 ),
@@ -2913,33 +2996,39 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                     if (nomeProd.isEmpty) {
                                       return const SizedBox.shrink();
                                     }
-                                    final prod =
-                                        produtosDaLoja.firstWhereOrNull(
-                                      (p) =>
-                                          p.lojaId == lojaId &&
-                                          p.nome.toLowerCase() ==
-                                              nomeProd.toLowerCase(),
-                                    );
+                                    final prod = produtosDaLoja
+                                        .firstWhereOrNull(
+                                          (p) =>
+                                              p.lojaId == lojaId &&
+                                              p.nome.toLowerCase() ==
+                                                  nomeProd.toLowerCase(),
+                                        );
                                     if (prod == null) {
                                       return const SizedBox.shrink();
                                     }
-                                    final tam =
-                                        (item['tamanho'] ?? '').toString();
+                                    final tam = (item['tamanho'] ?? '')
+                                        .toString();
                                     final cor = (item['cor'] ?? '').toString();
-                                    final ex =
-                                        (item['extraValor'] ?? '').toString();
+                                    final ex = (item['extraValor'] ?? '')
+                                        .toString();
                                     final disp = _obterEstoqueProduto(
-                                        prod, tam, cor, ex);
+                                      prod,
+                                      tam,
+                                      cor,
+                                      ex,
+                                    );
                                     final isBaixo = disp < 3 && disp > 0;
                                     return Container(
                                       padding: const EdgeInsets.symmetric(
-                                          horizontal: 8, vertical: 4),
+                                        horizontal: 8,
+                                        vertical: 4,
+                                      ),
                                       decoration: BoxDecoration(
                                         color: disp == 0
                                             ? Colors.red.shade50
                                             : (isBaixo
-                                                ? Colors.orange.shade50
-                                                : Colors.grey.shade100),
+                                                  ? Colors.orange.shade50
+                                                  : Colors.grey.shade100),
                                         borderRadius: BorderRadius.circular(8),
                                       ),
                                       child: Text(
@@ -2949,8 +3038,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                           color: disp == 0
                                               ? Colors.red.shade700
                                               : (isBaixo
-                                                  ? Colors.orange.shade800
-                                                  : Colors.grey.shade700),
+                                                    ? Colors.orange.shade800
+                                                    : Colors.grey.shade700),
                                           fontWeight: isBaixo
                                               ? FontWeight.w600
                                               : FontWeight.normal,
@@ -2993,15 +3082,17 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                             .textTheme
                                             .bodySmall
                                             ?.copyWith(
-                                              color:
-                                                  Theme.of(context).hintColor,
+                                              color: Theme.of(
+                                                context,
+                                              ).hintColor,
                                             ),
                                       ),
                                     ),
                                     ChoiceChip(
                                       label: const Text('%'),
                                       labelPadding: const EdgeInsets.symmetric(
-                                          horizontal: 6),
+                                        horizontal: 6,
+                                      ),
                                       visualDensity: VisualDensity.compact,
                                       materialTapTargetSize:
                                           MaterialTapTargetSize.shrinkWrap,
@@ -3013,7 +3104,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                     ChoiceChip(
                                       label: const Text('R\$'),
                                       labelPadding: const EdgeInsets.symmetric(
-                                          horizontal: 6),
+                                        horizontal: 6,
+                                      ),
                                       visualDensity: VisualDensity.compact,
                                       materialTapTargetSize:
                                           MaterialTapTargetSize.shrinkWrap,
@@ -3031,7 +3123,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                           controller: descontoController,
                                           keyboardType: TextInputType.number,
                                           inputFormatters: [
-                                            MoedaInputFormatter()
+                                            MoedaInputFormatter(),
                                           ],
                                           decoration: const InputDecoration(
                                             labelText: 'Valor do desconto',
@@ -3060,10 +3152,12 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                     controller: descontoController,
                                     keyboardType:
                                         const TextInputType.numberWithOptions(
-                                            decimal: true),
+                                          decimal: true,
+                                        ),
                                     inputFormatters: [
                                       FilteringTextInputFormatter.allow(
-                                          RegExp(r'[0-9.,]')),
+                                        RegExp(r'[0-9.,]'),
+                                      ),
                                     ],
                                     decoration: const InputDecoration(
                                       labelText: 'Percentual',
@@ -3090,10 +3184,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                       children: [
                         Text(
                           'Formas de Pagamento',
-                          style:
-                              Theme.of(context).textTheme.titleSmall?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w600),
                         ),
                         const SizedBox(height: 8),
                         ...pagamentos.asMap().entries.map((entry) {
@@ -3136,8 +3228,10 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                 ),
                               ),
                               IconButton(
-                                icon: Icon(Icons.remove_circle,
-                                    color: Colors.red.shade400),
+                                icon: Icon(
+                                  Icons.remove_circle,
+                                  color: Colors.red.shade400,
+                                ),
                                 onPressed: () {
                                   setState(() {
                                     if (index < _valorControllers.length) {
@@ -3156,13 +3250,20 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                           spacing: 8,
                           children: [
                             TextButton.icon(
-                              icon: Icon(Icons.add,
-                                  color: Colors.green.shade600, size: 18),
+                              icon: Icon(
+                                Icons.add,
+                                color: Colors.green.shade600,
+                                size: 18,
+                              ),
                               label: const Text('Adicionar forma'),
                               onPressed: () {
                                 _valorControllers.add(TextEditingController());
-                                setState(() => pagamentos
-                                    .add({'forma': 'Pix', 'valor': 0.0}));
+                                setState(
+                                  () => pagamentos.add({
+                                    'forma': 'Pix',
+                                    'valor': 0.0,
+                                  }),
+                                );
                               },
                             ),
                             TextButton.icon(
@@ -3285,7 +3386,9 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                             child: Text(
                               'Roleta disponível para compras acima de R\$ ${valorMinimoRoleta.toStringAsFixed(2)}',
                               style: TextStyle(
-                                  fontSize: 13, color: Colors.grey.shade600),
+                                fontSize: 13,
+                                color: Colors.grey.shade600,
+                              ),
                             ),
                           );
                         }
@@ -3326,7 +3429,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                           : const Color(0xFF6366F1),
                                       foregroundColor: Colors.white,
                                       padding: const EdgeInsets.symmetric(
-                                          vertical: 12),
+                                        vertical: 12,
+                                      ),
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(12),
                                       ),
@@ -3375,18 +3479,12 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                         children: [
                           Text(
                             'Total',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                ),
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w600),
                           ),
                           Text(
                             'R\$ ${total.toStringAsFixed(2).replaceAll('.', ',')}',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleLarge
+                            style: Theme.of(context).textTheme.titleLarge
                                 ?.copyWith(
                                   fontWeight: FontWeight.bold,
                                   color: Theme.of(context).colorScheme.primary,
@@ -3459,9 +3557,11 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                 ? null
                                 : _finalizarVenda,
                             icon: const Icon(Icons.check_circle, size: 20),
-                            label: Text(_modoEdicao
-                                ? 'Salvar alterações'
-                                : 'Finalizar venda'),
+                            label: Text(
+                              _modoEdicao
+                                  ? 'Salvar alterações'
+                                  : 'Finalizar venda',
+                            ),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.green.shade600,
                               foregroundColor: Colors.white,
@@ -3543,9 +3643,7 @@ class _RoletaPremiosDialogState extends State<RoletaPremiosDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: const Color(0xFF020617),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(24),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       title: const Text(
         'Roleta da Sorte',
         style: TextStyle(color: Colors.white),
@@ -3597,10 +3695,7 @@ class _RoletaPremiosDialogState extends State<RoletaPremiosDialog> {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       gradient: const LinearGradient(
-                        colors: [
-                          Color(0xFF22C55E),
-                          Color(0xFF6366F1),
-                        ],
+                        colors: [Color(0xFF22C55E), Color(0xFF6366F1)],
                       ),
                       boxShadow: [
                         BoxShadow(
@@ -3638,10 +3733,7 @@ class _RoletaPremiosDialogState extends State<RoletaPremiosDialog> {
       actions: [
         TextButton(
           onPressed: _girando ? null : () => Navigator.pop(context),
-          child: const Text(
-            'Fechar',
-            style: TextStyle(color: Colors.white70),
-          ),
+          child: const Text('Fechar', style: TextStyle(color: Colors.white70)),
         ),
         ElevatedButton.icon(
           onPressed: _girando ? null : _girar,
@@ -3696,23 +3788,27 @@ class _ProdutoDropdown extends StatelessWidget {
       initialValue: TextEditingValue(text: valorAtual),
       optionsBuilder: (textEditingValue) {
         if (textEditingValue.text.isEmpty) {
-          final favs =
-              produtosFavoritos.where((n) => todosNomes.contains(n)).toList();
+          final favs = produtosFavoritos
+              .where((n) => todosNomes.contains(n))
+              .toList();
           final resto = todosNomes.where((n) => !favs.contains(n)).toList();
           return [...favs, ...resto];
         }
         final lower = normalizeText(textEditingValue.text);
-        final filtrados =
-            todosNomes.where((n) => normalizeText(n).contains(lower)).toList();
+        final filtrados = todosNomes
+            .where((n) => normalizeText(n).contains(lower))
+            .toList();
         final filtradosPorCodigo = codigoBarrasMap.entries
             .where((e) => normalizeText(e.key) == lower)
             .map((e) => e.value)
             .toList();
         final todosFiltrados = {...filtrados, ...filtradosPorCodigo}.toList();
-        final favsFiltrados =
-            produtosFavoritos.where((n) => todosFiltrados.contains(n)).toList();
-        final restoFiltrados =
-            todosFiltrados.where((n) => !favsFiltrados.contains(n)).toList();
+        final favsFiltrados = produtosFavoritos
+            .where((n) => todosFiltrados.contains(n))
+            .toList();
+        final restoFiltrados = todosFiltrados
+            .where((n) => !favsFiltrados.contains(n))
+            .toList();
         return [...favsFiltrados, ...restoFiltrados];
       },
       onSelected: (value) async {
