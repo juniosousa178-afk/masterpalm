@@ -102,6 +102,19 @@ class EstoqueBaixaOperationResult {
       status == EstoqueBaixaOperationStatus.alreadyApplied;
 }
 
+/// Resultado da reconciliação atômica de estoque na edição de venda.
+class EstoqueEdicaoReconcileResult {
+  const EstoqueEdicaoReconcileResult({
+    required this.alreadyApplied,
+    required this.transactionResults,
+  });
+
+  final bool alreadyApplied;
+  final List<EstoqueTransactionResult> transactionResults;
+
+  bool get aplicadaNestaExecucao => !alreadyApplied;
+}
+
 /// Mesmo [operationId] com efeito de estoque diferente — fail-closed.
 class EstoqueBaixaOperationIdentityConflictException implements Exception {
   EstoqueBaixaOperationIdentityConflictException(this.message);
@@ -109,7 +122,8 @@ class EstoqueBaixaOperationIdentityConflictException implements Exception {
   final String message;
 
   @override
-  String toString() => 'EstoqueBaixaOperationIdentityConflictException: $message';
+  String toString() =>
+      'EstoqueBaixaOperationIdentityConflictException: $message';
 }
 
 class _PdvBaixaIdempotencyContext {
@@ -188,14 +202,16 @@ class EstoqueTransactionService {
     return 'estoque_devolvido_v1_${lid}_$vid';
   }
 
-  static Future<bool> _devolucaoLocalJaFeita(String lojaId, String vendaId) async {
+  static Future<bool> _devolucaoLocalJaFeita(
+      String lojaId, String vendaId) async {
     final key = _devolucaoLocalPrefsKeyOrNull(lojaId, vendaId);
     if (key == null) return false;
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(key) ?? false;
   }
 
-  static Future<void> _marcarDevolucaoLocalFeita(String lojaId, String vendaId) async {
+  static Future<void> _marcarDevolucaoLocalFeita(
+      String lojaId, String vendaId) async {
     final key = _devolucaoLocalPrefsKeyOrNull(lojaId, vendaId);
     if (key == null) return;
     final prefs = await SharedPreferences.getInstance();
@@ -272,8 +288,8 @@ class EstoqueTransactionService {
       return null;
     }
     final escapedLoja = RegExp.escape(lojaId);
-    final m = RegExp('lojas\\/$escapedLoja\\/produtos\\/([^\\s,)]+)')
-        .firstMatch(msg);
+    final m =
+        RegExp('lojas\\/$escapedLoja\\/produtos\\/([^\\s,)]+)').firstMatch(msg);
     final docId = m?.group(1)?.trim();
     return (docId == null || docId.isEmpty) ? null : docId;
   }
@@ -291,10 +307,12 @@ class EstoqueTransactionService {
       final data = Map<String, dynamic>.from(estoqueSnap.data() ?? {});
       data['updatedAt'] = FieldValue.serverTimestamp();
       await produtosRef.set(data, SetOptions(merge: true));
-      debugPrint('[ESTOQUE-TX] 🔧 Espelho produtos reparado: lojas/$lojaId/produtos/$docId');
+      debugPrint(
+          '[ESTOQUE-TX] 🔧 Espelho produtos reparado: lojas/$lojaId/produtos/$docId');
       return true;
     } catch (e) {
-      debugPrint('[ESTOQUE-TX] ⚠️ Falha ao reparar espelho produtos (type=${e.runtimeType})');
+      debugPrint(
+          '[ESTOQUE-TX] ⚠️ Falha ao reparar espelho produtos (type=${e.runtimeType})');
       return false;
     }
   }
@@ -329,7 +347,8 @@ class EstoqueTransactionService {
     final corTrim = cor.trim();
     final extraTrim = variacaoExtra.trim();
 
-    final produtoRef = await _resolverProdutoRef(lojaId: lojaId, produtoId: produtoId, slug: slug, nome: nome);
+    final produtoRef = await _resolverProdutoRef(
+        lojaId: lojaId, produtoId: produtoId, slug: slug, nome: nome);
     if (produtoRef == null) {
       throw _erroProdutoNaoSincronizado(
         produtoId: produtoId,
@@ -359,33 +378,39 @@ class EstoqueTransactionService {
 
     Future<EstoqueTransactionResult> executarTransacao() {
       return _db.runTransaction<EstoqueTransactionResult>((transaction) async {
-      final produtoSnap = await transaction.get(produtoRef);
+        final produtoSnap = await transaction.get(produtoRef);
 
-      if (!produtoSnap.exists) {
-        throw Exception(
-          'Produto não encontrado no servidor: ${produtoId ?? slug ?? nome}. '
-          'Verifique se o produto foi sincronizado ou sua conexão com a internet.',
-        );
-      }
+        if (!produtoSnap.exists) {
+          throw Exception(
+            'Produto não encontrado no servidor: ${produtoId ?? slug ?? nome}. '
+            'Verifique se o produto foi sincronizado ou sua conexão com a internet.',
+          );
+        }
 
-      final data = produtoSnap.data()!;
-      final docId = produtoSnap.reference.id;
-      final produtoNome = (data['nome'] ?? '').toString();
+        final data = produtoSnap.data()!;
+        final docId = produtoSnap.reference.id;
+        final produtoNome = (data['nome'] ?? '').toString();
 
-      final variacoesRaw = data['variacoes'];
-      final estoquePorTamanhoRaw = data['estoquePorTamanho'];
-      final quantidadeTotal = (data['quantidade'] as num?)?.toInt() ?? 0;
+        final variacoesRaw = data['variacoes'];
+        final estoquePorTamanhoRaw = data['estoquePorTamanho'];
+        final quantidadeTotal = (data['quantidade'] as num?)?.toInt() ?? 0;
 
-      final variacoes = firestoreStringDynamicMapDeepOrEmpty(variacoesRaw);
-      final estoquePorTamanho = _parseMapStringInt(estoquePorTamanhoRaw);
+        final variacoes = firestoreStringDynamicMapDeepOrEmpty(variacoesRaw);
+        final estoquePorTamanho = _parseMapStringInt(estoquePorTamanhoRaw);
 
         final usaVariacoes = variacoes.isNotEmpty;
         final temEstoquePorTamanho = estoquePorTamanho.isNotEmpty;
-        final temVariacaoSoloCor = usaVariacoes && variacoes.containsKey('sem-tamanho') &&
-            variacoes['sem-tamanho'] is Map && (variacoes['sem-tamanho'] as Map).isNotEmpty;
-        final temVariacaoTamanhoECor = usaVariacoes && _temVariacaoTamanhoECor(variacoes);
+        final temVariacaoSoloCor = usaVariacoes &&
+            variacoes.containsKey('sem-tamanho') &&
+            variacoes['sem-tamanho'] is Map &&
+            (variacoes['sem-tamanho'] as Map).isNotEmpty;
+        final temVariacaoTamanhoECor =
+            usaVariacoes && _temVariacaoTamanhoECor(variacoes);
 
-        if (usaVariacoes && !temVariacaoSoloCor && tam.isEmpty && corTrim.isEmpty) {
+        if (usaVariacoes &&
+            !temVariacaoSoloCor &&
+            tam.isEmpty &&
+            corTrim.isEmpty) {
           throw Exception(
             'O produto "$produtoNome" possui variações. Informe tamanho e/ou cor conforme o cadastro.',
           );
@@ -401,7 +426,10 @@ class EstoqueTransactionService {
             'É obrigatório informar TAMANHO e COR.',
           );
         }
-        if (usaVariacoes && !temVariacaoSoloCor && tam.isEmpty && corTrim != 'sem-cor') {
+        if (usaVariacoes &&
+            !temVariacaoSoloCor &&
+            tam.isEmpty &&
+            corTrim != 'sem-cor') {
           final temSoloTamanho = _temVariacaoSoloTamanho(variacoes);
           if (temSoloTamanho) {
             throw Exception(
@@ -420,28 +448,65 @@ class EstoqueTransactionService {
 
         int disponivel = 0;
         Map<String, dynamic>? novasVariacoes;
-      Map<String, int>? novoEstoquePorTamanho;
-      int novaQuantidadeTotal;
+        Map<String, int>? novoEstoquePorTamanho;
+        int novaQuantidadeTotal;
 
-      if (temVariacaoSoloCor && corTrim.isNotEmpty) {
-        novasVariacoes = _mapaAposDebitoVariacao(
-          variacoes: variacoes,
-          chaveTamanho: 'sem-tamanho',
-          corKey: corTrim,
-          extraTrim: extraTrim,
-          quantidade: quantidade,
-          produtoNome: produtoNome,
-          erroCtx: 'na cor $corTrim',
-        );
-        novaQuantidadeTotal = _somarVariacoes(novasVariacoes);
-      } else if (usaVariacoes && tam.isNotEmpty) {
-        final tamResolvidoVar = _resolverChaveNoMapa(variacoes, tam);
-        final mapaTamVar = tamResolvidoVar != null
-            ? variacoes[tamResolvidoVar]
-            : null;
-        final celulaVarExiste = mapaTamVar is Map && mapaTamVar.isNotEmpty;
+        if (temVariacaoSoloCor && corTrim.isNotEmpty) {
+          novasVariacoes = _mapaAposDebitoVariacao(
+            variacoes: variacoes,
+            chaveTamanho: 'sem-tamanho',
+            corKey: corTrim,
+            extraTrim: extraTrim,
+            quantidade: quantidade,
+            produtoNome: produtoNome,
+            erroCtx: 'na cor $corTrim',
+          );
+          novaQuantidadeTotal = _somarVariacoes(novasVariacoes);
+        } else if (usaVariacoes && tam.isNotEmpty) {
+          final tamResolvidoVar = _resolverChaveNoMapa(variacoes, tam);
+          final mapaTamVar =
+              tamResolvidoVar != null ? variacoes[tamResolvidoVar] : null;
+          final celulaVarExiste = mapaTamVar is Map && mapaTamVar.isNotEmpty;
 
-        if (!celulaVarExiste && temEstoquePorTamanho) {
+          if (!celulaVarExiste && temEstoquePorTamanho) {
+            final tamResolvido =
+                _resolverChaveNoMapa(estoquePorTamanho, tam) ?? tam;
+            disponivel = estoquePorTamanho[tamResolvido] ?? 0;
+
+            if (disponivel < quantidade) {
+              throw Exception(
+                'Estoque insuficiente para "$produtoNome" no tamanho $tam. '
+                'Disponível: $disponivel, solicitado: $quantidade.',
+              );
+            }
+
+            novoEstoquePorTamanho = Map<String, int>.from(estoquePorTamanho);
+            novoEstoquePorTamanho[tamResolvido] = disponivel - quantidade;
+            if (novoEstoquePorTamanho[tamResolvido]! <= 0) {
+              novoEstoquePorTamanho.remove(tamResolvido);
+            }
+
+            novaQuantidadeTotal =
+                novoEstoquePorTamanho.values.fold(0, (a, b) => a + b);
+          } else {
+            final chaveCor = _resolverCorKeyParaTamanho(
+              variacoes: variacoes,
+              tamanho: tam,
+              corInformada: corTrim,
+            );
+            novasVariacoes = _mapaAposDebitoVariacao(
+              variacoes: variacoes,
+              chaveTamanho: tam,
+              corKey: chaveCor,
+              extraTrim: extraTrim,
+              quantidade: quantidade,
+              produtoNome: produtoNome,
+              erroCtx:
+                  'no tamanho $tam${corTrim.isEmpty ? '' : ' - cor $corTrim'}',
+            );
+            novaQuantidadeTotal = _somarVariacoes(novasVariacoes);
+          }
+        } else if (temEstoquePorTamanho && tam.isNotEmpty) {
           final tamResolvido =
               _resolverChaveNoMapa(estoquePorTamanho, tam) ?? tam;
           disponivel = estoquePorTamanho[tamResolvido] ?? 0;
@@ -462,100 +527,62 @@ class EstoqueTransactionService {
           novaQuantidadeTotal =
               novoEstoquePorTamanho.values.fold(0, (a, b) => a + b);
         } else {
-          final chaveCor = _resolverCorKeyParaTamanho(
-            variacoes: variacoes,
-            tamanho: tam,
-            corInformada: corTrim,
-          );
-          novasVariacoes = _mapaAposDebitoVariacao(
-            variacoes: variacoes,
-            chaveTamanho: tam,
-            corKey: chaveCor,
-            extraTrim: extraTrim,
-            quantidade: quantidade,
-            produtoNome: produtoNome,
-            erroCtx:
-                'no tamanho $tam${corTrim.isEmpty ? '' : ' - cor $corTrim'}',
-          );
-          novaQuantidadeTotal = _somarVariacoes(novasVariacoes);
-        }
-      } else if (temEstoquePorTamanho && tam.isNotEmpty) {
-        final tamResolvido =
-            _resolverChaveNoMapa(estoquePorTamanho, tam) ?? tam;
-        disponivel = estoquePorTamanho[tamResolvido] ?? 0;
+          disponivel = quantidadeTotal;
 
-        if (disponivel < quantidade) {
-          throw Exception(
-            'Estoque insuficiente para "$produtoNome" no tamanho $tam. '
-            'Disponível: $disponivel, solicitado: $quantidade.',
-          );
+          if (disponivel < quantidade) {
+            throw Exception(
+              'Estoque insuficiente para "$produtoNome". '
+              'Disponível: $disponivel, solicitado: $quantidade.',
+            );
+          }
+
+          novaQuantidadeTotal = quantidadeTotal - quantidade;
         }
 
-        novoEstoquePorTamanho = Map<String, int>.from(estoquePorTamanho);
-        novoEstoquePorTamanho[tamResolvido] = disponivel - quantidade;
-        if (novoEstoquePorTamanho[tamResolvido]! <= 0) {
-          novoEstoquePorTamanho.remove(tamResolvido);
+        Map<String, int>? estoquePorTamanhoParaVariacao;
+        if (novasVariacoes != null) {
+          estoquePorTamanhoParaVariacao =
+              _estoquePorTamanhoAgregadoDeVariacoes(novasVariacoes);
         }
 
-        novaQuantidadeTotal =
-            novoEstoquePorTamanho.values.fold(0, (a, b) => a + b);
-      } else {
-        disponivel = quantidadeTotal;
+        final updateData = buildEstoqueUpdateDataComDeletes(
+          novaQuantidadeTotal: novaQuantidadeTotal,
+          variacoesAnteriores: variacoes,
+          variacoesNovas: novasVariacoes,
+          estoquePorTamanhoAnterior: estoquePorTamanho,
+          estoquePorTamanhoNovo:
+              estoquePorTamanhoParaVariacao ?? novoEstoquePorTamanho,
+        );
+        _attachStockContractFields(updateData, data);
 
-        if (disponivel < quantidade) {
-          throw Exception(
-            'Estoque insuficiente para "$produtoNome". '
-            'Disponível: $disponivel, solicitado: $quantidade.',
-          );
-        }
+        transaction.update(produtoRef, updateData);
 
-        novaQuantidadeTotal = quantidadeTotal - quantidade;
-      }
+        final estoqueRef = _db
+            .collection('lojas')
+            .doc(lojaId)
+            .collection(FSPaths.estoqueProdutosCol)
+            .doc(docId);
 
-      Map<String, int>? estoquePorTamanhoParaVariacao;
-      if (novasVariacoes != null) {
-        estoquePorTamanhoParaVariacao =
-            _estoquePorTamanhoAgregadoDeVariacoes(novasVariacoes);
-      }
+        // Em transações, update em doc inexistente pode falhar apenas no commit.
+        // Usar set+merge evita abortar a venda quando coleção espelho não existe.
+        transaction.set(estoqueRef, updateData, SetOptions(merge: true));
 
-      final updateData = buildEstoqueUpdateDataComDeletes(
-        novaQuantidadeTotal: novaQuantidadeTotal,
-        variacoesAnteriores: variacoes,
-        variacoesNovas: novasVariacoes,
-        estoquePorTamanhoAnterior: estoquePorTamanho,
-        estoquePorTamanhoNovo:
-            estoquePorTamanhoParaVariacao ?? novoEstoquePorTamanho,
-      );
-      _attachStockContractFields(updateData, data);
+        debugPrint('[ESTOQUE-TX] ✅ Baixa atômica: $produtoNome -$quantidade');
 
-      transaction.update(produtoRef, updateData);
-
-      final estoqueRef = _db
-          .collection('lojas')
-          .doc(lojaId)
-          .collection(FSPaths.estoqueProdutosCol)
-          .doc(docId);
-
-      // Em transações, update em doc inexistente pode falhar apenas no commit.
-      // Usar set+merge evita abortar a venda quando coleção espelho não existe.
-      transaction.set(estoqueRef, updateData, SetOptions(merge: true));
-
-      debugPrint('[ESTOQUE-TX] ✅ Baixa atômica: $produtoNome -$quantidade');
-
-      final slugVal = (data['slug'] ?? '').toString().trim();
-      return EstoqueTransactionResult(
-        produtoId: docId,
-        produtoNome: produtoNome,
-        produtoSlug: slugVal.isNotEmpty ? slugVal : null,
-        quantidadeDebitada: quantidade,
-        variacoesAtualizadas: novasVariacoes,
-        estoquePorTamanhoAtualizado:
-            estoquePorTamanhoParaVariacao ?? novoEstoquePorTamanho,
-        quantidadeTotalAtualizada: novaQuantidadeTotal,
-        newStockRevision: parseStockRevisionFromRemote(updateData),
-        stockOperationId: parseStockOperationIdFromRemote(updateData),
-        stockBaseRevision: parseStockRevisionFromRemote(data),
-      );
+        final slugVal = (data['slug'] ?? '').toString().trim();
+        return EstoqueTransactionResult(
+          produtoId: docId,
+          produtoNome: produtoNome,
+          produtoSlug: slugVal.isNotEmpty ? slugVal : null,
+          quantidadeDebitada: quantidade,
+          variacoesAtualizadas: novasVariacoes,
+          estoquePorTamanhoAtualizado:
+              estoquePorTamanhoParaVariacao ?? novoEstoquePorTamanho,
+          quantidadeTotalAtualizada: novaQuantidadeTotal,
+          newStockRevision: parseStockRevisionFromRemote(updateData),
+          stockOperationId: parseStockOperationIdFromRemote(updateData),
+          stockBaseRevision: parseStockRevisionFromRemote(data),
+        );
       }).timeout(
         const Duration(seconds: 20),
         onTimeout: () => throw TimeoutException(
@@ -579,7 +606,8 @@ class EstoqueTransactionService {
           'Sincronize o produto no cadastro e tente finalizar novamente.',
         );
       }
-      debugPrint('[ESTOQUE-TX] 🔁 Retry transação após reparar produtos/$docId');
+      debugPrint(
+          '[ESTOQUE-TX] 🔁 Retry transação após reparar produtos/$docId');
       return executarTransacao();
     }
   }
@@ -709,10 +737,12 @@ class EstoqueTransactionService {
     return null;
   }
 
-  static String? _resolverChaveNoMapa(Map<dynamic, dynamic> map, String informada) =>
+  static String? _resolverChaveNoMapa(
+          Map<dynamic, dynamic> map, String informada) =>
       resolverChaveNoMapaParaTeste(map, informada);
 
-  static bool _mapaContemChaveCompativel(Map<dynamic, dynamic> map, String informada) {
+  static bool _mapaContemChaveCompativel(
+      Map<dynamic, dynamic> map, String informada) {
     return _resolverChaveNoMapa(map, informada) != null;
   }
 
@@ -724,14 +754,18 @@ class EstoqueTransactionService {
     String? slug,
     String? nome,
   }) async {
-    final col = _db.collection('lojas').doc(lojaId).collection(FSPaths.estoqueProdutosCol);
+    final col = _db
+        .collection('lojas')
+        .doc(lojaId)
+        .collection(FSPaths.estoqueProdutosCol);
 
     // 1) productId / idFirebase
     if (produtoId != null && produtoId.isNotEmpty) {
       final ref = col.doc(produtoId);
       final snap = await ref.get();
       if (snap.exists) {
-        debugPrint('[PRODUTO_ID] Resolução por productId | lojaId=$lojaId | productId=$produtoId');
+        debugPrint(
+            '[PRODUTO_ID] Resolução por productId | lojaId=$lojaId | productId=$produtoId');
         return ref;
       }
       debugPrint(
@@ -945,18 +979,21 @@ class EstoqueTransactionService {
   static const int _maxItensPorTransacao = 150;
 
   /// Mescla linhas que debitam o mesmo documento + mesma variação (evita leitura/escrita duplicada na mesma TX).
-  static Future<List<({
-    DocumentReference<Map<String, dynamic>> ref,
-    int quantidade,
-    String tamanho,
-    String cor,
-    String variacaoExtra,
-  })>> _resolverItensMescladosBaixa(
+  static Future<
+      List<
+          ({
+            DocumentReference<Map<String, dynamic>> ref,
+            int quantidade,
+            String tamanho,
+            String cor,
+            String variacaoExtra,
+          })>> _resolverItensMescladosBaixa(
     String lojaId,
     List<Map<String, dynamic>> itens,
   ) async {
     final acc = <String, int>{};
-    final meta = <String, ({
+    final meta = <String,
+        ({
       DocumentReference<Map<String, dynamic>> ref,
       String tamanho,
       String cor,
@@ -1017,18 +1054,21 @@ class EstoqueTransactionService {
     }).toList();
   }
 
-  static Future<List<({
-    DocumentReference<Map<String, dynamic>> ref,
-    int quantidade,
-    String tamanho,
-    String cor,
-    String variacaoExtra,
-  })>> _resolverItensMescladosDevolucao(
+  static Future<
+      List<
+          ({
+            DocumentReference<Map<String, dynamic>> ref,
+            int quantidade,
+            String tamanho,
+            String cor,
+            String variacaoExtra,
+          })>> _resolverItensMescladosDevolucao(
     String lojaId,
     List<Map<String, dynamic>> itens,
   ) async {
     final acc = <String, int>{};
-    final meta = <String, ({
+    final meta = <String,
+        ({
       DocumentReference<Map<String, dynamic>> ref,
       String tamanho,
       String cor,
@@ -1156,12 +1196,51 @@ class EstoqueTransactionService {
           0;
       if (quantidade <= 0) continue;
       lines.add({
-        'productId': (item['productId'] ??
-                item['produtosId'] ??
-                item['id'] ??
-                '')
+        'productId':
+            (item['productId'] ?? item['produtosId'] ?? item['id'] ?? '')
+                .toString()
+                .trim(),
+        'slug': (item['slug'] ?? '').toString().trim(),
+        'quantidade': quantidade,
+        'tamanho': (item['tamanho'] ?? item['size'] ?? '').toString().trim(),
+        'cor': (item['cor'] ?? item['color'] ?? '').toString().trim(),
+        'extraValor': (item['extraValor'] ?? item['variacaoExtra'] ?? '')
             .toString()
             .trim(),
+      });
+    }
+    lines.sort((a, b) {
+      for (final key in [
+        'productId',
+        'slug',
+        'tamanho',
+        'cor',
+        'extraValor',
+        'quantidade',
+      ]) {
+        final cmp = a[key].toString().compareTo(b[key].toString());
+        if (cmp != 0) return cmp;
+      }
+      return 0;
+    });
+    return _sha256HexUtf8(jsonEncode(lines));
+  }
+
+  /// Hash determinístico de deltas assinados (`quantidade` pode ser negativa = baixa).
+  static String computeSignedTxItemsHashForIdempotencia(
+    List<Map<String, dynamic>> itensAssinados,
+  ) {
+    final lines = <Map<String, dynamic>>[];
+    for (final item in itensAssinados) {
+      final quantidade = (item['quantidade'] as num?)?.toInt() ??
+          (item['qty'] as num?)?.toInt() ??
+          0;
+      if (quantidade == 0) continue;
+      lines.add({
+        'productId':
+            (item['productId'] ?? item['produtosId'] ?? item['id'] ?? '')
+                .toString()
+                .trim(),
         'slug': (item['slug'] ?? '').toString().trim(),
         'quantidade': quantidade,
         'tamanho': (item['tamanho'] ?? item['size'] ?? '').toString().trim(),
@@ -1191,13 +1270,15 @@ class EstoqueTransactionService {
   /// Hash do efeito resolvido (documentos Firestore + variação).
   @visibleForTesting
   static String computeSnapshotHashFromResolvedBaixa(
-    List<({
-      DocumentReference<Map<String, dynamic>> ref,
-      int quantidade,
-      String tamanho,
-      String cor,
-      String variacaoExtra,
-    })> resolvedItems,
+    List<
+            ({
+              DocumentReference<Map<String, dynamic>> ref,
+              int quantidade,
+              String tamanho,
+              String cor,
+              String variacaoExtra,
+            })>
+        resolvedItems,
   ) {
     final lines = resolvedItems
         .map(
@@ -1291,13 +1372,15 @@ class EstoqueTransactionService {
 
   static Future<void> _validarTombstonesBaixa({
     required String lojaId,
-    required List<({
-      DocumentReference<Map<String, dynamic>> ref,
-      int quantidade,
-      String tamanho,
-      String cor,
-      String variacaoExtra,
-    })> resolvedItems,
+    required List<
+            ({
+              DocumentReference<Map<String, dynamic>> ref,
+              int quantidade,
+              String tamanho,
+              String cor,
+              String variacaoExtra,
+            })>
+        resolvedItems,
   }) async {
     await ProdutoExclusaoTombstoneService.ensureHydratedForLoja(lojaId);
     for (final r in resolvedItems) {
@@ -1352,539 +1435,553 @@ class EstoqueTransactionService {
 
   static Future<_TransacaoBaixaBatchOutcome> _executarBaixaBatchInterno({
     required String lojaId,
-    required List<({
-      DocumentReference<Map<String, dynamic>> ref,
-      int quantidade,
-      String tamanho,
-      String cor,
-      String variacaoExtra,
-    })> resolvedItems,
+    required List<
+            ({
+              DocumentReference<Map<String, dynamic>> ref,
+              int quantidade,
+              String tamanho,
+              String cor,
+              String variacaoExtra,
+            })>
+        resolvedItems,
     _PdvBaixaIdempotencyContext? idempotency,
   }) async {
     Future<_TransacaoBaixaBatchOutcome> executarTransacao([
       _PdvBaixaIdempotencyContext? idempotency,
     ]) {
       Future<_TransacaoBaixaBatchOutcome> run() {
-        return _db.runTransaction<_TransacaoBaixaBatchOutcome>((transaction) async {
-      if (idempotency != null) {
-        final markerRef =
-            _baixaPagamentoRef(lojaId, idempotency.operationId);
-        _txStageLog(
-          'tx_stage_01_marker_before_get',
-          operationId: idempotency.operationId,
-        );
-        final markerSnap = await transaction.get(markerRef);
-        _txStageLog(
-          'tx_stage_02_marker_after_get',
-          operationId: idempotency.operationId,
-          runtimeType: markerSnap.data()?.runtimeType.toString(),
-        );
-        if (markerSnap.exists) {
-          final markerData =
-              firestoreStringDynamicMapOrEmpty(markerSnap.data());
-          if (markerData['baixaAplicada'] == true) {
-            if (markerData['estornoAplicado'] == true) {
-              _assertMarkerIdentityCompativel(
-                data: markerData,
+        return _db
+            .runTransaction<_TransacaoBaixaBatchOutcome>((transaction) async {
+          if (idempotency != null) {
+            final markerRef =
+                _baixaPagamentoRef(lojaId, idempotency.operationId);
+            _txStageLog(
+              'tx_stage_01_marker_before_get',
+              operationId: idempotency.operationId,
+            );
+            final markerSnap = await transaction.get(markerRef);
+            _txStageLog(
+              'tx_stage_02_marker_after_get',
+              operationId: idempotency.operationId,
+              runtimeType: markerSnap.data()?.runtimeType.toString(),
+            );
+            if (markerSnap.exists) {
+              final markerData =
+                  firestoreStringDynamicMapOrEmpty(markerSnap.data());
+              if (markerData['baixaAplicada'] == true) {
+                if (markerData['estornoAplicado'] == true) {
+                  _assertMarkerIdentityCompativel(
+                    data: markerData,
+                    lojaId: lojaId,
+                    operationId: idempotency.operationId,
+                    txItemsHash: idempotency.txItemsHash,
+                    snapshotHash: idempotency.snapshotHash,
+                  );
+                  debugPrint(
+                    '[ESTOQUE-TX] Re-baixa pós-estorno operationId=${idempotency.operationId}',
+                  );
+                } else {
+                  _assertMarkerIdentityCompativel(
+                    data: markerData,
+                    lojaId: lojaId,
+                    operationId: idempotency.operationId,
+                    txItemsHash: idempotency.txItemsHash,
+                    snapshotHash: idempotency.snapshotHash,
+                  );
+                  debugPrint(
+                    '[ESTOQUE-TX] Baixa idempotente replay operationId=${idempotency.operationId}',
+                  );
+                  return const _TransacaoBaixaBatchOutcome(
+                    alreadyApplied: true,
+                    results: [],
+                  );
+                }
+              }
+            }
+          }
+
+          // FASE 1: Leituras + débito acumulado em memória por documento.
+          // Várias variações do mesmo produto (P/M/G) NÃO podem cada uma
+          // gerar um update completo a partir do snapshot original — a última
+          // escrita sobrescreveria as anteriores. Acumulamos no working state.
+          final results = <EstoqueTransactionResult>[];
+          final writesByPath = <String,
+              ({
+            DocumentReference<Map<String, dynamic>> ref,
+            DocumentReference<Map<String, dynamic>>? estoqueRef,
+            Map<String, dynamic> updateData,
+          })>{};
+          final workingByPath = <String, _DocStockWorkingState>{};
+
+          for (var itemIndex = 0;
+              itemIndex < resolvedItems.length;
+              itemIndex++) {
+            final resolved = resolvedItems[itemIndex];
+            try {
+              _txStageLog(
+                'tx_stage_03_item_begin',
+                index: itemIndex,
+                productId: resolved.ref.id,
+                operationId: idempotency?.operationId,
+              );
+              final path = resolved.ref.path;
+              late final _DocStockWorkingState working;
+
+              if (workingByPath.containsKey(path)) {
+                working = workingByPath[path]!;
+                _txStageLog(
+                  'tx_stage_05_product_after_get',
+                  index: itemIndex,
+                  productId: resolved.ref.id,
+                  runtimeType: 'working_state_reuse',
+                );
+              } else {
+                _txStageLog(
+                  'tx_stage_04_product_before_get',
+                  index: itemIndex,
+                  productId: resolved.ref.id,
+                );
+                final produtoSnap = await transaction.get(resolved.ref);
+                _txStageLog(
+                  'tx_stage_05_product_after_get',
+                  index: itemIndex,
+                  productId: resolved.ref.id,
+                  runtimeType: produtoSnap.data()?.runtimeType.toString(),
+                );
+
+                if (!produtoSnap.exists) {
+                  throw Exception(
+                    'Produto não encontrado no servidor: ${resolved.ref.id}. '
+                    'Verifique se o produto foi sincronizado ou sua conexão com a internet.',
+                  );
+                }
+
+                final rawData = produtoSnap.data();
+                if (rawData == null) {
+                  throw Exception(
+                    'Produto sem dados no servidor: ${resolved.ref.id}.',
+                  );
+                }
+                _txStageLog(
+                  'tx_stage_06_data_normalize_before',
+                  index: itemIndex,
+                  productId: resolved.ref.id,
+                );
+                final data = firestoreStringDynamicMapDeepOrEmpty(rawData);
+                _txStageLog(
+                  'tx_stage_07_data_normalize_after',
+                  index: itemIndex,
+                  productId: resolved.ref.id,
+                  runtimeType: data.runtimeType.toString(),
+                );
+                final variacoesInit =
+                    firestoreStringDynamicMapDeepOrEmpty(data['variacoes']);
+                final estoqueInit =
+                    _parseMapStringInt(data['estoquePorTamanho']);
+                final slugVal = (data['slug'] ?? '').toString().trim();
+                working = _DocStockWorkingState(
+                  produtoNome: (data['nome'] ?? '').toString(),
+                  produtoSlug: slugVal,
+                  variacoesOriginais:
+                      firestoreStringDynamicMapDeepOrEmpty(variacoesInit),
+                  estoquePorTamanhoOriginal: Map<String, int>.from(estoqueInit),
+                  variacoes:
+                      firestoreStringDynamicMapDeepOrEmpty(variacoesInit),
+                  estoquePorTamanho: Map<String, int>.from(estoqueInit),
+                  quantidadeTotal: firestoreIntFieldOrZero(data['quantidade']),
+                  remoteDataSnapshot: Map<String, dynamic>.from(data),
+                );
+                workingByPath[path] = working;
+              }
+
+              final docId = resolved.ref.id;
+              final produtoNome = working.produtoNome;
+              final quantidade = resolved.quantidade;
+              final tamanho = resolved.tamanho;
+              final cor = resolved.cor;
+              final extraTrim = resolved.variacaoExtra;
+              final qtdAntes = working.quantidadeTotal;
+
+              _traceEstoqueVariacao(
+                stage: 'start',
                 lojaId: lojaId,
-                operationId: idempotency.operationId,
-                txItemsHash: idempotency.txItemsHash,
-                snapshotHash: idempotency.snapshotHash,
+                produtoId: docId,
+                tamanho: tamanho,
+                cor: cor,
+                variacaoExtra: extraTrim,
+                qtdVendida: quantidade,
+                qtdAntes: qtdAntes,
+                qtdDepois: qtdAntes,
+                operationId: idempotency?.operationId,
+                alreadyApplied: false,
               );
-              debugPrint(
-                '[ESTOQUE-TX] Re-baixa pós-estorno operationId=${idempotency.operationId}',
+
+              final variacoes =
+                  firestoreStringDynamicMapDeepOrEmpty(working.variacoes);
+              final estoquePorTamanho =
+                  Map<String, int>.from(working.estoquePorTamanho);
+
+              _txStageLog(
+                'tx_stage_09_variacoes_before',
+                index: itemIndex,
+                productId: docId,
+                runtimeType: variacoes.runtimeType.toString(),
               );
-            } else {
-              _assertMarkerIdentityCompativel(
-                data: markerData,
-                lojaId: lojaId,
-                operationId: idempotency.operationId,
-                txItemsHash: idempotency.txItemsHash,
-                snapshotHash: idempotency.snapshotHash,
+              _txStageLog(
+                'tx_stage_10_variacoes_after',
+                index: itemIndex,
+                productId: docId,
+                runtimeType: variacoes.runtimeType.toString(),
               );
-              debugPrint(
-                '[ESTOQUE-TX] Baixa idempotente replay operationId=${idempotency.operationId}',
-              );
-              return const _TransacaoBaixaBatchOutcome(
-                alreadyApplied: true,
-                results: [],
-              );
-            }
-          }
-        }
-      }
 
-      // FASE 1: Leituras + débito acumulado em memória por documento.
-      // Várias variações do mesmo produto (P/M/G) NÃO podem cada uma
-      // gerar um update completo a partir do snapshot original — a última
-      // escrita sobrescreveria as anteriores. Acumulamos no working state.
-      final results = <EstoqueTransactionResult>[];
-      final writesByPath = <String, ({
-        DocumentReference<Map<String, dynamic>> ref,
-        DocumentReference<Map<String, dynamic>>? estoqueRef,
-        Map<String, dynamic> updateData,
-      })>{};
-      final workingByPath = <String, _DocStockWorkingState>{};
+              final usaVariacoes = variacoes.isNotEmpty;
+              final temEstoquePorTamanho = estoquePorTamanho.isNotEmpty;
+              final temVariacaoSoloCor = usaVariacoes &&
+                  variacoes.containsKey('sem-tamanho') &&
+                  variacoes['sem-tamanho'] is Map &&
+                  (variacoes['sem-tamanho'] as Map).isNotEmpty;
+              final temVariacaoTamanhoECor =
+                  usaVariacoes && _temVariacaoTamanhoECor(variacoes);
 
-      for (var itemIndex = 0; itemIndex < resolvedItems.length; itemIndex++) {
-        final resolved = resolvedItems[itemIndex];
-        try {
-          _txStageLog(
-            'tx_stage_03_item_begin',
-            index: itemIndex,
-            productId: resolved.ref.id,
-            operationId: idempotency?.operationId,
-          );
-          final path = resolved.ref.path;
-          late final _DocStockWorkingState working;
-
-          if (workingByPath.containsKey(path)) {
-            working = workingByPath[path]!;
-            _txStageLog(
-              'tx_stage_05_product_after_get',
-              index: itemIndex,
-              productId: resolved.ref.id,
-              runtimeType: 'working_state_reuse',
-            );
-          } else {
-            _txStageLog(
-              'tx_stage_04_product_before_get',
-              index: itemIndex,
-              productId: resolved.ref.id,
-            );
-            final produtoSnap = await transaction.get(resolved.ref);
-            _txStageLog(
-              'tx_stage_05_product_after_get',
-              index: itemIndex,
-              productId: resolved.ref.id,
-              runtimeType: produtoSnap.data()?.runtimeType.toString(),
-            );
-
-            if (!produtoSnap.exists) {
-              throw Exception(
-                'Produto não encontrado no servidor: ${resolved.ref.id}. '
-                'Verifique se o produto foi sincronizado ou sua conexão com a internet.',
-              );
-            }
-
-            final rawData = produtoSnap.data();
-            if (rawData == null) {
-              throw Exception(
-                'Produto sem dados no servidor: ${resolved.ref.id}.',
-              );
-            }
-            _txStageLog(
-              'tx_stage_06_data_normalize_before',
-              index: itemIndex,
-              productId: resolved.ref.id,
-            );
-            final data = firestoreStringDynamicMapDeepOrEmpty(rawData);
-            _txStageLog(
-              'tx_stage_07_data_normalize_after',
-              index: itemIndex,
-              productId: resolved.ref.id,
-              runtimeType: data.runtimeType.toString(),
-            );
-            final variacoesInit =
-                firestoreStringDynamicMapDeepOrEmpty(data['variacoes']);
-            final estoqueInit = _parseMapStringInt(data['estoquePorTamanho']);
-            final slugVal = (data['slug'] ?? '').toString().trim();
-            working = _DocStockWorkingState(
-              produtoNome: (data['nome'] ?? '').toString(),
-              produtoSlug: slugVal,
-              variacoesOriginais:
-                  firestoreStringDynamicMapDeepOrEmpty(variacoesInit),
-              estoquePorTamanhoOriginal: Map<String, int>.from(estoqueInit),
-              variacoes: firestoreStringDynamicMapDeepOrEmpty(variacoesInit),
-              estoquePorTamanho: Map<String, int>.from(estoqueInit),
-              quantidadeTotal: firestoreIntFieldOrZero(data['quantidade']),
-              remoteDataSnapshot: Map<String, dynamic>.from(data),
-            );
-            workingByPath[path] = working;
-          }
-
-          final docId = resolved.ref.id;
-          final produtoNome = working.produtoNome;
-          final quantidade = resolved.quantidade;
-          final tamanho = resolved.tamanho;
-          final cor = resolved.cor;
-          final extraTrim = resolved.variacaoExtra;
-          final qtdAntes = working.quantidadeTotal;
-
-          _traceEstoqueVariacao(
-            stage: 'start',
-            lojaId: lojaId,
-            produtoId: docId,
-            tamanho: tamanho,
-            cor: cor,
-            variacaoExtra: extraTrim,
-            qtdVendida: quantidade,
-            qtdAntes: qtdAntes,
-            qtdDepois: qtdAntes,
-            operationId: idempotency?.operationId,
-            alreadyApplied: false,
-          );
-
-          final variacoes =
-              firestoreStringDynamicMapDeepOrEmpty(working.variacoes);
-          final estoquePorTamanho =
-              Map<String, int>.from(working.estoquePorTamanho);
-
-          _txStageLog(
-            'tx_stage_09_variacoes_before',
-            index: itemIndex,
-            productId: docId,
-            runtimeType: variacoes.runtimeType.toString(),
-          );
-          _txStageLog(
-            'tx_stage_10_variacoes_after',
-            index: itemIndex,
-            productId: docId,
-            runtimeType: variacoes.runtimeType.toString(),
-          );
-
-          final usaVariacoes = variacoes.isNotEmpty;
-          final temEstoquePorTamanho = estoquePorTamanho.isNotEmpty;
-          final temVariacaoSoloCor = usaVariacoes &&
-              variacoes.containsKey('sem-tamanho') &&
-              variacoes['sem-tamanho'] is Map &&
-              (variacoes['sem-tamanho'] as Map).isNotEmpty;
-          final temVariacaoTamanhoECor =
-              usaVariacoes && _temVariacaoTamanhoECor(variacoes);
-
-          if (usaVariacoes &&
-              !temVariacaoSoloCor &&
-              tamanho.isEmpty &&
-              cor.isEmpty) {
-            throw Exception(
-              'O produto "$produtoNome" possui variações. Informe tamanho e/ou cor conforme o cadastro.',
-            );
-          }
-          if (temVariacaoSoloCor && cor.isEmpty) {
-            throw Exception(
-              'O produto "$produtoNome" possui variação de cor. É obrigatório informar a COR.',
-            );
-          }
-          if (temVariacaoTamanhoECor && (tamanho.isEmpty || cor.isEmpty)) {
-            throw Exception(
-              'O produto "$produtoNome" possui variações de tamanho e cor. '
-              'É obrigatório informar TAMANHO e COR.',
-            );
-          }
-          if (usaVariacoes &&
-              !temVariacaoSoloCor &&
-              tamanho.isEmpty &&
-              cor != 'sem-cor') {
-            if (_temVariacaoSoloTamanho(variacoes)) {
-              throw Exception(
-                'O produto "$produtoNome" possui variação de tamanho. É obrigatório informar o TAMANHO.',
-              );
-            }
-          }
-          if (_temEstoquePorTamanhoReal(estoquePorTamanho) &&
-              tamanho.isEmpty &&
-              !temVariacaoSoloCor) {
-            throw Exception(
-              'O produto "$produtoNome" possui estoque por tamanho. '
-              'É obrigatório informar o TAMANHO na venda (ex.: P, M, G).',
-            );
-          }
-
-          Map<String, dynamic>? novasVariacoes;
-          Map<String, int>? novoEstoquePorTamanho;
-          int novaQuantidadeTotal;
-          var stockBranch = 'simple';
-
-          if (temVariacaoSoloCor && cor.isNotEmpty) {
-            stockBranch = 'variation';
-            _txStageLog(
-              'tx_stage_11_stock_compute_before',
-              index: itemIndex,
-              productId: docId,
-              branch: stockBranch,
-            );
-            novasVariacoes = _mapaAposDebitoVariacao(
-              variacoes: variacoes,
-              chaveTamanho: 'sem-tamanho',
-              corKey: cor,
-              extraTrim: extraTrim,
-              quantidade: quantidade,
-              produtoNome: produtoNome,
-              erroCtx: 'na cor $cor',
-            );
-            novaQuantidadeTotal = _somarVariacoes(novasVariacoes);
-          } else if (usaVariacoes && tamanho.isNotEmpty) {
-            stockBranch = 'variation';
-            _txStageLog(
-              'tx_stage_11_stock_compute_before',
-              index: itemIndex,
-              productId: docId,
-              branch: stockBranch,
-            );
-            final tamResolvidoVar = _resolverChaveNoMapa(variacoes, tamanho);
-            final mapaTamVar =
-                tamResolvidoVar != null ? variacoes[tamResolvidoVar] : null;
-            final celulaVarExiste =
-                mapaTamVar is Map && mapaTamVar.isNotEmpty;
-
-            if (!celulaVarExiste && temEstoquePorTamanho) {
-              stockBranch = 'grade';
-              final tamResolvido =
-                  _resolverChaveNoMapa(estoquePorTamanho, tamanho) ?? tamanho;
-              final disponivel = estoquePorTamanho[tamResolvido] ?? 0;
-
-              if (disponivel < quantidade) {
+              if (usaVariacoes &&
+                  !temVariacaoSoloCor &&
+                  tamanho.isEmpty &&
+                  cor.isEmpty) {
                 throw Exception(
-                  'Estoque insuficiente para "$produtoNome" no tamanho $tamanho. '
-                  'Disponível: $disponivel, solicitado: $quantidade.',
+                  'O produto "$produtoNome" possui variações. Informe tamanho e/ou cor conforme o cadastro.',
+                );
+              }
+              if (temVariacaoSoloCor && cor.isEmpty) {
+                throw Exception(
+                  'O produto "$produtoNome" possui variação de cor. É obrigatório informar a COR.',
+                );
+              }
+              if (temVariacaoTamanhoECor && (tamanho.isEmpty || cor.isEmpty)) {
+                throw Exception(
+                  'O produto "$produtoNome" possui variações de tamanho e cor. '
+                  'É obrigatório informar TAMANHO e COR.',
+                );
+              }
+              if (usaVariacoes &&
+                  !temVariacaoSoloCor &&
+                  tamanho.isEmpty &&
+                  cor != 'sem-cor') {
+                if (_temVariacaoSoloTamanho(variacoes)) {
+                  throw Exception(
+                    'O produto "$produtoNome" possui variação de tamanho. É obrigatório informar o TAMANHO.',
+                  );
+                }
+              }
+              if (_temEstoquePorTamanhoReal(estoquePorTamanho) &&
+                  tamanho.isEmpty &&
+                  !temVariacaoSoloCor) {
+                throw Exception(
+                  'O produto "$produtoNome" possui estoque por tamanho. '
+                  'É obrigatório informar o TAMANHO na venda (ex.: P, M, G).',
                 );
               }
 
-              novoEstoquePorTamanho = Map<String, int>.from(estoquePorTamanho);
-              novoEstoquePorTamanho[tamResolvido] = disponivel - quantidade;
-              if (novoEstoquePorTamanho[tamResolvido]! <= 0) {
-                novoEstoquePorTamanho.remove(tamResolvido);
+              Map<String, dynamic>? novasVariacoes;
+              Map<String, int>? novoEstoquePorTamanho;
+              int novaQuantidadeTotal;
+              var stockBranch = 'simple';
+
+              if (temVariacaoSoloCor && cor.isNotEmpty) {
+                stockBranch = 'variation';
+                _txStageLog(
+                  'tx_stage_11_stock_compute_before',
+                  index: itemIndex,
+                  productId: docId,
+                  branch: stockBranch,
+                );
+                novasVariacoes = _mapaAposDebitoVariacao(
+                  variacoes: variacoes,
+                  chaveTamanho: 'sem-tamanho',
+                  corKey: cor,
+                  extraTrim: extraTrim,
+                  quantidade: quantidade,
+                  produtoNome: produtoNome,
+                  erroCtx: 'na cor $cor',
+                );
+                novaQuantidadeTotal = _somarVariacoes(novasVariacoes);
+              } else if (usaVariacoes && tamanho.isNotEmpty) {
+                stockBranch = 'variation';
+                _txStageLog(
+                  'tx_stage_11_stock_compute_before',
+                  index: itemIndex,
+                  productId: docId,
+                  branch: stockBranch,
+                );
+                final tamResolvidoVar =
+                    _resolverChaveNoMapa(variacoes, tamanho);
+                final mapaTamVar =
+                    tamResolvidoVar != null ? variacoes[tamResolvidoVar] : null;
+                final celulaVarExiste =
+                    mapaTamVar is Map && mapaTamVar.isNotEmpty;
+
+                if (!celulaVarExiste && temEstoquePorTamanho) {
+                  stockBranch = 'grade';
+                  final tamResolvido =
+                      _resolverChaveNoMapa(estoquePorTamanho, tamanho) ??
+                          tamanho;
+                  final disponivel = estoquePorTamanho[tamResolvido] ?? 0;
+
+                  if (disponivel < quantidade) {
+                    throw Exception(
+                      'Estoque insuficiente para "$produtoNome" no tamanho $tamanho. '
+                      'Disponível: $disponivel, solicitado: $quantidade.',
+                    );
+                  }
+
+                  novoEstoquePorTamanho =
+                      Map<String, int>.from(estoquePorTamanho);
+                  novoEstoquePorTamanho[tamResolvido] = disponivel - quantidade;
+                  if (novoEstoquePorTamanho[tamResolvido]! <= 0) {
+                    novoEstoquePorTamanho.remove(tamResolvido);
+                  }
+
+                  novaQuantidadeTotal =
+                      novoEstoquePorTamanho.values.fold(0, (a, b) => a + b);
+                } else {
+                  final chaveCor = _resolverCorKeyParaTamanho(
+                    variacoes: variacoes,
+                    tamanho: tamanho,
+                    corInformada: cor,
+                  );
+                  novasVariacoes = _mapaAposDebitoVariacao(
+                    variacoes: variacoes,
+                    chaveTamanho: tamanho,
+                    corKey: chaveCor,
+                    extraTrim: extraTrim,
+                    quantidade: quantidade,
+                    produtoNome: produtoNome,
+                    erroCtx:
+                        'no tamanho $tamanho${cor.isEmpty ? '' : ' - cor $cor'}',
+                  );
+                  novaQuantidadeTotal = _somarVariacoes(novasVariacoes);
+                }
+              } else if (temEstoquePorTamanho && tamanho.isNotEmpty) {
+                stockBranch = 'grade';
+                _txStageLog(
+                  'tx_stage_11_stock_compute_before',
+                  index: itemIndex,
+                  productId: docId,
+                  branch: stockBranch,
+                );
+                final tamResolvido =
+                    _resolverChaveNoMapa(estoquePorTamanho, tamanho) ?? tamanho;
+                final disponivel = estoquePorTamanho[tamResolvido] ?? 0;
+
+                if (disponivel < quantidade) {
+                  throw Exception(
+                    'Estoque insuficiente para "$produtoNome" no tamanho $tamanho. '
+                    'Disponível: $disponivel, solicitado: $quantidade.',
+                  );
+                }
+
+                novoEstoquePorTamanho =
+                    Map<String, int>.from(estoquePorTamanho);
+                novoEstoquePorTamanho[tamResolvido] = disponivel - quantidade;
+                if (novoEstoquePorTamanho[tamResolvido]! <= 0) {
+                  novoEstoquePorTamanho.remove(tamResolvido);
+                }
+
+                novaQuantidadeTotal =
+                    novoEstoquePorTamanho.values.fold(0, (a, b) => a + b);
+              } else {
+                stockBranch = 'simple';
+                _txStageLog(
+                  'tx_stage_11_stock_compute_before',
+                  index: itemIndex,
+                  productId: docId,
+                  branch: stockBranch,
+                );
+                final quantidadeTotal = working.quantidadeTotal;
+
+                if (quantidadeTotal < quantidade) {
+                  throw Exception(
+                    'Estoque insuficiente para "$produtoNome". '
+                    'Disponível: $quantidadeTotal, solicitado: $quantidade.',
+                  );
+                }
+
+                novaQuantidadeTotal = quantidadeTotal - quantidade;
               }
+              _txStageLog(
+                'tx_stage_08_branch_resolved',
+                index: itemIndex,
+                productId: docId,
+                branch: stockBranch,
+              );
+              _txStageLog(
+                'tx_stage_12_stock_compute_after',
+                index: itemIndex,
+                productId: docId,
+                branch: stockBranch,
+              );
 
-              novaQuantidadeTotal =
-                  novoEstoquePorTamanho.values.fold(0, (a, b) => a + b);
-            } else {
-              final chaveCor = _resolverCorKeyParaTamanho(
-                variacoes: variacoes,
+              Map<String, int>? estoquePorTamanhoParaVariacao;
+              if (novasVariacoes != null) {
+                estoquePorTamanhoParaVariacao =
+                    _estoquePorTamanhoAgregadoDeVariacoes(novasVariacoes);
+                working.variacoes =
+                    firestoreStringDynamicMapDeepOrEmpty(novasVariacoes);
+                working.estoquePorTamanho =
+                    Map<String, int>.from(estoquePorTamanhoParaVariacao);
+                working.touchedVariacoes = true;
+                working.touchedEstoquePorTamanho = true;
+              } else if (novoEstoquePorTamanho != null) {
+                working.estoquePorTamanho =
+                    Map<String, int>.from(novoEstoquePorTamanho);
+                working.touchedEstoquePorTamanho = true;
+              }
+              working.quantidadeTotal = novaQuantidadeTotal;
+
+              _txStageLog(
+                'tx_stage_13_product_write_before',
+                index: itemIndex,
+                productId: docId,
+              );
+              // Deletes: original do doc → estado acumulado final deste path.
+              final updateData = buildEstoqueUpdateDataComDeletes(
+                novaQuantidadeTotal: novaQuantidadeTotal,
+                variacoesAnteriores: working.variacoesOriginais,
+                variacoesNovas:
+                    working.touchedVariacoes ? working.variacoes : null,
+                estoquePorTamanhoAnterior: working.estoquePorTamanhoOriginal,
+                estoquePorTamanhoNovo: working.touchedEstoquePorTamanho
+                    ? working.estoquePorTamanho
+                    : null,
+              );
+              _attachStockContractFieldsForWorking(updateData, working);
+
+              final estoqueRef = _db
+                  .collection('lojas')
+                  .doc(lojaId)
+                  .collection(FSPaths.estoqueProdutosCol)
+                  .doc(docId);
+
+              writesByPath[path] = (
+                ref: resolved.ref,
+                estoqueRef: estoqueRef,
+                updateData: updateData,
+              );
+
+              results.add(
+                EstoqueTransactionResult(
+                  produtoId: docId,
+                  produtoNome: produtoNome,
+                  produtoSlug: working.produtoSlug.isNotEmpty
+                      ? working.produtoSlug
+                      : null,
+                  quantidadeDebitada: quantidade,
+                  variacoesAtualizadas:
+                      working.touchedVariacoes ? working.variacoes : null,
+                  estoquePorTamanhoAtualizado: working.touchedEstoquePorTamanho
+                      ? Map<String, int>.from(working.estoquePorTamanho)
+                      : null,
+                  quantidadeTotalAtualizada: novaQuantidadeTotal,
+                  newStockRevision: working.pendingNextStockRevision,
+                  stockOperationId: working.pendingStockOperationId,
+                  stockBaseRevision:
+                      parseStockRevisionFromRemote(working.remoteDataSnapshot),
+                ),
+              );
+
+              _traceEstoqueVariacao(
+                stage: 'firestore',
+                lojaId: lojaId,
+                produtoId: docId,
                 tamanho: tamanho,
-                corInformada: cor,
+                cor: cor,
+                variacaoExtra: extraTrim,
+                qtdVendida: quantidade,
+                qtdAntes: qtdAntes,
+                qtdDepois: novaQuantidadeTotal,
+                operationId: idempotency?.operationId,
+                alreadyApplied: false,
               );
-              novasVariacoes = _mapaAposDebitoVariacao(
-                variacoes: variacoes,
-                chaveTamanho: tamanho,
-                corKey: chaveCor,
-                extraTrim: extraTrim,
-                quantidade: quantidade,
-                produtoNome: produtoNome,
-                erroCtx:
-                    'no tamanho $tamanho${cor.isEmpty ? '' : ' - cor $cor'}',
+              _txStageLog(
+                'tx_stage_14_product_write_after',
+                index: itemIndex,
+                productId: docId,
               );
-              novaQuantidadeTotal = _somarVariacoes(novasVariacoes);
-            }
-          } else if (temEstoquePorTamanho && tamanho.isNotEmpty) {
-            stockBranch = 'grade';
-            _txStageLog(
-              'tx_stage_11_stock_compute_before',
-              index: itemIndex,
-              productId: docId,
-              branch: stockBranch,
-            );
-            final tamResolvido =
-                _resolverChaveNoMapa(estoquePorTamanho, tamanho) ?? tamanho;
-            final disponivel = estoquePorTamanho[tamResolvido] ?? 0;
-
-            if (disponivel < quantidade) {
-              throw Exception(
-                'Estoque insuficiente para "$produtoNome" no tamanho $tamanho. '
-                'Disponível: $disponivel, solicitado: $quantidade.',
+            } catch (e, st) {
+              debugPrint(
+                '[H1-TX-STAGE] stage=tx_error_stage index=$itemIndex '
+                'productId=${resolved.ref.id} errorRuntimeType=${e.runtimeType} '
+                'error=$e',
               );
+              debugPrint('$st');
+              rethrow;
             }
-
-            novoEstoquePorTamanho = Map<String, int>.from(estoquePorTamanho);
-            novoEstoquePorTamanho[tamResolvido] = disponivel - quantidade;
-            if (novoEstoquePorTamanho[tamResolvido]! <= 0) {
-              novoEstoquePorTamanho.remove(tamResolvido);
-            }
-
-            novaQuantidadeTotal =
-                novoEstoquePorTamanho.values.fold(0, (a, b) => a + b);
-          } else {
-            stockBranch = 'simple';
-            _txStageLog(
-              'tx_stage_11_stock_compute_before',
-              index: itemIndex,
-              productId: docId,
-              branch: stockBranch,
-            );
-            final quantidadeTotal = working.quantidadeTotal;
-
-            if (quantidadeTotal < quantidade) {
-              throw Exception(
-                'Estoque insuficiente para "$produtoNome". '
-                'Disponível: $quantidadeTotal, solicitado: $quantidade.',
-              );
-            }
-
-            novaQuantidadeTotal = quantidadeTotal - quantidade;
           }
-          _txStageLog(
-            'tx_stage_08_branch_resolved',
-            index: itemIndex,
-            productId: docId,
-            branch: stockBranch,
-          );
-          _txStageLog(
-            'tx_stage_12_stock_compute_after',
-            index: itemIndex,
-            productId: docId,
-            branch: stockBranch,
-          );
 
-          Map<String, int>? estoquePorTamanhoParaVariacao;
-          if (novasVariacoes != null) {
-            estoquePorTamanhoParaVariacao =
-                _estoquePorTamanhoAgregadoDeVariacoes(novasVariacoes);
-            working.variacoes =
-                firestoreStringDynamicMapDeepOrEmpty(novasVariacoes);
-            working.estoquePorTamanho =
-                Map<String, int>.from(estoquePorTamanhoParaVariacao);
-            working.touchedVariacoes = true;
-            working.touchedEstoquePorTamanho = true;
-          } else if (novoEstoquePorTamanho != null) {
-            working.estoquePorTamanho =
-                Map<String, int>.from(novoEstoquePorTamanho);
-            working.touchedEstoquePorTamanho = true;
+          // FASE 2: Uma escrita por documento (estado acumulado final).
+          for (final u in writesByPath.values) {
+            transaction.update(u.ref, u.updateData);
+            if (u.estoqueRef != null) {
+              transaction.set(
+                  u.estoqueRef!, u.updateData, SetOptions(merge: true));
+            }
           }
-          working.quantidadeTotal = novaQuantidadeTotal;
 
-          _txStageLog(
-            'tx_stage_13_product_write_before',
-            index: itemIndex,
-            productId: docId,
-          );
-          // Deletes: original do doc → estado acumulado final deste path.
-          final updateData = buildEstoqueUpdateDataComDeletes(
-            novaQuantidadeTotal: novaQuantidadeTotal,
-            variacoesAnteriores: working.variacoesOriginais,
-            variacoesNovas:
-                working.touchedVariacoes ? working.variacoes : null,
-            estoquePorTamanhoAnterior: working.estoquePorTamanhoOriginal,
-            estoquePorTamanhoNovo: working.touchedEstoquePorTamanho
-                ? working.estoquePorTamanho
-                : null,
-          );
-          _attachStockContractFieldsForWorking(updateData, working);
+          if (idempotency != null) {
+            _txStageLog(
+              'tx_stage_15_marker_write_before',
+              operationId: idempotency.operationId,
+            );
+            try {
+              _txStageLog(
+                'tx_stage_15a_marker_payload_before',
+                operationId: idempotency.operationId,
+              );
+              final markerPayload = buildMarkerBaixaPdvPayload(
+                lojaId: lojaId,
+                operationId: idempotency.operationId,
+                snapshotHash: idempotency.snapshotHash,
+                txItemsHash: idempotency.txItemsHash,
+              );
+              _txStageLog(
+                'tx_stage_15b_marker_payload_after',
+                operationId: idempotency.operationId,
+                runtimeType: markerPayload.runtimeType.toString(),
+              );
+              _txStageLog(
+                'tx_stage_15c_marker_set_before',
+                operationId: idempotency.operationId,
+              );
+              transaction.set(
+                _baixaPagamentoRef(lojaId, idempotency.operationId),
+                markerPayload,
+              );
+              _txStageLog(
+                'tx_stage_15d_marker_set_after',
+                operationId: idempotency.operationId,
+              );
+            } catch (e, st) {
+              debugPrint(
+                '[H1-TX-STAGE] stage=tx_error_stage marker_write '
+                'operationId=${idempotency.operationId.length > 8 ? '${idempotency.operationId.substring(0, 8)}…' : idempotency.operationId} '
+                'errorRuntimeType=${e.runtimeType} error=$e',
+              );
+              debugPrint('$st');
+              rethrow;
+            }
+            _txStageLog(
+              'tx_stage_16_marker_write_after',
+              operationId: idempotency.operationId,
+            );
+          }
 
-          final estoqueRef = _db
-              .collection('lojas')
-              .doc(lojaId)
-              .collection(FSPaths.estoqueProdutosCol)
-              .doc(docId);
+          final delay = debugBatchTransactionDelay;
+          if (delay != null && delay > Duration.zero) {
+            await Future<void>.delayed(delay);
+          }
 
-          writesByPath[path] = (
-            ref: resolved.ref,
-            estoqueRef: estoqueRef,
-            updateData: updateData,
-          );
-
-          results.add(
-            EstoqueTransactionResult(
-              produtoId: docId,
-              produtoNome: produtoNome,
-              produtoSlug: working.produtoSlug.isNotEmpty
-                  ? working.produtoSlug
-                  : null,
-              quantidadeDebitada: quantidade,
-              variacoesAtualizadas:
-                  working.touchedVariacoes ? working.variacoes : null,
-              estoquePorTamanhoAtualizado: working.touchedEstoquePorTamanho
-                  ? Map<String, int>.from(working.estoquePorTamanho)
-                  : null,
-              quantidadeTotalAtualizada: novaQuantidadeTotal,
-              newStockRevision: working.pendingNextStockRevision,
-              stockOperationId: working.pendingStockOperationId,
-              stockBaseRevision:
-                  parseStockRevisionFromRemote(working.remoteDataSnapshot),
-            ),
-          );
-
-          _traceEstoqueVariacao(
-            stage: 'firestore',
-            lojaId: lojaId,
-            produtoId: docId,
-            tamanho: tamanho,
-            cor: cor,
-            variacaoExtra: extraTrim,
-            qtdVendida: quantidade,
-            qtdAntes: qtdAntes,
-            qtdDepois: novaQuantidadeTotal,
-            operationId: idempotency?.operationId,
-            alreadyApplied: false,
-          );
-          _txStageLog(
-            'tx_stage_14_product_write_after',
-            index: itemIndex,
-            productId: docId,
-          );
-        } catch (e, st) {
-          debugPrint(
-            '[H1-TX-STAGE] stage=tx_error_stage index=$itemIndex '
-            'productId=${resolved.ref.id} errorRuntimeType=${e.runtimeType} '
-            'error=$e',
-          );
-          debugPrint('$st');
-          rethrow;
-        }
-      }
-
-      // FASE 2: Uma escrita por documento (estado acumulado final).
-      for (final u in writesByPath.values) {
-        transaction.update(u.ref, u.updateData);
-        if (u.estoqueRef != null) {
-          transaction.set(u.estoqueRef!, u.updateData, SetOptions(merge: true));
-        }
-      }
-
-      if (idempotency != null) {
-        _txStageLog(
-          'tx_stage_15_marker_write_before',
-          operationId: idempotency.operationId,
-        );
-        try {
-          _txStageLog(
-            'tx_stage_15a_marker_payload_before',
-            operationId: idempotency.operationId,
-          );
-          final markerPayload = buildMarkerBaixaPdvPayload(
-            lojaId: lojaId,
-            operationId: idempotency.operationId,
-            snapshotHash: idempotency.snapshotHash,
-            txItemsHash: idempotency.txItemsHash,
-          );
-          _txStageLog(
-            'tx_stage_15b_marker_payload_after',
-            operationId: idempotency.operationId,
-            runtimeType: markerPayload.runtimeType.toString(),
-          );
-          _txStageLog(
-            'tx_stage_15c_marker_set_before',
-            operationId: idempotency.operationId,
-          );
-          transaction.set(
-            _baixaPagamentoRef(lojaId, idempotency.operationId),
-            markerPayload,
-          );
-          _txStageLog(
-            'tx_stage_15d_marker_set_after',
-            operationId: idempotency.operationId,
-          );
-        } catch (e, st) {
-          debugPrint(
-            '[H1-TX-STAGE] stage=tx_error_stage marker_write '
-            'operationId=${idempotency.operationId.length > 8 ? '${idempotency.operationId.substring(0, 8)}…' : idempotency.operationId} '
-            'errorRuntimeType=${e.runtimeType} error=$e',
-          );
-          debugPrint('$st');
-          rethrow;
-        }
-        _txStageLog(
-          'tx_stage_16_marker_write_after',
-          operationId: idempotency.operationId,
-        );
-      }
-
-      final delay = debugBatchTransactionDelay;
-      if (delay != null && delay > Duration.zero) {
-        await Future<void>.delayed(delay);
-      }
-
-      _txStageLog('tx_stage_17_callback_return');
-      return _TransacaoBaixaBatchOutcome(alreadyApplied: false, results: results);
+          _txStageLog('tx_stage_17_callback_return');
+          return _TransacaoBaixaBatchOutcome(
+              alreadyApplied: false, results: results);
         });
       }
 
@@ -1938,7 +2035,8 @@ class EstoqueTransactionService {
   }) async {
     final opId = operationId.trim();
     if (opId.isEmpty) {
-      throw ArgumentError.value(operationId, 'operationId', 'não pode ser vazio');
+      throw ArgumentError.value(
+          operationId, 'operationId', 'não pode ser vazio');
     }
 
     if (itens.length > _maxItensPorTransacao) {
@@ -2131,9 +2229,572 @@ class EstoqueTransactionService {
     }
   }
 
+  /// Reconciliação atômica de edição: devolver (+) e baixar (−) num único TX + marcador.
+  ///
+  /// [itensAssinados]: `quantidade` > 0 devolve, < 0 baixa. Idempotente por [operationId]
+  /// em `estoque_baixa_pagamento`. Qty sempre a partir do remoto atual na TX.
+  static Future<EstoqueEdicaoReconcileResult>
+      reconciliarEdicaoEstoqueTransactionBatch({
+    required String lojaId,
+    required List<Map<String, dynamic>> itensAssinados,
+    required String operationId,
+    required String deltaHash,
+  }) async {
+    final opId = operationId.trim();
+    final hash = deltaHash.trim();
+    if (opId.isEmpty || hash.isEmpty) {
+      throw ArgumentError(
+        'reconciliarEdicaoEstoque: operationId e deltaHash obrigatórios.',
+      );
+    }
+    if (itensAssinados.isEmpty) {
+      return const EstoqueEdicaoReconcileResult(
+        alreadyApplied: false,
+        transactionResults: [],
+      );
+    }
+    if (itensAssinados.length > _maxItensPorTransacao) {
+      throw Exception(
+        'Edição com muitos itens de estoque (${itensAssinados.length}). '
+        'Máx. $_maxItensPorTransacao por operação.',
+      );
+    }
+
+    final resolvedItems =
+        await _resolverItensMescladosAssinados(lojaId, itensAssinados);
+    if (resolvedItems.isEmpty) {
+      throw Exception(
+        'Nenhum item válido para reconciliação de estoque na edição.',
+      );
+    }
+
+    await ProdutoExclusaoTombstoneService.ensureHydratedForLoja(lojaId);
+    for (final r in resolvedItems) {
+      if (await ProdutoExclusaoTombstoneService.isProdutoBloqueadoRemoto(
+          lojaId: lojaId, estoqueDocId: r.ref.id)) {
+        throw Exception(
+          'Produto removido do estoque. Atualize a lista e tente novamente (id=${r.ref.id}).',
+        );
+      }
+      if (await ProdutoExclusaoTombstoneService.isVendaBloqueadaParaCelula(
+        lojaId: lojaId,
+        estoqueDocId: r.ref.id,
+        tamanho: r.tamanho,
+        cor: r.cor,
+        variacaoExtra: r.variacaoExtra,
+      )) {
+        throw Exception(
+          'Uma variação desta venda foi removida do cadastro. Sincronize o app.',
+        );
+      }
+    }
+
+    final snapshotHash = computeSignedTxItemsHashForIdempotencia(
+      resolvedItems
+          .map(
+            (r) => <String, dynamic>{
+              'productId': r.ref.id,
+              'quantidade': r.signedQty,
+              'tamanho': r.tamanho,
+              'cor': r.cor,
+              'extraValor': r.variacaoExtra,
+            },
+          )
+          .toList(),
+    );
+
+    final outcome = await _db
+        .runTransaction<_TransacaoBaixaBatchOutcome>((transaction) async {
+      final markerRef = _baixaPagamentoRef(lojaId, opId);
+      final markerSnap = await transaction.get(markerRef);
+      if (markerSnap.exists) {
+        final markerData = firestoreStringDynamicMapOrEmpty(markerSnap.data());
+        if (markerData['baixaAplicada'] == true &&
+            markerData['estornoAplicado'] != true) {
+          _assertMarkerIdentityCompativel(
+            data: markerData,
+            lojaId: lojaId,
+            operationId: opId,
+            txItemsHash: hash,
+            snapshotHash: snapshotHash,
+          );
+          debugPrint(
+            '[ESTOQUE-TX] Edit reconcile idempotente replay operationId=$opId',
+          );
+          return const _TransacaoBaixaBatchOutcome(
+            alreadyApplied: true,
+            results: [],
+          );
+        }
+      }
+
+      final results = <EstoqueTransactionResult>[];
+      final writesByPath = <String,
+          ({
+        DocumentReference<Map<String, dynamic>> ref,
+        DocumentReference<Map<String, dynamic>>? estoqueRef,
+        Map<String, dynamic> updateData,
+      })>{};
+      final workingByPath = <String, _DocStockWorkingState>{};
+
+      for (final resolved in resolvedItems) {
+        final path = resolved.ref.path;
+        late final _DocStockWorkingState working;
+
+        if (workingByPath.containsKey(path)) {
+          working = workingByPath[path]!;
+        } else {
+          final produtoSnap = await transaction.get(resolved.ref);
+          if (!produtoSnap.exists) {
+            throw Exception(
+              'Produto não encontrado no servidor: ${resolved.ref.id}.',
+            );
+          }
+          final rawData = produtoSnap.data();
+          if (rawData == null) {
+            throw Exception(
+              'Produto sem dados no servidor: ${resolved.ref.id}.',
+            );
+          }
+          final data = firestoreStringDynamicMapDeepOrEmpty(rawData);
+          final variacoesInit =
+              firestoreStringDynamicMapDeepOrEmpty(data['variacoes']);
+          final estoqueInit = _parseMapStringInt(data['estoquePorTamanho']);
+          final slugVal = (data['slug'] ?? '').toString().trim();
+          working = _DocStockWorkingState(
+            produtoNome: (data['nome'] ?? '').toString(),
+            produtoSlug: slugVal,
+            variacoesOriginais:
+                firestoreStringDynamicMapDeepOrEmpty(variacoesInit),
+            estoquePorTamanhoOriginal: Map<String, int>.from(estoqueInit),
+            variacoes: firestoreStringDynamicMapDeepOrEmpty(variacoesInit),
+            estoquePorTamanho: Map<String, int>.from(estoqueInit),
+            quantidadeTotal: firestoreIntFieldOrZero(data['quantidade']),
+            remoteDataSnapshot: Map<String, dynamic>.from(data),
+          );
+          working.pendingStockOperationId = opId;
+          workingByPath[path] = working;
+        }
+
+        final docId = resolved.ref.id;
+        final produtoNome = working.produtoNome;
+        final signedQty = resolved.signedQty;
+        final quantidade = signedQty.abs();
+        final tamanho = resolved.tamanho;
+        final cor = resolved.cor;
+        final extraTrim = resolved.variacaoExtra;
+        final qtdAntes = working.quantidadeTotal;
+        final isRestore = signedQty > 0;
+
+        final variacoes =
+            firestoreStringDynamicMapDeepOrEmpty(working.variacoes);
+        final estoquePorTamanho =
+            Map<String, int>.from(working.estoquePorTamanho);
+
+        final usaVariacoes = variacoes.isNotEmpty;
+        final temEstoquePorTamanho = estoquePorTamanho.isNotEmpty;
+        final temVariacaoSoloCor = usaVariacoes &&
+            variacoes.containsKey('sem-tamanho') &&
+            variacoes['sem-tamanho'] is Map &&
+            (variacoes['sem-tamanho'] as Map).isNotEmpty;
+        final temVariacaoTamanhoECor =
+            usaVariacoes && _temVariacaoTamanhoECor(variacoes);
+
+        if (!isRestore) {
+          if (usaVariacoes &&
+              !temVariacaoSoloCor &&
+              tamanho.isEmpty &&
+              cor.isEmpty) {
+            throw Exception(
+              'O produto "$produtoNome" possui variações. Informe tamanho e/ou cor conforme o cadastro.',
+            );
+          }
+          if (temVariacaoSoloCor && cor.isEmpty) {
+            throw Exception(
+              'O produto "$produtoNome" possui variação de cor. É obrigatório informar a COR.',
+            );
+          }
+          if (temVariacaoTamanhoECor && (tamanho.isEmpty || cor.isEmpty)) {
+            throw Exception(
+              'O produto "$produtoNome" possui variações de tamanho e cor. '
+              'É obrigatório informar TAMANHO e COR.',
+            );
+          }
+          if (usaVariacoes &&
+              !temVariacaoSoloCor &&
+              tamanho.isEmpty &&
+              cor != 'sem-cor') {
+            if (_temVariacaoSoloTamanho(variacoes)) {
+              throw Exception(
+                'O produto "$produtoNome" possui variação de tamanho. É obrigatório informar o TAMANHO.',
+              );
+            }
+          }
+          if (_temEstoquePorTamanhoReal(estoquePorTamanho) &&
+              tamanho.isEmpty &&
+              !temVariacaoSoloCor) {
+            throw Exception(
+              'O produto "$produtoNome" possui estoque por tamanho. '
+              'É obrigatório informar o TAMANHO na venda (ex.: P, M, G).',
+            );
+          }
+        }
+
+        Map<String, dynamic>? novasVariacoes;
+        Map<String, int>? novoEstoquePorTamanho;
+        late final int novaQuantidadeTotal;
+
+        if (isRestore) {
+          if (temVariacaoSoloCor && cor.isNotEmpty) {
+            novasVariacoes = _mapaAposDevolverVariacao(
+              variacoes: variacoes,
+              chaveTamanho: 'sem-tamanho',
+              corKey: cor,
+              extraTrim: extraTrim,
+              quantidade: quantidade,
+            );
+            novaQuantidadeTotal = _somarVariacoes(novasVariacoes);
+          } else if (usaVariacoes && tamanho.isNotEmpty) {
+            final chaveCor = _resolverCorKeyParaTamanho(
+              variacoes: variacoes,
+              tamanho: tamanho,
+              corInformada: cor,
+            );
+            novasVariacoes = _mapaAposDevolverVariacao(
+              variacoes: variacoes,
+              chaveTamanho: tamanho,
+              corKey: chaveCor,
+              extraTrim: extraTrim,
+              quantidade: quantidade,
+            );
+            novaQuantidadeTotal = _somarVariacoes(novasVariacoes);
+          } else if (temEstoquePorTamanho && tamanho.isNotEmpty) {
+            novoEstoquePorTamanho = Map<String, int>.from(estoquePorTamanho);
+            novoEstoquePorTamanho[tamanho] =
+                (novoEstoquePorTamanho[tamanho] ?? 0) + quantidade;
+            novaQuantidadeTotal =
+                novoEstoquePorTamanho.values.fold(0, (a, b) => a + b);
+          } else {
+            novaQuantidadeTotal = working.quantidadeTotal + quantidade;
+          }
+        } else if (temVariacaoSoloCor && cor.isNotEmpty) {
+          novasVariacoes = _mapaAposDebitoVariacao(
+            variacoes: variacoes,
+            chaveTamanho: 'sem-tamanho',
+            corKey: cor,
+            extraTrim: extraTrim,
+            quantidade: quantidade,
+            produtoNome: produtoNome,
+            erroCtx: 'na cor $cor',
+          );
+          novaQuantidadeTotal = _somarVariacoes(novasVariacoes);
+        } else if (usaVariacoes && tamanho.isNotEmpty) {
+          final tamResolvidoVar = _resolverChaveNoMapa(variacoes, tamanho);
+          final mapaTamVar =
+              tamResolvidoVar != null ? variacoes[tamResolvidoVar] : null;
+          final celulaVarExiste = mapaTamVar is Map && mapaTamVar.isNotEmpty;
+
+          if (!celulaVarExiste && temEstoquePorTamanho) {
+            final tamResolvido =
+                _resolverChaveNoMapa(estoquePorTamanho, tamanho) ?? tamanho;
+            final disponivel = estoquePorTamanho[tamResolvido] ?? 0;
+            if (disponivel < quantidade) {
+              throw Exception(
+                'Estoque insuficiente para "$produtoNome" no tamanho $tamanho. '
+                'Disponível: $disponivel, solicitado: $quantidade.',
+              );
+            }
+            novoEstoquePorTamanho = Map<String, int>.from(estoquePorTamanho);
+            novoEstoquePorTamanho[tamResolvido] = disponivel - quantidade;
+            if (novoEstoquePorTamanho[tamResolvido]! <= 0) {
+              novoEstoquePorTamanho.remove(tamResolvido);
+            }
+            novaQuantidadeTotal =
+                novoEstoquePorTamanho.values.fold(0, (a, b) => a + b);
+          } else {
+            final chaveCor = _resolverCorKeyParaTamanho(
+              variacoes: variacoes,
+              tamanho: tamanho,
+              corInformada: cor,
+            );
+            novasVariacoes = _mapaAposDebitoVariacao(
+              variacoes: variacoes,
+              chaveTamanho: tamanho,
+              corKey: chaveCor,
+              extraTrim: extraTrim,
+              quantidade: quantidade,
+              produtoNome: produtoNome,
+              erroCtx: 'no tamanho $tamanho${cor.isEmpty ? '' : ' - cor $cor'}',
+            );
+            novaQuantidadeTotal = _somarVariacoes(novasVariacoes);
+          }
+        } else if (temEstoquePorTamanho && tamanho.isNotEmpty) {
+          final tamResolvido =
+              _resolverChaveNoMapa(estoquePorTamanho, tamanho) ?? tamanho;
+          final disponivel = estoquePorTamanho[tamResolvido] ?? 0;
+          if (disponivel < quantidade) {
+            throw Exception(
+              'Estoque insuficiente para "$produtoNome" no tamanho $tamanho. '
+              'Disponível: $disponivel, solicitado: $quantidade.',
+            );
+          }
+          novoEstoquePorTamanho = Map<String, int>.from(estoquePorTamanho);
+          novoEstoquePorTamanho[tamResolvido] = disponivel - quantidade;
+          if (novoEstoquePorTamanho[tamResolvido]! <= 0) {
+            novoEstoquePorTamanho.remove(tamResolvido);
+          }
+          novaQuantidadeTotal =
+              novoEstoquePorTamanho.values.fold(0, (a, b) => a + b);
+        } else {
+          final quantidadeTotal = working.quantidadeTotal;
+          if (quantidadeTotal < quantidade) {
+            throw Exception(
+              'Estoque insuficiente para "$produtoNome". '
+              'Disponível: $quantidadeTotal, solicitado: $quantidade.',
+            );
+          }
+          novaQuantidadeTotal = quantidadeTotal - quantidade;
+        }
+
+        if (novasVariacoes != null) {
+          final agregado =
+              _estoquePorTamanhoAgregadoDeVariacoes(novasVariacoes);
+          working.variacoes =
+              firestoreStringDynamicMapDeepOrEmpty(novasVariacoes);
+          working.estoquePorTamanho = Map<String, int>.from(agregado);
+          working.touchedVariacoes = true;
+          working.touchedEstoquePorTamanho = true;
+        } else if (novoEstoquePorTamanho != null) {
+          working.estoquePorTamanho =
+              Map<String, int>.from(novoEstoquePorTamanho);
+          working.touchedEstoquePorTamanho = true;
+        }
+        working.quantidadeTotal = novaQuantidadeTotal;
+
+        final updateData = buildEstoqueUpdateDataComDeletes(
+          novaQuantidadeTotal: novaQuantidadeTotal,
+          variacoesAnteriores: working.variacoesOriginais,
+          variacoesNovas: working.touchedVariacoes ? working.variacoes : null,
+          estoquePorTamanhoAnterior: working.estoquePorTamanhoOriginal,
+          estoquePorTamanhoNovo: working.touchedEstoquePorTamanho
+              ? working.estoquePorTamanho
+              : null,
+        );
+        _attachStockContractFieldsForWorking(updateData, working);
+
+        final estoqueRef = _db
+            .collection('lojas')
+            .doc(lojaId)
+            .collection(FSPaths.estoqueProdutosCol)
+            .doc(docId);
+        writesByPath[path] = (
+          ref: resolved.ref,
+          estoqueRef: estoqueRef,
+          updateData: updateData,
+        );
+
+        results.add(
+          EstoqueTransactionResult(
+            produtoId: docId,
+            produtoNome: produtoNome,
+            produtoSlug:
+                working.produtoSlug.isNotEmpty ? working.produtoSlug : null,
+            quantidadeDebitada: -signedQty,
+            variacoesAtualizadas:
+                working.touchedVariacoes ? working.variacoes : null,
+            estoquePorTamanhoAtualizado: working.touchedEstoquePorTamanho
+                ? Map<String, int>.from(working.estoquePorTamanho)
+                : null,
+            quantidadeTotalAtualizada: novaQuantidadeTotal,
+            newStockRevision: working.pendingNextStockRevision,
+            stockOperationId: working.pendingStockOperationId,
+            stockBaseRevision:
+                parseStockRevisionFromRemote(working.remoteDataSnapshot),
+          ),
+        );
+
+        _traceEstoqueVariacao(
+          stage: 'edit_reconcile',
+          lojaId: lojaId,
+          produtoId: docId,
+          tamanho: tamanho,
+          cor: cor,
+          variacaoExtra: extraTrim,
+          qtdVendida: -signedQty,
+          qtdAntes: qtdAntes,
+          qtdDepois: novaQuantidadeTotal,
+          operationId: opId,
+          alreadyApplied: false,
+        );
+      }
+
+      for (final u in writesByPath.values) {
+        transaction.update(u.ref, u.updateData);
+        if (u.estoqueRef != null) {
+          transaction.set(u.estoqueRef!, u.updateData, SetOptions(merge: true));
+        }
+      }
+
+      transaction.set(
+        markerRef,
+        buildMarkerBaixaPdvPayload(
+          lojaId: lojaId,
+          operationId: opId,
+          snapshotHash: snapshotHash,
+          txItemsHash: hash,
+        ),
+      );
+
+      return _TransacaoBaixaBatchOutcome(
+        alreadyApplied: false,
+        results: results,
+      );
+    }).timeout(
+      const Duration(seconds: 25),
+      onTimeout: () => throw TimeoutException(
+        'Transação de reconciliação de edição demorou muito. Tente novamente.',
+      ),
+    );
+
+    return EstoqueEdicaoReconcileResult(
+      alreadyApplied: outcome.alreadyApplied,
+      transactionResults: outcome.results,
+    );
+  }
+
+  static Future<
+      List<
+          ({
+            DocumentReference<Map<String, dynamic>> ref,
+            int signedQty,
+            String tamanho,
+            String cor,
+            String variacaoExtra,
+          })>> _resolverItensMescladosAssinados(
+    String lojaId,
+    List<Map<String, dynamic>> itens,
+  ) async {
+    final acc = <String, int>{};
+    final meta = <String,
+        ({
+      DocumentReference<Map<String, dynamic>> ref,
+      String tamanho,
+      String cor,
+      String variacaoExtra,
+    })>{};
+
+    for (final item in itens) {
+      final quantidade = (item['quantidade'] as num?)?.toInt() ??
+          (item['qty'] as num?)?.toInt() ??
+          0;
+      if (quantidade == 0) continue;
+
+      final produtoId = item['productId']?.toString() ??
+          item['produtosId']?.toString() ??
+          item['id']?.toString();
+      final slug = item['slug']?.toString();
+      final nome = (item['nome'] ?? item['name'] ?? '').toString();
+      final tamanho = (item['tamanho'] ?? item['size'] ?? '').toString().trim();
+      final cor = (item['cor'] ?? item['color'] ?? '').toString().trim();
+      final variacaoExtra =
+          (item['extraValor'] ?? item['variacaoExtra'] ?? '').toString().trim();
+
+      final ref = await _resolverProdutoRef(
+        lojaId: lojaId,
+        produtoId: produtoId,
+        slug: slug,
+        nome: nome,
+      );
+      if (ref == null) {
+        throw _erroProdutoNaoSincronizado(
+          produtoId: produtoId,
+          slug: slug,
+          nome: nome,
+        );
+      }
+      final key = [ref.path, tamanho, cor, variacaoExtra].join('|');
+      acc[key] = (acc[key] ?? 0) + quantidade;
+      meta.putIfAbsent(
+        key,
+        () => (
+          ref: ref,
+          tamanho: tamanho,
+          cor: cor,
+          variacaoExtra: variacaoExtra,
+        ),
+      );
+    }
+
+    return acc.entries.where((e) => e.value != 0).map((e) {
+      final m = meta[e.key]!;
+      return (
+        ref: m.ref,
+        signedQty: e.value,
+        tamanho: m.tamanho,
+        cor: m.cor,
+        variacaoExtra: m.variacaoExtra,
+      );
+    }).toList();
+  }
+
+  /// Após `alreadyApplied`: projeta Hive a partir do remoto atual (não reusa qty local stale).
+  static Future<void> projetarHiveAposReconcileAlreadyApplied({
+    required String lojaId,
+    required Box<Produto> produtosBox,
+    required List<Map<String, dynamic>> itensAssinados,
+  }) async {
+    final ids = <String>{};
+    for (final m in itensAssinados) {
+      final pid = (m['productId'] ?? m['produtosId'] ?? m['id'] ?? '')
+          .toString()
+          .trim();
+      if (pid.isNotEmpty) ids.add(pid);
+    }
+    for (final id in ids) {
+      try {
+        final snap = await _db
+            .collection('lojas')
+            .doc(lojaId)
+            .collection(FSPaths.estoqueProdutosCol)
+            .doc(id)
+            .get();
+        if (!snap.exists) continue;
+        final data = firestoreStringDynamicMapDeepOrEmpty(snap.data());
+        final variacoes =
+            firestoreStringDynamicMapDeepOrEmpty(data['variacoes']);
+        final estoquePorTamanho = _parseMapStringInt(data['estoquePorTamanho']);
+        final qtd = firestoreIntFieldOrZero(data['quantidade']);
+        final nome = (data['nome'] ?? '').toString();
+        final slug = (data['slug'] ?? '').toString().trim();
+        await atualizarHiveAposTransacao(
+          produtosBox: produtosBox,
+          lojaId: lojaId,
+          result: EstoqueTransactionResult(
+            produtoId: id,
+            produtoNome: nome,
+            produtoSlug: slug.isNotEmpty ? slug : null,
+            quantidadeDebitada: 0,
+            variacoesAtualizadas: variacoes.isNotEmpty ? variacoes : null,
+            estoquePorTamanhoAtualizado:
+                estoquePorTamanho.isNotEmpty ? estoquePorTamanho : null,
+            quantidadeTotalAtualizada: qtd,
+            newStockRevision: parseStockRevisionFromRemote(data),
+            stockOperationId: null,
+            stockBaseRevision: parseStockRevisionFromRemote(data),
+          ),
+        );
+      } catch (e) {
+        debugPrint(
+          '[ESTOQUE-TX] projetarHive alreadyApplied falhou id=$id type=${e.runtimeType}',
+        );
+      }
+    }
+  }
+
   /// Devolve estoque de múltiplos itens (cancelamento/desfazer venda).
   /// Atualiza estoque_produtos e produtos. Idempotente quando [vendaIdParaIdempotencia] informado.
-  static Future<List<EstoqueTransactionResult>> devolverEstoqueTransactionBatch({
+  static Future<List<EstoqueTransactionResult>>
+      devolverEstoqueTransactionBatch({
     required String lojaId,
     required List<Map<String, dynamic>> itens,
     String? vendaIdParaIdempotencia,
@@ -2204,10 +2865,11 @@ class EstoqueTransactionService {
       }
     }
 
-    final resultados =
-        await _db.runTransaction<List<EstoqueTransactionResult>>((transaction) async {
+    final resultados = await _db
+        .runTransaction<List<EstoqueTransactionResult>>((transaction) async {
       final results = <EstoqueTransactionResult>[];
-      final writesByPath = <String, ({
+      final writesByPath = <String,
+          ({
         DocumentReference<Map<String, dynamic>> ref,
         DocumentReference<Map<String, dynamic>>? estoqueRef,
         Map<String, dynamic> updateData,
@@ -2331,8 +2993,7 @@ class EstoqueTransactionService {
         final updateData = buildEstoqueUpdateDataComDeletes(
           novaQuantidadeTotal: novaQuantidadeTotal,
           variacoesAnteriores: working.variacoesOriginais,
-          variacoesNovas:
-              working.touchedVariacoes ? working.variacoes : null,
+          variacoesNovas: working.touchedVariacoes ? working.variacoes : null,
           estoquePorTamanhoAnterior: working.estoquePorTamanhoOriginal,
           estoquePorTamanhoNovo: working.touchedEstoquePorTamanho
               ? working.estoquePorTamanho
@@ -2395,9 +3056,9 @@ class EstoqueTransactionService {
 
       return results;
     }).timeout(
-
       const Duration(seconds: 25),
-      onTimeout: () => throw TimeoutException('Transação de devolução demorou muito. Tente novamente.'),
+      onTimeout: () => throw TimeoutException(
+          'Transação de devolução demorou muito. Tente novamente.'),
     );
 
     if (resultados.isEmpty && resolvedItems.isNotEmpty) {
@@ -2455,10 +3116,12 @@ class EstoqueTransactionService {
           if ((await draftRef.get()).exists) await draftRef.delete();
           CatalogCacheService.invalidate(lojaId, preview: false);
           CatalogCacheService.invalidate(lojaId, preview: true);
-          debugPrint('[ESTOQUE-TX] 🗑️ Removido do catálogo (estoque zero): $docId');
+          debugPrint(
+              '[ESTOQUE-TX] 🗑️ Removido do catálogo (estoque zero): $docId');
           break;
         } catch (e) {
-          debugPrint('[ESTOQUE-TX] ⚠️ Erro ao remover $docId (type=${e.runtimeType})');
+          debugPrint(
+              '[ESTOQUE-TX] ⚠️ Erro ao remover $docId (type=${e.runtimeType})');
         }
       }
     }
@@ -2474,15 +3137,25 @@ class EstoqueTransactionService {
   }) async {
     Produto? produto;
     final idOk = result.produtoId.isNotEmpty;
-    final slugOk = result.produtoSlug != null && result.produtoSlug!.trim().isNotEmpty;
+    final slugOk =
+        result.produtoSlug != null && result.produtoSlug!.trim().isNotEmpty;
     final nomeOk = result.produtoNome.trim().isNotEmpty;
     final nomeLower = result.produtoNome.trim().toLowerCase();
 
     for (final p in produtosBox.values) {
       if (p.lojaId != lojaId) continue;
-      if (idOk && p.idFirebase == result.produtoId) { produto = p; break; }
-      if (slugOk && p.slug == result.produtoSlug!.trim()) { produto = p; break; }
-      if (nomeOk && p.nome.trim().toLowerCase() == nomeLower) { produto = p; break; }
+      if (idOk && p.idFirebase == result.produtoId) {
+        produto = p;
+        break;
+      }
+      if (slugOk && p.slug == result.produtoSlug!.trim()) {
+        produto = p;
+        break;
+      }
+      if (nomeOk && p.nome.trim().toLowerCase() == nomeLower) {
+        produto = p;
+        break;
+      }
     }
 
     if (produto != null) {

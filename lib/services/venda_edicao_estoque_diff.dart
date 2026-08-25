@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'package:collection/collection.dart';
 
 import '../models/venda_item.dart';
+import 'estoque_transaction_service.dart';
 
 /// Resultado do diff: itens a baixar (+) e devolver (-) em relação à venda original.
 class VendaEdicaoDeltaEstoque {
@@ -117,6 +118,65 @@ class VendaEdicaoEstoqueDiff {
 
     return VendaEdicaoDeltaEstoque(baixar: baixar, devolver: devolver);
   }
+
+  /// Delta assinado canônico: `+` devolve estoque, `-` baixa. Agrega e remove zeros.
+  /// Ordenação determinística por [_chaveLinha] (hash estável independente da ordem de entrada).
+  static List<Map<String, dynamic>> linhasAssinadasCanonicas(
+    VendaEdicaoDeltaEstoque delta,
+  ) {
+    final acc = <String, Map<String, dynamic>>{};
+
+    void acumular(Map<String, dynamic> m, int signedQty) {
+      if (signedQty == 0) return;
+      final k = _chaveLinha(m);
+      final existing = acc[k];
+      if (existing == null) {
+        final base = Map<String, dynamic>.from(m);
+        base['quantidade'] = signedQty;
+        acc[k] = base;
+      } else {
+        final novo = (existing['quantidade'] as num).toInt() + signedQty;
+        if (novo == 0) {
+          acc.remove(k);
+        } else {
+          existing['quantidade'] = novo;
+        }
+      }
+    }
+
+    for (final m in delta.devolver) {
+      final q = (m['quantidade'] as num?)?.toInt() ?? 0;
+      acumular(m, q);
+    }
+    for (final m in delta.baixar) {
+      final q = (m['quantidade'] as num?)?.toInt() ?? 0;
+      acumular(m, -q);
+    }
+
+    final lines = acc.values.toList()
+      ..sort((a, b) => _chaveLinha(a).compareTo(_chaveLinha(b)));
+    return lines;
+  }
+
+  /// Hash determinístico do delta assinado (família de [EstoqueTransactionService.computeTxItemsHashForIdempotencia]).
+  static String computeCanonicalDeltaHash(VendaEdicaoDeltaEstoque delta) {
+    return EstoqueTransactionService.computeSignedTxItemsHashForIdempotencia(
+      linhasAssinadasCanonicas(delta),
+    );
+  }
+
+  static String buildEditStockOperationId({
+    required String vendaId,
+    required String deltaHash,
+  }) {
+    final vid = vendaId.trim();
+    final hash = deltaHash.trim();
+    return 'editstock_${vid}_$hash';
+  }
+
+  /// Chave de journal: `loja|deltaHash|edit|{vendaId}` via [saleIntentId].
+  static String buildEditStockJournalSaleIntentId(String vendaId) =>
+      'edit|${vendaId.trim()}';
 }
 
 /// Resultado da validação pré-salvamento na UI (edição de venda).
