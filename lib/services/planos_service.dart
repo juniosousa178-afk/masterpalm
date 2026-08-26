@@ -35,6 +35,12 @@ class PlanInfo {
   /// Ex.: prefixo `mp_` quando cobrança veio do fluxo recorrente MP.
   final String? billingSource;
   final String? providerSubscriptionId;
+  /// `recurring` quando o doc [users/{uid}] já tem billingMode de assinatura MP.
+  final String? billingMode;
+  final String? pendingPlanChangeId;
+  final String? pendingPlanChangeFromPlanId;
+  final String? pendingPlanChangeToPlanId;
+  final String? pendingPlanChangeStatus;
 
   const PlanInfo({
     required this.planId,
@@ -47,6 +53,11 @@ class PlanInfo {
     this.billingVersion,
     this.billingSource,
     this.providerSubscriptionId,
+    this.billingMode,
+    this.pendingPlanChangeId,
+    this.pendingPlanChangeFromPlanId,
+    this.pendingPlanChangeToPlanId,
+    this.pendingPlanChangeStatus,
   });
 
   /// Decisão canônica para cancelar/reativar renovação: MP recorrente vs legado.
@@ -82,6 +93,19 @@ class PlanInfo {
     if (status != 'active' && status != 'trialing') return false;
     if (currentPeriodEnd == null) return false;
     return currentPeriodEnd!.isAfter(DateTime.now());
+  }
+
+  bool get hasPendingPlanChange {
+    final to = pendingPlanChangeToPlanId?.trim() ?? '';
+    if (to.isEmpty) return false;
+    final st = (pendingPlanChangeStatus ?? '').trim().toLowerCase();
+    return st.isEmpty || st == 'pending';
+  }
+
+  bool hasPendingChangeTo(String canonicalTarget) {
+    if (!hasPendingPlanChange) return false;
+    return (pendingPlanChangeToPlanId ?? '').trim().toLowerCase() ==
+        canonicalTarget.trim().toLowerCase();
   }
 
   bool get isExpired {
@@ -618,6 +642,14 @@ class PlanosService {
         final billingVersion = _parseBillingVersion(d['billingVersion']);
         final billingSource = d['billingSource']?.toString();
         final providerSubscriptionId = d['providerSubscriptionId']?.toString();
+        final billingMode = d['billingMode']?.toString();
+        final pendingPlanChangeId = d['pendingPlanChangeId']?.toString();
+        final pendingPlanChangeFromPlanId =
+            d['pendingPlanChangeFromPlanId']?.toString();
+        final pendingPlanChangeToPlanId =
+            d['pendingPlanChangeToPlanId']?.toString();
+        final pendingPlanChangeStatus =
+            d['pendingPlanChangeStatus']?.toString();
         if (status.trim().isEmpty) status = 'active';
 
         if (moEnabled) {
@@ -641,6 +673,11 @@ class PlanosService {
             billingVersion: billingVersion,
             billingSource: billingSource,
             providerSubscriptionId: providerSubscriptionId,
+            billingMode: billingMode,
+            pendingPlanChangeId: pendingPlanChangeId,
+            pendingPlanChangeFromPlanId: pendingPlanChangeFromPlanId,
+            pendingPlanChangeToPlanId: pendingPlanChangeToPlanId,
+            pendingPlanChangeStatus: pendingPlanChangeStatus,
           );
         }
         return null;

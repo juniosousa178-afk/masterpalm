@@ -159,6 +159,34 @@ class MasterPlanAccessSummary {
   }
 }
 
+/// Bloco `subscription` já sanitizado pelo callable (sem preapproval completo).
+class PlanAccessSubscriptionSummary {
+  final String? provider;
+  final String? paymentMethodLabel;
+  final String? maskedProviderSubscriptionId;
+
+  const PlanAccessSubscriptionSummary({
+    this.provider,
+    this.paymentMethodLabel,
+    this.maskedProviderSubscriptionId,
+  });
+
+  factory PlanAccessSubscriptionSummary.fromMap(Map<String, dynamic>? map) {
+    if (map == null) return const PlanAccessSubscriptionSummary();
+    return PlanAccessSubscriptionSummary(
+      provider: map['provider']?.toString(),
+      paymentMethodLabel: map['paymentMethodLabel']?.toString(),
+      maskedProviderSubscriptionId:
+          map['maskedProviderSubscriptionId']?.toString(),
+    );
+  }
+
+  bool get hasMaskedSubscriptionId {
+    final id = maskedProviderSubscriptionId?.trim() ?? '';
+    return id.isNotEmpty;
+  }
+}
+
 class EffectivePlanAccessDto {
   final String? contractedPlanId;
   final String? effectivePlanId;
@@ -169,6 +197,7 @@ class EffectivePlanAccessDto {
   final MasterPlanCourtesySummary courtesy;
   final MasterPlanRenewalSummary renewal;
   final String? blockedReason;
+  final PlanAccessSubscriptionSummary subscription;
 
   const EffectivePlanAccessDto({
     this.contractedPlanId,
@@ -180,6 +209,7 @@ class EffectivePlanAccessDto {
     required this.courtesy,
     required this.renewal,
     this.blockedReason,
+    this.subscription = const PlanAccessSubscriptionSummary(),
   });
 
   factory EffectivePlanAccessDto.fromMap(Map<String, dynamic> map) {
@@ -199,6 +229,11 @@ class EffectivePlanAccessDto {
         map['renewal'] is Map ? Map<String, dynamic>.from(map['renewal'] as Map) : null,
       ),
       blockedReason: map['blockedReason']?.toString(),
+      subscription: PlanAccessSubscriptionSummary.fromMap(
+        map['subscription'] is Map
+            ? Map<String, dynamic>.from(map['subscription'] as Map)
+            : null,
+      ),
     );
   }
 

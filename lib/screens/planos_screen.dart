@@ -164,6 +164,24 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
     if (s.contains('plano inválido')) {
       return 'Este plano não está disponível. Atualize o app ou contate o suporte.';
     }
+    if (s.contains('não foi possível confirmar o seu plano')) {
+      return 'Não foi possível confirmar o seu plano atual. Atualize e tente de novo.';
+    }
+    if (s.contains('já existe uma alteração') ||
+        s.contains('aguardar pagamento')) {
+      final full = e.toString();
+      if (full.startsWith('Exception: ')) {
+        return full.substring('Exception: '.length).trim();
+      }
+      return 'Já existe uma alteração de plano a aguardar pagamento.';
+    }
+    if (s.contains('não foi possível obter o link') ||
+        s.contains('não foi possível abrir o mercado pago')) {
+      final full = e.toString();
+      if (full.startsWith('Exception: ')) {
+        return full.substring('Exception: '.length).trim();
+      }
+    }
     // Propaga mensagens curtas já amigáveis do backend (planCreatePreference, MP).
     final full = e.toString();
     if (full.startsWith('Exception: ')) {
@@ -310,122 +328,92 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
   }
 
   Future<void> _assinarBasico() async {
-    await _mostrarAvisoCheckout(() async {
-      setState(() => _loadingBasico = true);
-      try {
-        await CheckoutService.abrirCheckoutPlano(
-          titulo: 'MasterPalm Básico',
-          preco: _kPrecoBasico,
-          planoId: 'basic_monthly',
-        );
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Checkout aberto. O plano libera após confirmação do pagamento no servidor.',
-            ),
-            duration: Duration(seconds: 6),
-          ),
-        );
-      } catch (e) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ ${_mensagemErroAmigavel(e)}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      } finally {
-        if (mounted) setState(() => _loadingBasico = false);
-      }
-    });
+    await _assinarPlanoPago(
+      setLoading: (v) => _loadingBasico = v,
+      titulo: 'MasterPalm Básico',
+      preco: _kPrecoBasico,
+      planoId: 'basic_monthly',
+    );
   }
 
   Future<void> _assinarIntermediario() async {
-    await _mostrarAvisoCheckout(() async {
-      setState(() => _loadingIntermediario = true);
-      try {
-        await CheckoutService.abrirCheckoutPlano(
-          titulo: 'MasterPalm Intermediário',
-          preco: _kPrecoIntermediario,
-          planoId: 'intermediate_monthly',
-        );
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Checkout aberto. O plano libera após confirmação do pagamento no servidor.',
-            ),
-            duration: Duration(seconds: 6),
-          ),
-        );
-      } catch (e) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ ${_mensagemErroAmigavel(e)}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      } finally {
-        if (mounted) setState(() => _loadingIntermediario = false);
-      }
-    });
+    await _assinarPlanoPago(
+      setLoading: (v) => _loadingIntermediario = v,
+      titulo: 'MasterPalm Intermediário',
+      preco: _kPrecoIntermediario,
+      planoId: 'intermediate_monthly',
+    );
   }
 
   Future<void> _assinarMensal() async {
-    await _mostrarAvisoCheckout(() async {
-      setState(() => _loadingMensal = true);
-      try {
-        await CheckoutService.abrirCheckoutPlano(
-          titulo: 'Plano Mensal MasterPalm',
-          preco: _priceMensal,
-          planoId: 'mensal',
-        );
-
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Checkout aberto. Após pagar, aguarde a confirmação no servidor — o plano libera quando o pagamento estiver aprovado no Mercado Pago.',
-            ),
-            duration: Duration(seconds: 6),
-          ),
-        );
-      } catch (e) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ ${_mensagemErroAmigavel(e)}'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 5),
-          ),
-        );
-      } finally {
-        if (mounted) setState(() => _loadingMensal = false);
-      }
-    });
+    await _assinarPlanoPago(
+      setLoading: (v) => _loadingMensal = v,
+      titulo: 'Plano Mensal MasterPalm',
+      preco: _priceMensal,
+      planoId: 'mensal',
+    );
   }
 
   Future<void> _assinarAnual() async {
-    await _mostrarAvisoCheckout(() async {
-      setState(() => _loadingAnual = true);
-      try {
-        await CheckoutService.abrirCheckoutPlano(
-          titulo: 'Plano Anual MasterPalm',
-          preco: _priceAnual,
-          planoId: 'anual',
-        );
+    await _assinarPlanoPago(
+      setLoading: (v) => _loadingAnual = v,
+      titulo: 'Plano Anual MasterPalm',
+      preco: _priceAnual,
+      planoId: 'anual',
+    );
+  }
 
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Checkout aberto. Após pagar, aguarde a confirmação no servidor — o plano libera quando o pagamento estiver aprovado no Mercado Pago.',
-            ),
-            duration: Duration(seconds: 6),
-          ),
+  Future<void> _assinarPlanoPago({
+    required void Function(bool value) setLoading,
+    required String titulo,
+    required double preco,
+    required String planoId,
+  }) async {
+    await _mostrarAvisoCheckout(() async {
+      setState(() => setLoading(true));
+      try {
+        if (_plan == null) {
+          final user = FirebaseAuth.instance.currentUser;
+          if (user != null) {
+            final email = (user.email ?? '').trim().toLowerCase();
+            final fresh =
+                await _svc.fetchCurrentPlan(uid: user.uid, email: email);
+            final effective =
+                await _svc.fetchMyEffectivePlanAccess(forceRefresh: true);
+            if (mounted) {
+              setState(() {
+                _plan = fresh ?? _plan;
+                _effectiveAccess = effective ?? _effectiveAccess;
+              });
+            }
+          }
+        }
+        final result = await CheckoutService.abrirCheckoutPlano(
+          titulo: titulo,
+          preco: preco,
+          planoId: planoId,
         );
+        if (!mounted) return;
+        if (result.flowType == CheckoutFlowType.alreadyActive) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                result.message ?? 'Você já está com este plano ativo.',
+              ),
+            ),
+          );
+          return;
+        }
+        if (result.opened) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Checkout aberto. O plano libera após confirmação do pagamento no servidor.',
+              ),
+              duration: Duration(seconds: 6),
+            ),
+          );
+        }
       } catch (e) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -436,7 +424,7 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
           ),
         );
       } finally {
-        if (mounted) setState(() => _loadingAnual = false);
+        if (mounted) setState(() => setLoading(false));
       }
     });
   }
@@ -688,25 +676,37 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
     );
   }
 
+  String? get _activePlanIdForDisplay {
+    final fromPlan = _plan?.planId.trim();
+    if (fromPlan != null && fromPlan.isNotEmpty) return fromPlan;
+    final fromDto = _effectiveAccess?.contractedPlanId?.trim();
+    if (fromDto != null && fromDto.isNotEmpty) return fromDto;
+    return null;
+  }
+
   Widget _header(PlanInfo? plan) {
+    final displayPlanId = _activePlanIdForDisplay;
     String statusLabel = 'Sem plano';
     String? expiresText;
 
-    if (plan != null) {
-      statusLabel = _traduzirPlanId(plan.planId);
-      if (plan.status == 'active' || plan.status == 'trialing') {
-        statusLabel = '$statusLabel (ativo)';
-      } else if (plan.status == 'expired') {
+    if (displayPlanId != null) {
+      statusLabel = _traduzirPlanId(displayPlanId);
+      final status = plan?.status;
+      if (status == 'active' || status == 'trialing' || plan == null) {
+        if (plan == null || status == 'active' || status == 'trialing') {
+          statusLabel = '$statusLabel (ativo)';
+        }
+      } else if (status == 'expired') {
         statusLabel = '$statusLabel (vencido)';
       }
 
-      if (plan.isLifetime) {
+      if (plan?.isLifetime == true || displayPlanId == 'lifetime') {
         expiresText = 'Acesso permanente';
-      } else if (plan.planId == 'free_limited') {
+      } else if (displayPlanId == 'free_limited') {
         expiresText =
             'Plano com limites (30 produtos, 20 clientes, 10 vendas/mês, 1 foto/produto, 1 banner). Faça upgrade para liberar mais.';
-      } else if (plan.currentPeriodEnd != null) {
-        final d = plan.currentPeriodEnd!;
+      } else if (plan?.currentPeriodEnd != null) {
+        final d = plan!.currentPeriodEnd!;
         expiresText =
             'Válido até ${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
         final days = plan.daysLeft ?? 0;
@@ -768,12 +768,32 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
               'Seu status: $statusLabel',
               style: const TextStyle(color: Colors.white70, fontSize: 16),
             ),
-            if (_effectiveAccess != null &&
-                _effectiveAccess!.effectivePlanId != null &&
-                _effectiveAccess!.effectivePlanId != plan?.planId) ...[
+            if (displayPlanId != null) ...[
               const SizedBox(height: 6),
               Text(
-                'Plano contratado: ${masterPlanIdLabel(plan?.planId)}',
+                'Plano atual: ${masterPlanIdLabel(displayPlanId)}',
+                style: const TextStyle(color: Colors.white60, fontSize: 14),
+              ),
+            ],
+            if (plan != null &&
+                plan.hasPendingPlanChange &&
+                (plan.pendingPlanChangeToPlanId ?? '').isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                'Alteração pendente: ${masterPlanIdLabel(plan.pendingPlanChangeToPlanId)} — aguardando pagamento',
+                style: const TextStyle(
+                  color: Color(0xFFFFD54F),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+            if (_effectiveAccess != null &&
+                _effectiveAccess!.effectivePlanId != null &&
+                _effectiveAccess!.effectivePlanId != displayPlanId) ...[
+              const SizedBox(height: 6),
+              Text(
+                'Plano contratado: ${masterPlanIdLabel(_effectiveAccess!.contractedPlanId ?? displayPlanId)}',
                 style: const TextStyle(color: Colors.white60, fontSize: 14),
               ),
               Text(
@@ -1019,31 +1039,53 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
   }
 
   bool _isPlanoAtual(String planKey) {
-    if (_plan == null) return false;
-    switch (planKey) {
-      case 'gratis':
-        return (_plan!.planId == 'free_trial_90d' ||
-                _plan!.planId == 'free_trial_30d') &&
-            _plan!.isActive;
-      case 'free_limited':
-        return _plan!.planId == 'free_limited';
-      case 'basico':
-        return _plan!.planId == 'basic_monthly' && _plan!.isActive;
-      case 'intermediario':
-        return _plan!.planId == 'intermediate_monthly' && _plan!.isActive;
-      case 'mensal':
-        return _plan!.planId == 'pro_monthly' && _plan!.isActive;
-      case 'anual':
-        return _plan!.planId == 'pro_yearly' && _plan!.isActive;
-      default:
+    final activeId = _activePlanIdForDisplay;
+    if (activeId == null || activeId.isEmpty) return false;
+    final pendingTo = _plan?.pendingPlanChangeToPlanId;
+    bool matches(String canonical) {
+      if (pendingTo != null &&
+          pendingTo == canonical &&
+          _plan?.hasPendingChangeTo(canonical) == true) {
         return false;
+      }
+      switch (planKey) {
+        case 'gratis':
+          return (canonical == 'free_trial_90d' ||
+                  canonical == 'free_trial_30d') &&
+              (_plan?.isActive ?? true);
+        case 'free_limited':
+          return canonical == 'free_limited';
+        case 'basico':
+          return canonical == 'basic_monthly' && (_plan?.isActive ?? true);
+        case 'intermediario':
+          return canonical == 'intermediate_monthly' &&
+              (_plan?.isActive ?? true);
+        case 'mensal':
+          return canonical == 'pro_monthly' && (_plan?.isActive ?? true);
+        case 'anual':
+          return canonical == 'pro_yearly' && (_plan?.isActive ?? true);
+        default:
+          return false;
+      }
     }
+
+    return matches(activeId);
   }
 
   @override
   Widget build(BuildContext context) {
-    final canShowFree =
-        _plan == null ? true : (_plan!.trialUsed == false && _plan!.manualOverride == false);
+    final displayId = _activePlanIdForDisplay;
+    const paidIds = {
+      'basic_monthly',
+      'intermediate_monthly',
+      'pro_monthly',
+      'pro_yearly',
+    };
+    final canShowFree = displayId != null && paidIds.contains(displayId)
+        ? false
+        : (_plan == null
+            ? true
+            : (_plan!.trialUsed == false && _plan!.manualOverride == false));
 
     final cards = <Widget>[
       if (canShowFree)

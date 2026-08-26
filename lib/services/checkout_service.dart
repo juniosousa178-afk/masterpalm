@@ -1,20 +1,298 @@
 // lib/services/checkout_service.dart
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb, visibleForTesting;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:http/http.dart' as http;
-import 'package:url_launcher/url_launcher.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
+import '../core/master_plan_access_models.dart';
+import 'checkout_url_opener.dart';
 import 'license_manager.dart';
+import 'planos_service.dart';
 import 'remote_config_service.dart';
 
 /// Resultado mínimo da UX de troca de plano (ex.: deep link / retorno do checkout MP).
 enum PlanChangeCallOutcome {
   opened,
   alreadyActive,
+}
+
+enum CheckoutFlowType {
+  oneTime,
+  recurringCreate,
+  planChange,
+  alreadyActive,
+  pendingConflict,
+  unknownState,
+}
+
+class CheckoutLaunchResult {
+  final CheckoutFlowType flowType;
+  final Uri? checkoutUrl;
+  final String? pendingChangeId;
+  final String? message;
+  final bool opened;
+
+  const CheckoutLaunchResult({
+    required this.flowType,
+    this.checkoutUrl,
+    this.pendingChangeId,
+    this.message,
+    this.opened = false,
+  });
+}
+
+class CheckoutRoutingSnapshot {
+  final PlanInfo? plan;
+  final EffectivePlanAccessDto? access;
+  final bool unknown;
+
+  const CheckoutRoutingSnapshot({
+    this.plan,
+    this.access,
+    this.unknown = false,
+  });
+
+  factory CheckoutRoutingSnapshot.unknown() =>
+      const CheckoutRoutingSnapshot(unknown: true);
+}
+
+enum CheckoutUpgradeDecisionKind {
+  planChange,
+  oneTimeOrCreate,
+  alreadyActive,
+  pendingTargetConflict,
+  unknownState,
+}
+
+class CheckoutUpgradeDecision {
+  final CheckoutUpgradeDecisionKind kind;
+  final String? message;
+
+  const CheckoutUpgradeDecision(this.kind, {this.message});
+}
+
+const _kPaidCanonicalPlanIds = {
+  'basic_monthly',
+  'intermediate_monthly',
+  'pro_monthly',
+  'pro_yearly',
+};
+
+String normalizeCheckoutPlanId(String? raw) {
+  final p = (raw ?? '').trim().toLowerCase();
+  switch (p) {
+    case 'mensal':
+    case 'pro_monthly':
+      return 'pro_monthly';
+    case 'anual':
+    case 'pro_yearly':
+      return 'pro_yearly';
+    case 'basic':
+    case 'basic_monthly':
+      return 'basic_monthly';
+    case 'intermediate':
+    case 'intermediate_monthly':
+      return 'intermediate_monthly';
+    case 'trial_90d':
+    case 'free_trial_90d':
+      return 'free_trial_90d';
+    case 'trial_30d':
+    case 'free_trial_30d':
+      return 'free_trial_30d';
+    default:
+      return p;
+  }
+}
+
+bool _isPaidCanonicalPlanId(String? id) {
+  final n = (id ?? '').trim().toLowerCase();
+  return _kPaidCanonicalPlanIds.contains(n);
+}
+
+String? _contractedPlanIdFromSnapshot(CheckoutRoutingSnapshot snap) {
+  final fromPlan = snap.plan?.planId.trim();
+  if (fromPlan != null && fromPlan.isNotEmpty) return fromPlan;
+  final fromDto = snap.access?.contractedPlanId?.trim();
+  if (fromDto != null && fromDto.isNotEmpty) return fromDto;
+  return null;
+}
+
+bool snapshotHasActiveRecurringSubscription(CheckoutRoutingSnapshot snap) {
+  final p = snap.plan;
+  if (p != null) {
+    if (p.manualOverride) return false;
+    if (!p.isPaidSubscription || !p.isActive) return false;
+    final billingRecurring =
+        (p.billingMode ?? '').trim().toLowerCase() == 'recurring' ||
+            p.usesMercadoRecurringPlanBilling;
+    final hasSub = (p.providerSubscriptionId?.trim().isNotEmpty ?? false) ||
+        snap.access?.subscription.hasMaskedSubscriptionId == true;
+    return billingRecurring && hasSub;
+  }
+  final dto = snap.access;
+  if (dto == null) return false;
+  if (!_isPaidCanonicalPlanId(dto.contractedPlanId)) return false;
+  final status = (dto.effectiveStatus ?? '').trim().toLowerCase();
+  final activeLike =
+      status.isEmpty || status == 'active' || status == 'trialing';
+  if (!activeLike) return false;
+  if (dto.renewal.active == false &&
+      dto.accessSource != 'paid_subscription' &&
+      !dto.subscription.hasMaskedSubscriptionId) {
+    return false;
+  }
+  return dto.subscription.hasMaskedSubscriptionId ||
+      dto.accessSource == 'paid_subscription';
+}
+
+/// Decisão de routing: nunca usa só `_plan` em memória da UI.
+CheckoutUpgradeDecision decideCheckoutUpgradeRoute({
+  required CheckoutRoutingSnapshot snapshot,
+  required String targetCanonical,
+}) {
+  if (snapshot.unknown) {
+    return const CheckoutUpgradeDecision(
+      CheckoutUpgradeDecisionKind.unknownState,
+      message:
+          'Não foi possível confirmar o seu plano atual. Atualize e tente de novo.',
+    );
+  }
+
+  final target = normalizeCheckoutPlanId(targetCanonical);
+  final plan = snapshot.plan;
+
+  if (plan != null && plan.hasPendingChangeTo(target)) {
+    return CheckoutUpgradeDecision(
+      CheckoutUpgradeDecisionKind.pendingTargetConflict,
+      message:
+          'Já existe uma alteração para ${plan.pendingPlanChangeToPlanId} a aguardar pagamento.',
+    );
+  }
+
+  final contracted = _contractedPlanIdFromSnapshot(snapshot);
+  final contractedNorm = contracted == null
+      ? null
+      : normalizeCheckoutPlanId(contracted);
+  final recurring = snapshotHasActiveRecurringSubscription(snapshot);
+
+  if (recurring && contractedNorm != null && contractedNorm == target) {
+    return const CheckoutUpgradeDecision(
+      CheckoutUpgradeDecisionKind.alreadyActive,
+      message: 'Você já está com este plano ativo.',
+    );
+  }
+
+  if (recurring && contractedNorm != null && contractedNorm != target) {
+    return const CheckoutUpgradeDecision(CheckoutUpgradeDecisionKind.planChange);
+  }
+
+  if (_isPaidCanonicalPlanId(contractedNorm) &&
+      contractedNorm == target &&
+      (plan?.isActive == true || snapshot.access != null)) {
+    return const CheckoutUpgradeDecision(
+      CheckoutUpgradeDecisionKind.alreadyActive,
+      message: 'Você já está com este plano ativo.',
+    );
+  }
+
+  return const CheckoutUpgradeDecision(
+    CheckoutUpgradeDecisionKind.oneTimeOrCreate,
+  );
+}
+
+bool _isPlanChangeFallbackToOneTime(Object e) {
+  if (e is FirebaseFunctionsException) {
+    final code = e.code.toLowerCase();
+    final msg = (e.message ?? '').toLowerCase();
+    if (code == 'failed-precondition' &&
+        (msg.contains('recurring_plan_billing_disabled') ||
+            msg.contains('use assinatura comum'))) {
+      return true;
+    }
+  }
+  final s = e.toString().toLowerCase();
+  if (s.contains('recurring_plan_billing_disabled')) return true;
+  if (s.contains('use assinatura comum')) return true;
+  return false;
+}
+
+/// Orquestrador testável: serviço devolve checkout; opener navega.
+class CheckoutPlanCoordinator {
+  CheckoutPlanCoordinator({
+    required this.resolveSnapshot,
+    required this.callPlanChange,
+    required this.openNewCheckout,
+    required this.opener,
+  });
+
+  final Future<CheckoutRoutingSnapshot> Function() resolveSnapshot;
+  final Future<Map<String, dynamic>> Function(String planApi) callPlanChange;
+  final Future<CheckoutLaunchResult> Function(String planApi) openNewCheckout;
+  final CheckoutUrlOpener opener;
+
+  int planChangeCallCount = 0;
+  int newCheckoutCallCount = 0;
+
+  Future<CheckoutLaunchResult> run({required String planoId}) async {
+    final snapshot = await resolveSnapshot();
+    final target = normalizeCheckoutPlanId(planoId);
+    final decision = decideCheckoutUpgradeRoute(
+      snapshot: snapshot,
+      targetCanonical: target,
+    );
+
+    switch (decision.kind) {
+      case CheckoutUpgradeDecisionKind.unknownState:
+        throw Exception(
+          decision.message ??
+              'Não foi possível confirmar o seu plano atual. Atualize e tente de novo.',
+        );
+      case CheckoutUpgradeDecisionKind.alreadyActive:
+        return CheckoutLaunchResult(
+          flowType: CheckoutFlowType.alreadyActive,
+          message: decision.message ?? 'Você já está com este plano ativo.',
+        );
+      case CheckoutUpgradeDecisionKind.pendingTargetConflict:
+        throw Exception(
+          decision.message ??
+              'Já existe uma alteração para este plano a aguardar pagamento.',
+        );
+      case CheckoutUpgradeDecisionKind.oneTimeOrCreate:
+        newCheckoutCallCount++;
+        return openNewCheckout(target);
+      case CheckoutUpgradeDecisionKind.planChange:
+        planChangeCallCount++;
+        try {
+          final map = await callPlanChange(target);
+          if (map['alreadyActive'] == true) {
+            return CheckoutLaunchResult(
+              flowType: CheckoutFlowType.alreadyActive,
+              message: map['message']?.toString() ??
+                  'Você já está com este plano ativo.',
+            );
+          }
+          final initPoint = map['initPoint']?.toString();
+          final uri = validateCheckoutHttpsUri(initPoint);
+          await opener.open(uri);
+          return CheckoutLaunchResult(
+            flowType: CheckoutFlowType.planChange,
+            checkoutUrl: uri,
+            pendingChangeId: map['changeId']?.toString(),
+            opened: true,
+          );
+        } catch (e) {
+          if (e is CheckoutUrlValidationException) rethrow;
+          if (_isPlanChangeFallbackToOneTime(e)) {
+            newCheckoutCallCount++;
+            return openNewCheckout(target);
+          }
+          rethrow;
+        }
+    }
+  }
 }
 
 /// POST em [planCreatePreference]: credencial MP só no backend (Secret Manager).
@@ -119,6 +397,13 @@ Future<Map<String, dynamic>?> _tryPlanCreatePreferenceCallOnWeb({
 
 /// Checkout de planos: preferência criada **somente** no backend (token MP fora do app).
 class CheckoutService {
+  /// Callable exportado em `functions/index.js` para assinatura recorrente inicial.
+  static const String planSubscriptionCallableName = 'createPlanSubscription';
+
+  /// Callable exportado em `functions/index.js` para troca de plano recorrente.
+  static const String planChangeSubscriptionCallableName =
+      'createPlanChangeSubscription';
+
   static bool _isCriticalRecurringError(Object e) {
     final s = e.toString().toLowerCase();
     if (s.contains('mp platform token não configurado') ||
@@ -167,31 +452,7 @@ class CheckoutService {
     return false;
   }
 
-  static String _normalizePlanId(String? raw) {
-    final p = (raw ?? '').trim().toLowerCase();
-    switch (p) {
-      case 'mensal':
-      case 'pro_monthly':
-        return 'pro_monthly';
-      case 'anual':
-      case 'pro_yearly':
-        return 'pro_yearly';
-      case 'basic':
-      case 'basic_monthly':
-        return 'basic_monthly';
-      case 'intermediate':
-      case 'intermediate_monthly':
-        return 'intermediate_monthly';
-      case 'trial_90d':
-      case 'free_trial_90d':
-        return 'free_trial_90d';
-      case 'trial_30d':
-      case 'free_trial_30d':
-        return 'free_trial_30d';
-      default:
-        return p;
-    }
-  }
+  static String _normalizePlanId(String? raw) => normalizeCheckoutPlanId(raw);
 
   /// Corpo `plan` aceito por [planCreatePreference] (Cloud Function).
   static String _apiPlanFromCanonical(String canonical) {
@@ -208,11 +469,78 @@ class CheckoutService {
     }
   }
 
-  /// Abre checkout MP: POST autenticado em [planCreatePreference] (Cloud Function).
+  @visibleForTesting
+  static CheckoutUrlOpener urlOpener = PlatformCheckoutUrlOpener();
+
+  @visibleForTesting
+  static CheckoutPlanCoordinator? debugCoordinator;
+
+  @visibleForTesting
+  static Future<CheckoutRoutingSnapshot> Function()? debugSnapshotResolver;
+
+  static Future<void> _openCheckoutUrl(String? raw) async {
+    final uri = validateCheckoutHttpsUri(raw);
+    await urlOpener.open(uri);
+  }
+
+  static Future<CheckoutRoutingSnapshot> resolveRoutingSnapshot() async {
+    if (debugSnapshotResolver != null) {
+      return debugSnapshotResolver!();
+    }
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        throw Exception(
+          'Faça login para assinar um plano. Se já estiver logado, atualize a página.',
+        );
+      }
+      final email = (user.email ?? '').trim().toLowerCase();
+      final svc = PlanosService();
+      PlanInfo? plan;
+      EffectivePlanAccessDto? dto;
+      var planFailed = false;
+      var dtoFailed = false;
+      try {
+        plan = await svc.fetchCurrentPlan(uid: user.uid, email: email);
+      } catch (e) {
+        planFailed = true;
+        debugPrint('[CheckoutPlano] fetchCurrentPlan: $e');
+      }
+      try {
+        dto = await svc.fetchMyEffectivePlanAccess(forceRefresh: true);
+      } catch (e) {
+        dtoFailed = true;
+        debugPrint('[CheckoutPlano] fetchMyEffectivePlanAccess: $e');
+      }
+      if (planFailed && dtoFailed) {
+        return CheckoutRoutingSnapshot.unknown();
+      }
+      if (plan == null && dto == null && planFailed) {
+        return CheckoutRoutingSnapshot.unknown();
+      }
+      return CheckoutRoutingSnapshot(plan: plan, access: dto);
+    } catch (e) {
+      debugPrint('[CheckoutPlano] resolveRoutingSnapshot: $e');
+      rethrow;
+    }
+  }
+
+  static CheckoutPlanCoordinator _productionCoordinator() {
+    return CheckoutPlanCoordinator(
+      resolveSnapshot: resolveRoutingSnapshot,
+      callPlanChange: (planApi) =>
+          callPlanChangeSubscription(planApi: planApi),
+      openNewCheckout: (planApi) => _abrirCheckoutPlanoFluxoNovo(planApi: planApi),
+      opener: urlOpener,
+    );
+  }
+
+  /// Abre checkout MP. Assinante recorrente activo + alvo diferente →
+  /// [createPlanChangeSubscription]; caso contrário, fluxo one-time/create existente.
   ///
   /// [titulo], [preco] e [quantidade] são ignorados — mantidos na assinatura por compatibilidade
   /// com telas existentes; valores vêm do servidor.
-  static Future<bool> abrirCheckoutPlano({
+  static Future<CheckoutLaunchResult> abrirCheckoutPlano({
     required String titulo,
     required double preco,
     required String planoId,
@@ -220,7 +548,7 @@ class CheckoutService {
   }) async {
     try {
       final user = FirebaseAuth.instance.currentUser;
-      if (user == null) {
+      if (user == null && debugCoordinator == null) {
         debugPrint(
           '[PlanosAuthGate] checkout de planos abortado: sem usuário Firebase',
         );
@@ -239,148 +567,159 @@ class CheckoutService {
         'pro_yearly',
       };
       final plan = _apiPlanFromCanonical(canonical);
-      if (!paid.contains(plan)) {
+      if (!paid.contains(plan) && !_kPaidCanonicalPlanIds.contains(canonical)) {
         throw Exception('Plano inválido para assinatura paga');
       }
 
-      if (RemoteConfigService.shouldUseRecurringPlanBilling(
-        uid: user.uid,
-        email: user.email,
-      )) {
-        debugPrint('[PLAN_RECURRING_FLAG] enabled=true (remote config)');
-        try {
-          return await _abrirCheckoutPlanoRecorrente(
-            planApi: plan,
-          );
-        } catch (e) {
-          if (_shouldFallbackToOneTimeRecurringError(e)) {
-            final reason = e.toString().replaceAll('\n', ' ');
-            debugPrint(
-              '[PLAN_RECURRING_FALLBACK_ONE_TIME] motivo=${reason.length > 180 ? reason.substring(0, 180) : reason}',
-            );
-          } else {
-            rethrow;
-          }
-        }
-      }
-      debugPrint('[PLAN_RECURRING_FLAG] enabled=false (fallback one_time)');
-
-      final projectId = Firebase.app().options.projectId;
-      final url = Uri.parse(
-        'https://southamerica-east1-$projectId.cloudfunctions.net/planCreatePreference',
-      );
-
-      String installationId;
-      try {
-        installationId = await LicenseManager.getDeviceId();
-      } catch (_) {
-        installationId = '';
-      }
-
-      try {
-        if (kIsWeb) {
-          try {
-            await user.reload();
-          } catch (e) {
-            debugPrint('[PlanosAuthDiag] pre_http reload: $e');
-          }
-        }
-        final tok = await user.getIdToken(true);
-        final prov =
-            user.providerData.map((p) => p.providerId).join(',');
-        debugPrint(
-          '[PlanosAuthDiag] pre_http plan=$plan projectId=$projectId '
-          'uidPrefix=${user.uid.length >= 6 ? user.uid.substring(0, 6) : user.uid}… '
-          'providers=[$prov] idTokenNonEmpty=${tok != null && tok.isNotEmpty} url=$url',
-        );
-      } catch (e) {
-        debugPrint('[PlanosAuthDiag] pre_http token: $e');
-      }
-
-      if (kIsWeb) {
-        final viaCall = await _tryPlanCreatePreferenceCallOnWeb(
-          plan: plan,
-          installationId: installationId,
-        );
-        final initFromCall = viaCall?['init_point']?.toString() ?? '';
-        if (initFromCall.isNotEmpty) {
-          debugPrint(
-            '[PlanosAuthDiag] checkout planos via planCreatePreferenceCall (OK)',
-          );
-          final uri = Uri.parse(initFromCall);
-          if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-            throw Exception('Não foi possível abrir o checkout');
-          }
-          return true;
-        }
-        debugPrint(
-          '[PlanosAuthDiag] fallback planCreatePreference HTTP (callable sem init_point ou falhou)',
-        );
-      }
-
-      final resp = await _postPlanCreatePreference(
-        url: url,
-        body: {
-          'plan': plan,
-          if (installationId.isNotEmpty) 'installationId': installationId,
-        },
-      );
-
-      if (resp.statusCode == 401) {
-        throw Exception(
-          'Não foi possível validar a sessão com o servidor. '
-          'Atualize a página ou faça login de novo.',
-        );
-      }
-      if (resp.statusCode == 429) {
-        throw Exception('Muitas tentativas. Aguarde um minuto e tente de novo.');
-      }
-      if (resp.statusCode != 200) {
-        debugPrint(
-          '❌ planCreatePreference ${resp.statusCode} ${resp.body}',
-        );
-        var msg = 'Não foi possível iniciar o checkout. Tente novamente.';
-        try {
-          final err = jsonDecode(resp.body);
-          if (err is Map) {
-            final e = err['error'] ?? err['message'];
-            if (e != null && e.toString().trim().isNotEmpty) {
-              msg = e.toString();
-            }
-          }
-        } catch (_) {
-          final b = resp.body.trim();
-          if (b.length > 3 && b.length < 200 && !b.contains('<')) {
-            msg = b;
-          }
-        }
-        throw Exception(msg);
-      }
-
-      final decoded = jsonDecode(resp.body);
-      if (decoded is! Map) {
-        throw Exception('Resposta inválida do servidor de checkout.');
-      }
-      final data = Map<String, dynamic>.from(decoded);
-      final initPoint = data['init_point']?.toString() ?? '';
-      if (initPoint.isEmpty) {
-        throw Exception('Resposta inválida do servidor');
-      }
-
-      final uri = Uri.parse(initPoint);
-      if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-        throw Exception('Não foi possível abrir o checkout');
-      }
-
-      return true;
+      final coordinator = debugCoordinator ?? _productionCoordinator();
+      return await coordinator.run(planoId: canonical);
     } catch (e) {
       debugPrint('❌ Erro ao abrir checkout (type=${e.runtimeType})');
       rethrow;
     }
   }
 
+  /// FLOW A — preferência one-time ou [createPlanSubscription] (RC), sem plan-change.
+  static Future<CheckoutLaunchResult> _abrirCheckoutPlanoFluxoNovo({
+    required String planApi,
+  }) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      throw Exception(
+        'Faça login para assinar um plano. Se já estiver logado, atualize a página.',
+      );
+    }
+    final canonical = _normalizePlanId(planApi);
+    final plan = _apiPlanFromCanonical(canonical);
+
+    if (RemoteConfigService.shouldUseRecurringPlanBilling(
+      uid: user.uid,
+      email: user.email,
+    )) {
+      debugPrint('[PLAN_RECURRING_FLAG] enabled=true (remote config)');
+      try {
+        return await _abrirCheckoutPlanoRecorrente(planApi: plan);
+      } catch (e) {
+        if (_shouldFallbackToOneTimeRecurringError(e)) {
+          final reason = e.toString().replaceAll('\n', ' ');
+          debugPrint(
+            '[PLAN_RECURRING_FALLBACK_ONE_TIME] motivo=${reason.length > 180 ? reason.substring(0, 180) : reason}',
+          );
+        } else {
+          rethrow;
+        }
+      }
+    }
+    debugPrint('[PLAN_RECURRING_FLAG] enabled=false (fallback one_time)');
+
+    final projectId = Firebase.app().options.projectId;
+    final url = Uri.parse(
+      'https://southamerica-east1-$projectId.cloudfunctions.net/planCreatePreference',
+    );
+
+    String installationId;
+    try {
+      installationId = await LicenseManager.getDeviceId();
+    } catch (_) {
+      installationId = '';
+    }
+
+    try {
+      if (kIsWeb) {
+        try {
+          await user.reload();
+        } catch (e) {
+          debugPrint('[PlanosAuthDiag] pre_http reload: $e');
+        }
+      }
+      final tok = await user.getIdToken(true);
+      final prov = user.providerData.map((p) => p.providerId).join(',');
+      debugPrint(
+        '[PlanosAuthDiag] pre_http plan=$plan projectId=$projectId '
+        'uidPrefix=${user.uid.length >= 6 ? user.uid.substring(0, 6) : user.uid}… '
+        'providers=[$prov] idTokenNonEmpty=${tok != null && tok.isNotEmpty} url=$url',
+      );
+    } catch (e) {
+      debugPrint('[PlanosAuthDiag] pre_http token: $e');
+    }
+
+    if (kIsWeb) {
+      final viaCall = await _tryPlanCreatePreferenceCallOnWeb(
+        plan: plan,
+        installationId: installationId,
+      );
+      final initFromCall = viaCall?['init_point']?.toString() ?? '';
+      if (initFromCall.isNotEmpty) {
+        debugPrint(
+          '[PlanosAuthDiag] checkout planos via planCreatePreferenceCall (OK)',
+        );
+        await _openCheckoutUrl(initFromCall);
+        return CheckoutLaunchResult(
+          flowType: CheckoutFlowType.oneTime,
+          checkoutUrl: validateCheckoutHttpsUri(initFromCall),
+          opened: true,
+        );
+      }
+      debugPrint(
+        '[PlanosAuthDiag] fallback planCreatePreference HTTP (callable sem init_point ou falhou)',
+      );
+    }
+
+    final resp = await _postPlanCreatePreference(
+      url: url,
+      body: {
+        'plan': plan,
+        if (installationId.isNotEmpty) 'installationId': installationId,
+      },
+    );
+
+    if (resp.statusCode == 401) {
+      throw Exception(
+        'Não foi possível validar a sessão com o servidor. '
+        'Atualize a página ou faça login de novo.',
+      );
+    }
+    if (resp.statusCode == 429) {
+      throw Exception('Muitas tentativas. Aguarde um minuto e tente de novo.');
+    }
+    if (resp.statusCode != 200) {
+      debugPrint(
+        '❌ planCreatePreference ${resp.statusCode} ${resp.body}',
+      );
+      var msg = 'Não foi possível iniciar o checkout. Tente novamente.';
+      try {
+        final err = jsonDecode(resp.body);
+        if (err is Map) {
+          final e = err['error'] ?? err['message'];
+          if (e != null && e.toString().trim().isNotEmpty) {
+            msg = e.toString();
+          }
+        }
+      } catch (_) {
+        final b = resp.body.trim();
+        if (b.length > 3 && b.length < 200 && !b.contains('<')) {
+          msg = b;
+        }
+      }
+      throw Exception(msg);
+    }
+
+    final decoded = jsonDecode(resp.body);
+    if (decoded is! Map) {
+      throw Exception('Resposta inválida do servidor de checkout.');
+    }
+    final data = Map<String, dynamic>.from(decoded);
+    final initPoint = data['init_point']?.toString() ?? '';
+    await _openCheckoutUrl(initPoint);
+    return CheckoutLaunchResult(
+      flowType: CheckoutFlowType.oneTime,
+      checkoutUrl: validateCheckoutHttpsUri(initPoint),
+      opened: true,
+    );
+  }
+
   /// Assinatura recorrente (MP preapproval) — backend [createPlanSubscription].
-  static Future<bool> _abrirCheckoutPlanoRecorrente({
+  static Future<CheckoutLaunchResult> _abrirCheckoutPlanoRecorrente({
     required String planApi,
   }) async {
     Future<HttpsCallableResult<dynamic>> callOnce() async {
@@ -396,7 +735,7 @@ class CheckoutService {
       await user.getIdToken(true);
       final functions =
           FirebaseFunctions.instanceFor(region: 'southamerica-east1');
-      final callable = functions.httpsCallable('createPlanSubscription');
+      final callable = functions.httpsCallable(planSubscriptionCallableName);
       return callable.call(<String, dynamic>{
         'plan': planApi,
       });
@@ -428,11 +767,42 @@ class CheckoutService {
     if (!ok || initPoint.isEmpty) {
       throw Exception(map['message']?.toString() ?? 'Falha ao iniciar assinatura recorrente.');
     }
-    final uri = Uri.parse(initPoint);
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-      throw Exception('Não foi possível abrir o checkout');
+    await _openCheckoutUrl(initPoint);
+    return CheckoutLaunchResult(
+      flowType: CheckoutFlowType.recurringCreate,
+      checkoutUrl: validateCheckoutHttpsUri(initPoint),
+      opened: true,
+    );
+  }
+
+  /// Troca de plano recorrente — backend [createPlanChangeSubscription]. I/O apenas.
+  static Future<Map<String, dynamic>> callPlanChangeSubscription({
+    required String planApi,
+  }) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      throw Exception('Usuário não autenticado');
     }
-    return true;
+    if (kIsWeb) {
+      try {
+        await user.reload();
+      } catch (e) {
+        debugPrint('⚠️ [CheckoutPlano] createPlanChangeSubscription reload: $e');
+      }
+    }
+    await user.getIdToken(true);
+    final functions =
+        FirebaseFunctions.instanceFor(region: 'southamerica-east1');
+    final callable =
+        functions.httpsCallable(planChangeSubscriptionCallableName);
+    final result = await callable.call(<String, dynamic>{
+      'plan': planApi,
+    });
+    final map = result.data;
+    if (map is! Map) {
+      throw Exception('Resposta inválida do servidor (troca de plano).');
+    }
+    return Map<String, dynamic>.from(map);
   }
 
   static Future<void> abrirCheckoutPix({
