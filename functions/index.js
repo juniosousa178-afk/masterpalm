@@ -92,6 +92,12 @@ import {
   runReactivatePlanSubscription,
   runSyncPlanSubscription,
 } from "./src/mpPlanRecurring.js";
+import {
+  handlePlanChangePreapprovalWebhook,
+  processPlanChangePaymentWebhook,
+  runCreatePlanChangeSubscription,
+} from "./src/mpPlanChange.js";
+import { applyLegacyNonApprovedBillingWrite } from "./src/billingWebhookStatus.js";
 import { runGetPlanBillingSnapshotForSupport } from "./src/planSupportRead.js";
 import {
   runMasterGetPlanAccessSummary,
@@ -2684,6 +2690,7 @@ async function activatePlanForUser({
     // Canônico
     currentPlanId: canonicalPlanId || "pro_monthly",
     status: "active",
+    billingStatus: "active",
     currentPeriodEnd: renew ? admin.firestore.Timestamp.fromDate(renew) : null,
     trialing: false,
     trialUsed: true,
@@ -3184,6 +3191,13 @@ export const planWebhook = onRequest(
       if (isPreapprovalEvent) {
         const preId = extractMercadoPagoWebhookDataId(req);
         if (preId && isRecurringPlanBillingEnabled()) {
+          const changeHandled = await handlePlanChangePreapprovalWebhook({
+            db,
+            token: platformToken.token,
+            preapprovalId: preId,
+            nowTs,
+          });
+          if (changeHandled?.handled) return res.status(200).send("OK");
           await handlePreapprovalWebhookNotification({
             db,
             token: platformToken.token,
@@ -3225,6 +3239,21 @@ export const planWebhook = onRequest(
           }),
         );
         return res.status(200).send("OK");
+      }
+
+      const planChangeExt = String(payment?.external_reference || "").trim();
+      if (planChangeExt.startsWith("mpchg|")) {
+        const changePay = await processPlanChangePaymentWebhook({
+          db,
+          payment,
+          paymentId,
+          token: platformToken.token,
+          normalizePlanId,
+          nowTs,
+          addMonths,
+          addYears,
+        });
+        if (changePay?.handled) return res.status(200).send("OK");
       }
 
       const consumed = await tryProcessPlanOrderWebhook({
@@ -3444,17 +3473,11 @@ export const planWebhook = onRequest(
           { merge: true }
         );
       } else {
-        await db
-          .collection("users")
-          .doc(uid)
-          .set(
-            {
-              // Canônico: não ativa plano em falha
-              status: checkoutStatus === "pending" ? "pending" : "inactive",
-              updatedAt: nowTs,
-            },
-            { merge: true }
-          );
+        await applyLegacyNonApprovedBillingWrite(db, {
+          uid,
+          checkoutStatus,
+          nowTs,
+        });
       }
 
       return res.status(200).send("OK");
@@ -3503,6 +3526,48 @@ export const createPlanSubscription = onCall(
     } catch (e) {
       if (e instanceof HttpsError) throw e;
       console.error("[createPlanSubscription]", e);
+      throw new HttpsError("internal", String(e?.message || e));
+    }
+  }
+);
+
+export const createPlanChangeSubscription = onCall(
+  { secrets: [S_MP_ACCESS_TOKEN, S_WEB_BASE_URL], timeoutSeconds: 60, memory: "256MiB" },
+  async (request) => {
+    try {
+      await checkRateLimit("createPlanChangeSubscription", getCallableIdentifier(request));
+      const platformToken = await getPlatformMpAccessTokenStrict({
+        flow: "createPlanChangeSubscription",
+      });
+      if (!platformToken.ok) {
+        throw new HttpsError("failed-precondition", "MP platform token não configurado");
+      }
+      if (hasStoreContextInPlanPayload(request.data || {})) {
+        throw new HttpsError(
+          "invalid-argument",
+          "Payload inválido para plano: contexto de loja não é permitido.",
+        );
+      }
+      const webBase =
+        (await S_WEB_BASE_URL.value()) || process.env.WEB_BASE_URL || PUBLIC_SITE_ORIGIN;
+      const prices = {
+        PRICE_BASIC_MONTHLY,
+        PRICE_INTERMEDIATE_MONTHLY,
+        PRICE_PRO_MONTHLY,
+        PRICE_PRO_YEARLY,
+      };
+      return await runCreatePlanChangeSubscription({
+        db,
+        request,
+        token: platformToken.token,
+        webBase,
+        prices,
+        planTitleForMp,
+        normalizePlanId,
+      });
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      console.error("[createPlanChangeSubscription]", e);
       throw new HttpsError("internal", String(e?.message || e));
     }
   }

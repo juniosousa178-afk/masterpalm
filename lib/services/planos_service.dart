@@ -41,6 +41,8 @@ class PlanInfo {
   final String? pendingPlanChangeFromPlanId;
   final String? pendingPlanChangeToPlanId;
   final String? pendingPlanChangeStatus;
+  /// Billing dedicado (016/017). Não confundir com [status] de conta.
+  final String? billingStatus;
 
   const PlanInfo({
     required this.planId,
@@ -58,6 +60,7 @@ class PlanInfo {
     this.pendingPlanChangeFromPlanId,
     this.pendingPlanChangeToPlanId,
     this.pendingPlanChangeStatus,
+    this.billingStatus,
   });
 
   /// Decisão canônica para cancelar/reativar renovação: MP recorrente vs legado.
@@ -88,6 +91,8 @@ class PlanInfo {
     if (isLifetime) return true;
     // Free limitado não tem data de término; permanece utilizável com limites numéricos.
     if (isFreeLimited) {
+      // P1C: pending de billing legado não bloqueia conta Free.
+      if (status == 'pending') return true;
       return status == 'active' || status == 'trialing';
     }
     if (status != 'active' && status != 'trialing') return false;
@@ -485,6 +490,7 @@ class PlanosService {
     if (plan.manualOverride) return true;
     if (plan.isLifetime) return true;
     if (plan.isFreeLimited) {
+      if (plan.status == 'pending') return true;
       return plan.status == 'active' || plan.status == 'trialing';
     }
     return plan.isActive && !plan.isExpired;
@@ -650,6 +656,7 @@ class PlanosService {
             d['pendingPlanChangeToPlanId']?.toString();
         final pendingPlanChangeStatus =
             d['pendingPlanChangeStatus']?.toString();
+        final billingStatus = d['billingStatus']?.toString();
         if (status.trim().isEmpty) status = 'active';
 
         if (moEnabled) {
@@ -678,6 +685,7 @@ class PlanosService {
             pendingPlanChangeFromPlanId: pendingPlanChangeFromPlanId,
             pendingPlanChangeToPlanId: pendingPlanChangeToPlanId,
             pendingPlanChangeStatus: pendingPlanChangeStatus,
+            billingStatus: billingStatus,
           );
         }
         return null;

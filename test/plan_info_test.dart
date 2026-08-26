@@ -69,17 +69,45 @@ void main() {
         manualOverride: false,
       );
       expect(p.isPaidSubscription, true);
-      expect(
-        const PlanInfo(
-          planId: PlanId.freeLimited,
-          status: 'active',
-          trialing: false,
-          currentPeriodEnd: null,
-          trialUsed: true,
-          manualOverride: false,
-        ).isPaidSubscription,
-        false,
+    expect(
+      const PlanInfo(
+        planId: PlanId.freeLimited,
+        status: 'active',
+        trialing: false,
+        currentPeriodEnd: null,
+        trialUsed: true,
+        manualOverride: false,
+      ).isPaidSubscription,
+      false,
+    );
+    });
+  });
+
+  group('P1C users.status leak', () {
+    test('free_limited + status pending continua a conceder acesso', () {
+      const p = PlanInfo(
+        planId: PlanId.freeLimited,
+        status: 'pending',
+        trialing: false,
+        currentPeriodEnd: null,
+        trialUsed: true,
+        manualOverride: false,
       );
+      expect(p.isActive, isTrue);
+      expect(PlanosService.planGrantsAdminAppAccess(p), isTrue);
+    });
+
+    test('free_limited + inactive continua bloqueado (trial ACCOUNT_ACCESS)', () {
+      const p = PlanInfo(
+        planId: PlanId.freeLimited,
+        status: 'inactive',
+        trialing: false,
+        currentPeriodEnd: null,
+        trialUsed: true,
+        manualOverride: false,
+      );
+      expect(p.isActive, isFalse);
+      expect(PlanosService.planGrantsAdminAppAccess(p), isFalse);
     });
   });
 }

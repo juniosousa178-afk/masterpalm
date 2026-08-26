@@ -8,6 +8,16 @@
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { HttpsError } from "firebase-functions/v2/https";
 
+import {
+  BILLING_OP_CREATE,
+  BILLING_OP_PLAN_CHANGE,
+  claimOrReuseBillingOperation,
+  completeBillingOperationCreated,
+  deterministicCreateExternalReference,
+  markBillingOperationFailed,
+  recordProviderIdOnCreatingOp,
+} from "./billingOperations.js";
+
 export const PLAN_RECURRING_INTENTS = "plan_recurring_intents";
 export const PROCESSED_PLAN_EVENTS = "processed_plan_events";
 
@@ -56,6 +66,33 @@ export async function mpGetPreapproval(token, preapprovalId) {
     throw err;
   }
   return data;
+}
+
+export async function mpSearchPreapprovalByExternalReference(token, externalReference) {
+  const q = encodeURIComponent(String(externalReference || ""));
+  const r = await fetchWithTimeout(
+    `https://api.mercadopago.com/preapproval/search?external_reference=${q}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+    20000,
+  );
+  const txt = await r.text();
+  let data = {};
+  try {
+    data = JSON.parse(txt);
+  } catch {
+    data = {};
+  }
+  if (!r.ok) {
+    const err = new Error(`MP preapproval search ${r.status}: ${txt.slice(0, 500)}`);
+    err.status = r.status;
+    throw err;
+  }
+  const results = Array.isArray(data.results)
+    ? data.results
+    : Array.isArray(data)
+      ? data
+      : [];
+  return results.find((x) => x && x.id) || null;
 }
 
 export async function mpCreatePreapproval(token, body) {
@@ -193,24 +230,27 @@ export function resolveCurrentPeriodEndMillis(doc) {
   return null;
 }
 
-/**
- * Impede `runCreatePlanSubscription` quando já há recorrência ativa e o plano pedido é outro
- * (troca deve passar pelo fluxo de plan change, não por nova subscrição “comum”).
- */
-export function shouldBlockCreateRecurringSubscription({
-  canonicalRequested,
-  userData,
-  normalizePlanId,
-}) {
-  const norm =
-    typeof normalizePlanId === "function"
-      ? normalizePlanId
-      : (x) => String(x || "").trim().toLowerCase();
-  if (!userData || typeof userData !== "object") {
-    return { blocked: false };
-  }
+const PAID_CANONICAL_PLAN_IDS = new Set([
+  "basic_monthly",
+  "intermediate_monthly",
+  "pro_monthly",
+  "pro_yearly",
+]);
+
+function _normPlan(normalizePlanId, x) {
+  return typeof normalizePlanId === "function"
+    ? normalizePlanId(x)
+    : String(x || "").trim().toLowerCase();
+}
+
+export function isPaidCanonicalPlanId(id) {
+  return PAID_CANONICAL_PLAN_IDS.has(String(id || "").trim().toLowerCase());
+}
+
+function _activeRecurringLike(userData, nowMs = Date.now()) {
+  if (!userData || typeof userData !== "object") return false;
   const endMs = resolveCurrentPeriodEndMillis(userData);
-  const periodFuture = endMs != null && endMs > Date.now();
+  const periodFuture = endMs != null && endMs > nowMs;
   const billingMode = String(userData.billingMode || "").toLowerCase();
   const subId = String(userData.providerSubscriptionId || "").trim();
   const planStatus = String(userData.planStatus || "").toLowerCase();
@@ -220,16 +260,154 @@ export function shouldBlockCreateRecurringSubscription({
     status === "active" ||
     planStatus === "trialing" ||
     status === "trialing";
-  const activeRecurring =
-    activeLike && billingMode === "recurring" && !!subId && periodFuture;
-  if (!activeRecurring) {
-    return { blocked: false };
+  return activeLike && billingMode === "recurring" && !!subId && periodFuture;
+}
+
+/**
+ * Estados inseguros: FAIL_CLOSED (016 P1D). Dual-read legado:
+ * providerSubscriptionId == pendingSubscriptionId + currentPlan free → pending, não split-brain.
+ */
+export function detectAmbiguousBillingState(userData, normalizePlanId) {
+  if (!userData || typeof userData !== "object") {
+    return { ambiguous: false };
   }
-  const cur = norm(userData.currentPlanId);
-  const req = norm(canonicalRequested);
-  if (!req || !cur) return { blocked: false };
-  if (req === cur) return { blocked: false };
-  return { blocked: true };
+  const norm = (x) => _normPlan(normalizePlanId, x);
+  const current = norm(userData.currentPlanId);
+  const billingMode = String(userData.billingMode || "").toLowerCase();
+  const activeId = String(userData.providerSubscriptionId || "").trim();
+  const pendingSub = String(userData.pendingSubscriptionId || "").trim();
+  const pendingChangePre = String(userData.pendingPlanChangePreapprovalId || "").trim();
+  const pendingTo = String(userData.pendingPlanChangeToPlanId || "").trim();
+
+  if (
+    activeId &&
+    pendingSub &&
+    activeId === pendingSub &&
+    isPaidCanonicalPlanId(current)
+  ) {
+    return { ambiguous: true, reason: "split_brain_active_eq_pending_paid" };
+  }
+  if (pendingSub && pendingChangePre && pendingSub !== pendingChangePre) {
+    return { ambiguous: true, reason: "two_pending_provider_ids" };
+  }
+  if (pendingTo && pendingChangePre && pendingSub && pendingSub !== pendingChangePre) {
+    return { ambiguous: true, reason: "two_pending_plan_changes" };
+  }
+  if (isPaidCanonicalPlanId(current) && billingMode === "recurring" && !activeId) {
+    return { ambiguous: true, reason: "paid_recurring_missing_provider_id" };
+  }
+  if (isPaidCanonicalPlanId(current) && activeId && !billingMode) {
+    return { ambiguous: true, reason: "paid_with_provider_unknown_billing_mode" };
+  }
+  return { ambiguous: false };
+}
+
+/**
+ * Preflight P1D. Resultados: ALLOW | NO_OP | REUSE_EXISTING_OPERATION | BLOCK_VISIBLE | FAIL_CLOSED
+ */
+export function evaluateBillingPreflight({
+  operation,
+  canonicalRequested,
+  userData,
+  normalizePlanId,
+  idempotencyRecord,
+  nowMs = Date.now(),
+}) {
+  const req = _normPlan(normalizePlanId, canonicalRequested);
+  if (!req) {
+    return { result: "FAIL_CLOSED", reason: "missing_target_plan" };
+  }
+
+  const amb = detectAmbiguousBillingState(userData, normalizePlanId);
+  if (amb.ambiguous) {
+    return { result: "FAIL_CLOSED", reason: amb.reason };
+  }
+
+  const rec = idempotencyRecord && typeof idempotencyRecord === "object"
+    ? idempotencyRecord
+    : null;
+  const recState = String(rec?.state || "");
+  const recInit = String(rec?.initPoint || "").trim();
+  if (recState === "CREATED" && recInit) {
+    return {
+      result: "REUSE_EXISTING_OPERATION",
+      reason: "idempotency_created",
+      initPoint: recInit,
+      pendingProviderSubscriptionId: rec.pendingProviderSubscriptionId,
+    };
+  }
+  if (recState === "FAILED_FINAL") {
+    return { result: "FAIL_CLOSED", reason: "idempotency_failed_final" };
+  }
+  if (recState === "CREATING") {
+    const updated = Number(rec.updatedAtMs || 0);
+    const age = nowMs - updated;
+    if (updated && age >= 0 && age < 120_000) {
+      return { result: "BLOCK_VISIBLE", reason: "operation_in_progress" };
+    }
+  }
+
+  const pendingTo = String(userData?.pendingPlanChangeToPlanId || "").trim();
+  const pendingChangePre = String(userData?.pendingPlanChangePreapprovalId || "").trim();
+  const pendingSub = String(userData?.pendingSubscriptionId || "").trim();
+  const pendingPlan = _normPlan(normalizePlanId, userData?.pendingPlanId);
+  if (operation === BILLING_OP_PLAN_CHANGE && pendingTo && _normPlan(normalizePlanId, pendingTo) === req && pendingChangePre) {
+    return {
+      result: "REUSE_EXISTING_OPERATION",
+      reason: "pending_plan_change_same_target",
+      pendingProviderSubscriptionId: pendingChangePre,
+    };
+  }
+  if (operation === BILLING_OP_CREATE && pendingPlan === req && pendingSub) {
+    return {
+      result: "REUSE_EXISTING_OPERATION",
+      reason: "pending_create_same_plan",
+      pendingProviderSubscriptionId: pendingSub,
+    };
+  }
+
+  const activeRecurring = _activeRecurringLike(userData, nowMs);
+  const cur = _normPlan(normalizePlanId, userData?.currentPlanId);
+
+  if (activeRecurring && cur && req === cur) {
+    return { result: "NO_OP", reason: "same_active_plan" };
+  }
+
+  if (operation === BILLING_OP_CREATE && activeRecurring && cur && req !== cur) {
+    return { result: "FAIL_CLOSED", reason: "use_plan_change" };
+  }
+
+  if (operation === BILLING_OP_CREATE && isPaidCanonicalPlanId(cur) && !activeRecurring && String(userData?.providerSubscriptionId || "").trim()) {
+    return { result: "FAIL_CLOSED", reason: "inconsistent_paid_without_active_recurring" };
+  }
+
+  if (operation === BILLING_OP_PLAN_CHANGE && !activeRecurring) {
+    return { result: "FAIL_CLOSED", reason: "plan_change_requires_active_recurring" };
+  }
+
+  return { result: "ALLOW", reason: "safe_new_transition" };
+}
+
+/**
+ * Impede `runCreatePlanSubscription` quando já há recorrência ativa e o plano pedido é outro
+ * (troca deve passar pelo fluxo de plan change, não por nova subscrição “comum”).
+ */
+export function shouldBlockCreateRecurringSubscription({
+  canonicalRequested,
+  userData,
+  normalizePlanId,
+}) {
+  const r = evaluateBillingPreflight({
+    operation: BILLING_OP_CREATE,
+    canonicalRequested,
+    userData,
+    normalizePlanId,
+  });
+  return {
+    blocked: r.result === "FAIL_CLOSED" || r.result === "BLOCK_VISIBLE",
+    result: r.result,
+    reason: r.reason,
+  };
 }
 
 /**
@@ -247,15 +425,29 @@ export async function syncFirestoreFromPreapproval({
   const id = String(preapproval.id || "");
   const status = String(preapproval.status || "").toLowerCase();
   const ref = db.collection("users").doc(uid);
+  const existingSnap = await ref.get();
+  const existing = existingSnap.exists ? existingSnap.data() || {} : {};
+  const existingActiveId = String(existing.providerSubscriptionId || "").trim();
+  const existingBilling = String(existing.billingStatus || "").toLowerCase();
 
-  const billingPatch = {
+  if (
+    existingBilling === "active" &&
+    existingActiveId &&
+    existingActiveId === id &&
+    (status === "pending" ||
+      status === "rejected" ||
+      status === "in_process" ||
+      status === "authorized" ||
+      status === "approved")
+  ) {
+    return { ok: true, phase: "ignored_downgrade", reason: "already_active" };
+  }
+
+  const billingPatchNoProviderId = {
     provider: "mercado_pago",
     billingSource: "mp_subscription",
     billingVersion: 2,
     billingMode: "recurring",
-    providerSubscriptionId: id,
-    mercadoPagoPreapprovalId: id,
-    subscriptionId: id,
     planLastSyncedAt: nowTs,
     updatedAt: nowTs,
   };
@@ -263,11 +455,16 @@ export async function syncFirestoreFromPreapproval({
   if (status === "pending") {
     await ref.set(
       {
-        ...mergePendingPreapprovalPatch({ billingPatch, email, nowTs }),
+        ...mergePendingPreapprovalPatch({
+          billingPatch: billingPatchNoProviderId,
+          email,
+          nowTs,
+        }),
         planStatus: "pending",
         pendingPlanId: canonicalPlanId,
         pendingSubscriptionId: id,
         pendingBillingMode: "recurring",
+        billingStatus: "checkout_pending",
       },
       { merge: true },
     );
@@ -307,11 +504,12 @@ export async function syncFirestoreFromPreapproval({
   if (status === "authorized" || status === "active") {
     await ref.set(
       {
-        ...billingPatch,
+        ...billingPatchNoProviderId,
         planStatus: "authorized_pending_payment",
         pendingPlanId: canonicalPlanId,
         pendingSubscriptionId: id,
         pendingBillingMode: "recurring",
+        billingStatus: existingBilling === "active" ? existing.billingStatus : "checkout_pending",
         updatedAt: nowTs,
       },
       { merge: true },
@@ -351,11 +549,12 @@ export async function syncFirestoreFromPreapproval({
   if (status === "approved") {
     await ref.set(
       {
-        ...billingPatch,
+        ...billingPatchNoProviderId,
         planStatus: "approved_pending_reconcile",
         pendingPlanId: canonicalPlanId,
         pendingSubscriptionId: id,
         pendingBillingMode: "recurring",
+        billingStatus: existingBilling === "active" ? existing.billingStatus : "checkout_pending",
         updatedAt: nowTs,
       },
       { merge: true },
@@ -393,11 +592,24 @@ export async function syncFirestoreFromPreapproval({
   }
 
   if (status === "paused") {
+    if (existingActiveId && existingActiveId !== id) {
+      await ref.set(
+        {
+          pendingPlanId: FieldValue.delete(),
+          pendingSubscriptionId: FieldValue.delete(),
+          pendingBillingMode: FieldValue.delete(),
+          updatedAt: nowTs,
+        },
+        { merge: true },
+      );
+      return { ok: true, phase: "paused_non_active_ignored" };
+    }
     await ref.set(
       {
-        ...billingPatch,
+        ...billingPatchNoProviderId,
         planStatus: "paused",
         cancelAtPeriodEnd: true,
+        billingStatus: existingBilling === "active" ? "canceled" : existing.billingStatus || "canceled",
         updatedAt: nowTs,
       },
       { merge: true },
@@ -419,11 +631,28 @@ export async function syncFirestoreFromPreapproval({
 
   if (status === "cancelled" || status === "canceled" || status === "rejected") {
     const finalStatus = status === "rejected" ? "rejected" : "cancelled";
+    if (existingActiveId && existingActiveId !== id) {
+      await ref.set(
+        {
+          pendingPlanId: FieldValue.delete(),
+          pendingSubscriptionId: FieldValue.delete(),
+          pendingBillingMode: FieldValue.delete(),
+          updatedAt: nowTs,
+        },
+        { merge: true },
+      );
+      await ref.collection("subscriptions").doc(id).set(
+        { status: finalStatus, source: "planWebhook", updatedAt: nowTs },
+        { merge: true },
+      );
+      return { ok: true, phase: `${finalStatus}_pending_discarded` };
+    }
     await ref.set(
       {
-        ...billingPatch,
+        ...billingPatchNoProviderId,
         billingSource: "mp_subscription_cancelled",
         planStatus: finalStatus,
+        billingStatus: "canceled",
         updatedAt: nowTs,
       },
       { merge: true },
@@ -443,7 +672,7 @@ export async function syncFirestoreFromPreapproval({
     return { ok: true, phase: finalStatus };
   }
 
-  await ref.set({ ...billingPatch, updatedAt: nowTs }, { merge: true });
+  await ref.set({ ...billingPatchNoProviderId, updatedAt: nowTs }, { merge: true });
   return { ok: true, phase: status || "unknown" };
 }
 
@@ -457,7 +686,9 @@ export function parseExternalReferenceMpRecurring(externalRef) {
   if (!s.startsWith("mprec|")) return null;
   const parts = s.split("|");
   if (parts.length < 3) return null;
-  return { uid: parts[1], canonicalPlanId: parts[2] };
+  const uid = parts[1];
+  const canonicalPlanId = parts.length >= 4 ? parts[parts.length - 1] : parts[2];
+  return { uid, canonicalPlanId };
 }
 
 /**
@@ -478,19 +709,27 @@ export async function handlePreapprovalWebhookNotification({
       id: String(preapprovalId),
     }),
   );
-  const processedRef = db.collection(PROCESSED_PLAN_EVENTS).doc(`preapproval_${preapprovalId}`);
-  const pr = await processedRef.get();
-  if (pr.exists && pr.data()?.status === "processed") {
-    console.warn(JSON.stringify({ evt: "plan_preapproval_webhook_dup", preapprovalId }));
-    return { consumed: true, duplicate: true };
-  }
-
   let pre;
   try {
     pre = await mpGetPreapproval(token, preapprovalId);
   } catch (e) {
     console.error("[mpPlanRecurring] get preapproval", preapprovalId, e?.message || e);
     return { consumed: false };
+  }
+  const mpStatusKey = String(pre?.status || "unknown").toLowerCase();
+  const processedRef = db
+    .collection(PROCESSED_PLAN_EVENTS)
+    .doc(`${preapprovalId}:${mpStatusKey}`);
+  const pr = await processedRef.get();
+  if (pr.exists && pr.data()?.status === "processed") {
+    console.warn(
+      JSON.stringify({
+        evt: "plan_preapproval_webhook_dup",
+        preapprovalId,
+        mpStatus: mpStatusKey,
+      }),
+    );
+    return { consumed: true, duplicate: true };
   }
   console.log(
     JSON.stringify({
@@ -588,6 +827,21 @@ function autoRecurringForPlan(canonical, prices) {
   };
 }
 
+function hasStoreContextInPlanPayloadLocal(payload) {
+  if (!payload || typeof payload !== "object") return false;
+  const keys = [
+    "lojaId",
+    "storeId",
+    "tenantId",
+    "mpAccessToken",
+    "accessToken",
+    "mpToken",
+    "payments",
+    "payments_public",
+  ];
+  return keys.some((k) => payload[k] != null && String(payload[k]).trim() !== "");
+}
+
 export async function runCreatePlanSubscription({
   db,
   request,
@@ -596,6 +850,9 @@ export async function runCreatePlanSubscription({
   prices,
   planTitleForMp,
   normalizePlanId,
+  createPreapproval = mpCreatePreapproval,
+  searchPreapprovalByExternalReference = mpSearchPreapprovalByExternalReference,
+  nowMs = Date.now(),
 }) {
   if (!isRecurringPlanBillingEnabled()) {
     console.log(JSON.stringify({ evt: "PLAN_RECURRING_FLAG", enabled: false }));
@@ -608,6 +865,12 @@ export async function runCreatePlanSubscription({
   const uid = request.auth.uid;
   const email = String(request.auth.token?.email || "").trim().toLowerCase();
   const data = request.data || {};
+  if (hasStoreContextInPlanPayloadLocal(data)) {
+    throw new HttpsError(
+      "invalid-argument",
+      "Payload inválido para plano: contexto de loja não é permitido.",
+    );
+  }
   const planRaw = String(data.plan || data.planId || "").trim().toLowerCase();
   const allowed = new Set([
     "mensal",
@@ -621,17 +884,127 @@ export async function runCreatePlanSubscription({
     throw new HttpsError("invalid-argument", "plan inválido para assinatura recorrente.");
   }
   const canonical = normalizePlanId(planRaw);
-  const returnUrl =
-    String(data.returnUrl || "").trim() ||
-    `${webBase.replace(/\/$/, "")}/planos/retorno`;
+  const returnUrl = `${String(webBase || "").replace(/\/$/, "")}/planos/retorno`;
+  const externalReference = deterministicCreateExternalReference(uid, canonical);
 
-  const start = new Date();
+  const userRef = db.collection("users").doc(uid);
+  const userSnap = await userRef.get();
+  const userData = userSnap.exists ? userSnap.data() || {} : {};
+
+  const preflight = evaluateBillingPreflight({
+    operation: BILLING_OP_CREATE,
+    canonicalRequested: canonical,
+    userData,
+    normalizePlanId,
+    nowMs,
+  });
+  if (preflight.result === "NO_OP") {
+    return {
+      ok: true,
+      alreadyActive: true,
+      message: "Você já está com este plano ativo.",
+      canonicalPlanId: canonical,
+    };
+  }
+  if (preflight.result === "FAIL_CLOSED") {
+    const msg =
+      preflight.reason === "use_plan_change"
+        ? "Já existe assinatura recorrente ativa. Use a troca de plano."
+        : "Estado de cobrança ambíguo. Não foi criada nova assinatura.";
+    throw new HttpsError("failed-precondition", msg);
+  }
+  if (preflight.result === "BLOCK_VISIBLE") {
+    throw new HttpsError("failed-precondition", "PLAN_BILLING_OPERATION_IN_PROGRESS");
+  }
+
+  const reuseFrom = async (initPoint, preapprovalId) => {
+    const ip = String(initPoint || "").trim();
+    const pid = String(preapprovalId || "").trim();
+    if (ip) {
+      return {
+        ok: true,
+        reused: true,
+        initPoint: ip,
+        preapprovalId: pid || undefined,
+        externalReference,
+        canonicalPlanId: canonical,
+      };
+    }
+    if (pid) {
+      const subSnap = await userRef.collection("subscriptions").doc(pid).get();
+      const subInit = subSnap.exists
+        ? String((subSnap.data() || {}).initPoint || "").trim()
+        : "";
+      if (subInit) {
+        return {
+          ok: true,
+          reused: true,
+          initPoint: subInit,
+          preapprovalId: pid,
+          externalReference,
+          canonicalPlanId: canonical,
+        };
+      }
+    }
+    return null;
+  };
+
+  if (preflight.result === "REUSE_EXISTING_OPERATION") {
+    const reused = await reuseFrom(
+      preflight.initPoint,
+      preflight.pendingProviderSubscriptionId,
+    );
+    if (reused) return reused;
+  }
+
+  const claim = await claimOrReuseBillingOperation(db, {
+    op: BILLING_OP_CREATE,
+    uid,
+    canonicalPlanId: canonical,
+    nowMs,
+  });
+
+  if (claim.action === "FAILED_FINAL") {
+    throw new HttpsError("failed-precondition", "PLAN_BILLING_OPERATION_FAILED_FINAL");
+  }
+  if (claim.action === "IN_PROGRESS") {
+    throw new HttpsError("failed-precondition", "PLAN_BILLING_OPERATION_IN_PROGRESS");
+  }
+  if (claim.action === "REUSE") {
+    const reused = await reuseFrom(
+      claim.record.initPoint,
+      claim.record.pendingProviderSubscriptionId,
+    );
+    if (reused) return reused;
+  }
+
+  let mpRes = null;
+  if (claim.action === "RECONCILE" || claim.action === "FINALIZE_LOCAL") {
+    try {
+      const found = claim.record.pendingProviderSubscriptionId
+        ? { id: claim.record.pendingProviderSubscriptionId, init_point: claim.record.initPoint }
+        : await searchPreapprovalByExternalReference(token, externalReference);
+      if (found && found.id) {
+        mpRes = found;
+      } else if (claim.action === "FINALIZE_LOCAL") {
+        throw new HttpsError(
+          "failed-precondition",
+          "PLAN_BILLING_PROVIDER_CREATED_LOCAL_INCOMPLETE",
+        );
+      }
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      throw new HttpsError("internal", e?.message || "Falha ao reconciliar assinatura.");
+    }
+  }
+
+  const start = new Date(nowMs);
   const end = new Date(start);
   end.setFullYear(end.getFullYear() + 10);
 
   const body = {
     reason: planTitleForMp(canonical),
-    external_reference: `plan:${uid}:${canonical}:${Date.now()}`,
+    external_reference: externalReference,
     payer_email: email || undefined,
     auto_recurring: {
       ...autoRecurringForPlan(canonical, prices),
@@ -641,72 +1014,84 @@ export async function runCreatePlanSubscription({
     back_url: returnUrl,
     status: "authorized",
   };
-  console.log(
-    JSON.stringify({
-      evt: "PLAN_RECURRING_CREATE_START",
-      uid,
-      planId: canonical,
-      amount: Number(body.auto_recurring?.transaction_amount || 0),
-      frequencyType: String(body.auto_recurring?.frequency_type || ""),
-    }),
-  );
 
-  let mpRes;
-  try {
-    mpRes = await mpCreatePreapproval(token, body);
-  } catch (e) {
-    console.error("[createPlanSubscription] MP error", e?.message || e);
-    console.error(
+  if (!mpRes) {
+    console.log(
       JSON.stringify({
-        evt: "PLAN_RECURRING_CREATE_ERROR",
-        message: String(e?.message || "unknown").slice(0, 250),
+        evt: "PLAN_RECURRING_CREATE_START",
+        uid,
+        planId: canonical,
+        amount: Number(body.auto_recurring?.transaction_amount || 0),
+        frequencyType: String(body.auto_recurring?.frequency_type || ""),
       }),
     );
-    throw new HttpsError("internal", e?.message || "Erro ao criar assinatura no Mercado Pago.");
+    try {
+      mpRes = await createPreapproval(token, body);
+    } catch (e) {
+      console.error("[createPlanSubscription] MP error", e?.message || e);
+      await markBillingOperationFailed(db, {
+        op: BILLING_OP_CREATE,
+        uid,
+        canonicalPlanId: canonical,
+        lastError: e?.message || e,
+        nowMs,
+      });
+      throw new HttpsError("internal", e?.message || "Erro ao criar assinatura no Mercado Pago.");
+    }
   }
 
   const preapprovalId = String(mpRes.id || "");
   const initPoint = String(mpRes.init_point || mpRes.initPoint || "").trim();
   if (!preapprovalId || !initPoint) {
-    console.error("[createPlanSubscription] resposta MP incompleta", JSON.stringify(mpRes).slice(0, 500));
+    await markBillingOperationFailed(db, {
+      op: BILLING_OP_CREATE,
+      uid,
+      canonicalPlanId: canonical,
+      lastError: "resposta_mp_incompleta",
+      nowMs,
+    });
     throw new HttpsError("internal", "Resposta inválida do Mercado Pago (assinatura recorrente).");
   }
 
-  const intentRef = db.collection(PLAN_RECURRING_INTENTS).doc(preapprovalId);
-  await intentRef.set(
-    {
+  try {
+    await recordProviderIdOnCreatingOp(db, {
+      op: BILLING_OP_CREATE,
+      uid,
+      canonicalPlanId: canonical,
+      pendingProviderSubscriptionId: preapprovalId,
+      nowMs,
+    });
+  } catch (e) {
+    console.error("[createPlanSubscription] failed to record provider id", e?.message || e);
+  }
+
+  const persistLocal = async () => {
+    const intentRef = db.collection(PLAN_RECURRING_INTENTS).doc(preapprovalId);
+    const batch = typeof db.batch === "function" ? db.batch() : null;
+    const intentPayload = {
       uid,
       email,
       canonicalPlanId: canonical,
       preapprovalId,
       initPoint,
+      externalReference,
       createdAt: FieldValue.serverTimestamp(),
       status: "pending",
-    },
-    { merge: true },
-  );
-
-  const userRef = db.collection("users").doc(uid);
-  await userRef.set(
-    {
+    };
+    const userPayload = {
       email,
       provider: "mercado_pago",
       billingVersion: 2,
       billingSource: "mp_preapproval_pending",
-      billingMode: "recurring",
-      providerSubscriptionId: preapprovalId,
-      providerPreapprovalPlanId: mpRes.preapproval_plan_id || null,
-      planStatus: "pending",
       pendingPlanId: canonical,
       pendingSubscriptionId: preapprovalId,
       pendingBillingMode: "recurring",
+      billingStatus: "checkout_pending",
+      planStatus: "pending",
       planLastSyncedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
-    },
-    { merge: true },
-  );
-  await userRef.collection("subscriptions").doc(preapprovalId).set(
-    {
+    };
+    const subPayload = {
       provider: "mercado_pago",
       billingMode: "recurring",
       preapprovalId,
@@ -717,14 +1102,46 @@ export async function runCreatePlanSubscription({
       frequency: Number(body.auto_recurring?.frequency || 1),
       frequencyType: String(body.auto_recurring?.frequency_type || "months"),
       status: String(mpRes.status || "pending").toLowerCase() || "pending",
-      externalReference: body.external_reference,
+      externalReference,
       initPoint,
       source: "createPlanSubscription",
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
-    },
-    { merge: true },
-  );
+    };
+    if (batch) {
+      batch.set(intentRef, intentPayload, { merge: true });
+      batch.set(userRef, userPayload, { merge: true });
+      batch.set(userRef.collection("subscriptions").doc(preapprovalId), subPayload, {
+        merge: true,
+      });
+      await batch.commit();
+    } else {
+      await intentRef.set(intentPayload, { merge: true });
+      await userRef.set(userPayload, { merge: true });
+      await userRef.collection("subscriptions").doc(preapprovalId).set(subPayload, {
+        merge: true,
+      });
+    }
+    await completeBillingOperationCreated(db, {
+      op: BILLING_OP_CREATE,
+      uid,
+      canonicalPlanId: canonical,
+      pendingProviderSubscriptionId: preapprovalId,
+      initPoint,
+      externalReference,
+      nowMs,
+    });
+  };
+
+  try {
+    await persistLocal();
+  } catch (e) {
+    console.error("[createPlanSubscription] local persist failed after MP", e?.message || e);
+    throw new HttpsError(
+      "internal",
+      "Assinatura criada no provedor; falha ao gravar estado local. Tente novamente.",
+    );
+  }
 
   console.log(
     JSON.stringify({
@@ -749,7 +1166,7 @@ export async function runCreatePlanSubscription({
     ok: true,
     initPoint,
     preapprovalId,
-    externalReference: body.external_reference,
+    externalReference,
     canonicalPlanId: canonical,
   };
 }

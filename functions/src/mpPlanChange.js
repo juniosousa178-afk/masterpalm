@@ -3,7 +3,6 @@
  * external_reference: mpchg|{uid}|{changeId}|{requestedPlanId}
  */
 
-import crypto from "node:crypto";
 import { FieldValue, Timestamp, FieldPath } from "firebase-admin/firestore";
 import { HttpsError } from "firebase-functions/v2/https";
 
@@ -13,7 +12,17 @@ import {
   mpGetPreapproval,
   isRecurringPlanBillingEnabled,
   resolveCurrentPeriodEndMillis,
+  evaluateBillingPreflight,
 } from "./mpPlanRecurring.js";
+import {
+  BILLING_OP_PLAN_CHANGE,
+  claimOrReuseBillingOperation,
+  completeBillingOperationCreated,
+  deterministicPlanChangeExternalReference,
+  deterministicPlanChangeId,
+  markBillingOperationFailed,
+  recordProviderIdOnCreatingOp,
+} from "./billingOperations.js";
 
 export const PLAN_CHANGE_INTENTS = "plan_change_intents";
 
@@ -292,6 +301,8 @@ export async function runCreatePlanChangeSubscription({
   prices,
   planTitleForMp,
   normalizePlanId,
+  createPreapproval = mpCreatePreapproval,
+  nowMs = Date.now(),
 }) {
   if (!isRecurringPlanBillingEnabled()) {
     throw new HttpsError("failed-precondition", "RECURRING_PLAN_BILLING_DISABLED");
@@ -342,6 +353,94 @@ export async function runCreatePlanChangeSubscription({
     };
   }
 
+  const preflight = evaluateBillingPreflight({
+    operation: BILLING_OP_PLAN_CHANGE,
+    canonicalRequested: canonical,
+    userData: ud,
+    normalizePlanId,
+    nowMs,
+  });
+  if (preflight.result === "FAIL_CLOSED") {
+    throw new HttpsError(
+      "failed-precondition",
+      "Estado de cobrança ambíguo. Não foi criada nova troca de plano.",
+    );
+  }
+  if (preflight.result === "BLOCK_VISIBLE") {
+    throw new HttpsError("failed-precondition", "PLAN_BILLING_OPERATION_IN_PROGRESS");
+  }
+  if (preflight.result === "NO_OP") {
+    return {
+      ok: true,
+      alreadyActive: true,
+      message: "Você já está com este plano ativo.",
+    };
+  }
+
+  const activeProviderId = String(ud.providerSubscriptionId || "").trim();
+
+  const tryReusePending = async () => {
+    const pendingTo = String(ud.pendingPlanChangeToPlanId || "").trim();
+    const pendingPre = String(ud.pendingPlanChangePreapprovalId || "").trim();
+    if (normalizePlanId(pendingTo) !== canonical || !pendingPre) return null;
+    const subSnap = await userRef.collection("subscriptions").doc(pendingPre).get();
+    const initPoint = subSnap.exists
+      ? String((subSnap.data() || {}).initPoint || "").trim()
+      : "";
+    if (!initPoint) return null;
+    return {
+      ok: true,
+      reused: true,
+      initPoint,
+      changeId: String(ud.pendingPlanChangeId || "").trim() || undefined,
+      newPreapprovalId: pendingPre,
+      fromPlanId: currentPlan,
+      requestedPlanId: canonical,
+    };
+  };
+  const pendingReuse = await tryReusePending();
+  if (pendingReuse) return pendingReuse;
+
+  const claim = await claimOrReuseBillingOperation(db, {
+    op: BILLING_OP_PLAN_CHANGE,
+    uid,
+    canonicalPlanId: canonical,
+    nowMs,
+  });
+  if (claim.action === "FAILED_FINAL") {
+    throw new HttpsError("failed-precondition", "PLAN_BILLING_OPERATION_FAILED_FINAL");
+  }
+  if (claim.action === "IN_PROGRESS") {
+    throw new HttpsError("failed-precondition", "PLAN_BILLING_OPERATION_IN_PROGRESS");
+  }
+  if (claim.action === "REUSE" && String(claim.record.initPoint || "").trim()) {
+    return {
+      ok: true,
+      reused: true,
+      initPoint: String(claim.record.initPoint).trim(),
+      changeId: String(claim.record.changeId || "").trim() || undefined,
+      newPreapprovalId: claim.record.pendingProviderSubscriptionId,
+      fromPlanId: currentPlan,
+      requestedPlanId: canonical,
+    };
+  }
+  if (claim.action === "FINALIZE_LOCAL" && String(claim.record.initPoint || "").trim()) {
+    return {
+      ok: true,
+      reused: true,
+      initPoint: String(claim.record.initPoint).trim(),
+      newPreapprovalId: claim.record.pendingProviderSubscriptionId,
+      fromPlanId: currentPlan,
+      requestedPlanId: canonical,
+    };
+  }
+  if (claim.action === "FINALIZE_LOCAL") {
+    throw new HttpsError(
+      "failed-precondition",
+      "PLAN_BILLING_PROVIDER_CREATED_LOCAL_INCOMPLETE",
+    );
+  }
+
   const oldPreapprovalId = await resolveOldPreapprovalIdForPlanChange(
     db,
     uid,
@@ -356,10 +455,14 @@ export async function runCreatePlanChangeSubscription({
     );
   }
 
-  const changeId = crypto.randomUUID().replace(/-/g, "");
+  const changeId = deterministicPlanChangeId(uid, canonical);
   const billingCycle = canonical === "pro_yearly" ? "annual" : "monthly";
   const autoRecurring = autoRecurringForPlan(canonical, prices);
-  const externalReference = `mpchg|${uid}|${changeId}|${canonical}`;
+  const externalReference = deterministicPlanChangeExternalReference(
+    uid,
+    canonical,
+    changeId,
+  );
 
   console.info("[PLAN_CHANGE_CREATE_START]", {
     uid,
@@ -387,9 +490,7 @@ export async function runCreatePlanChangeSubscription({
     { merge: true },
   );
 
-  const returnUrl =
-    String(data.returnUrl || "").trim() ||
-    `${webBase.replace(/\/$/, "")}/assinatura/troca/${changeId}/retorno`;
+  const returnUrl = `${String(webBase || "").replace(/\/$/, "")}/assinatura/troca/${changeId}/retorno`;
 
   const start = new Date();
   const end = new Date(start);
@@ -410,7 +511,7 @@ export async function runCreatePlanChangeSubscription({
 
   let mpRes;
   try {
-    mpRes = await mpCreatePreapproval(token, body);
+    mpRes = await createPreapproval(token, body);
   } catch (e) {
     console.error("[PLAN_CHANGE_CREATE_ERROR]", {
       uid,
@@ -429,6 +530,13 @@ export async function runCreatePlanChangeSubscription({
       },
       { merge: true },
     );
+    await markBillingOperationFailed(db, {
+      op: BILLING_OP_PLAN_CHANGE,
+      uid,
+      canonicalPlanId: canonical,
+      lastError: e?.message || e,
+      nowMs,
+    });
     throw new HttpsError("internal", e?.message || "Erro ao criar troca de plano no Mercado Pago.");
   }
 
@@ -440,8 +548,23 @@ export async function runCreatePlanChangeSubscription({
       changeId,
       err: "resposta_mp_incompleta",
     });
+    await markBillingOperationFailed(db, {
+      op: BILLING_OP_PLAN_CHANGE,
+      uid,
+      canonicalPlanId: canonical,
+      lastError: "resposta_mp_incompleta",
+      nowMs,
+    });
     throw new HttpsError("internal", "Resposta inválida do Mercado Pago (troca de plano).");
   }
+
+  await recordProviderIdOnCreatingOp(db, {
+    op: BILLING_OP_PLAN_CHANGE,
+    uid,
+    canonicalPlanId: canonical,
+    pendingProviderSubscriptionId: newPreapprovalId,
+    nowMs,
+  });
 
   const subPath = `users/${uid}/subscriptions/${newPreapprovalId}`;
   const subFields = buildPlanChangeSubscriptionFields({
@@ -489,11 +612,22 @@ export async function runCreatePlanChangeSubscription({
       pendingPlanChangeToPlanId: canonical,
       pendingPlanChangePreapprovalId: newPreapprovalId,
       pendingPlanChangeStatus: "pending",
+      billingStatus: "checkout_pending",
       updatedAt: FieldValue.serverTimestamp(),
     },
     { merge: true },
   );
   await batch.commit();
+
+  await completeBillingOperationCreated(db, {
+    op: BILLING_OP_PLAN_CHANGE,
+    uid,
+    canonicalPlanId: canonical,
+    pendingProviderSubscriptionId: newPreapprovalId,
+    initPoint,
+    externalReference,
+    nowMs,
+  });
 
   console.info("[PLAN_CHANGE_CREATE_SUCCESS]", {
     uid,
@@ -502,6 +636,7 @@ export async function runCreatePlanChangeSubscription({
     changeId,
     oldPreapprovalId,
     newPreapprovalId,
+    preservedActiveProviderSubscriptionId: activeProviderId,
   });
 
   return {
@@ -572,6 +707,20 @@ export async function processPlanChangePaymentWebhook({
       },
       { merge: true },
     );
+    if (status !== "pending" && status !== "in_process") {
+      const userRefFail = db.collection("users").doc(uid);
+      await userRefFail.set(
+        {
+          pendingPlanChangeId: FieldValue.delete(),
+          pendingPlanChangeFromPlanId: FieldValue.delete(),
+          pendingPlanChangeToPlanId: FieldValue.delete(),
+          pendingPlanChangePreapprovalId: FieldValue.delete(),
+          pendingPlanChangeStatus: FieldValue.delete(),
+          updatedAt: nowTs,
+        },
+        { merge: true },
+      );
+    }
     return { handled: true };
   }
 
@@ -675,6 +824,7 @@ export async function processPlanChangePaymentWebhook({
         billingMode: "recurring",
         billingVersion: 2,
         billingSource: "mp_recurring_plan_change_approved",
+        billingStatus: "active",
         currentPlanId: canonical,
         currentPeriodStart: periodStartTs,
         currentPeriodEnd: periodEndTs,

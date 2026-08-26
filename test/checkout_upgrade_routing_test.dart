@@ -456,4 +456,21 @@ void main() {
     expect(newCount, 0);
     expect(opener.opened, isEmpty);
   });
+
+  test('Release A: Free → Pro permanece oneTimeOrCreate (P1E ausente)', () {
+    final decision = decideCheckoutUpgradeRoute(
+      snapshot: const CheckoutRoutingSnapshot(
+        plan: PlanInfo(
+          planId: PlanId.freeLimited,
+          status: 'active',
+          trialing: false,
+          currentPeriodEnd: null,
+          trialUsed: true,
+          manualOverride: false,
+        ),
+      ),
+      targetCanonical: 'pro_monthly',
+    );
+    expect(decision.kind, CheckoutUpgradeDecisionKind.oneTimeOrCreate);
+  });
 }

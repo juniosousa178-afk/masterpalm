@@ -64,6 +64,7 @@ export const RATE_LIMITS = {
   cancelPlanRenewalAtPeriodEnd: { maxPerMin: 10, windowMs: 60_000 },
   reactivatePlanRenewal: { maxPerMin: 10, windowMs: 60_000 },
   createPlanSubscription: { maxPerMin: 5, windowMs: 60_000 },
+  createPlanChangeSubscription: { maxPerMin: 5, windowMs: 60_000 },
   cancelPlanSubscription: { maxPerMin: 10, windowMs: 60_000 },
   reactivatePlanSubscription: { maxPerMin: 10, windowMs: 60_000 },
   syncPlanSubscription: { maxPerMin: 20, windowMs: 60_000 },

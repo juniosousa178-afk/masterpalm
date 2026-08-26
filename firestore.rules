@@ -1427,6 +1427,9 @@ service cloud.firestore {
     match /plan_recurring_intents/{id} {
       allow read, write: if false;
     }
+    match /billing_operations/{id} {
+      allow read, write: if false;
+    }
     match /processed_plan_events/{id} {
       allow read, write: if false;
     }
