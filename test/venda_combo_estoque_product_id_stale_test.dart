@@ -157,23 +157,41 @@ void main() {
       expect(preFix!.slug, slugRelogio);
 
       // Pós-fix: expandirCombos não usa preFix quando nome da linha é Anel.
-      final (_, produtosEnc, __) = VendaComboEstoqueExpansion.expandirCombos(
+      final expandedStale = VendaComboEstoqueExpansion.expandirCombos(
         itens: [itemStale],
         produtosBox: box,
         lojaId: lojaId,
       );
-      expect(produtosEnc.single.slug, isNot(preFix.slug));
+      expect(expandedStale.$2.single.slug, isNot(preFix.slug));
     });
   });
 
   group('resolução segura quando nome não existe no estoque local', () {
-    test('bloqueia com exceção se productId stale e nome não encontrado', () {
+    test('ID estável + nome histórico sem match é rename: resolve pelo productId', () {
       final item = VendaItem(
         produtoNome: 'Produto Inexistente XYZ',
         quantidade: 1,
         precoUnitario: 10.0,
         lojaId: lojaId,
         productId: idRelogio,
+      );
+
+      final expanded = VendaComboEstoqueExpansion.expandirCombos(
+        itens: [item],
+        produtosBox: box,
+        lojaId: lojaId,
+      );
+      expect(expanded.$2.single.idFirebase, idRelogio);
+      expect(expanded.$2.single.nome, nomeRelogio);
+    });
+
+    test('bloqueia se productId e nome não resolvem', () {
+      final item = VendaItem(
+        produtoNome: 'Produto Inexistente XYZ',
+        quantidade: 1,
+        precoUnitario: 10.0,
+        lojaId: lojaId,
+        productId: 'produto-apagado',
       );
 
       expect(
@@ -209,14 +227,14 @@ void main() {
         productId: idRelogio,
       );
 
-      final (_, produtosEnc, __) = VendaComboEstoqueExpansion.expandirCombos(
+      final expandedAmbiguo = VendaComboEstoqueExpansion.expandirCombos(
         itens: [item],
         produtosBox: box,
         lojaId: lojaId,
       );
 
-      expect(produtosEnc.single.nome.toLowerCase(), nomeAnel.toLowerCase());
-      expect(produtosEnc.single.slug, isNot(slugRelogio));
+      expect(expandedAmbiguo.$2.single.nome.toLowerCase(), nomeAnel.toLowerCase());
+      expect(expandedAmbiguo.$2.single.slug, isNot(slugRelogio));
     });
   });
 }

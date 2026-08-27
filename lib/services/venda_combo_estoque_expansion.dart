@@ -83,38 +83,56 @@ class VendaComboEstoqueExpansion {
 
     for (var idx = 0; idx < itens.length; idx++) {
       final it = itens[idx];
-      Produto? p;
+      Produto? byId;
       final pid = (it.productId ?? '').trim();
       if (pid.isNotEmpty) {
-        p = produtosBox.values.firstWhereOrNull(
+        byId = produtosBox.values.firstWhereOrNull(
           (prod) => prod.lojaId == lojaId && prod.idFirebase.trim() == pid,
         );
-        p ??= produtosBox.values.firstWhereOrNull(
+        byId ??= produtosBox.values.firstWhereOrNull(
           (prod) => prod.lojaId == lojaId && prod.slug.trim() == pid,
         );
-        if (p != null) {
-          if (productIdIncoerenteComNomeExibido(
-            nomeProdutoResolvido: p.nome,
-            nomeExibido: it.produtoNome,
-          )) {
-            debugPrint(
-              '[VENDA_ITEM_MISMATCH] productId=$pid aponta para "${p.nome}" '
-              'mas linha="${it.produtoNome}" — ignorando productId',
-            );
-            p = null;
-          } else {
-            debugPrint('[VENDA_ITEM_ID] [DUPLICAR_VENDA] Produto principal por productId | lojaId=$lojaId | productId=$pid');
-          }
-        }
       }
-      if (p == null) {
-        p = produtosBox.values.firstWhereOrNull(
-          (prod) =>
-              prod.lojaId == lojaId &&
-              prod.nome.trim().toLowerCase() == it.produtoNome.trim().toLowerCase(),
-        );
-        if (p != null) {
-          debugPrint('[VENDA_ITEM_FALLBACK] [COMBO_MATCH] Produto principal por nome | lojaId=$lojaId | nome=${it.produtoNome}');
+      final byName = produtosBox.values.firstWhereOrNull(
+        (prod) =>
+            prod.lojaId == lojaId &&
+            prod.nome.trim().toLowerCase() == it.produtoNome.trim().toLowerCase(),
+      );
+      final choice = decideProdutoLinhaIdentity(
+        hasIdCandidate: byId != null,
+        hasNameCandidate: byName != null,
+        idCandidateNameAgreesWithLine: byId == null ||
+            !productIdIncoerenteComNomeExibido(
+              nomeProdutoResolvido: byId.nome,
+              nomeExibido: it.produtoNome,
+            ),
+        idAndNameAreSameProduct: byId != null &&
+            byName != null &&
+            produtoLinhaStableIdsIguais(byId.idFirebase, byName.idFirebase),
+      );
+      Produto? p;
+      switch (choice) {
+        case ProdutoLinhaIdentityChoice.useIdCandidate:
+          p = byId;
+          debugPrint(
+            '[VENDA_ITEM_ID] [DUPLICAR_VENDA] Produto principal por productId | '
+            'lojaId=$lojaId | productId=$pid',
+          );
+          break;
+        case ProdutoLinhaIdentityChoice.useNameCandidate:
+          p = byName;
+          if (byId != null &&
+              !produtoLinhaStableIdsIguais(byId.idFirebase, byName?.idFirebase)) {
+            debugPrint(
+              '[VENDA_ITEM_MISMATCH] productId=$pid aponta para "${byId.nome}" '
+              'mas linha="${it.produtoNome}" — usando produto do nome',
+            );
+          } else {
+            debugPrint(
+              '[VENDA_ITEM_FALLBACK] [COMBO_MATCH] Produto principal por nome | '
+              'lojaId=$lojaId | nome=${it.produtoNome}',
+            );
+          }
           reportProductResolvedByName(
             lojaId: lojaId,
             fluxo: '_expandirCombos_principal',
@@ -122,7 +140,10 @@ class VendaComboEstoqueExpansion {
             slug: null,
             productIdRecebido: pid.isEmpty ? null : pid,
           );
-        }
+          break;
+        case ProdutoLinhaIdentityChoice.notFound:
+          p = null;
+          break;
       }
       if (p == null) {
         throw Exception('Produto não encontrado no estoque: ${it.produtoNome}');

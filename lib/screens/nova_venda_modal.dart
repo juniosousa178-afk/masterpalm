@@ -1486,34 +1486,45 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     required String nome,
     String? productId,
   }) {
-    Produto prod = Produto.vazio();
+    Produto byId = Produto.vazio();
     final pid = (productId ?? '').trim();
     if (pid.isNotEmpty) {
       try {
-        prod = widget.produtosBox.values.firstWhere(
+        byId = widget.produtosBox.values.firstWhere(
           (p) =>
               p.lojaId == lojaId &&
               (p.idFirebase == pid || p.key?.toString() == pid),
           orElse: () => Produto.vazio(),
         );
-        if (prod.nome.isNotEmpty &&
-            productIdIncoerenteComNomeExibido(
-              nomeProdutoResolvido: prod.nome,
-              nomeExibido: nome,
-            )) {
-          prod = Produto.vazio();
-        }
       } catch (_) {}
     }
-    if (prod.nome.isEmpty) {
-      prod = widget.produtosBox.values.firstWhere(
-        (p) =>
-            p.lojaId == lojaId &&
-            p.nome.trim().toLowerCase() == nome.trim().toLowerCase(),
-        orElse: () => Produto.vazio(),
-      );
+    final byName = widget.produtosBox.values.firstWhere(
+      (p) =>
+          p.lojaId == lojaId &&
+          p.nome.trim().toLowerCase() == nome.trim().toLowerCase(),
+      orElse: () => Produto.vazio(),
+    );
+    final byIdKey = byId.key?.toString() ?? '';
+    final byNameKey = byName.key?.toString() ?? '';
+    final choice = decideProdutoLinhaIdentity(
+      hasIdCandidate: byId.nome.isNotEmpty,
+      hasNameCandidate: byName.nome.isNotEmpty,
+      idCandidateNameAgreesWithLine: !productIdIncoerenteComNomeExibido(
+        nomeProdutoResolvido: byId.nome,
+        nomeExibido: nome,
+      ),
+      idAndNameAreSameProduct:
+          produtoLinhaStableIdsIguais(byId.idFirebase, byName.idFirebase) ||
+          (byIdKey.isNotEmpty && byIdKey == byNameKey),
+    );
+    switch (choice) {
+      case ProdutoLinhaIdentityChoice.useIdCandidate:
+        return byId;
+      case ProdutoLinhaIdentityChoice.useNameCandidate:
+        return byName;
+      case ProdutoLinhaIdentityChoice.notFound:
+        return Produto.vazio();
     }
-    return prod;
   }
 
   /// Retorna `false` se o usuário cancelou ou foi redirecionado (não continuar finalização).

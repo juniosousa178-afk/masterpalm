@@ -28,6 +28,48 @@ bool productIdIncoerenteComNomeExibido({
   return nProd != nLinha;
 }
 
+/// Precedência de identidade na linha de venda (edit-sale / combo).
+///
+/// ID da mesma loja é primário. Nome é metadado + fallback legado.
+/// Rename (ID bate, nome da linha não existe noutro produto) mantém o ID.
+/// Conflito Lavile (ID=A, nome único=B distinto) usa o candidato por nome.
+enum ProdutoLinhaIdentityChoice {
+  useIdCandidate,
+  useNameCandidate,
+  notFound,
+}
+
+bool produtoLinhaStableIdsIguais(String? a, String? b) {
+  final xa = (a ?? '').trim();
+  final xb = (b ?? '').trim();
+  if (xa.isEmpty || xb.isEmpty) return false;
+  return xa == xb;
+}
+
+ProdutoLinhaIdentityChoice decideProdutoLinhaIdentity({
+  required bool hasIdCandidate,
+  required bool hasNameCandidate,
+  required bool idCandidateNameAgreesWithLine,
+  required bool idAndNameAreSameProduct,
+}) {
+  if (hasIdCandidate) {
+    if (idCandidateNameAgreesWithLine) {
+      return ProdutoLinhaIdentityChoice.useIdCandidate;
+    }
+    if (!hasNameCandidate) {
+      return ProdutoLinhaIdentityChoice.useIdCandidate;
+    }
+    if (idAndNameAreSameProduct) {
+      return ProdutoLinhaIdentityChoice.useIdCandidate;
+    }
+    return ProdutoLinhaIdentityChoice.useNameCandidate;
+  }
+  if (hasNameCandidate) {
+    return ProdutoLinhaIdentityChoice.useNameCandidate;
+  }
+  return ProdutoLinhaIdentityChoice.notFound;
+}
+
 /// Chamar quando um produto foi resolvido por NOME (não por productId nem slug).
 /// Em produção: só loga. Em dev/homolog com [kStrictProductResolution]: loga e lança.
 void reportProductResolvedByName({
