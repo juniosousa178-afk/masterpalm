@@ -377,8 +377,13 @@ export function evaluateBillingPreflight({
     return { result: "FAIL_CLOSED", reason: "use_plan_change" };
   }
 
-  if (operation === BILLING_OP_CREATE && isPaidCanonicalPlanId(cur) && !activeRecurring && String(userData?.providerSubscriptionId || "").trim()) {
-    return { result: "FAIL_CLOSED", reason: "inconsistent_paid_without_active_recurring" };
+  // P1E: providerSubscriptionId is active/current identity (P1B). CREATE must not
+  // open a second subscription when local plan looks Free/stale/empty.
+  if (operation === BILLING_OP_CREATE && String(userData?.providerSubscriptionId || "").trim()) {
+    return {
+      result: "FAIL_CLOSED",
+      reason: "existing_provider_subscription_blocks_create",
+    };
   }
 
   if (operation === BILLING_OP_PLAN_CHANGE && !activeRecurring) {

@@ -81,6 +81,49 @@ const _kPaidCanonicalPlanIds = {
   'pro_yearly',
 };
 
+const _kP1eFreeEligiblePlanIds = {
+  'free_limited',
+  'free_trial_30d',
+  'free_trial_90d',
+};
+
+/// Target Pro (mensal/anual) for P1E Free → recurring create. Not Basic/Intermediate.
+bool isP1eProTarget(String? raw) {
+  final t = normalizeCheckoutPlanId(raw);
+  return t == 'pro_monthly' || t == 'pro_yearly';
+}
+
+bool _normalizedIsPaidPlan(String? raw) {
+  final n = (raw ?? '').trim();
+  if (n.isEmpty) return false;
+  return _kPaidCanonicalPlanIds.contains(normalizeCheckoutPlanId(n));
+}
+
+/// P1E Free eligibility (027). Never treat Basic/paid/lifetime/provider-id as Free.
+bool isP1eFreeEligible(CheckoutRoutingSnapshot snapshot) {
+  if (snapshot.unknown) return false;
+  final plan = snapshot.plan;
+  final providerId = plan?.providerSubscriptionId?.trim() ?? '';
+  if (providerId.isNotEmpty) return false;
+  if (snapshot.access?.subscription.hasMaskedSubscriptionId == true) {
+    return false;
+  }
+  if (plan?.isLifetime == true) return false;
+
+  final fromPlan = (plan?.planId ?? '').trim();
+  final fromDto = (snapshot.access?.contractedPlanId ?? '').trim();
+  if (_normalizedIsPaidPlan(fromPlan) || _normalizedIsPaidPlan(fromDto)) {
+    return false;
+  }
+
+  final ids = <String>{};
+  if (fromPlan.isNotEmpty) ids.add(normalizeCheckoutPlanId(fromPlan));
+  if (fromDto.isNotEmpty) ids.add(normalizeCheckoutPlanId(fromDto));
+  if (ids.contains('lifetime')) return false;
+  if (ids.isEmpty) return true;
+  return ids.every(_kP1eFreeEligiblePlanIds.contains);
+}
+
 String normalizeCheckoutPlanId(String? raw) {
   final p = (raw ?? '').trim().toLowerCase();
   switch (p) {
@@ -226,15 +269,19 @@ class CheckoutPlanCoordinator {
     required this.callPlanChange,
     required this.openNewCheckout,
     required this.opener,
+    this.openRecurringCreate,
   });
 
   final Future<CheckoutRoutingSnapshot> Function() resolveSnapshot;
   final Future<Map<String, dynamic>> Function(String planApi) callPlanChange;
   final Future<CheckoutLaunchResult> Function(String planApi) openNewCheckout;
+  /// P1E Free → Pro. Production wires [CheckoutService._abrirCheckoutPlanoRecorrente].
+  final Future<CheckoutLaunchResult> Function(String planApi)? openRecurringCreate;
   final CheckoutUrlOpener opener;
 
   int planChangeCallCount = 0;
   int newCheckoutCallCount = 0;
+  int recurringCreateCallCount = 0;
 
   Future<CheckoutLaunchResult> run({required String planoId}) async {
     final snapshot = await resolveSnapshot();
@@ -261,6 +308,12 @@ class CheckoutPlanCoordinator {
               'Já existe uma alteração para este plano a aguardar pagamento.',
         );
       case CheckoutUpgradeDecisionKind.oneTimeOrCreate:
+        if (openRecurringCreate != null &&
+            isP1eFreeEligible(snapshot) &&
+            isP1eProTarget(target)) {
+          recurringCreateCallCount++;
+          return openRecurringCreate!(target);
+        }
         newCheckoutCallCount++;
         return openNewCheckout(target);
       case CheckoutUpgradeDecisionKind.planChange:
@@ -531,6 +584,8 @@ class CheckoutService {
       callPlanChange: (planApi) =>
           callPlanChangeSubscription(planApi: planApi),
       openNewCheckout: (planApi) => _abrirCheckoutPlanoFluxoNovo(planApi: planApi),
+      openRecurringCreate: (planApi) =>
+          _abrirCheckoutPlanoRecorrente(planApi: planApi),
       opener: urlOpener,
     );
   }
@@ -758,20 +813,33 @@ class CheckoutService {
         rethrow;
       }
     }
-    final map = result.data;
-    if (map is! Map) {
+    final parsed = parseCreatePlanSubscriptionResponse(result.data);
+    await _openCheckoutUrl(parsed.checkoutUrl!.toString());
+    return CheckoutLaunchResult(
+      flowType: CheckoutFlowType.recurringCreate,
+      checkoutUrl: parsed.checkoutUrl,
+      opened: true,
+    );
+  }
+
+  /// Maps [createPlanSubscription] callable payload. Does not navigate.
+  @visibleForTesting
+  static CheckoutLaunchResult parseCreatePlanSubscriptionResponse(Object? data) {
+    if (data is! Map) {
       throw Exception('Resposta inválida do servidor (recorrente).');
     }
+    final map = Map<String, dynamic>.from(data);
     final ok = map['ok'] == true;
     final initPoint = map['initPoint']?.toString() ?? '';
     if (!ok || initPoint.isEmpty) {
-      throw Exception(map['message']?.toString() ?? 'Falha ao iniciar assinatura recorrente.');
+      throw Exception(
+        map['message']?.toString() ?? 'Falha ao iniciar assinatura recorrente.',
+      );
     }
-    await _openCheckoutUrl(initPoint);
+    final uri = validateCheckoutHttpsUri(initPoint);
     return CheckoutLaunchResult(
       flowType: CheckoutFlowType.recurringCreate,
-      checkoutUrl: validateCheckoutHttpsUri(initPoint),
-      opened: true,
+      checkoutUrl: uri,
     );
   }
 

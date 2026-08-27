@@ -387,3 +387,113 @@ describe("P1B runCreatePlanChangeSubscription", () => {
     assert.equal(db._docs.get("users/u1").providerSubscriptionId, "pre_old");
   });
 });
+
+describe("P1E CREATE guard: providerSubscriptionId blocks new CREATE", () => {
+  it("free_limited + providerSubscriptionId → FAIL_CLOSED, 0 POST", async () => {
+    const r = evaluateBillingPreflight({
+      operation: "create",
+      canonicalRequested: "pro_monthly",
+      userData: {
+        currentPlanId: "free_limited",
+        status: "active",
+        providerSubscriptionId: "pre_stale_active",
+      },
+      normalizePlanId: norm,
+    });
+    assert.equal(r.result, "FAIL_CLOSED");
+    assert.equal(r.reason, "existing_provider_subscription_blocks_create");
+
+    const db = createMemoryFirestore({
+      "users/u1": {
+        status: "active",
+        currentPlanId: "free_limited",
+        providerSubscriptionId: "pre_stale_active",
+      },
+    });
+    let posts = 0;
+    await assert.rejects(
+      () =>
+        runCreatePlanSubscription({
+          db,
+          request: requestFor("u1", "pro_monthly"),
+          token: "fake",
+          webBase: "https://app.example",
+          prices,
+          planTitleForMp: () => "Pro",
+          normalizePlanId: norm,
+          createPreapproval: async () => {
+            posts += 1;
+            return { id: "x", init_point: "https://www.mercadopago.com.br/x" };
+          },
+        }),
+      (err) => {
+        assert.ok(err instanceof HttpsError);
+        return true;
+      },
+    );
+    assert.equal(posts, 0);
+    assert.equal(db._docs.get("users/u1").providerSubscriptionId, "pre_stale_active");
+  });
+
+  it("empty/unset plan + providerSubscriptionId → FAIL_CLOSED, 0 POST", async () => {
+    const r = evaluateBillingPreflight({
+      operation: "create",
+      canonicalRequested: "pro_monthly",
+      userData: {
+        status: "active",
+        providerSubscriptionId: "pre_orphan",
+      },
+      normalizePlanId: norm,
+    });
+    assert.equal(r.result, "FAIL_CLOSED");
+    assert.equal(r.reason, "existing_provider_subscription_blocks_create");
+  });
+
+  it("trial + providerSubscriptionId → FAIL_CLOSED", () => {
+    for (const trial of ["free_trial_30d", "free_trial_90d"]) {
+      const r = evaluateBillingPreflight({
+        operation: "create",
+        canonicalRequested: "pro_monthly",
+        userData: {
+          currentPlanId: trial,
+          status: "trialing",
+          providerSubscriptionId: "pre_trial_leftover",
+        },
+        normalizePlanId: norm,
+      });
+      assert.equal(r.result, "FAIL_CLOSED", trial);
+      assert.equal(r.reason, "existing_provider_subscription_blocks_create");
+    }
+  });
+
+  it("free_limited without providerSubscriptionId → ALLOW", () => {
+    const r = evaluateBillingPreflight({
+      operation: "create",
+      canonicalRequested: "pro_monthly",
+      userData: {
+        currentPlanId: "free_limited",
+        status: "active",
+      },
+      normalizePlanId: norm,
+    });
+    assert.equal(r.result, "ALLOW");
+  });
+
+  it("CHANGE with active provider is not blocked by CREATE guard", () => {
+    const r = evaluateBillingPreflight({
+      operation: "planChange",
+      canonicalRequested: "pro_monthly",
+      userData: {
+        currentPlanId: "basic_monthly",
+        planStatus: "active",
+        status: "active",
+        billingMode: "recurring",
+        providerSubscriptionId: "pre_old",
+        currentPeriodEnd: futureEnd,
+      },
+      normalizePlanId: norm,
+    });
+    assert.equal(r.result, "ALLOW");
+    assert.notEqual(r.reason, "existing_provider_subscription_blocks_create");
+  });
+});
