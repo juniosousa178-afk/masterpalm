@@ -111,4 +111,40 @@ describe("P1A claimOrReuseBillingOperation", () => {
     assert.equal(d.action, "FINALIZE_LOCAL");
     assert.equal(d.record.pendingProviderSubscriptionId, "pre_existing");
   });
+
+  it("FAILED_RETRYABLE fresco bloqueia reentrada imediata (IN_PROGRESS)", async () => {
+    const db = createMemoryFirestore({
+      "billing_operations/create:u5:pro_monthly": {
+        state: BILLING_OP_STATE.FAILED_RETRYABLE,
+        updatedAtMs: 22_000_000,
+        lastError: "MP preapproval POST 400",
+      },
+    });
+    const withinWindow = await claimOrReuseBillingOperation(db, {
+      op: BILLING_OP_CREATE,
+      uid: "u5",
+      canonicalPlanId: "pro_monthly",
+      nowMs: 22_000_000 + 8_000,
+    });
+    assert.equal(withinWindow.action, "IN_PROGRESS");
+    assert.equal(withinWindow.record.state, BILLING_OP_STATE.FAILED_RETRYABLE);
+  });
+
+  it("FAILED_RETRYABLE após cooldown retorna FAILED_RETRYABLE sem reclaim CREATE", async () => {
+    const db = createMemoryFirestore({
+      "billing_operations/create:u6:pro_monthly": {
+        state: BILLING_OP_STATE.FAILED_RETRYABLE,
+        updatedAtMs: 1,
+        lastError: "MP preapproval POST 400",
+      },
+    });
+    const afterCooldown = await claimOrReuseBillingOperation(db, {
+      op: BILLING_OP_CREATE,
+      uid: "u6",
+      canonicalPlanId: "pro_monthly",
+      nowMs: 1 + CREATING_LOCK_MS + 1,
+    });
+    assert.equal(afterCooldown.action, "FAILED_RETRYABLE");
+    assert.equal(afterCooldown.record.state, BILLING_OP_STATE.FAILED_RETRYABLE);
+  });
 });

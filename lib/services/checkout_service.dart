@@ -453,6 +453,33 @@ class CheckoutService {
   /// Callable exportado em `functions/index.js` para assinatura recorrente inicial.
   static const String planSubscriptionCallableName = 'createPlanSubscription';
 
+  /// In-flight guard for recurring CREATE (createPlanSubscription only).
+  static Future<CheckoutLaunchResult>? _recurringCreateInFlight;
+
+  @visibleForTesting
+  static void resetRecurringCreateInFlightForTest() {
+    _recurringCreateInFlight = null;
+  }
+
+  /// Duplicate in-flight protection for recurring CREATE attempts.
+  @visibleForTesting
+  static Future<CheckoutLaunchResult> runRecurringCreateWithInFlightGuard(
+    Future<CheckoutLaunchResult> Function() operation,
+  ) async {
+    if (_recurringCreateInFlight != null) {
+      return _recurringCreateInFlight!;
+    }
+    final wrapped = operation();
+    _recurringCreateInFlight = wrapped;
+    try {
+      return await wrapped;
+    } finally {
+      if (identical(_recurringCreateInFlight, wrapped)) {
+        _recurringCreateInFlight = null;
+      }
+    }
+  }
+
   /// Callable exportado em `functions/index.js` para troca de plano recorrente.
   static const String planChangeSubscriptionCallableName =
       'createPlanChangeSubscription';
@@ -775,6 +802,14 @@ class CheckoutService {
 
   /// Assinatura recorrente (MP preapproval) — backend [createPlanSubscription].
   static Future<CheckoutLaunchResult> _abrirCheckoutPlanoRecorrente({
+    required String planApi,
+  }) async {
+    return runRecurringCreateWithInFlightGuard(
+      () => _executeRecurringCreatePlanSubscription(planApi: planApi),
+    );
+  }
+
+  static Future<CheckoutLaunchResult> _executeRecurringCreatePlanSubscription({
     required String planApi,
   }) async {
     Future<HttpsCallableResult<dynamic>> callOnce() async {

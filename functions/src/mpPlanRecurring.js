@@ -972,6 +972,9 @@ export async function runCreatePlanSubscription({
   if (claim.action === "FAILED_FINAL") {
     throw new HttpsError("failed-precondition", "PLAN_BILLING_OPERATION_FAILED_FINAL");
   }
+  if (claim.action === "FAILED_RETRYABLE") {
+    throw new HttpsError("failed-precondition", "PLAN_BILLING_OPERATION_FAILED_RETRYABLE");
+  }
   if (claim.action === "IN_PROGRESS") {
     throw new HttpsError("failed-precondition", "PLAN_BILLING_OPERATION_IN_PROGRESS");
   }
@@ -1017,7 +1020,7 @@ export async function runCreatePlanSubscription({
       end_date: end.toISOString(),
     },
     back_url: returnUrl,
-    status: "authorized",
+    status: "pending",
   };
 
   if (!mpRes) {

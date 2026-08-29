@@ -49,7 +49,7 @@ function opRef(db, op, uid, canonicalPlanId) {
 
 /**
  * @returns {Promise<{
- *   action: "REUSE"|"IN_PROGRESS"|"RECONCILE"|"FINALIZE_LOCAL"|"CREATE"|"FAILED_FINAL",
+ *   action: "REUSE"|"IN_PROGRESS"|"RECONCILE"|"FINALIZE_LOCAL"|"CREATE"|"FAILED_FINAL"|"FAILED_RETRYABLE",
  *   record: object,
  *   id: string,
  * }>}
@@ -106,6 +106,17 @@ export async function claimOrReuseBillingOperation(db, {
         { merge: true },
       );
       decision = { action: "RECONCILE", record: data, id };
+      return;
+    }
+
+    if (state === BILLING_OP_STATE.FAILED_RETRYABLE) {
+      const updated = Number(data.updatedAtMs || 0);
+      const age = nowMs - updated;
+      if (updated && age >= 0 && age < CREATING_LOCK_MS) {
+        decision = { action: "IN_PROGRESS", record: data, id };
+        return;
+      }
+      decision = { action: "FAILED_RETRYABLE", record: data, id };
       return;
     }
 

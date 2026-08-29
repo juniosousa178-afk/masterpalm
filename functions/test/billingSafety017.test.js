@@ -13,6 +13,7 @@ import {
   shouldBlockCreateRecurringSubscription,
 } from "../src/mpPlanRecurring.js";
 import { runCreatePlanChangeSubscription } from "../src/mpPlanChange.js";
+import { BILLING_OP_STATE } from "../src/billingOperations.js";
 import { createMemoryFirestore } from "./_memoryFirestore.js";
 
 const ENV_KEY = "USE_RECURRING_PLAN_BILLING";
@@ -232,6 +233,48 @@ describe("P1A/P1B runCreatePlanSubscription", () => {
     });
     assert.equal(body.back_url, "https://app.mastepalm.com.br/planos/retorno");
     assert.equal(String(body.back_url).includes("evil"), false);
+    assert.equal(body.status, "pending");
+  });
+
+  it("FAILED_RETRYABLE fresco bloqueia segundo POST MP imediato", async () => {
+    const db = createMemoryFirestore({
+      "users/u1": { status: "active", currentPlanId: "free_limited" },
+      "billing_operations/create:u1:pro_monthly": {
+        state: BILLING_OP_STATE.FAILED_RETRYABLE,
+        updatedAtMs: 10_000,
+        lastError: "MP preapproval POST 400",
+      },
+    });
+    let posts = 0;
+    await assert.rejects(
+      () =>
+        runCreatePlanSubscription({
+          db,
+          request: requestFor("u1", "pro_monthly"),
+          token: "fake",
+          webBase: "https://app.mastepalm.com.br",
+          prices,
+          planTitleForMp: () => "Pro",
+          normalizePlanId: norm,
+          nowMs: 10_000 + 8_000,
+          createPreapproval: async () => {
+            posts += 1;
+            return {
+              id: "pre_should_not",
+              init_point: "https://www.mercadopago.com.br/x",
+              status: "pending",
+            };
+          },
+          searchPreapprovalByExternalReference: async () => null,
+        }),
+      (err) => {
+        assert.ok(err instanceof HttpsError);
+        assert.equal(err.code, "failed-precondition");
+        assert.match(String(err.message), /IN_PROGRESS|FAILED_RETRYABLE/i);
+        return true;
+      },
+    );
+    assert.equal(posts, 0);
   });
 
   it("provider ok + persistência local: replay não faz 2º POST (response loss)", async () => {
