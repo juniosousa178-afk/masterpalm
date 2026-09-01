@@ -6,7 +6,6 @@ import 'dart:typed_data';
 
 import 'package:collection/collection.dart';
 import 'package:contacts_service_plus/contacts_service_plus.dart';
-import 'package:excel/excel.dart' hide Border;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:firebase_auth/firebase_auth.dart';
@@ -41,6 +40,10 @@ import '../services/pedido_venda_pdf_service.dart';
 import '../utils/export_excel.dart';
 import '../utils/responsive.dart';
 import '../utils/text_utils.dart' show normalizeText, capitalizeWords;
+import '../core/spreadsheet/spreadsheet_file_reader.dart';
+import '../core/spreadsheet/spreadsheet_import_result.dart';
+import '../core/spreadsheet/spreadsheet_import_ui_helper.dart';
+import '../services/spreadsheet/cliente_spreadsheet_import_parser.dart';
 import 'redefinir_senha_cliente_loja_screen.dart';
 import '../services/ai_loja_service.dart';
 import '../services/ia_uso_limite_service.dart';
@@ -1247,7 +1250,7 @@ class _ClientesScreenState extends State<ClientesScreen>
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['xlsx'],
+        allowedExtensions: ['xlsx', 'csv'],
         withData: true,
       );
 
@@ -1256,95 +1259,113 @@ class _ClientesScreenState extends State<ClientesScreen>
       if (mounted) setState(() => _importando = true);
 
       final picked = result.files.first;
-      final fileBytes = picked.bytes ??
-          (picked.path != null && !kIsWeb
-              ? await io.File(picked.path!).readAsBytes()
-              : null);
-      if (fileBytes == null) {
-        if (mounted) setState(() => _importando = false);
-        return;
-      }
-      final excel = Excel.decodeBytes(fileBytes);
-      if (excel.tables.isEmpty) {
+      final fileBytes = await readPlatformFileBytes(picked);
+
+      final parsed = parseClienteSpreadsheet(
+        fileBytes,
+        fileName: picked.name,
+      );
+
+      if (parsed.result.issues.any(
+        (i) =>
+            i.code == SpreadsheetImportCode.ambiguousSheet ||
+            i.code == SpreadsheetImportCode.noValidSheet,
+      )) {
         if (mounted) {
           setState(() => _importando = false);
+          final issue = parsed.result.issues.first;
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('O arquivo não contém planilhas.')),
+            SnackBar(content: Text(issue.message ?? issue.codeLabel)),
           );
         }
-        return;
-      }
-      final Sheet? sheet = excel.tables[excel.tables.keys.first];
-
-      if (sheet == null) {
-        if (mounted) setState(() => _importando = false);
         return;
       }
 
       int importados = 0;
+      var rejeitadosDb = 0;
       bool limiteAtingido = false;
-      for (int i = 1; i < sheet.maxRows; i++) {
-        final row = sheet.row(i);
-        final nome = row[0]?.value?.toString() ?? '';
-        final telefone = row[1]?.value?.toString() ?? '';
-        final instagram = row.length > 2 ? row[2]?.value?.toString() ?? '' : '';
-        final cep = row.length > 3 ? row[3]?.value?.toString() ?? '' : '';
-        final cidade = row.length > 4 ? row[4]?.value?.toString() ?? '' : '';
+      final issues = <SpreadsheetImportIssue>[...parsed.result.issues];
 
-        if (nome.isNotEmpty && telefone.isNotEmpty) {
-          final limpo = telefone.replaceAll(RegExp(r'\D'), '');
-          final e164 = limpo.startsWith('55') ? limpo : '55$limpo';
-          if (e164.length < 10) continue;
-          final existe = clientesBox.values.any(
-            (cli) => cli.telefone == e164 && cli.lojaId == lojaId,
+      for (final row in parsed.rows) {
+        final existe = clientesBox.values.any(
+          (cli) => cli.telefone == row.telefoneE164 && cli.lojaId == lojaId,
+        );
+        if (existe) {
+          rejeitadosDb++;
+          issues.add(
+            SpreadsheetImportIssue(
+              rowNumber: row.sourceRowNumber,
+              field: 'telefone',
+              code: SpreadsheetImportCode.duplicatePhoneInDatabase,
+              message: 'Telefone já cadastrado na base',
+              rawValue: row.telefoneE164,
+            ),
           );
-          if (existe) continue;
-          final guard = LimitsGuard();
-          final pode = await guard.canAddCliente(lojaId!);
-          if (!pode) {
-            limiteAtingido = true;
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    'Limite de clientes atingido. Alguns contatos não foram importados.',
-                  ),
-                  backgroundColor: Colors.orange,
-                ),
-              );
-            }
-            break;
-          }
-          final cliente = Cliente(
-            nome: capitalizeWords(nome),
-            telefone: e164,
-            instagram: instagram,
-            cep: cep,
-            cidade: cidade,
-            lojaId: lojaId!,
-          );
-          clientesBox.add(cliente);
-          ClientesFirestoreService.syncCliente(cliente, lojaId: lojaId!);
-          importados++;
+          continue;
         }
+
+        final guard = LimitsGuard();
+        final pode = await guard.canAddCliente(lojaId!);
+        if (!pode) {
+          limiteAtingido = true;
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Limite de clientes atingido. Alguns contatos não foram importados.',
+                ),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+          break;
+        }
+
+        final cliente = Cliente(
+          nome: capitalizeWords(row.nome),
+          telefone: row.telefoneE164,
+          instagram: row.instagram,
+          cep: row.cep,
+          cidade: row.cidade,
+          lojaId: lojaId!,
+        );
+        clientesBox.add(cliente);
+        ClientesFirestoreService.syncCliente(cliente, lojaId: lojaId!);
+        importados++;
       }
 
       if (mounted) {
         setState(() => _importando = false);
+        final rejectedTotal = parsed.result.rejectedRows + rejeitadosDb;
+        final summary = formatSpreadsheetImportSummary(
+          SpreadsheetImportResult(
+            importedRows: importados,
+            rejectedRows: rejectedTotal,
+            skippedRows: parsed.result.skippedRows,
+          ),
+        );
+        final details = topSpreadsheetIssues(issues);
+        final detailText =
+            details.isNotEmpty ? '\n${details.join('\n')}' : '';
+
         if (limiteAtingido && importados == 0) {
           // Mensagem de limite já exibida no break
         } else if (limiteAtingido && importados > 0) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                '$importados cliente(s) importado(s). Limite do plano atingido; os demais não foram importados.',
+                '$summary. Limite do plano atingido; os demais não foram importados.$detailText',
               ),
               backgroundColor: Colors.orange,
+              duration: const Duration(seconds: 6),
             ),
           );
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("$importados clientes importados!")),
+            SnackBar(
+              content: Text('$summary$detailText'),
+              duration: const Duration(seconds: 6),
+            ),
           );
         }
       }

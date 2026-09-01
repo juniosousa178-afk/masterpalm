@@ -1,7 +1,6 @@
 // lib/screens/precificacao_universal_screen.dart
 // Tela de Precificação Universal - Layout moderno alinhado ao sistema
 
-import 'package:excel/excel.dart' hide Border;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -18,6 +17,10 @@ import '../services/compra_item_pipeline_store.dart';
 import '../services/store_resolver_facade.dart';
 import '../services/produtos_firestore_service.dart';
 import '../utils/moeda_input_formatter.dart';
+import '../core/spreadsheet/spreadsheet_file_reader.dart';
+import '../core/spreadsheet/spreadsheet_import_result.dart';
+import '../core/spreadsheet/spreadsheet_import_ui_helper.dart';
+import '../services/spreadsheet/precificacao_spreadsheet_import_parser.dart';
 
 class PrecificacaoUniversalScreen extends StatefulWidget {
   const PrecificacaoUniversalScreen({super.key});
@@ -285,52 +288,48 @@ class _PrecificacaoUniversalScreenState
   Future<void> importarExcel() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: ['xlsx'],
+      allowedExtensions: ['xlsx', 'csv'],
       withData: true,
     );
     if (result == null || result.files.isEmpty) return;
 
     final file = result.files.first;
-    if (file.bytes == null) {
-      if (mounted) _showSnackBar('Arquivo vazio ou inacessóvel', isError: true);
-      return;
-    }
 
     if (mounted) setState(() => _importando = true);
 
     try {
-      final bytes = file.bytes!;
-      final excel = Excel.decodeBytes(bytes);
-      final sheet = excel.tables[excel.tables.keys.first];
-      if (sheet == null) {
-        if (mounted) _showSnackBar('Planilha inválida', isError: true);
+      final bytes = await readPlatformFileBytes(file);
+      final parsed = parsePrecificacaoSpreadsheet(
+        bytes,
+        fileName: file.name,
+      );
+
+      if (parsed.result.issues.any(
+        (i) =>
+            i.code == SpreadsheetImportCode.ambiguousSheet ||
+            i.code == SpreadsheetImportCode.noValidSheet,
+      )) {
+        if (mounted) {
+          setState(() => _importando = false);
+          final issue = parsed.result.issues.first;
+          _showSnackBar(issue.message ?? issue.codeLabel, isError: true);
+        }
         return;
       }
 
       final novos = <Map<String, dynamic>>[];
       var importSeq = 0;
-      for (var row in sheet.rows.skip(1)) {
-        final nome = row[0]?.value.toString().trim() ?? '';
-        final custo = (double.tryParse(row[1]?.value.toString() ?? '0') ?? 0)
-            .clamp(0.0, double.infinity);
-        final quantidade = (int.tryParse(row[2]?.value.toString() ?? '0') ?? 1)
-            .clamp(1, 999999);
-        final codigoProduto = row.length > 3
-            ? (row[3]?.value.toString().trim() ?? '')
-            : '';
-
-        if (nome.isNotEmpty && custo > 0) {
-          novos.add({
-            '_uid': DateTime.now().microsecondsSinceEpoch + importSeq,
-            'nome': nome,
-            'custo': custo,
-            'quantidade': quantidade,
-            'precoPretendido': 0.0,
-            'codigoProduto': codigoProduto,
-            'origem': PrecificacaoItemOrigem.manual,
-          });
-          importSeq++;
-        }
+      for (final row in parsed.rows) {
+        novos.add({
+          '_uid': DateTime.now().microsecondsSinceEpoch + importSeq,
+          'nome': row.nome,
+          'custo': row.custo,
+          'quantidade': row.quantidade,
+          'precoPretendido': 0.0,
+          'codigoProduto': row.codigoProduto,
+          'origem': PrecificacaoItemOrigem.manual,
+        });
+        importSeq++;
       }
 
       if (!mounted) return;
@@ -339,12 +338,27 @@ class _PrecificacaoUniversalScreenState
         _importando = false;
       });
 
+      final summary = formatSpreadsheetImportSummary(
+        SpreadsheetImportResult(
+          importedRows: novos.length,
+          rejectedRows: parsed.result.rejectedRows,
+          skippedRows: parsed.result.skippedRows,
+        ),
+      );
+      final details = topSpreadsheetIssues(parsed.result.issues);
+      final message = details.isEmpty
+          ? summary
+          : '$summary\n${details.join('\n')}';
+
       if (novos.isNotEmpty) {
-        _showSnackBar('${novos.length} produto(s) importado(s) com sucesso!');
+        _showSnackBar(message);
       } else {
         _showSnackBar(
-            'Nenhum produto válido encontrado. Verifique: Nome (A), Custo (B), Quantidade (C); código do produto (D) é opcional.',
-            isWarning: true);
+          details.isNotEmpty
+              ? message
+              : 'Nenhum produto valido encontrado. Verifique nome e custo.',
+          isWarning: true,
+        );
       }
     } catch (e) {
       debugPrint('Erro ao importar Excel (type=${e.runtimeType})');

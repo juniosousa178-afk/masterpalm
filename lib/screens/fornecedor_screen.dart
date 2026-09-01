@@ -1,5 +1,4 @@
 // lib/screens/fornecedores_screen.dart
-import 'package:excel/excel.dart' hide Border;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
@@ -16,6 +15,10 @@ import '../services/loja_id_service.dart';
 import '../services/sync_queue_service.dart';
 import 'compras/fornecedor_compras_screen.dart';
 import '../widgets/app_help_icon_button.dart';
+import '../core/spreadsheet/spreadsheet_file_reader.dart';
+import '../core/spreadsheet/spreadsheet_import_result.dart';
+import '../core/spreadsheet/spreadsheet_import_ui_helper.dart';
+import '../services/spreadsheet/fornecedor_spreadsheet_import_parser.dart';
 
 class FornecedoresScreen extends StatefulWidget {
   const FornecedoresScreen({super.key});
@@ -711,47 +714,46 @@ class _FornecedoresScreenState extends State<FornecedoresScreen>
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['xlsx'],
+        allowedExtensions: ['xlsx', 'csv'],
         withData: true,
       );
 
-      if (result == null || result.files.single.bytes == null) {
+      if (result == null || result.files.isEmpty) {
         if (mounted) setState(() => _importando = false);
         return;
       }
 
-      final bytes = result.files.single.bytes!;
-      final excel = Excel.decodeBytes(bytes);
+      final picked = result.files.single;
+      final bytes = await readPlatformFileBytes(picked);
+      final parsed = parseFornecedorSpreadsheet(
+        bytes,
+        fileName: picked.name,
+      );
 
-      final sheet = excel.tables[excel.tables.keys.first];
-      if (sheet == null) {
-        if (mounted) setState(() => _importando = false);
+      if (parsed.result.issues.any(
+        (i) =>
+            i.code == SpreadsheetImportCode.ambiguousSheet ||
+            i.code == SpreadsheetImportCode.noValidSheet,
+      )) {
+        if (!mounted) return;
+        final issue = parsed.result.issues.first;
+        _mostrarSnackBarModerno(
+          issue.message ?? issue.codeLabel,
+          Icons.error_outline,
+          errorColor,
+        );
         return;
       }
 
       int importados = 0;
 
-      for (int i = 1; i < sheet.maxRows; i++) {
-        final row = sheet.row(i);
-
-        final nome = row[0]?.value?.toString().trim() ?? '';
-        final telefone =
-            row.length > 1 ? row[1]?.value?.toString().trim() ?? '' : '';
-        final email =
-            row.length > 2 ? row[2]?.value?.toString().trim() ?? '' : '';
-        final instagram =
-            row.length > 3 ? row[3]?.value?.toString().trim() ?? '' : '';
-        final whatsapp =
-            row.length > 4 ? row[4]?.value?.toString().trim() ?? '' : '';
-
-        if (nome.isEmpty || telefone.isEmpty) continue;
-
+      for (final row in parsed.rows) {
         final fornecedor = Fornecedor(
-          nome: nome,
-          telefone: telefone,
-          email: email,
-          instagram: instagram,
-          whatsapp: whatsapp,
+          nome: row.nome,
+          telefone: row.telefone,
+          email: row.email,
+          instagram: row.instagram,
+          whatsapp: row.whatsapp,
           dataCadastro: DateTime.now(),
           lojaId: lojaId!,
         );
@@ -768,10 +770,22 @@ class _FornecedoresScreenState extends State<FornecedoresScreen>
 
       if (!mounted) return;
 
+      final summary = formatSpreadsheetImportSummary(
+        SpreadsheetImportResult(
+          importedRows: importados,
+          rejectedRows: parsed.result.rejectedRows,
+          skippedRows: parsed.result.skippedRows,
+        ),
+      );
+      final details = topSpreadsheetIssues(parsed.result.issues);
+      final message = details.isEmpty
+          ? summary
+          : '$summary\n${details.join('\n')}';
+
       _mostrarSnackBarModerno(
-        '$importados fornecedor(es) importado(s)!',
-        Icons.check_circle_outline,
-        successColor,
+        message,
+        importados > 0 ? Icons.check_circle_outline : Icons.info_outline,
+        importados > 0 ? successColor : warningColor,
       );
 
       setState(() {});

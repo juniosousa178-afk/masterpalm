@@ -50,6 +50,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/loja_id_service.dart';
 import '../utils/text_utils.dart';
 import '../utils/moeda_input_formatter.dart';
+import '../core/spreadsheet/spreadsheet_cell_reader.dart';
+import '../core/spreadsheet/spreadsheet_entity_aliases.dart';
+import '../core/spreadsheet/spreadsheet_header_normalizer.dart';
+import '../core/spreadsheet/spreadsheet_number_parser.dart';
+import '../core/spreadsheet/spreadsheet_import_result.dart';
+import '../core/spreadsheet/spreadsheet_sheet_selector.dart';
 import 'barcode_scanner_screen.dart';
 import 'nova_venda/variacao_selection_sheet.dart';
 import 'public_catalog_screen.dart';
@@ -3505,42 +3511,9 @@ Future<void> _unificarDuplicados() async {
 // ---------------------------------------------------------------------------
 
 /// Extrai valor primitivo de CellValue (excel 4.x) ou objeto qualquer
-dynamic _cellValueToObject(dynamic v) {
-  if (v == null) return null;
-  if (v is xls.CellValue) {
-    return switch (v) {
-      xls.TextCellValue(:final value) => value.text ?? value.toString(),
-      xls.IntCellValue(:final value) => value,
-      xls.DoubleCellValue(:final value) => value,
-      xls.BoolCellValue(:final value) => value.toString(),
-      xls.DateCellValue() => v.toString(),
-      xls.DateTimeCellValue() => v.toString(),
-      xls.TimeCellValue() => v.toString(),
-      xls.FormulaCellValue() => v.toString(),
-    };
-  }
-  return v;
-}
+dynamic _cellValueToObject(dynamic v) => cellValueToObject(v);
 
-String _sanitizeHeader(String s) {
-  final lower = (s).toLowerCase().trim();
-
-  const from = 'áàãâäéèêëíìîïóòõôöúùûüçñ';
-  const to   = 'aaaaaeeeeiiiiooooouuuucn';
-
-  var out = lower;
-  for (var i = 0; i < from.length; i++) {
-    out = out.replaceAll(from[i], to[i]);
-  }
-
-  out = out
-      .replaceAll(RegExp(r'[\t\r\n]+'), ' ')
-      .replaceAll(RegExp(r'[_\-]+'), ' ')
-      .replaceAll(RegExp(r'\s+'), ' ')
-      .trim();
-
-  return out;
-}
+String _sanitizeHeader(String s) => normalizeSpreadsheetHeader(s);
 
 bool _rowHasUsefulData(List<dynamic> row) {
   for (final c in row) {
@@ -3581,23 +3554,15 @@ Future<List<Map<String, dynamic>>> _parseExcelSafe(Uint8List bytes) async {
     if (excel.tables.isEmpty) return [];
 
     String? bestSheet;
-    int bestScore = -1;
-
-    for (final entry in excel.tables.entries) {
-      final table = entry.value;
-      if (table.rows.isEmpty) continue;
-
-      var score = 0;
-      for (final row in table.rows) {
-        final values = row.map((c) => _cellValueToObject(c?.value)).toList();
-        if (_rowHasUsefulData(values)) score++;
-      }
-
-      if (score > bestScore) {
-        bestScore = score;
-        bestSheet = entry.key;
-      }
+    final selection = selectBestWorksheet(
+      excel.tables,
+      entity: produtoSpreadsheetAliases,
+    );
+    if (selection.issue?.code == SpreadsheetImportCode.ambiguousSheet ||
+        selection.issue?.code == SpreadsheetImportCode.noValidSheet) {
+      return [];
     }
+    bestSheet = selection.sheetName;
 
     if (bestSheet == null) return [];
 
@@ -3930,24 +3895,7 @@ Map<String, dynamic> _normalizeRow(Map<String, dynamic> raw) {
   return map;
 }
 
-double? _toDouble(dynamic v) {
-  if (v == null) return null;
-  if (v is num) return v.toDouble();
-  var s = v.toString().trim();
-  if (s.isEmpty) return null;
-  // Remove símbolos de moeda e espaços: R$ 56,90 → 56,90
-  s = s.replaceAll(RegExp(r'[R\$€USD\s]+', caseSensitive: false), '');
-  if (s.isEmpty) return null;
-  // Formato BR: 1.234,56 (milhar . decimal ,) ou 56,90
-  final brMatch = RegExp(r'^(\d{1,3}(?:\.\d{3})*),(\d+)$').firstMatch(s);
-  if (brMatch != null) {
-    final parteInteira = brMatch.group(1)!.replaceAll('.', '');
-    final parteDec = brMatch.group(2)!;
-    return double.tryParse('$parteInteira.$parteDec');
-  }
-  // Formato US: 1,234.56 ou 56.90
-  return double.tryParse(s.replaceAll(',', '.'));
-}
+double? _toDouble(dynamic v) => parseSpreadsheetNumber(v);
 
 int? _toInt(dynamic v) {
   if (v == null) return null;
