@@ -1,9 +1,11 @@
-import 'dart:io' if (dart.library.html) 'spreadsheet_file_reader_stub.dart'
-    as io;
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
+
+import 'spreadsheet_file_bytes_from_path_io.dart'
+    if (dart.library.html) 'spreadsheet_file_bytes_from_path_stub.dart'
+    as path_io;
 
 class SpreadsheetFileReadException implements Exception {
   SpreadsheetFileReadException(this.message);
@@ -32,7 +34,7 @@ Future<Uint8List> readPlatformFileBytes(PlatformFile file) async {
   if (!kIsWeb) {
     final p = file.path;
     if (p != null && p.trim().isNotEmpty) {
-      return io.File(p).readAsBytes();
+      return path_io.readFileBytesFromPath(p);
     }
   }
 
