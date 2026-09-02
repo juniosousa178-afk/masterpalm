@@ -99,6 +99,7 @@ import {
 } from "./src/mpPlanChange.js";
 import { applyLegacyNonApprovedBillingWrite } from "./src/billingWebhookStatus.js";
 import { runGetPlanBillingSnapshotForSupport } from "./src/planSupportRead.js";
+import { activatePlanForUser as activatePlanForUserCore } from "./src/planActivateUser.js";
 import {
   runMasterGetPlanAccessSummary,
   runMasterGetUserPlanDetails,
@@ -2661,80 +2662,13 @@ async function findCheckoutByPayment({ preferenceId, externalRef, userEmail, exp
   return { doc: null, source: "none", ambiguous: false };
 }
 
-async function activatePlanForUser({
-  uid,
-  plan,
-  paymentId,
-  status,
-  amount,
-  planOrderId,
-  billingExtras,
-}) {
-  const now = new Date();
-  let renew = null;
-  const canonicalPlanId = normalizePlanId(plan);
-  if (canonicalPlanId === "pro_yearly") renew = addYears(now, 1);
-  else if (
-    canonicalPlanId === "pro_monthly" ||
-    canonicalPlanId === "basic_monthly" ||
-    canonicalPlanId === "intermediate_monthly"
-  ) {
-    renew = addMonths(now, 1);
-  } else {
-    renew = addMonths(now, 1);
-  }
-
-  const ref = db.collection("users").doc(uid);
-
-  const payload = {
-    // Canônico
-    currentPlanId: canonicalPlanId || "pro_monthly",
-    status: "active",
-    billingStatus: "active",
-    currentPeriodEnd: renew ? admin.firestore.Timestamp.fromDate(renew) : null,
-    trialing: false,
-    trialUsed: true,
-    cancelAtPeriodEnd: false,
-    planLastPaymentId: String(paymentId || ""),
-    updatedAt: nowTs,
-    ...(billingExtras && typeof billingExtras === "object" ? billingExtras : {}),
-  };
-
-  await ref.set(payload, { merge: true });
-
-  // Histórico canônico de assinatura
-  await ref.collection("subscriptions").doc(String(paymentId || Date.now())).set(
-    {
-      planId: canonicalPlanId || "pro_monthly",
-      status: "active",
-      trialing: false,
-      currentPeriodEnd: renew ? admin.firestore.Timestamp.fromDate(renew) : null,
-      kind: "paid",
-      paymentId: String(paymentId || ""),
-      planOrderId: planOrderId || null,
-      amount: amount ?? null,
-      createdAt: nowTs,
-      updatedAt: nowTs,
-    },
-    { merge: true }
-  );
-
-  if (planOrderId) {
-    await db
-      .collection(PLAN_ORDERS_COL)
-      .doc(String(planOrderId))
-      .set(
-        {
-          userId: uid,
-          activatedPlanId: canonicalPlanId || "pro_monthly",
-          expiresAt: renew ? admin.firestore.Timestamp.fromDate(renew) : null,
-          updatedAt: nowTs,
-        },
-        { merge: true }
-      );
-  }
-
-  return payload;
+async function activatePlanForUser(params) {
+  return activatePlanForUserCore({
+    db,
+    normalizePlanId,
+    nowTs,
+    ...params,
+  });
 }
 
 /** Bearer do header (Express pode normalizar chaves em minúsculas). */
