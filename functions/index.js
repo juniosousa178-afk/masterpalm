@@ -30,6 +30,7 @@ import {
   reactivatePlanRenewal,
 } from "./ensureUserPlan.js";
 import { scheduledReconcileExpiredPaidPlans } from "./scheduledExpiredPaidDowngrade.js";
+import { scheduledMonitorStuckPlanPayments } from "./scheduledStuckPlanPaymentMonitor.js";
 import {
   checkRateLimit,
   checkIdempotency,
@@ -4459,6 +4460,7 @@ export {
   cancelPlanRenewalAtPeriodEnd,
   reactivatePlanRenewal,
   scheduledReconcileExpiredPaidPlans,
+  scheduledMonitorStuckPlanPayments,
 };
 
 // ============================== WHATSAPP – Confirmação de pedido (Canais Meta) ==============================
