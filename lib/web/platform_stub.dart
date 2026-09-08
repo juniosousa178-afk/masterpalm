@@ -62,6 +62,9 @@ class Web {
 
   static void notifyCatalogHtmlLoaderReady(String reason) {}
 
+  /// Web: atualiza a pill `#initial-loader-logo` com o nome comercial.
+  static void setCatalogLoaderStoreName(String name) {}
+
   /// Só Web: origem de `main.dart.js` e estado de SW/Cache (netTest / diagnóstico).
   static String? getMainDartJsScriptSrc() => null;
 

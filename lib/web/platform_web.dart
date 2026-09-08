@@ -131,6 +131,16 @@ class Web {
     } catch (_) {}
   }
 
+  /// Atualiza a pill do `#initial-loader` com o nome comercial (sem esconder o loader).
+  static void setCatalogLoaderStoreName(String name) {
+    try {
+      final fn = js.context['__mpSetCatalogLoaderStoreName'];
+      if (fn != null && fn is js.JsFunction) {
+        fn.apply([name]);
+      }
+    } catch (_) {}
+  }
+
   /// Fade-out do overlay `#initial-loader` quando o catálogo está pronto (handoff HTML→Flutter).
   static void notifyCatalogHtmlLoaderReady(String reason) {
     try {

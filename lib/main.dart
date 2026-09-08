@@ -82,6 +82,7 @@ import 'screens/public_catalog_screen.dart';
 import 'screens/public_catalog/catalog_url_query_codec.dart';
 import 'catalog/catalog_bootstrap_loading.dart';
 import 'catalog/catalog_initial_web_route.dart';
+import 'catalog/catalog_loading_store_name_sync.dart';
 import 'debug/web_root_boot_trace_app.dart';
 import 'debug/invalid_public_loja_path_app.dart';
 import 'debug/app_start_trace_collector.dart';
@@ -3232,9 +3233,13 @@ Future<void> main() async {
               required void Function(String? logoUrl) updateLogoUrl,
             }) async {
               _setCatalogPhase('catalog.loja.load.start');
-              // /loja/{id}: nome costuma vir depois no stream de config; mantemos fallback leve aqui.
+              // First paint HTML usa fallback de slug; o nome comercial chega sem bloquear.
               updateNomeLoja(null);
               updateLogoUrl(null);
+              unawaited(syncCatalogLoaderStoreName(
+                lojaIdOrSlug: lojaSlugOrId,
+                updateNomeLoja: updateNomeLoja,
+              ));
               StoreResolverFacade.seedPublicCatalogResolveFromBootstrap(
                 urlSlugOrId: lojaSlugOrId,
                 resolvedCanonicalStoreId: lojaSlugOrId,
@@ -3319,6 +3324,7 @@ Future<void> main() async {
             final nomeLoja = (domainHit?.nomeLoja ?? '').trim();
             if (nomeLoja.isNotEmpty) {
               updateNomeLoja(nomeLoja);
+              web_plat.Web.setCatalogLoaderStoreName(nomeLoja);
             }
             final logoUrl = sanitizePublicStoreLogoUrl(domainHit?.logoUrl);
             if (logoUrl != null) {

@@ -538,6 +538,58 @@
           return w.charAt(0).toUpperCase() + w.slice(1);
         }).join(' ');
       }
+      function sanitizeCommercialStoreName(raw) {
+        var t = String(raw || '').trim();
+        if (!t) return '';
+        var lower = t.toLowerCase();
+        if (lower === 'masterpalm' || lower === 'null' || lower === 'undefined' ||
+            lower === 'minha loja' || lower === 'loja' || t.indexOf('@') >= 0) {
+          return '';
+        }
+        return t;
+      }
+      function catalogDisplayNameCacheKey(slug) {
+        return 'mp_catalog_display_name_v1_' + String(slug || '').trim().toLowerCase();
+      }
+      function readCachedCommercialStoreName(slug) {
+        try {
+          if (slug) {
+            var cached = sanitizeCommercialStoreName(localStorage.getItem(catalogDisplayNameCacheKey(slug)));
+            if (cached) return cached;
+          }
+          var host = normHost(location.hostname);
+          var raw = localStorage.getItem('catalog_domain_cache_v2_' + host);
+          if (raw) {
+            var m = JSON.parse(raw);
+            var fromDomain = sanitizeCommercialStoreName(m && m.nomeLoja);
+            if (fromDomain) return fromDomain;
+          }
+        } catch (e) {}
+        return '';
+      }
+      function writeCachedCommercialStoreName(slug, name) {
+        var ok = sanitizeCommercialStoreName(name);
+        if (!ok || !slug) return;
+        try { localStorage.setItem(catalogDisplayNameCacheKey(slug), ok); } catch (e) {}
+      }
+      function resolveLoaderStoreName(slug) {
+        var commercial = readCachedCommercialStoreName(slug);
+        if (commercial) return commercial;
+        if (slug) return slugToStoreName(slug);
+        return 'Catálogo';
+      }
+      function applyCatalogLoaderStoreName(name) {
+        var ok = sanitizeCommercialStoreName(name);
+        if (!ok) return;
+        var logoEl = document.getElementById('initial-loader-logo');
+        if (logoEl) logoEl.textContent = ok;
+        var storeNameEl = document.getElementById('mp-ig-fallback-store-name');
+        if (storeNameEl) storeNameEl.textContent = ok;
+        writeCachedCommercialStoreName(getSlugFromLocation(), ok);
+      }
+      window.__mpSetCatalogLoaderStoreName = function (name) {
+        applyCatalogLoaderStoreName(name);
+      };
       function isInstagramAndroidWebView() {
         var ua = (navigator.userAgent || '').toLowerCase();
         if (ua.indexOf('iphone') >= 0 || ua.indexOf('ipad') >= 0 || ua.indexOf('ipod') >= 0) return false;
@@ -603,7 +655,7 @@
         if (loader) loader.style.display = 'none';
         var slug = getSlugFromLocation();
         var storeNameEl = document.getElementById('mp-ig-fallback-store-name');
-        if (storeNameEl) storeNameEl.textContent = slugToStoreName(slug);
+        if (storeNameEl) storeNameEl.textContent = resolveLoaderStoreName(slug);
         var panel = document.getElementById('mp-ig-android-browser-fallback');
         if (panel) {
           panel.hidden = false;
@@ -659,7 +711,7 @@
             window.__mpCatalogHandoffActive = true;
             window.__mpCatalogHandoffStartMs = Math.round(performance.now());
             var slug = getSlugFromLocation();
-            logoEl.textContent = slug ? slugToStoreName(slug) : 'Catálogo';
+            logoEl.textContent = resolveLoaderStoreName(slug);
             if (titleEl) {
               titleEl.style.display = '';
               titleEl.style.marginBottom = '';
