@@ -2,32 +2,33 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/catalog_loading_store_name.dart';
 import 'catalog_skeleton_grid.dart';
 import 'catalog_unified_loading.dart';
 
 /// Nome legível a partir do slug da URL (sem hardcode de loja).
+/// Preferir [CatalogLoadingStoreName.resolvePillLabel] quando houver nome comercial.
 String catalogStoreLabelFromSlug(String slug) {
-  final parts = slug
-      .trim()
-      .split('-')
-      .where((w) => w.trim().isNotEmpty)
-      .toList();
-  if (parts.isEmpty) return 'Catálogo';
-  return parts
-      .map((w) => w.length == 1 ? w.toUpperCase() : '${w[0].toUpperCase()}${w.substring(1)}')
-      .join(' ');
+  return CatalogLoadingStoreName.slugToStoreNameFallback(slug);
 }
 
 /// Cabeçalho + skeleton — conteúdo útil por trás do loader HTML antes da config.
+///
+/// A pill usa nome comercial quando disponível; senão fallback do slug.
+/// Em Web este é o widget LIVE de "Preparando sua loja..." após o handoff HTML.
 class CatalogEarlyShellView extends StatefulWidget {
   const CatalogEarlyShellView({
     super.key,
     required this.storeSlug,
+    this.commercialName,
     this.themeData,
     this.onFirstFrame,
   });
 
   final String storeSlug;
+
+  /// Nome comercial já resolvido (assíncrono). Null/vazio → fallback de slug.
+  final String? commercialName;
   final ThemeData? themeData;
   final VoidCallback? onFirstFrame;
 
@@ -51,7 +52,10 @@ class _CatalogEarlyShellViewState extends State<CatalogEarlyShellView> {
   @override
   Widget build(BuildContext context) {
     final theme = widget.themeData ?? Theme.of(context);
-    final label = catalogStoreLabelFromSlug(widget.storeSlug);
+    final label = CatalogLoadingStoreName.resolvePillLabel(
+      commercialName: widget.commercialName,
+      slug: widget.storeSlug,
+    );
     final bg = theme.scaffoldBackgroundColor;
     final onSurface = theme.colorScheme.onSurface;
 

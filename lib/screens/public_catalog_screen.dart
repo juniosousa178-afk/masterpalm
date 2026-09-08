@@ -39,6 +39,7 @@ import '../utils/pix_brcode.dart';
 import '../widgets/pix_qr_dialog.dart' show showPixQrDialog;
 import '../core/combo_config_canonical.dart';
 import '../catalog/catalog_layout_config.dart';
+import '../catalog/catalog_loading_store_name_sync.dart';
 import '../debug/catalog_normal_trace.dart';
 import '../debug/catalog_startup_trace.dart';
 import 'public_catalog/catalog_helpers.dart';
@@ -693,6 +694,11 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   bool _traceEssentialActionsEnabledLogged = false;
   bool _htmlLoaderHandoffDone = false;
   bool _traceShellFirstFrameLogged = false;
+
+  /// Nome comercial para a pill do early shell / HTML (atualizado 1x por lojaId).
+  String? _loaderCommercialName;
+  String? _loaderNameSyncForId;
+
   late final bool _diagCatStartOverlayEnabled =
       kIsWeb && Uri.base.queryParameters['diag'] == '1';
 
@@ -916,6 +922,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     });
     _initConnectivity();
     _loadModoEscuro();
+    // Web: pill LIVE fica no early shell após handoff HTML — iniciar fetch cedo.
+    if (kIsWeb) {
+      _ensureLoaderCommercialNameSync(widget.lojaId);
+    }
   }
 
   /// Visitas, recentes e cliente/favoritos não devem atrasar a 1ª pintura útil.
@@ -2473,6 +2483,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
           _loadingLojaId = false;
           _catalogOpenFailureDetail = null;
         });
+        _ensureLoaderCommercialNameSync(
+          result.canonicalStoreId ?? result.storeId ?? widget.lojaId,
+        );
         traceOk = true;
         traceResolvedId = _resolvedLojaId;
         CatalogNormalTrace.mark('resolver.success', <String, Object?>{
@@ -2525,6 +2538,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
           _loadingLojaId = false;
           _catalogOpenFailureDetail = null;
         });
+        _ensureLoaderCommercialNameSync(
+          result.canonicalStoreId ?? result.storeId ?? widget.lojaId,
+        );
         traceOk = true;
         traceResolvedId = _resolvedLojaId;
         _loadMostrarEstoqueNoCatalogo(
@@ -4602,6 +4618,23 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     });
   }
 
+  /// Uma leitura Firestore por lojaId (não por rebuild) → atualiza pill HTML + early shell.
+  void _ensureLoaderCommercialNameSync(String? lojaIdOrSlug) {
+    final id = (lojaIdOrSlug ?? '').trim();
+    if (id.isEmpty) return;
+    if (_loaderNameSyncForId == id) return;
+    _loaderNameSyncForId = id;
+    unawaited(syncCatalogLoaderStoreName(
+      lojaIdOrSlug: id,
+      updateNomeLoja: (name) {
+        final n = (name ?? '').trim();
+        if (!mounted || n.isEmpty) return;
+        if (_loaderCommercialName == n) return;
+        setState(() => _loaderCommercialName = n);
+      },
+    ));
+  }
+
   void _onCatalogEarlyShellFirstFrame() {
     if (!kIsWeb) return;
     plat.Web.notifyCatalogShellReady();
@@ -4774,8 +4807,12 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                   );
                 }
                 if (kIsWeb) {
+                  _ensureLoaderCommercialNameSync(
+                    _resolvedLojaId ?? widget.lojaId,
+                  );
                   return CatalogEarlyShellView(
                     storeSlug: widget.lojaId,
+                    commercialName: _loaderCommercialName,
                     themeData: themeForStates,
                     onFirstFrame: _onCatalogEarlyShellFirstFrame,
                   );
