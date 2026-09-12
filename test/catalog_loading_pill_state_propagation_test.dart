@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:master_palm/catalog/catalog_loader_name_resolution.dart';
 import 'package:master_palm/core/catalog_loading_store_name.dart';
 import 'package:master_palm/screens/public_catalog/widgets/catalog_early_shell_commercial_bridge.dart';
 import 'package:master_palm/screens/public_catalog/widgets/catalog_early_shell_view.dart';
@@ -91,7 +92,8 @@ void main() {
         );
         await tester.pump();
 
-        expect(_visiblePillText(_cristalFallback), findsOneWidget);
+        expect(find.text(_cristalFallback), findsNothing);
+        expect(find.byKey(const Key('catalog_loading_store_pill')), findsNothing);
         expect(_visiblePillText('Cristal Pratas'), findsNothing);
         expect(fetchCalls, 1);
 
@@ -182,15 +184,11 @@ void main() {
       await tester.pump();
       expect(_visiblePillText('Loja A Comercial'), findsNothing);
 
-      final pillB = find.byKey(const Key('catalog_loading_store_pill'));
-      final fallbackB = CatalogLoadingStoreName.slugToStoreNameFallback('loja-b');
+      // Em loading sem comercial: pill oculta (sem flash de slug de loja-b).
+      expect(find.byKey(const Key('catalog_loading_store_pill')), findsNothing);
       expect(
-        find.descendant(of: pillB, matching: find.text(fallbackB)).evaluate().isNotEmpty ||
-            find
-                .descendant(of: pillB, matching: find.text('Loja B Comercial'))
-                .evaluate()
-                .isNotEmpty,
-        isTrue,
+        find.text(CatalogLoadingStoreName.slugToStoreNameFallback('loja-b')),
+        findsNothing,
       );
 
       await tester.pump();
@@ -231,7 +229,8 @@ void main() {
       await tester.pump();
       final state = tester.state<_BridgeHarnessState>(find.byType(_BridgeHarness));
       expect(state.handoffCount, 0);
-      expect(_visiblePillText(_cristalFallback), findsOneWidget);
+      expect(find.text(_cristalFallback), findsNothing);
+      expect(find.byKey(const Key('catalog_loading_store_pill')), findsNothing);
 
       completer.complete('Cristal Pratas');
       await tester.pump();
@@ -243,7 +242,7 @@ void main() {
 
   group('HIDDEN_HTML_FALSE_POSITIVE_REGRESSION', () {
     testWidgets(
-      'global find.text(Cristal) is polluted by Offstage; pill key stays fallback',
+      'global find.text(Cristal) is polluted by Offstage; pill stays hidden while loading',
       (tester) async {
         await tester.pumpWidget(
           MaterialApp(
@@ -253,6 +252,7 @@ void main() {
                 CatalogEarlyShellView(
                   storeSlug: _cristalSlug,
                   commercialName: null,
+                  namePhase: CatalogLoaderNamePhase.loading,
                 ),
               ],
             ),
@@ -265,7 +265,8 @@ void main() {
           find.text('Cristal Pratas', skipOffstage: false),
           findsOneWidget,
         );
-        expect(_visiblePillText(_cristalFallback), findsOneWidget);
+        expect(find.text(_cristalFallback), findsNothing);
+        expect(find.byKey(const Key('catalog_loading_store_pill')), findsNothing);
         expect(_visiblePillText('Cristal Pratas'), findsNothing);
 
         await tester.pumpWidget(
@@ -276,6 +277,7 @@ void main() {
                 CatalogEarlyShellView(
                   storeSlug: _cristalSlug,
                   commercialName: 'Cristal Pratas',
+                  namePhase: CatalogLoaderNamePhase.resolvedWithName,
                 ),
               ],
             ),

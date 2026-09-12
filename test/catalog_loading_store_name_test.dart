@@ -27,6 +27,22 @@ void main() {
         'Crisdealbuquerque094',
       );
       expect(
+        CatalogLoadingStoreName.resolveVisiblePillLabel(
+          allowSlugFallback: false,
+          commercialName: null,
+          slug: 'crisdealbuquerque094',
+        ),
+        isNull,
+      );
+      expect(
+        CatalogLoadingStoreName.resolveVisiblePillLabel(
+          allowSlugFallback: true,
+          commercialName: null,
+          slug: 'crisdealbuquerque094',
+        ),
+        'Crisdealbuquerque094',
+      );
+      expect(
         CatalogLoadingStoreName.resolvePillLabel(
           commercialName: '   ',
           slug: '',
@@ -59,7 +75,7 @@ void main() {
         slug: slug,
       );
       expect(label, 'Cristal Pratas');
-      expect(slug, 'crisdealbuquerque094');
+      expect(label, isNot(CatalogLoadingStoreName.slugToStoreNameFallback(slug)));
     });
 
     test('E: falha/valores inválidos preservam fallback', () {

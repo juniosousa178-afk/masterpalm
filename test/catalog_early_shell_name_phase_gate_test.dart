@@ -220,15 +220,16 @@ void main() {
         await tester.pump();
         await tester.pump();
 
-        // T1 early shell + fallback slug
+        // T1 early shell + sem flash de slug (pill oculta até terminal/comercial)
         expect(find.byType(CatalogEarlyShellView), findsOneWidget);
         expect(find.text(CatalogUnifiedLoadingCopy.title), findsOneWidget);
         expect(
-          _visiblePillText(
+          find.text(
             CatalogLoadingStoreName.slugToStoreNameFallback(_cristalSlug),
           ),
-          findsOneWidget,
+          findsNothing,
         );
+        expect(find.byKey(const Key('catalog_loading_store_pill')), findsNothing);
         expect(find.byKey(const Key('final_catalog_stub')), findsNothing);
 
         // T3: config hasData RAPIDAMENTE enquanto name ainda loading

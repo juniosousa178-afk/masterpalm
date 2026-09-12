@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:master_palm/catalog/catalog_loader_name_resolution.dart';
 import 'package:master_palm/core/catalog_loading_store_name.dart';
 import 'package:master_palm/screens/public_catalog/widgets/catalog_early_shell_view.dart';
 import 'package:master_palm/screens/public_catalog/widgets/catalog_unified_loading.dart';
@@ -26,16 +27,27 @@ class _AsyncPillHost extends StatefulWidget {
 
 class _AsyncPillHostState extends State<_AsyncPillHost> {
   String? commercialName;
+  CatalogLoaderNamePhase phase = CatalogLoaderNamePhase.loading;
 
   @override
   void initState() {
     super.initState();
     // Espelha syncCatalogLoaderStoreName: 1 fetch, depois setState (não por rebuild).
     unawaited(Future<void>.delayed(widget.delay, () {
-      if (!mounted || widget.failFetch) return;
+      if (!mounted) return;
+      if (widget.failFetch) {
+        setState(() => phase = CatalogLoaderNamePhase.errorFallback);
+        return;
+      }
       final n = (widget.delayedCommercialName ?? '').trim();
-      if (n.isEmpty) return;
-      setState(() => commercialName = n);
+      if (n.isEmpty) {
+        setState(() => phase = CatalogLoaderNamePhase.resolvedWithoutName);
+        return;
+      }
+      setState(() {
+        commercialName = n;
+        phase = CatalogLoaderNamePhase.resolvedWithName;
+      });
     }));
   }
 
@@ -45,6 +57,7 @@ class _AsyncPillHostState extends State<_AsyncPillHost> {
       home: CatalogEarlyShellView(
         storeSlug: widget.slug,
         commercialName: commercialName,
+        namePhase: phase,
       ),
     );
   }
@@ -53,7 +66,7 @@ class _AsyncPillHostState extends State<_AsyncPillHost> {
 void main() {
   group('CatalogEarlyShellView async display name (LIVE /loja/{slug})', () {
     testWidgets(
-      'T0 slug-only → fallback; T1 commercial arrives → pill rebuilds',
+      'T0 loading → no slug flash; T1 commercial arrives → pill rebuilds',
       (tester) async {
         await tester.pumpWidget(
           const _AsyncPillHost(
@@ -63,9 +76,10 @@ void main() {
           ),
         );
 
-        // BUILD 1 — nome ainda unavailable
-        expect(find.text('Crisdealbuquerque094'), findsOneWidget);
+        // BUILD 1 — nome ainda unavailable: pill oculta (sem slug)
+        expect(find.text('Crisdealbuquerque094'), findsNothing);
         expect(find.text('Cristal Pratas'), findsNothing);
+        expect(find.byKey(const Key('catalog_loading_store_pill')), findsNothing);
         expect(find.text(CatalogUnifiedLoadingCopy.title), findsOneWidget);
 
         // T1 — fetch conclui
@@ -78,7 +92,7 @@ void main() {
       },
     );
 
-    testWidgets('delayed store fetch keeps fallback until complete',
+    testWidgets('delayed store fetch keeps pill hidden until commercial',
         (tester) async {
       await tester.pumpWidget(
         const _AsyncPillHost(
@@ -88,9 +102,9 @@ void main() {
         ),
       );
 
-      expect(find.text('Crisdealbuquerque094'), findsOneWidget);
+      expect(find.text('Crisdealbuquerque094'), findsNothing);
       await tester.pump(const Duration(milliseconds: 60));
-      expect(find.text('Crisdealbuquerque094'), findsOneWidget);
+      expect(find.text('Crisdealbuquerque094'), findsNothing);
       expect(find.text('Cristal Pratas'), findsNothing);
 
       await tester.pump(const Duration(milliseconds: 80));
@@ -102,7 +116,7 @@ void main() {
     testWidgets('Cristal Pratas async display after load', (tester) async {
       await tester.pumpWidget(
         const _AsyncPillHost(
-          slug: 'crisdealalbuquerque094',
+          slug: 'crisdealbuquerque094',
           delayedCommercialName: 'Cristal Pratas',
         ),
       );
@@ -118,14 +132,15 @@ void main() {
           delayedCommercialName: 'Loja da Maria',
         ),
       );
-      expect(find.text('Maria123'), findsOneWidget);
+      expect(find.text('Maria123'), findsNothing);
       await tester.pump(const Duration(milliseconds: 50));
       await tester.pump();
       expect(find.text('Loja da Maria'), findsOneWidget);
       expect(find.text('Maria123'), findsNothing);
     });
 
-    testWidgets('failed/empty fetch preserves slug fallback', (tester) async {
+    testWidgets('failed fetch releases slug fallback only after terminal',
+        (tester) async {
       await tester.pumpWidget(
         const _AsyncPillHost(
           slug: 'crisdealbuquerque094',
@@ -133,6 +148,7 @@ void main() {
           failFetch: true,
         ),
       );
+      expect(find.text('Crisdealbuquerque094'), findsNothing);
       await tester.pump(const Duration(milliseconds: 80));
       await tester.pump();
       expect(find.text('Crisdealbuquerque094'), findsOneWidget);
@@ -157,6 +173,7 @@ void main() {
           home: CatalogEarlyShellView(
             storeSlug: 'crisdealbuquerque094',
             commercialName: 'Cristal Pratas',
+            namePhase: CatalogLoaderNamePhase.resolvedWithName,
           ),
         ),
       );
@@ -165,16 +182,18 @@ void main() {
       expect(find.text('Crisdealbuquerque094'), findsNothing);
     });
 
-    test('resolvePillLabel hierarchy used by early shell', () {
+    test('resolveVisiblePillLabel hides slug while loading', () {
       expect(
-        CatalogLoadingStoreName.resolvePillLabel(
+        CatalogLoadingStoreName.resolveVisiblePillLabel(
+          allowSlugFallback: false,
           commercialName: null,
           slug: 'crisdealbuquerque094',
         ),
-        'Crisdealbuquerque094',
+        isNull,
       );
       expect(
-        CatalogLoadingStoreName.resolvePillLabel(
+        CatalogLoadingStoreName.resolveVisiblePillLabel(
+          allowSlugFallback: false,
           commercialName: 'Cristal Pratas',
           slug: 'crisdealbuquerque094',
         ),

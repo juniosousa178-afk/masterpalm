@@ -80,9 +80,10 @@ void main() {
         );
         await tester.pump();
 
-        // T1 early shell montado; T2/T3 ainda sem nome (como 35f0420 live).
+        // T1 early shell montado; T2/T3 ainda sem nome — sem flash de slug.
         expect(find.text(CatalogUnifiedLoadingCopy.title), findsOneWidget);
-        expect(_visiblePillText(_cristalFallback), findsOneWidget);
+        expect(find.text(_cristalFallback), findsNothing);
+        expect(find.byKey(const Key('catalog_loading_store_pill')), findsNothing);
         expect(_visiblePillText('Cristal Pratas'), findsNothing);
         expect(resolveCount, 1);
         expect(fetchCount, 0); // fetch só após lojaId
@@ -92,7 +93,7 @@ void main() {
         await tester.pump();
         await tester.pump();
         expect(fetchCount, 1);
-        expect(_visiblePillText(_cristalFallback), findsOneWidget);
+        expect(find.text(_cristalFallback), findsNothing);
 
         // T5 nome chega com early shell montado.
         nameCompleter.complete('Cristal Pratas');
@@ -133,7 +134,8 @@ void main() {
       );
       await tester.pump();
       expect(handoff, 0);
-      expect(_visiblePillText(_cristalFallback), findsOneWidget);
+      expect(find.text(_cristalFallback), findsNothing);
+      expect(find.byKey(const Key('catalog_loading_store_pill')), findsNothing);
 
       nameCompleter.complete('Cristal Pratas');
       await tester.pump();

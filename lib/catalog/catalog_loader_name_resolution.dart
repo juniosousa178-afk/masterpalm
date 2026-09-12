@@ -67,3 +67,9 @@ bool catalogEarlyShellMayYieldToFinal({
   if (!configHasData) return false;
   return nameResolution?.isTerminal ?? false;
 }
+
+/// Fallback visual de slug só após provar ausência de nome ou erro terminal.
+bool catalogLoaderNamePhaseAllowsSlugFallback(CatalogLoaderNamePhase phase) {
+  return phase == CatalogLoaderNamePhase.resolvedWithoutName ||
+      phase == CatalogLoaderNamePhase.errorFallback;
+}

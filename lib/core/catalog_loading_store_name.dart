@@ -4,14 +4,18 @@ import 'store_display_name_resolver.dart';
 ///
 /// Hierarquia:
 /// 1. nome comercial já resolvido (`nome` / `nomeLoja` / `name` / equivalentes)
-/// 2. fallback de slug (mesmo algoritmo do `#initial-loader` em `web/index.html`)
+/// 2. fallback de slug **só** quando [allowSlugFallback] (fase terminal sem nome/erro)
 /// 3. `Catálogo`
 ///
 /// Não trata document ID / `lojaId` / slug como nome comercial editável.
+/// Em unresolved/loading a UI passa `allowSlugFallback: false` → pill ocultável.
 abstract final class CatalogLoadingStoreName {
   static const fallbackCatalogLabel = 'Catálogo';
 
   /// Preferência única e genérica (sem hardcode de cliente).
+  ///
+  /// Usa fallback de slug quando não há nome comercial. Preferir
+  /// [resolveVisiblePillLabel] na UI de loading (gate por fase).
   static String resolvePillLabel({
     String? commercialName,
     String? slug,
@@ -21,6 +25,25 @@ abstract final class CatalogLoadingStoreName {
         !StoreDisplayNameResolver.isWeakPlaceholder(commercial)) {
       return commercial;
     }
+    return slugToStoreNameFallback(slug);
+  }
+
+  /// Label **visível** da pill durante early shell / HTML loader.
+  ///
+  /// - Comercial válido → sempre mostra (inclui cache HTML durante loading).
+  /// - Sem comercial e `allowSlugFallback == false` → `null` (não expor slug).
+  /// - Sem comercial e `allowSlugFallback == true` → fallback de slug.
+  static String? resolveVisiblePillLabel({
+    required bool allowSlugFallback,
+    String? commercialName,
+    String? slug,
+  }) {
+    final commercial = StoreDisplayNameResolver.normalizeCandidate(commercialName);
+    if (commercial != null &&
+        !StoreDisplayNameResolver.isWeakPlaceholder(commercial)) {
+      return commercial;
+    }
+    if (!allowSlugFallback) return null;
     return slugToStoreNameFallback(slug);
   }
 

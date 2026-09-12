@@ -8,7 +8,19 @@ import 'package:flutter/material.dart';
 import '../../../catalog/catalog_loader_name_resolution.dart';
 import '../../../catalog/catalog_loading_store_name_sync.dart';
 import '../../../core/store_display_name_resolver.dart';
+import '../../../web/platform_stub.dart'
+    if (dart.library.html) '../../../web/platform_web.dart' as plat;
 import 'catalog_early_shell_view.dart';
+
+/// Cache HTML (`mp_catalog_display_name_v1_*`) — preview sem Firestore extra.
+String? readCachedCatalogLoaderDisplayName(String? slug) {
+  final s = (slug ?? '').trim().toLowerCase();
+  if (s.isEmpty) return null;
+  final raw = plat.Web.localStorageGet('mp_catalog_display_name_v1_$s');
+  final n = StoreDisplayNameResolver.normalizeCandidate(raw);
+  if (n == null || StoreDisplayNameResolver.isWeakPlaceholder(n)) return null;
+  return n;
+}
 
 /// Fetch injectável (testes). Produção usa [syncCatalogLoaderStoreName].
 typedef CatalogCommercialNameFetcher = Future<String?> Function(String lojaId);
@@ -63,6 +75,8 @@ class CatalogEarlyShellCommercialBridgeState
     lojaId: '',
     phase: CatalogLoaderNamePhase.unresolved,
   );
+  /// Preview do cache HTML (continuidade sem flash / sem read Firestore extra).
+  String? _cachedCommercialPreview;
   String? _pipelineForLojaId;
   int _fetchGeneration = 0;
   bool _shellFirstFrameSeen = false;
@@ -160,7 +174,10 @@ class CatalogEarlyShellCommercialBridgeState
 
     _pipelineForLojaId = seed;
     final gen = ++_fetchGeneration;
+    final preview = readCachedCatalogLoaderDisplayName(widget.storeSlug) ??
+        readCachedCatalogLoaderDisplayName(seed);
     setState(() {
+      _cachedCommercialPreview = preview;
       _publishResolution(
         CatalogLoaderNameResolution(
           lojaId: seed,
@@ -273,7 +290,8 @@ class CatalogEarlyShellCommercialBridgeState
   Widget build(BuildContext context) {
     return CatalogEarlyShellView(
       storeSlug: widget.storeSlug,
-      commercialName: _resolution.commercialName,
+      commercialName: _resolution.commercialName ?? _cachedCommercialPreview,
+      namePhase: _resolution.phase,
       themeData: widget.themeData,
       onFirstFrame: _onShellFirstFrame,
     );

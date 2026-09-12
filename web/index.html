@@ -572,8 +572,13 @@
         if (!ok || !slug) return;
         try { localStorage.setItem(catalogDisplayNameCacheKey(slug), ok); } catch (e) {}
       }
+      function resolveCommercialLoaderStoreName(slug) {
+        return readCachedCommercialStoreName(slug) || '';
+      }
       function resolveLoaderStoreName(slug) {
-        var commercial = readCachedCommercialStoreName(slug);
+        // Fallback com slug só para painéis terminais (ex.: IG). Loader de
+        // catálogo usa resolveCommercialLoaderStoreName (sem flash de slug).
+        var commercial = resolveCommercialLoaderStoreName(slug);
         if (commercial) return commercial;
         if (slug) return slugToStoreName(slug);
         return 'Catálogo';
@@ -582,7 +587,11 @@
         var ok = sanitizeCommercialStoreName(name);
         if (!ok) return;
         var logoEl = document.getElementById('initial-loader-logo');
-        if (logoEl) logoEl.textContent = ok;
+        if (logoEl) {
+          logoEl.textContent = ok;
+          logoEl.style.visibility = 'visible';
+          logoEl.style.display = '';
+        }
         var storeNameEl = document.getElementById('mp-ig-fallback-store-name');
         if (storeNameEl) storeNameEl.textContent = ok;
         writeCachedCommercialStoreName(getSlugFromLocation(), ok);
@@ -711,7 +720,16 @@
             window.__mpCatalogHandoffActive = true;
             window.__mpCatalogHandoffStartMs = Math.round(performance.now());
             var slug = getSlugFromLocation();
-            logoEl.textContent = resolveLoaderStoreName(slug);
+            // Sem fallback visual de slug enquanto commercialName unresolved.
+            var commercial = resolveCommercialLoaderStoreName(slug);
+            if (commercial) {
+              logoEl.textContent = commercial;
+              logoEl.style.visibility = 'visible';
+              logoEl.style.display = '';
+            } else {
+              logoEl.textContent = '';
+              logoEl.style.visibility = 'hidden';
+            }
             if (titleEl) {
               titleEl.style.display = '';
               titleEl.style.marginBottom = '';
