@@ -39,6 +39,7 @@ import '../utils/pix_brcode.dart';
 import '../widgets/pix_qr_dialog.dart' show showPixQrDialog;
 import '../core/combo_config_canonical.dart';
 import '../catalog/catalog_layout_config.dart';
+import '../catalog/catalog_loader_name_resolution.dart';
 import '../debug/catalog_normal_trace.dart';
 import '../debug/catalog_startup_trace.dart';
 import 'public_catalog/catalog_helpers.dart';
@@ -693,6 +694,16 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   bool _traceEssentialActionsEnabledLogged = false;
   bool _htmlLoaderHandoffDone = false;
   bool _traceShellFirstFrameLogged = false;
+
+  /// Fase early-name reportada pelo bridge (lifetime gate Web).
+  CatalogLoaderNameResolution? _earlyNameResolution;
+
+  /// Após name terminal, um frame de early shell pinta a pill antes do yield.
+  /// Sem Timer/delay — só post-frame para o utilizador ver o nome no reload.
+  bool _earlyNameTerminalPainted = false;
+
+  /// Preserva State do bridge entre `_loadingLojaId` e StreamBuilder (1 fetch).
+  final GlobalKey _earlyShellBridgeKey = GlobalKey();
 
   late final bool _diagCatStartOverlayEnabled =
       kIsWeb && Uri.base.queryParameters['diag'] == '1';
@@ -4617,6 +4628,58 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     }
   }
 
+  void _onEarlyNameResolutionChanged(CatalogLoaderNameResolution next) {
+    if (!mounted) return;
+    final prev = _earlyNameResolution;
+    if (prev != null &&
+        prev.lojaId == next.lojaId &&
+        prev.phase == next.phase &&
+        prev.commercialName == next.commercialName) {
+      return;
+    }
+    final becameTerminal = next.isTerminal && !(prev?.isTerminal ?? false);
+    setState(() {
+      _earlyNameResolution = next;
+      if (!next.isTerminal) {
+        _earlyNameTerminalPainted = false;
+      }
+    });
+    // Garante 1 frame com early shell + nome (ou fallback) antes do catálogo final.
+    // Necessário no reload: config já hasData quando a phase fica terminal.
+    if (becameTerminal) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (_earlyNameResolution?.isTerminal != true) return;
+        setState(() => _earlyNameTerminalPainted = true);
+      });
+    }
+  }
+
+  bool get _webEarlyNameAllowsFinalCatalog {
+    if (!catalogEarlyShellMayYieldToFinal(
+      configHasData: true,
+      nameResolution: _earlyNameResolution,
+    )) {
+      return false;
+    }
+    return _earlyNameTerminalPainted;
+  }
+
+  Widget _buildWebEarlyShellBridge({
+    required String lojaId,
+    required ThemeData themeForStates,
+  }) {
+    final id = lojaId.trim().isEmpty ? widget.lojaId : lojaId.trim();
+    return CatalogEarlyShellCommercialBridge(
+      key: _earlyShellBridgeKey,
+      storeSlug: widget.lojaId,
+      lojaId: id,
+      themeData: themeForStates,
+      onHtmlHandoffReady: _onCatalogEarlyShellHandoffReady,
+      onResolutionChanged: _onEarlyNameResolutionChanged,
+    );
+  }
+
   Widget _wrapWithCatStartDiagOverlay(Widget child) {
     if (!_diagCatStartOverlayEnabled) return child;
     const trackedEvents = <String>[
@@ -4736,11 +4799,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
         if (kIsWeb) {
           final earlyId = widget.lojaId.trim();
           return _wrapWithCatStartDiagOverlay(
-            CatalogEarlyShellCommercialBridge(
-              storeSlug: widget.lojaId,
+            _buildWebEarlyShellBridge(
               lojaId: earlyId.isEmpty ? widget.lojaId : earlyId,
-              themeData: themeForStates,
-              onHtmlHandoffReady: _onCatalogEarlyShellHandoffReady,
+              themeForStates: themeForStates,
             ),
           );
         }
@@ -4791,11 +4852,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 if (kIsWeb) {
                   final loaderLojaId =
                       (_resolvedLojaId ?? widget.lojaId).trim();
-                  return CatalogEarlyShellCommercialBridge(
-                    storeSlug: widget.lojaId,
+                  return _buildWebEarlyShellBridge(
                     lojaId: loaderLojaId.isEmpty ? widget.lojaId : loaderLojaId,
-                    themeData: themeForStates,
-                    onHtmlHandoffReady: _onCatalogEarlyShellHandoffReady,
+                    themeForStates: themeForStates,
                   );
                 }
                 return CatalogConfigLoadingState(themeData: themeForStates);
@@ -4809,6 +4868,18 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 _scheduleHtmlLoaderHandoff('catalog_error');
                 return CatalogConfigErrorState(themeData: themeForStates);
               }
+              // Web: config hasData NÃO basta — early-name deve estar terminal
+              // (resolvedWithName | resolvedWithoutName | errorFallback).
+              // Evita unmount no reload com name ainda loading (4fa8eb8 race).
+              if (kIsWeb && !_webEarlyNameAllowsFinalCatalog) {
+                final loaderLojaId =
+                    (_resolvedLojaId ?? widget.lojaId).trim();
+                return _buildWebEarlyShellBridge(
+                  lojaId: loaderLojaId.isEmpty ? widget.lojaId : loaderLojaId,
+                  themeForStates: themeForStates,
+                );
+              }
+              // Handoff HTML só com name terminal (não bypass via config alone).
               if (!_htmlLoaderHandoffDone) {
                 _scheduleHtmlLoaderHandoff('catalog_config_ready');
               }

@@ -55,3 +55,15 @@ class CatalogLoaderNameResolution {
 /// Produção: para a maioria das lojas públicas o slug da rota já é o doc id
 /// (ex.: `crisdealbuquerque094`). O resolver pode atrasar/mapear se necessário.
 typedef CatalogEarlySlugToLojaIdResolver = Future<String> Function(String slug);
+
+/// Gate de lifetime: o catálogo final só pode substituir o early shell quando
+/// o config já tem data **e** a resolução early-name está em fase **terminal**.
+///
+/// Não usar `commercialName != null` — lojas sem nome / erro também terminam.
+bool catalogEarlyShellMayYieldToFinal({
+  required bool configHasData,
+  required CatalogLoaderNameResolution? nameResolution,
+}) {
+  if (!configHasData) return false;
+  return nameResolution?.isTerminal ?? false;
+}

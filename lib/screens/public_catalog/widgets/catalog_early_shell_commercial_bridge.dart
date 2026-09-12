@@ -30,6 +30,7 @@ class CatalogEarlyShellCommercialBridge extends StatefulWidget {
     this.fetchCommercialName,
     this.resolveLojaIdFromSlug,
     this.onHtmlHandoffReady,
+    this.onResolutionChanged,
   });
 
   final String storeSlug;
@@ -46,6 +47,9 @@ class CatalogEarlyShellCommercialBridge extends StatefulWidget {
 
   /// Chamado só com first frame + resolução em estado terminal.
   final VoidCallback? onHtmlHandoffReady;
+
+  /// Notifica o pai a cada mudança de fase (lifetime gate do early shell).
+  final ValueChanged<CatalogLoaderNameResolution>? onResolutionChanged;
 
   @override
   State<CatalogEarlyShellCommercialBridge> createState() =>
@@ -100,6 +104,24 @@ class CatalogEarlyShellCommercialBridgeState
       _handoffNotified = false;
       _fetchStartsForCurrentLoja = 0;
       _startPipeline(next);
+    } else if (widget.onResolutionChanged != oldWidget.onResolutionChanged) {
+      // Pai novo / callback novo (ex.: GlobalKey moveu o State): re-sincronizar.
+      _notifyParentResolution();
+    }
+  }
+
+  void _notifyParentResolution() {
+    final snap = _resolution;
+    scheduleMicrotask(() {
+      if (!mounted) return;
+      widget.onResolutionChanged?.call(snap);
+    });
+  }
+
+  void _publishResolution(CatalogLoaderNameResolution next, {required bool notify}) {
+    _resolution = next;
+    if (notify) {
+      _notifyParentResolution();
     }
   }
 
@@ -107,12 +129,16 @@ class CatalogEarlyShellCommercialBridgeState
     final seed = lojaIdOrSlug.trim();
     if (seed.isEmpty) {
       setState(() {
-        _resolution = const CatalogLoaderNameResolution(
-          lojaId: '',
-          phase: CatalogLoaderNamePhase.resolvedWithoutName,
+        _publishResolution(
+          const CatalogLoaderNameResolution(
+            lojaId: '',
+            phase: CatalogLoaderNamePhase.resolvedWithoutName,
+          ),
+          notify: false,
         );
         _pipelineForLojaId = '';
       });
+      _notifyParentResolution();
       _maybeNotifyHandoff();
       return;
     }
@@ -121,23 +147,29 @@ class CatalogEarlyShellCommercialBridgeState
         _resolution.lojaId == seed &&
         _resolution.phase == CatalogLoaderNamePhase.resolvedWithName &&
         (_resolution.commercialName ?? '').trim().isNotEmpty) {
+      _notifyParentResolution();
       return;
     }
     if (_pipelineForLojaId == seed &&
         _resolution.isTerminal &&
         _resolution.lojaId == seed) {
       // Terminal sem nome / erro: não repetir no mesmo ciclo.
+      _notifyParentResolution();
       return;
     }
 
     _pipelineForLojaId = seed;
     final gen = ++_fetchGeneration;
     setState(() {
-      _resolution = CatalogLoaderNameResolution(
-        lojaId: seed,
-        phase: CatalogLoaderNamePhase.loading,
+      _publishResolution(
+        CatalogLoaderNameResolution(
+          lojaId: seed,
+          phase: CatalogLoaderNamePhase.loading,
+        ),
+        notify: false,
       );
     });
+    _notifyParentResolution();
     unawaited(_runPipeline(seed, gen));
   }
 
@@ -149,11 +181,15 @@ class CatalogEarlyShellCommercialBridgeState
     } catch (_) {
       if (!mounted || gen != _fetchGeneration) return;
       setState(() {
-        _resolution = CatalogLoaderNameResolution(
-          lojaId: seed,
-          phase: CatalogLoaderNamePhase.errorFallback,
+        _publishResolution(
+          CatalogLoaderNameResolution(
+            lojaId: seed,
+            phase: CatalogLoaderNamePhase.errorFallback,
+          ),
+          notify: false,
         );
       });
+      _notifyParentResolution();
       _maybeNotifyHandoff();
       return;
     }
@@ -165,6 +201,7 @@ class CatalogEarlyShellCommercialBridgeState
     if (_resolution.lojaId == lojaId &&
         _resolution.phase == CatalogLoaderNamePhase.resolvedWithName &&
         (_resolution.commercialName ?? '').isNotEmpty) {
+      _notifyParentResolution();
       _maybeNotifyHandoff();
       return;
     }
@@ -188,23 +225,33 @@ class CatalogEarlyShellCommercialBridgeState
 
     setState(() {
       if (hasName) {
-        _resolution = CatalogLoaderNameResolution(
-          lojaId: lojaId,
-          phase: CatalogLoaderNamePhase.resolvedWithName,
-          commercialName: sticky,
+        _publishResolution(
+          CatalogLoaderNameResolution(
+            lojaId: lojaId,
+            phase: CatalogLoaderNamePhase.resolvedWithName,
+            commercialName: sticky,
+          ),
+          notify: false,
         );
       } else if (errored) {
-        _resolution = CatalogLoaderNameResolution(
-          lojaId: lojaId,
-          phase: CatalogLoaderNamePhase.errorFallback,
+        _publishResolution(
+          CatalogLoaderNameResolution(
+            lojaId: lojaId,
+            phase: CatalogLoaderNamePhase.errorFallback,
+          ),
+          notify: false,
         );
       } else {
-        _resolution = CatalogLoaderNameResolution(
-          lojaId: lojaId,
-          phase: CatalogLoaderNamePhase.resolvedWithoutName,
+        _publishResolution(
+          CatalogLoaderNameResolution(
+            lojaId: lojaId,
+            phase: CatalogLoaderNamePhase.resolvedWithoutName,
+          ),
+          notify: false,
         );
       }
     });
+    _notifyParentResolution();
     _maybeNotifyHandoff();
   }
 
