@@ -4731,6 +4731,19 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       // Usar tema do contexto (ex.: web) para loading/erro, evitando tela branca
       final themeForStates = Theme.of(context);
       if (_loadingLojaId) {
+        // Web: pill Flutter cedo (slug→lojaId→nome) sem esperar config stream.
+        // HTML cobre até handoff terminal; não depender do catálogo final (T10).
+        if (kIsWeb) {
+          final earlyId = widget.lojaId.trim();
+          return _wrapWithCatStartDiagOverlay(
+            CatalogEarlyShellCommercialBridge(
+              storeSlug: widget.lojaId,
+              lojaId: earlyId.isEmpty ? widget.lojaId : earlyId,
+              themeData: themeForStates,
+              onHtmlHandoffReady: _onCatalogEarlyShellHandoffReady,
+            ),
+          );
+        }
         return _wrapWithCatStartDiagOverlay(
           CatalogLoadingState(themeData: themeForStates),
         );
