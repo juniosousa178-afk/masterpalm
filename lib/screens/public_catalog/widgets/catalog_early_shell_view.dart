@@ -70,6 +70,7 @@ class _CatalogEarlyShellViewState extends State<CatalogEarlyShellView> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Container(
+                    key: const Key('catalog_loading_store_pill'),
                     padding: const EdgeInsets.symmetric(
                       horizontal: 16,
                       vertical: 10,
@@ -78,12 +79,16 @@ class _CatalogEarlyShellViewState extends State<CatalogEarlyShellView> {
                       color: const Color(0xFF9A4E6B),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Text(
-                      label,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
+                    child: Semantics(
+                      // Prova da pill Flutter VISÍVEL (não badge HTML oculto).
+                      label: 'catalog_loading_store_pill',
+                      child: Text(
+                        label,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                   ),
