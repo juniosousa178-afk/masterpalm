@@ -325,12 +325,8 @@ abstract final class ContaReceberFinanceiroSyncService {
           baixaId: bx,
         );
         await ContaReceberFirestoreService.pullContasReceberRemotas(loja);
-      } else {
-        await ContaReceberFirestoreService.upsertContaReceber(
-          conta,
-          lastWriteOrigin: 'estorno_local',
-        );
       }
+      // Sem baixaId: não há reopen client-side (upsert estorno_local removido).
     }
 
     return const ContaReceberEstornoResultado(

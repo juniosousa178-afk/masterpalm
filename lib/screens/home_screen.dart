@@ -36,6 +36,7 @@ import '../models/produto.dart';
 import '../models/cliente.dart';
 import '../models/fornecedor.dart';
 import '../models/venda.dart';
+import '../core/conta_receber_lembrete.dart';
 import '../services/conta_receber_service.dart';
 
 // ✅ tela fretes/cupons
@@ -365,39 +366,20 @@ class _HomeScreenState extends State<HomeScreen>
   Future<void> _alertarContasReceberPendentes() async {
     if (!mounted || _lojaIdInterno.trim().isEmpty) return;
     try {
-      final box = await ContaReceberService.openBoxLoja(_lojaIdInterno.trim());
+      final loja = _lojaIdInterno.trim();
+      final box = await ContaReceberService.openBoxLoja(loja);
       if (!mounted) return;
 
-      final hoje = DateTime.now();
-      final hojeBase = DateTime(hoje.year, hoje.month, hoje.day);
-      final pendentes = ContaReceberService.listar(
+      final lembrete =
+          await ContaReceberLembreteCobranca.avaliarComValidacaoRemota(
         contas: box.values,
-        lojaId: _lojaIdInterno,
-        filtro: 'pendentes',
+        lojaId: loja,
       );
-      if (pendentes.isEmpty) return;
+      if (!lembrete.deveAlertar) return;
 
-      final vencidas = pendentes.where((c) {
-        final d = DateTime(
-          c.dataVencimento.year,
-          c.dataVencimento.month,
-          c.dataVencimento.day,
-        );
-        return d.isBefore(hojeBase);
-      }).toList();
-      final vencendo = pendentes.where((c) {
-        final d = DateTime(
-          c.dataVencimento.year,
-          c.dataVencimento.month,
-          c.dataVencimento.day,
-        );
-        final dias = d.difference(hojeBase).inDays;
-        return dias >= 0 && dias <= 2;
-      }).toList();
-      if (vencidas.isEmpty && vencendo.isEmpty) return;
-
-      final valorTotal =
-          (vencidas + vencendo).fold<double>(0, (s, c) => s + c.valor);
+      final vencidas = lembrete.vencidas;
+      final vencendo = lembrete.vencendo;
+      final valorTotal = lembrete.valorTotal;
 
       if (!mounted) return;
       await showDialog<void>(
@@ -641,6 +623,7 @@ class _HomeScreenState extends State<HomeScreen>
   // ✅ logout limpa sessao + config + cache multi-tenant
   Future<void> fazerLogout(BuildContext context) async {
     try {
+      ContaReceberLembreteCobranca.invalidarSessao();
       await FirebaseAuth.instance.signOut();
 
       // ✅ CRÍTICO: Limpar cache de loja para evitar mistura multi-tenant

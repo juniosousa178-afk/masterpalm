@@ -62,6 +62,16 @@ void main() {
     } catch (_) {}
   });
 
+  Future<void> seedVendaAtivaNoFirestore(String idV) async {
+    final firestore = ContaReceberFirestoreService.debugFirestoreOverride!;
+    await firestore
+        .collection('lojas')
+        .doc(lojaId)
+        .collection(FSPaths.estoqueVendasCol)
+        .doc(idV)
+        .set({'lojaId': lojaId, 'idFirebase': idV});
+  }
+
   Venda vendaFiadaHive({String? idFirebase}) {
     final venc = DateTime(2026, 8, 15);
     return Venda(
@@ -89,13 +99,14 @@ void main() {
   test('venda fiada remota sem conta cria doc cr_{vendaId}_p1', () async {
     final vendasBox = await Hive.openBox<Venda>(HiveBoxNames.vendas(lojaId));
     await vendasBox.add(vendaFiadaHive());
+    await seedVendaAtivaNoFirestore(vendaId);
 
     final resultado =
         await ContaReceberVendaBackfillService.backfillFromVendasFiadas(lojaId);
     expect(resultado.criadas, 1);
     expect(resultado.jaExistiam, 0);
 
-    final docId = 'cr_${vendaId}_p1';
+    const docId = 'cr_${vendaId}_p1';
     final firestore = ContaReceberFirestoreService.debugFirestoreOverride!;
     final snap = await firestore
         .collection('lojas')
@@ -111,8 +122,9 @@ void main() {
   test('backfill idempotente não duplica se conta remota já existe', () async {
     final vendasBox = await Hive.openBox<Venda>(HiveBoxNames.vendas(lojaId));
     await vendasBox.add(vendaFiadaHive());
+    await seedVendaAtivaNoFirestore(vendaId);
 
-    final docId = 'cr_${vendaId}_p1';
+    const docId = 'cr_${vendaId}_p1';
     final firestore = ContaReceberFirestoreService.debugFirestoreOverride!;
     await firestore
         .collection('lojas')
@@ -161,6 +173,7 @@ void main() {
   test('sincronizarRemoto puxa conta backfill para Hive local', () async {
     final vendasBox = await Hive.openBox<Venda>(HiveBoxNames.vendas(lojaId));
     await vendasBox.add(vendaFiadaHive());
+    await seedVendaAtivaNoFirestore(vendaId);
 
     final pull = await ContaReceberService.sincronizarRemoto(lojaId);
     expect(pull.importados + pull.atualizados, greaterThanOrEqualTo(1));

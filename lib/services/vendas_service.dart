@@ -146,6 +146,35 @@ class VendasService {
     _registrarVendaCoalesce.clear();
   }
 
+  /// Somente testes — exercício do handler de CR após edição da venda.
+  @visibleForTesting
+  static Future<void> debugAtualizarContasReceberAposEdicaoVenda({
+    required Venda venda,
+    required String lojaId,
+    required bool isFiado,
+    required double saldoFiado,
+    DateTime? dataVencimentoFiado,
+    int quantidadeParcelasFiado = 1,
+    int intervaloParcelasDias = 30,
+    String observacao = '',
+    required String clienteNome,
+    bool itensEquivalentes = true,
+    double totalAnterior = 0,
+  }) =>
+      _atualizarContasReceberAposEdicaoVenda(
+        venda: venda,
+        lojaId: lojaId,
+        isFiado: isFiado,
+        saldoFiado: saldoFiado,
+        dataVencimentoFiado: dataVencimentoFiado,
+        quantidadeParcelasFiado: quantidadeParcelasFiado,
+        intervaloParcelasDias: intervaloParcelasDias,
+        observacao: observacao,
+        clienteNome: clienteNome,
+        itensEquivalentes: itensEquivalentes,
+        totalAnterior: totalAnterior,
+      );
+
   static String _chaveCoalesceRegistrarVenda({
     String? lojaId,
     required String clienteNome,
@@ -1196,14 +1225,6 @@ class VendasService {
   }) =>
       !isFiado || saldoFiado <= 0.01;
 
-  static void _assertContasReceberRemoviveisSemRecebimentosParciais(
-    Iterable<ContaReceber> contas,
-  ) {
-    if (contas.any((c) => c.valorPago > 0.01)) {
-      throw ArgumentError(mensagemNaoPodeRemoverFiadoComRecebimentosParciais);
-    }
-  }
-
   static Future<List<ContaReceber>> _contasReceberVinculadasAVenda({
     required Venda venda,
     required String lojaId,
@@ -1225,7 +1246,9 @@ class VendasService {
         .toList();
   }
 
-  /// Auditoria pré-mutação: não apagar CR com baixas se a edição removeria o fiado.
+  /// Auditoria pré-mutação: bloqueia remoção de fiado com baixas parciais
+  /// antes de mutar a venda (contrato live E3). Settlement 040B aplica-se
+  /// quando saldo aberto sem valorPago parcial.
   static Future<void> _validarRemocaoContasReceberAntesDeMutarVenda({
     required Venda vendaOriginal,
     required String lojaId,
@@ -1242,7 +1265,12 @@ class VendasService {
       venda: vendaOriginal,
       lojaId: lojaId,
     );
-    _assertContasReceberRemoviveisSemRecebimentosParciais(contas);
+    if (contas.any((c) {
+      c.normalizarCamposFinanceiros();
+      return c.valorPago > 0.01 && !(c.pago && c.valor < 0.01);
+    })) {
+      throw ArgumentError(mensagemNaoPodeRemoverFiadoComRecebimentosParciais);
+    }
   }
 
   static double _saldoFiadoPreviewEdicao({
@@ -1550,10 +1578,19 @@ class VendasService {
       isFiado: isFiado,
       saldoFiado: saldoFiado,
     )) {
-      _assertContasReceberRemoviveisSemRecebimentosParciais(contasVinculadas);
       await debugForcarFalhaTransicaoCrLocalEdicao?.call();
-      for (final c in contasVinculadas) {
-        await c.delete();
+      final haviaAbertoLocal = contasVinculadas.any((c) {
+        c.normalizarCamposFinanceiros();
+        return !(c.pago && c.valor < 0.01);
+      });
+      // Transição fiado/open → pago. Sem títulos locais, ainda tenta o remoto.
+      // Settlement remoto PAID (040B) — não apaga Hive-only.
+      if (haviaAbertoLocal || contasVinculadas.isEmpty) {
+        await ContaReceberService.encerrarAbertasPorEdicaoVendaQuitada(
+          lojaId: lojaId,
+          vendaKey: vk,
+          vendaIdFirebase: vendaIdVinculo,
+        );
       }
       return;
     }

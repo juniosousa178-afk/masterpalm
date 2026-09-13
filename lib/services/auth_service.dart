@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
+import '../core/conta_receber_lembrete.dart';
 import 'store_resolver_unified.dart';
 
 /// Serviço de autenticação + sessão local (Hive)
@@ -220,6 +221,8 @@ class AuthService extends ChangeNotifier {
       return 'Informe e-mail e senha.';
     }
 
+    ContaReceberLembreteCobranca.invalidarSessao();
+
     try {
       final auth = _auth!;
       final db = _db!;
@@ -305,6 +308,7 @@ class AuthService extends ChangeNotifier {
   // ==========================================================
   Future<void> logout() async {
     debugPrint('🔐 [AUTH] Iniciando logout...');
+    ContaReceberLembreteCobranca.invalidarSessao();
     try {
       if (!offline) {
         await _auth?.signOut();

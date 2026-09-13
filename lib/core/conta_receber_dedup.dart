@@ -49,9 +49,15 @@ bool contaReceberElegivelParaPublicarHive(ContaReceber conta) {
   return contaReceberDocIdDeterministico(conta);
 }
 
-/// Preferência: canônico (vendaId+parcela) > id estável > legado.
+/// Preferência: encerrado/pago > canônico (vendaId+parcela) > id estável > legado.
 int _scorePreferenciaExibicao(ContaReceber conta) {
   var score = 0;
+  if (conta.pago ||
+      conta.valor < 0.01 ||
+      conta.status.trim().toLowerCase() == ContaReceberStatus.paga ||
+      conta.status.trim().toLowerCase() == ContaReceberStatus.cancelada) {
+    score += 200;
+  }
   if (conta.vendaIdFirebase.trim().isNotEmpty) score += 100;
   final id = (conta.idFirebase ?? '').trim();
   if (id.isNotEmpty) score += 20;
@@ -59,6 +65,10 @@ int _scorePreferenciaExibicao(ContaReceber conta) {
   if (conta.valorPago > 0.01) score += 5;
   return score;
 }
+
+/// Dedup/backfill não devem recriar título já quitado, cancelado ou sem saldo.
+bool contaReceberBloqueiaRecriacao(ContaReceber conta) =>
+    contaReceberInativaParaSync(conta);
 
 /// Remove duplicatas semânticas (legado + canônico da mesma parcela).
 List<ContaReceber> deduplicarContasReceber(List<ContaReceber> contas) {

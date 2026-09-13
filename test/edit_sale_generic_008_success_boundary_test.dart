@@ -246,7 +246,7 @@ void main() {
     });
 
     test(
-      'E2 fiado CR saldo>0 valorPago=0 → non-fiado paid → CR removed + ok',
+      'E2 fiado CR saldo>0 valorPago=0 → non-fiado paid → CR settled PAID + ok',
       () async {
         final venda = await criarVendaFiada255();
         final cliente = clientesBox.values.first;
@@ -272,8 +272,16 @@ void main() {
         expect(edited.formasPagamento.toLowerCase(), contains('pix'));
         expect(edited.formasPagamento.toLowerCase(), isNot(contains('fiado')));
 
+        // 040B/040G: settlement remoto PAID (não apaga o doc Hive).
         final crAfter = await ContaReceberService.openBoxLoja(lojaId);
-        expect(crAfter.length, 0);
+        expect(crAfter.length, greaterThan(0));
+        expect(
+          crAfter.values.every((c) {
+            c.normalizarCamposFinanceiros();
+            return c.pago && c.valor < 0.01;
+          }),
+          isTrue,
+        );
         await crAfter.close();
       },
     );

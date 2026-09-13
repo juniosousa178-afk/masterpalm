@@ -274,6 +274,17 @@ abstract final class ContaReceberVendaBackfillService {
                 existiam++;
                 continue;
               }
+              if (ContaReceberFirestoreService.isDocRemotoEncerrado(remoto)) {
+                final importouPago =
+                    await ContaReceberFirestoreService.importarContaRemotaParaHive(
+                  lojaId: loja,
+                  docId: docId,
+                  data: remoto,
+                );
+                if (importouPago) importadasHive++;
+                existiam++;
+                continue;
+              }
               final importou =
                   await ContaReceberFirestoreService.importarContaRemotaParaHive(
                 lojaId: loja,
@@ -307,6 +318,20 @@ abstract final class ContaReceberVendaBackfillService {
                       docId: legacyId,
                       data: remotoLegacy,
                     );
+                    existiam++;
+                    continue;
+                  }
+                  if (ContaReceberFirestoreService.isDocRemotoEncerrado(
+                    remotoLegacy,
+                  )) {
+                    final importouPago =
+                        await ContaReceberFirestoreService
+                            .importarContaRemotaParaHive(
+                      lojaId: loja,
+                      docId: legacyId,
+                      data: remotoLegacy,
+                    );
+                    if (importouPago) importadasHive++;
                     existiam++;
                     continue;
                   }

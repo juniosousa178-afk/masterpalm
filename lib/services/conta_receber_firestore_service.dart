@@ -1,6 +1,7 @@
 // Sync Hive ↔ Firestore para contas a receber / fiado.
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
@@ -56,6 +57,13 @@ abstract final class ContaReceberFirestoreService {
 
   @visibleForTesting
   static FirebaseFirestore? debugFirestoreOverride;
+
+  /// Testes: intercepta o callable `estornarBaixaContaReceber`.
+  @visibleForTesting
+  static Future<Map<String, dynamic>> Function(Map<String, dynamic> data)?
+      debugTrustedRefundOverride;
+
+  static const String trustedRefundCallableName = 'estornarBaixaContaReceber';
 
   static bool _pullEmExecucao = false;
 
@@ -294,6 +302,155 @@ abstract final class ContaReceberFirestoreService {
 
   static bool isDocRemotoCancelado(Map<String, dynamic> data) =>
       _docRemotoCancelado(data);
+
+  /// Quitado, cancelado/tombstone ou saldo zerado — não reabrir nem backfill.
+  static bool isDocRemotoEncerrado(Map<String, dynamic> data) {
+    if (_docRemotoCancelado(data)) return true;
+    if (_fsBool(data['pago'])) return true;
+    final st = _fsString(data['status']).trim().toLowerCase();
+    if (st == ContaReceberStatus.paga ||
+        st == ContaReceberStatus.cancelada ||
+        st == ContaReceberStatus.estornada) {
+      return true;
+    }
+    final saldo = _fsDouble(data['saldoAtual'], _fsDouble(data['valor']));
+    return saldo < 0.01;
+  }
+
+  static const String origemEdicaoVendaPaga = 'edicao_venda_paga';
+
+  @visibleForTesting
+  static Future<void> Function()? debugForcarFalhaMarcarPagaEdicaoVenda;
+
+  /// Marca o título remoto como pago (quitação pela edição da venda). Sem caixa.
+  static Future<bool> marcarPagaPorEdicaoVendaRemota({
+    required String lojaId,
+    required String contaReceberDocId,
+    ContaReceber? contaLocal,
+  }) async {
+    final loja = lojaId.trim();
+    final id = contaReceberDocId.trim();
+    if (loja.isEmpty || id.isEmpty) return false;
+    final hook = debugForcarFalhaMarcarPagaEdicaoVenda;
+    if (hook != null) {
+      await hook();
+    }
+    try {
+      final ref = _ref(loja, id);
+      await _db.runTransaction((tx) async {
+        final snap = await tx.get(ref);
+        final data = Map<String, dynamic>.from(snap.data() ?? {});
+        if (snap.exists && isDocRemotoEncerrado(data)) {
+          return;
+        }
+        final valorOriginal = contaLocal != null
+            ? (contaLocal.valorOriginal > 1e-9
+                ? contaLocal.valorOriginal
+                : contaLocal.valor + contaLocal.valorPago)
+            : _fsDouble(data['valorOriginal'], _fsDouble(data['valor']));
+        final valorPago = valorOriginal > 1e-9
+            ? valorOriginal
+            : _fsDouble(data['valorPago']);
+        tx.set(
+          ref,
+          {
+            if (snap.exists) ...data,
+            'lojaId': loja,
+            'contaReceberId': id,
+            if (contaLocal != null) ...{
+              'vendaIdFirebase': contaLocal.vendaIdFirebase.trim(),
+              'vendaKey': contaLocal.vendaKey,
+              'clienteNome': contaLocal.clienteNome.trim(),
+              'parcelaNumero': contaLocal.parcelaNumero,
+              'parcelaTotal': contaLocal.parcelaTotal,
+              'dataVencimento': Timestamp.fromDate(contaLocal.dataVencimento),
+              'dataVenda': Timestamp.fromDate(contaLocal.dataVenda),
+              'valorOriginal': valorOriginal,
+            },
+            'valorPago': valorPago,
+            'saldoAtual': 0,
+            'valor': 0,
+            'status': ContaReceberStatus.paga,
+            'pago': true,
+            'cancelada': false,
+            'lastWriteOrigin': origemEdicaoVendaPaga,
+            'updatedAt': FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true),
+        );
+      });
+      return true;
+    } on FirebaseException catch (e) {
+      debugPrint(
+        '[CR-FS][PAGA-EDICAO] id=$id code=${e.code} message=${e.message}',
+      );
+      return false;
+    } catch (e) {
+      debugPrint(
+        '[CR-FS][PAGA-EDICAO] id=$id type=${e.runtimeType} message=$e',
+      );
+      return false;
+    }
+  }
+
+  /// Encerra remotamente títulos abertos da venda (query + IDs canónicos).
+  static Future<int> encerrarAbertasDaVendaPorEdicao({
+    required String lojaId,
+    required String vendaIdFirebase,
+    required Map<String, ContaReceber> contasPorDocId,
+  }) async {
+    final loja = lojaId.trim();
+    final idV = vendaIdFirebase.trim();
+    if (loja.isEmpty || idV.isEmpty) return 0;
+
+    final ids = <String>{...contasPorDocId.keys};
+    try {
+      final qs = await _db
+          .collection('lojas')
+          .doc(loja)
+          .collection(FSPaths.contasReceberCol)
+          .where('vendaIdFirebase', isEqualTo: idV)
+          .get();
+      for (final doc in qs.docs) {
+        ids.add(doc.id);
+      }
+    } catch (e) {
+      debugPrint(
+        '[CR-FS][PAGA-EDICAO] query vendaId=$idV type=${e.runtimeType}',
+      );
+    }
+
+    final idSan = idV.replaceAll('/', '_').replaceAll(':', '_');
+    for (var p = 1; p <= 24; p++) {
+      ids.add('cr_${idSan}_p$p');
+    }
+
+    var ok = 0;
+    for (final id in ids) {
+      try {
+        final snap = await _ref(loja, id).get();
+        final local = contasPorDocId[id];
+        if (!snap.exists && local == null) continue;
+        if (snap.exists && isDocRemotoEncerrado(snap.data() ?? {})) {
+          ok++;
+          continue;
+        }
+        final marcado = await marcarPagaPorEdicaoVendaRemota(
+          lojaId: loja,
+          contaReceberDocId: id,
+          contaLocal: local,
+        );
+        if (!marcado) return -1;
+        ok++;
+      } catch (e) {
+        debugPrint(
+          '[CR-FS][PAGA-EDICAO] id=$id type=${e.runtimeType}',
+        );
+        return -1;
+      }
+    }
+    return ok;
+  }
 
   /// Remove ou inativa conta local quando o remoto veio cancelado/deletado.
   static Future<bool> aplicarTombstoneRemotoNoHive({
@@ -603,7 +760,19 @@ abstract final class ContaReceberFirestoreService {
           docId: docId,
           lastWriteOrigin: lastWriteOrigin,
         );
-        await _ref(loja, docId).set(data, SetOptions(merge: true));
+        final incomingAberto = !conta.pago && conta.valor >= 0.01;
+        await _db.runTransaction((tx) async {
+          final snap = await tx.get(_ref(loja, docId));
+          if (snap.exists &&
+              isDocRemotoEncerrado(snap.data() ?? {}) &&
+              incomingAberto) {
+            debugPrint(
+              '[CR-FS][UPSERT-SKIP-PAID] id=$docId origem=$lastWriteOrigin',
+            );
+            return;
+          }
+          tx.set(_ref(loja, docId), data, SetOptions(merge: true));
+        });
         conta.garantirDocIdFirestore(docId);
         if (conta.isInBox) {
           try {
@@ -716,6 +885,22 @@ abstract final class ContaReceberFirestoreService {
       debugPrint('[CR-FS] buscar $id (type=${e.runtimeType})');
       return null;
     }
+  }
+
+  /// Leitura server-backed para o alerta da Home. Propaga erro de rede.
+  static Future<Map<String, dynamic>?> buscarContaReceberRemotaServidor({
+    required String lojaId,
+    required String contaReceberId,
+  }) async {
+    final loja = lojaId.trim();
+    final id = contaReceberId.trim();
+    if (loja.isEmpty || id.isEmpty) return null;
+    final ref = _ref(loja, id);
+    final snap = debugFirestoreOverride != null
+        ? await ref.get()
+        : await ref.get(const GetOptions(source: Source.server));
+    if (!snap.exists) return null;
+    return snap.data();
   }
 
   /// Baixa idempotente no Firestore (histórico com `baixaId`).
@@ -845,7 +1030,7 @@ abstract final class ContaReceberFirestoreService {
     }
   }
 
-  /// Estorna baixa no Firestore (marca `estornada`, reabre saldo).
+  /// Estorna baixa via backend confiável. Produção não reabre PAID→OPEN no cliente.
   static Future<bool> estornarBaixaRemota({
     required String lojaId,
     required String contaReceberDocId,
@@ -856,17 +1041,69 @@ abstract final class ContaReceberFirestoreService {
     final bx = baixaId.trim();
     if (loja.isEmpty || docId.isEmpty || bx.isEmpty) return false;
 
+    final payload = <String, dynamic>{
+      'lojaId': loja,
+      'contaReceberId': docId,
+      'baixaId': bx,
+    };
+
+    final override = debugTrustedRefundOverride;
+    if (override != null) {
+      try {
+        final r = await override(payload);
+        return r['ok'] == true;
+      } catch (e) {
+        debugPrint('[CR-FS] Estorno override (type=${e.runtimeType})');
+        return false;
+      }
+    }
+
+    // FakeFirebase / testes unitários: aplica a semântica Admin-like localmente.
+    // Produção (override nulo) só chama o callable — sem write direto PAID→OPEN.
+    if (debugFirestoreOverride != null) {
+      return _aplicarEstornoBaixaAdminLikeNoFirestore(
+        lojaId: loja,
+        contaReceberDocId: docId,
+        baixaId: bx,
+      );
+    }
+
     try {
-      final ref = _ref(loja, docId);
+      final functions =
+          FirebaseFunctions.instanceFor(region: 'southamerica-east1');
+      final callable = functions.httpsCallable(trustedRefundCallableName);
+      final result = await callable.call(payload);
+      final data = result.data;
+      if (data is Map && data['ok'] == true) return true;
+      return false;
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint('[CR-FS] Estorno trusted fn code=${e.code}');
+      return false;
+    } catch (e) {
+      debugPrint('[CR-FS] Estorno trusted fn type=${e.runtimeType}');
+      return false;
+    }
+  }
+
+  /// Semântica canónica do estorno (mesma da Function). Só testes / Fake FS.
+  static Future<bool> _aplicarEstornoBaixaAdminLikeNoFirestore({
+    required String lojaId,
+    required String contaReceberDocId,
+    required String baixaId,
+  }) async {
+    try {
+      final ref = _ref(lojaId, contaReceberDocId);
       await _db.runTransaction((tx) async {
         final snap = await tx.get(ref);
-        if (!snap.exists) return;
+        if (!snap.exists) {
+          throw StateError('missing');
+        }
         final data = Map<String, dynamic>.from(snap.data() ?? {});
         final hist = _parseHistorico(data['historicoPagamentos']);
         var alterou = false;
         double valorEstorno = 0;
         for (final h in hist) {
-          if (_fsString(h['baixaId']) != bx) continue;
+          if (_fsString(h['baixaId']) != baixaId) continue;
           if (_fsBool(h['estornada'])) return;
           h['estornada'] = true;
           h['estornoAt'] = DateTime.now().toIso8601String();
@@ -874,7 +1111,9 @@ abstract final class ContaReceberFirestoreService {
           alterou = true;
           break;
         }
-        if (!alterou || valorEstorno <= 0) return;
+        if (!alterou || valorEstorno <= 0) {
+          throw StateError('baixa_missing');
+        }
 
         final saldo = _fsDouble(data['saldoAtual'], _fsDouble(data['valor']));
         final valorPago =
@@ -900,7 +1139,7 @@ abstract final class ContaReceberFirestoreService {
             'valor': novoSaldo,
             'status': status,
             'pago': pago,
-            'lastWriteOrigin': 'estorno_baixa',
+            'lastWriteOrigin': 'trusted_refund_fn',
             'updatedAt': FieldValue.serverTimestamp(),
           },
           SetOptions(merge: true),
@@ -908,7 +1147,7 @@ abstract final class ContaReceberFirestoreService {
       });
       return true;
     } catch (e) {
-      debugPrint('[CR-FS] Estorno remoto (type=${e.runtimeType})');
+      debugPrint('[CR-FS] Estorno admin-like teste (type=${e.runtimeType})');
       return false;
     }
   }

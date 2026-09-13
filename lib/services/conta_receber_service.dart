@@ -199,6 +199,112 @@ class ContaReceberService {
     return keysToDelete.length;
   }
 
+  /// Quita títulos abertos quando a edição da venda deixa de ser fiado / fica paga.
+  /// Firestore primeiro; Hive só após sucesso remoto. Não cria lançamento de caixa.
+  static Future<void> encerrarAbertasPorEdicaoVendaQuitada({
+    required String lojaId,
+    int? vendaKey,
+    String? vendaIdFirebase,
+  }) async {
+    final loja = lojaId.trim();
+    final idV = (vendaIdFirebase ?? '').trim();
+    final vk = vendaKey;
+    if (loja.isEmpty) {
+      throw ArgumentError('lojaId vazio ao encerrar contas a receber.');
+    }
+    if (idV.isEmpty && (vk == null || vk < 0)) {
+      throw ArgumentError(
+        'Não foi possível encerrar a conta a receber: venda sem identificador.',
+      );
+    }
+
+    final crBox = await openBoxLoja(loja);
+    final locais = <ContaReceber>[];
+    for (final c in crBox.values) {
+      if (!contaReceberVinculadaAVenda(
+        conta: c,
+        lojaId: loja,
+        vendaKey: vk,
+        vendaIdFirebase: idV,
+      )) {
+        continue;
+      }
+      locais.add(c);
+    }
+
+    final jaPagas = <ContaReceber>[];
+    final abertas = <ContaReceber>[];
+    for (final c in locais) {
+      c.normalizarCamposFinanceiros();
+      if (c.pago && c.valor < 0.01) {
+        jaPagas.add(c);
+      } else {
+        abertas.add(c);
+      }
+    }
+
+    if (abertas.any((c) => c.valorPago > 0.01)) {
+      throw ArgumentError(
+        'Não é possível remover o fiado: existem recebimentos parciais nesta venda.',
+      );
+    }
+
+    final porDoc = <String, ContaReceber>{};
+    for (final c in [...abertas, ...jaPagas]) {
+      normalizarContaReceberId(c);
+      final docId = resolveContaReceberDocId(c);
+      if (docId.isEmpty) {
+        if (jaPagas.contains(c)) continue;
+        throw StateError(
+          'Não foi possível encerrar a conta a receber no servidor. Tente novamente.',
+        );
+      }
+      porDoc[docId] = c;
+    }
+
+    if (idV.isNotEmpty) {
+      final remoto = await ContaReceberFirestoreService
+          .encerrarAbertasDaVendaPorEdicao(
+        lojaId: loja,
+        vendaIdFirebase: idV,
+        contasPorDocId: porDoc,
+      );
+      if (remoto < 0) {
+        throw StateError(
+          'Não foi possível encerrar a conta a receber no servidor. Tente novamente.',
+        );
+      }
+    } else {
+      for (final entry in porDoc.entries) {
+        final ok =
+            await ContaReceberFirestoreService.marcarPagaPorEdicaoVendaRemota(
+          lojaId: loja,
+          contaReceberDocId: entry.key,
+          contaLocal: entry.value,
+        );
+        if (!ok) {
+          throw StateError(
+            'Não foi possível encerrar a conta a receber no servidor. Tente novamente.',
+          );
+        }
+      }
+    }
+
+    for (final c in abertas) {
+      if (c.pago && c.valor < 0.01) continue;
+      final original =
+          c.valorOriginal > 1e-9 ? c.valorOriginal : (c.valor + c.valorPago);
+      c.valorPago = original;
+      c.valor = 0;
+      c.pago = true;
+      c.status = ContaReceberStatus.paga;
+      c.normalizarCamposFinanceiros();
+      if (c.isInBox) {
+        await c.save();
+      }
+    }
+  }
+
   static void validarValorBaixa({
     required double valorRecebido,
     required double saldoRestante,
