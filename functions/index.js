@@ -126,6 +126,10 @@ import {
 import { runCatalogDomainSubmit, runCatalogDomainVerify } from "./src/catalogDomainWorkflow.js";
 import { runGirarRoletaCatalogo } from "./src/roletaCatalogo.js";
 import { createOnPrePedidoClienteEmail } from "./src/pedidoClienteStatusEmail.js";
+import {
+  handleEstornarBaixaContaReceber,
+  TrustedRefundError,
+} from "./src/fiadoEstornarBaixaContaReceber.js";
 
 // ✅ Webhooks Canais Meta (WhatsApp, Instagram, Messenger)
 export { webhookWhatsApp, webhookInstagram, webhookMessenger } from "./canaisMetaWebhooks.js";
@@ -1535,6 +1539,34 @@ export const superFreteQuote = onCall(
 export const superFreteCreateCheckout = onCall(
   { timeoutSeconds: 30, memory: "256MiB" },
   bindSuperFreteHandler("superFreteCreateCheckout"),
+);
+
+/**
+ * Estorno confiável de baixa de Conta a Receber.
+ * Admin SDK (fora das Rules client-side). Cliente não pode emular esta via.
+ */
+export const estornarBaixaContaReceber = onCall(
+  { timeoutSeconds: 30, memory: "256MiB" },
+  async (request) => {
+    try {
+      return await handleEstornarBaixaContaReceber({
+        db,
+        auth: request.auth,
+        data: request.data,
+        isRootAccountEmail,
+      });
+    } catch (err) {
+      if (err instanceof HttpsError) throw err;
+      if (err instanceof TrustedRefundError) {
+        throw new HttpsError(err.code, err.message);
+      }
+      console.error("[estornarBaixaContaReceber] erro interno:", err?.message || err);
+      throw new HttpsError(
+        "internal",
+        "Não foi possível estornar a baixa. Tente novamente.",
+      );
+    }
+  },
 );
 
 function bindMelhorEnvioHandler(handlerName) {
