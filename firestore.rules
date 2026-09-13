@@ -1079,17 +1079,105 @@ service cloud.firestore {
       }
 
       // Contas a receber / fiado — sync Hive ↔ Firestore (app MasterPalm).
+      // 040B3: PAID→OPEN client-side é sempre DENY. Estorno só via Admin SDK.
+      // lastWriteOrigin / refund / trusted NÃO autorizam reopen.
+      function crFiadoIsCancelled(data) {
+        return data.get('cancelada', false) == true
+          || data.get('status', '') == 'cancelada'
+          || data.get('deletedAt', null) != null;
+      }
+
+      function crFiadoIsPaid(data) {
+        return data.get('pago', false) == true
+          || data.get('status', '') == 'paga';
+      }
+
+      function crFiadoIsOpen(data) {
+        return !crFiadoIsCancelled(data)
+          && !crFiadoIsPaid(data)
+          && (
+            (data.get('saldoAtual', data.get('valor', 1)) is number
+              && data.get('saldoAtual', data.get('valor', 1)) >= 0.01)
+            || data.get('pago', false) == false
+          );
+      }
+
+      function crFiadoPaidToOpen() {
+        return crFiadoIsPaid(resource.data) && (
+          crFiadoIsOpen(request.resource.data)
+          || request.resource.data.get('pago', true) == false
+          || (
+            request.resource.data.get('status', '') != 'paga'
+            && request.resource.data.get('status', '') != 'cancelada'
+          )
+          || (
+            request.resource.data.get('saldoAtual', request.resource.data.get('valor', 0)) is number
+            && request.resource.data.get('saldoAtual', request.resource.data.get('valor', 0)) >= 0.01
+          )
+        );
+      }
+
+      function crFiadoCanonicalP1Paid(vendaId) {
+        return vendaId is string
+          && vendaId.size() > 0
+          && exists(
+            /databases/$(database)/documents/lojas/$(lojaId)/contas_receber/$(
+              'cr_' + vendaId + '_p1'
+            )
+          )
+          && crFiadoIsPaid(
+            get(
+              /databases/$(database)/documents/lojas/$(lojaId)/contas_receber/$(
+                'cr_' + vendaId + '_p1'
+              )
+            ).data
+          );
+      }
+
+      function crFiadoIsLegacyManualId(id) {
+        return id.matches('cr_legacy_.*');
+      }
+
+      function crFiadoIsSaleShapedDocId(id) {
+        return id.matches('cr_.*_p[0-9]+') && !crFiadoIsLegacyManualId(id);
+      }
+
+      function crFiadoIncomingSaleId() {
+        return request.resource.data.get('vendaIdFirebase', '');
+      }
+
+      function crFiadoCreateOpenBlocked(id) {
+        return crFiadoIsOpen(request.resource.data) && (
+          (
+            crFiadoIsSaleShapedDocId(id)
+            && (
+              !(crFiadoIncomingSaleId() is string)
+              || crFiadoIncomingSaleId().size() == 0
+            )
+          )
+          || (
+            crFiadoIncomingSaleId() is string
+            && crFiadoIncomingSaleId().size() > 0
+            && crFiadoCanonicalP1Paid(crFiadoIncomingSaleId())
+            && id != ('cr_' + crFiadoIncomingSaleId() + '_p1')
+          )
+        );
+      }
+
       match /contas_receber/{contaId} {
         allow read: if canAccessLojaFinanceiro(lojaId)
           && resource != null
           && resource.data.lojaId == lojaId;
         allow create: if canAccessLojaFinanceiro(lojaId)
-          && request.resource.data.lojaId == lojaId;
+          && request.resource.data.lojaId == lojaId
+          && !crFiadoCreateOpenBlocked(contaId);
         allow update: if canAccessLojaFinanceiro(lojaId)
           && request.resource.data.lojaId == lojaId
-          && resource.data.lojaId == lojaId;
+          && resource.data.lojaId == lojaId
+          && !crFiadoPaidToOpen();
         allow delete: if canAccessLojaFinanceiro(lojaId)
-          && resource.data.lojaId == lojaId;
+          && resource.data.lojaId == lojaId
+          && !crFiadoIsPaid(resource.data);
       }
 
       match /gastos_fixos_mensais/{docId} {
