@@ -154,6 +154,9 @@ class ComboKitStockService {
     required Box<Produto> produtosBox,
     Set<String>? produtoIdsDebitadosNaVenda,
   }) async {
+    // The trusted mutation already updates affected combos in the same commit.
+    if (EstoqueTransactionService.usaBackendConfiavel) return [];
+
     final debitedNorm = produtoIdsDebitadosNaVenda
         ?.map((e) => e.trim())
         .where((e) => e.isNotEmpty)
@@ -445,6 +448,9 @@ class ComboKitStockService {
     required Box<Produto> produtosBox,
     Set<String>? produtoIdsQueAfetamCombo,
   }) async {
+    // The trusted mutation already updates affected combos in the same commit.
+    if (EstoqueTransactionService.usaBackendConfiavel) return [];
+
     final norm = produtoIdsQueAfetamCombo
         ?.map((e) => e.trim())
         .where((e) => e.isNotEmpty)

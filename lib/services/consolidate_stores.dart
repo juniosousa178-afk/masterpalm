@@ -76,64 +76,12 @@ class ConsolidateStoresService {
 
   /// Copia todos os produtos da loja origem para destino
   static Future<int> _copyProdutos() async {
-    final firestore = FirebaseFirestore.instance;
-    final sourceRef = firestore.collection('lojas/$_sourceLoja/produtos');
-    final targetRef = firestore.collection('lojas/$_targetLoja/produtos');
-
-    final snapshot = await sourceRef.get();
-    int count = 0;
-
-    for (var doc in snapshot.docs) {
-      final data = doc.data();
-
-      // Atualizar IDs e referências
-      final newId = doc.id.replaceFirst(_sourceLoja, _targetLoja);
-      data['lojaId'] = _targetLoja;
-      data['id'] = newId;
-
-      // Verificar se já existe no destino
-      final targetDoc = await targetRef.doc(newId).get();
-      if (!targetDoc.exists) {
-        await targetRef.doc(newId).set(data);
-        count++;
-        debugPrint('  📦 Produto copiado: $newId');
-      } else {
-        debugPrint('  ⏭️  Produto já existe: $newId (pulando)');
-      }
-    }
-
-    return count;
+    throw StateError('Consolidação legada desativada: não copie estoque ou catálogo entre lojas.');
   }
 
   /// Copia todos os draft_produtos da loja origem para destino
   static Future<int> _copyDraftProdutos() async {
-    final firestore = FirebaseFirestore.instance;
-    final sourceRef = firestore.collection('lojas/$_sourceLoja/draft_produtos');
-    final targetRef = firestore.collection('lojas/$_targetLoja/draft_produtos');
-
-    final snapshot = await sourceRef.get();
-    int count = 0;
-
-    for (var doc in snapshot.docs) {
-      final data = doc.data();
-
-      // Atualizar IDs e referências
-      final newId = doc.id.replaceFirst(_sourceLoja, _targetLoja);
-      data['lojaId'] = _targetLoja;
-      data['id'] = newId;
-
-      // Verificar se já existe no destino
-      final targetDoc = await targetRef.doc(newId).get();
-      if (!targetDoc.exists) {
-        await targetRef.doc(newId).set(data);
-        count++;
-        debugPrint('  📝 Draft produto copiado: $newId');
-      } else {
-        debugPrint('  ⏭️  Draft produto já existe: $newId (pulando)');
-      }
-    }
-
-    return count;
+    throw StateError('Consolidação legada desativada: não copie estoque ou catálogo entre lojas.');
   }
 
   /// Copia config da loja origem para destino (merge AGRESSIVO)

@@ -1140,19 +1140,26 @@ class CatalogoVendaService {
       final produtosBox = await Hive.openBox<Produto>(HiveBoxNames.produtos(lojaId));
       final vendaItens = <VendaItem>[];
 
-      final itemsParaEstoque = _expandirItemsParaEstoque(
-        items: itens,
-        produtosBox: produtosBox,
-        lojaId: lojaId,
-      );
-      if (itemsParaEstoque.isEmpty) {
-        throw Exception('Nenhum item válido para baixa de estoque');
+      final List<EstoqueTransactionResult> txResults;
+      if (EstoqueTransactionService.usaBackendConfiavel) {
+        txResults = await EstoqueTransactionService.baixarEstoquePedido(
+          lojaId: lojaId,
+          pedidoId: pedidoId,
+        );
+      } else {
+        final itemsParaEstoque = _expandirItemsParaEstoque(
+          items: itens,
+          produtosBox: produtosBox,
+          lojaId: lojaId,
+        );
+        if (itemsParaEstoque.isEmpty) {
+          throw Exception('Nenhum item válido para baixa de estoque');
+        }
+        txResults = await EstoqueTransactionService.baixarEstoqueTransactionBatch(
+          lojaId: lojaId,
+          itens: itemsParaEstoque,
+        );
       }
-
-      final txResults = await EstoqueTransactionService.baixarEstoqueTransactionBatch(
-        lojaId: lojaId,
-        itens: itemsParaEstoque,
-      );
 
       await EstoqueTransactionService.removerDoCatalogoSeEstoqueZerado(lojaId, txResults);
 

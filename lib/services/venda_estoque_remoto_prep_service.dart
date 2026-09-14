@@ -94,6 +94,21 @@ class VendaEstoqueRemotoPrepService {
     final li = lojaId.trim();
     if (li.isEmpty) return;
 
+    if (ProdutosFirestoreService.debugFirestoreOverride == null) {
+      for (final produto in produtos) {
+        if (produto.lojaId != li || produto.idFirebase.trim().isEmpty) {
+          throw StateError(VendaEstoqueRemotoPrepMessages.sincronizando);
+        }
+        final snapshot = await _db.collection('lojas').doc(li)
+            .collection(FSPaths.estoqueProdutosCol).doc(produto.idFirebase).get();
+        if (!snapshot.exists) throw StateError(VendaEstoqueRemotoPrepMessages.sincronizando);
+        if (snapshot.data()?['pendingSoftDelete'] == true) {
+          throw StateError(VendaEstoqueRemotoPrepMessages.removido);
+        }
+      }
+      return;
+    }
+
     final vistos = <String>{};
     final unicos = <Produto>[];
     for (final p in produtos) {

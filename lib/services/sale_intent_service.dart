@@ -78,8 +78,7 @@ class SaleIntentInvalidStateTransitionException implements Exception {
   SaleIntentInvalidStateTransitionException(this.message);
   final String message;
   @override
-  String toString() =>
-      'SaleIntentInvalidStateTransitionException: $message';
+  String toString() => 'SaleIntentInvalidStateTransitionException: $message';
 }
 
 class SaleIntentInvalidSchemaException implements Exception {
@@ -226,6 +225,7 @@ abstract final class SaleIntentService {
     required String saleIntentId,
     required String origin,
     required String stockEffectHash,
+    String? requiredOperationId,
   }) async {
     _validateInputs(
       lojaId: lojaId,
@@ -238,12 +238,14 @@ abstract final class SaleIntentService {
     final intentId = saleIntentId.trim();
     final originNorm = origin.trim();
     final hashNorm = stockEffectHash.trim();
+    final requiredOp = (requiredOperationId ?? '').trim();
     final ref = _intentRef(loja, intentId);
 
     return _db.runTransaction((transaction) async {
       final snap = await transaction.get(ref);
       if (!snap.exists) {
-        final operationId = const Uuid().v4();
+        final operationId =
+            requiredOp.isNotEmpty ? requiredOp : const Uuid().v4();
         final payload = <String, dynamic>{
           'protocolVersion': protocolVersion,
           'saleIntentId': intentId,
@@ -281,6 +283,11 @@ abstract final class SaleIntentService {
         saleIntentId: intentId,
         reserveStatus: SaleIntentReserveStatus.joined,
       );
+      if (requiredOp.isNotEmpty && parsed.operationId != requiredOp) {
+        throw SaleIntentIdentityConflictException(
+          'operationId divergente para saleIntentId=$intentId.',
+        );
+      }
       if (parsed.status == SaleIntentStatus.reverted) {
         transaction.update(ref, {
           'status': SaleIntentStatus.reserved.wireValue,

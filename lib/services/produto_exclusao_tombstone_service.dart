@@ -14,6 +14,7 @@ import '../core/logger.dart';
 import '../core/produto_variacao_extra.dart';
 import '../models/produto.dart';
 import 'firestore_paths.dart';
+import 'stock_catalog_backend_service.dart';
 
 const _prefsKey = 'exclusao_produto_tomb_v1';
 const _sep = '\u001E';
@@ -35,6 +36,8 @@ class ProdutoExclusaoTombstoneService {
 
   @visibleForTesting
   static FirebaseFirestore? debugFirestoreOverride;
+
+  static bool get usandoFirestoreOverride => debugFirestoreOverride != null;
 
   static FirebaseFirestore get _db => FirestoreAccessGuard.resolve(
         override: debugFirestoreOverride,
@@ -58,7 +61,8 @@ class ProdutoExclusaoTombstoneService {
   static String vKeyCelula(String t, String c) =>
       '$_pfxV${t.trim()}$_sep${c.trim()}$_sep';
 
-  static String eKey(String outer, String cor) => '$_pfxE${outer.trim()}$_sep${cor.trim()}';
+  static String eKey(String outer, String cor) =>
+      '$_pfxE${outer.trim()}$_sep${cor.trim()}';
 
   /// Mesma regra de [Produto._resolverCorKeyParaTamanho] para checagem de tombstone.
   static String normalizarCorParaChecagem({
@@ -155,7 +159,8 @@ class ProdutoExclusaoTombstoneService {
       await _savePrefs();
     } catch (e) {
       if (kDebugMode) {
-        logW('⚠️ [TOMBSTONE] ensureHydrate (type=${e.runtimeType})', tag: 'TOMBSTONE');
+        logW('⚠️ [TOMBSTONE] ensureHydrate (type=${e.runtimeType})',
+            tag: 'TOMBSTONE');
       }
     }
   }
@@ -270,11 +275,18 @@ class ProdutoExclusaoTombstoneService {
       _keysEstoquePorTamanho(m);
 
   /// `true` se a escrita com `p: true` no Firestore e cache local forem confirmadas.
+  /// Produção: use [StockCatalogBackendService.deleteProduct] — este helper é TEST_ONLY.
   static Future<bool> registrarExclusaoProdutoCompleto({
     required String lojaId,
     required String estoqueDocId,
     String? slug,
   }) async {
+    if (!usandoFirestoreOverride) {
+      throw StateError(
+        'registrarExclusaoProdutoCompleto desativado em produção: '
+        'use StockCatalogBackendService.deleteProduct (CAS + tombstone servidor).',
+      );
+    }
     final l = lojaId.trim();
     final id = estoqueDocId.trim();
     if (l.isEmpty || id.isEmpty) return false;
@@ -291,14 +303,14 @@ class ProdutoExclusaoTombstoneService {
             .collection(FSPaths.exclusaoProdutoCol)
             .doc(id)
             .set(
-              {
-                'p': true,
-                'v': FieldValue.delete(),
-                'sl': slug,
-                'at': FieldValue.serverTimestamp(),
-              },
-              SetOptions(merge: true),
-            );
+          {
+            'p': true,
+            'v': FieldValue.delete(),
+            'sl': slug,
+            'at': FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true),
+        );
         _loja(l).produtoCheio.add(id);
         await _savePrefs();
         logD(
@@ -338,11 +350,39 @@ class ProdutoExclusaoTombstoneService {
     required String lojaId,
     required String estoqueDocId,
     required Set<String> chaves,
+    int? expectedRevision,
   }) async {
     final l = lojaId.trim();
     final id = estoqueDocId.trim();
     if (l.isEmpty || id.isEmpty || chaves.isEmpty) return true;
     if (isProdutoBloqueadoSinc(l, id)) return true;
+
+    if (!usandoFirestoreOverride) {
+      try {
+        await StockCatalogBackendService.tombstoneVariation(
+          lojaId: l,
+          productId: id,
+          expectedRevision: expectedRevision ?? 0,
+          keys: chaves.toList()..sort(),
+        );
+        final s = _loja(l).varKeys.putIfAbsent(id, () => <String>{})
+          ..addAll(chaves);
+        await _savePrefs();
+        logD(
+          '[TOMBSTONE_OK] exclusao var sessao backend: loja=$l doc=$id n=${s.length}',
+          tag: 'TOMBSTONE',
+        );
+        return true;
+      } catch (e, st) {
+        logE(
+          '[TOMBSTONE_VAR] backend falhou loja=$l id=$id',
+          error: e,
+          st: st,
+          tag: 'TOMBSTONE',
+        );
+        return false;
+      }
+    }
 
     Object? lastErr;
     for (var tent = 0; tent < _maxTentativasTombVarSessao; tent++) {
@@ -356,14 +396,15 @@ class ProdutoExclusaoTombstoneService {
             .collection(FSPaths.exclusaoProdutoCol)
             .doc(id)
             .set(
-              {
-                'p': false,
-                'v': {for (final e in chaves) e: true},
-                'at': FieldValue.serverTimestamp(),
-              },
-              SetOptions(merge: true),
-            );
-        final s = _loja(l).varKeys.putIfAbsent(id, () => <String>{})..addAll(chaves);
+          {
+            'p': false,
+            'v': {for (final e in chaves) e: true},
+            'at': FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true),
+        );
+        final s = _loja(l).varKeys.putIfAbsent(id, () => <String>{})
+          ..addAll(chaves);
         await _savePrefs();
         logD(
           '[TOMBSTONE_OK] exclusao var sessao: loja=$l doc=$id n=${s.length} keys=${chaves.length}',
@@ -429,16 +470,17 @@ class ProdutoExclusaoTombstoneService {
           .collection(FSPaths.exclusaoProdutoCol)
           .doc(id)
           .set(
-            {
-              'p': false,
-              'v': {for (final e in s) e: true},
-              'at': FieldValue.serverTimestamp(),
-            },
-            SetOptions(merge: true),
-          );
+        {
+          'p': false,
+          'v': {for (final e in s) e: true},
+          'at': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
     } catch (e) {
       if (kDebugMode) {
-        logW('⚠️ [TOMBSTONE] var merge (type=${e.runtimeType})', tag: 'TOMBSTONE');
+        logW('⚠️ [TOMBSTONE] var merge (type=${e.runtimeType})',
+            tag: 'TOMBSTONE');
       }
     }
     await _savePrefs();
@@ -699,6 +741,7 @@ class ProdutoExclusaoTombstoneService {
     required String estoqueDocId,
     required Map<String, dynamic> variacoesMap,
     required Map<String, int> estoquePorTamanho,
+    int? expectedRevision,
   }) async {
     final l = lojaId.trim();
     final id = estoqueDocId.trim();
@@ -737,18 +780,27 @@ class ProdutoExclusaoTombstoneService {
     }
 
     try {
-      final updates = <String, dynamic>{
-        'at': FieldValue.serverTimestamp(),
-      };
-      for (final k in toRemove) {
-        updates['v.$k'] = FieldValue.delete();
+      if (!usandoFirestoreOverride) {
+        await StockCatalogBackendService.clearVariationTombstone(
+          lojaId: l,
+          productId: id,
+          expectedRevision: expectedRevision ?? 0,
+          keys: toRemove.toList()..sort(),
+        );
+      } else {
+        final updates = <String, dynamic>{
+          'at': FieldValue.serverTimestamp(),
+        };
+        for (final k in toRemove) {
+          updates['v.$k'] = FieldValue.delete();
+        }
+        await _db
+            .collection('lojas')
+            .doc(l)
+            .collection(FSPaths.exclusaoProdutoCol)
+            .doc(id)
+            .set(updates, SetOptions(merge: true));
       }
-      await _db
-          .collection('lojas')
-          .doc(l)
-          .collection(FSPaths.exclusaoProdutoCol)
-          .doc(id)
-          .set(updates, SetOptions(merge: true));
       if (kDebugMode) {
         logD(
           '[TOMBSTONE] liberadas ${toRemove.length} chaves obsoletas: loja=$l doc=$id',

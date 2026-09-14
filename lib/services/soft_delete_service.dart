@@ -49,8 +49,10 @@ class _PendingRecord {
   final String? vendedorUid;
   final String? vendedorEmail;
   final String? clienteNome;
+
   /// Estorno já aplicado em [scheduleVendaDelete] — permanente não reestornar.
   final bool estoqueEstornado;
+
   /// Notificação já enviada — retry não duplica.
   final bool notificacaoEnviada;
 
@@ -119,9 +121,17 @@ class _PendingRecord {
       final hiveKey = m['hiveKey'];
       final trashKey = m['trashKey'];
       final deleteAt = m['deleteAt'];
-      if (id is! String || type is! String || lojaId is! String || idFirebase is! String) return null;
-      final hk = hiveKey is int ? hiveKey : (hiveKey is num ? hiveKey.toInt() : null);
-      final tk = trashKey is int ? trashKey : (trashKey is num ? trashKey.toInt() : null);
+      if (id is! String ||
+          type is! String ||
+          lojaId is! String ||
+          idFirebase is! String) {
+        return null;
+      }
+      final hk =
+          hiveKey is int ? hiveKey : (hiveKey is num ? hiveKey.toInt() : null);
+      final tk = trashKey is int
+          ? trashKey
+          : (trashKey is num ? trashKey.toInt() : null);
       if (hk == null || tk == null || deleteAt is! String) return null;
       String? opt(String k) {
         final v = m[k];
@@ -245,7 +255,9 @@ class SoftDeleteService {
           }
         }
       } catch (e) {
-        if (kDebugMode) logW('⚠️ [SOFT-DELETE] Erro ao carregar pendências: $e');
+        if (kDebugMode) {
+          logW('⚠️ [SOFT-DELETE] Erro ao carregar pendências: $e');
+        }
         _pending = [];
       }
     }
@@ -288,7 +300,8 @@ class SoftDeleteService {
 
     var docIdResolved = produto.idFirebase.trim();
     if (docIdResolved.isEmpty && produto.slug.trim().isNotEmpty) {
-      final found = await ProdutosFirestoreService.findEstoqueProdutoDocIdBySlug(
+      final found =
+          await ProdutosFirestoreService.findEstoqueProdutoDocIdBySlug(
         lojaId: lojaId,
         slug: produto.slug,
       );
@@ -301,8 +314,8 @@ class SoftDeleteService {
     // Tombstone remoto antes de esvaziar o Hive: evita janela em que o pull recria o produto.
     var tombstoneOk = docIdResolved.isEmpty;
     if (!tombstoneOk) {
-      tombstoneOk =
-          await ProdutoExclusaoRemotaService.marcarEstoqueProdutoPendenteSoftDelete(
+      tombstoneOk = await ProdutoExclusaoRemotaService
+          .marcarEstoqueProdutoPendenteSoftDelete(
         produto: produto,
         lojaId: lojaId,
       );
@@ -315,12 +328,14 @@ class SoftDeleteService {
 
     if (removeFromCatalogo) {
       try {
-        await ProdutoExclusaoRemotaService.removerCatalogoParaProdutoRemovidoDoHive(
+        await ProdutoExclusaoRemotaService
+            .removerCatalogoParaProdutoRemovidoDoHive(
           produto: produto,
           lojaId: lojaId,
         );
       } catch (e) {
-        logW('⚠️ [SOFT-DELETE] Erro ao remover do catálogo (type=${e.runtimeType})');
+        logW(
+            '⚠️ [SOFT-DELETE] Erro ao remover do catálogo (type=${e.runtimeType})');
       }
     }
 
@@ -363,7 +378,8 @@ class SoftDeleteService {
     final key = venda.key as int?;
     if (key == null) return null;
 
-    debugPrint('[VENDA-DELETE] etapa=remover_contas_start lojaId=$lojaId vendaKey=$key');
+    debugPrint(
+        '[VENDA-DELETE] etapa=remover_contas_start lojaId=$lojaId vendaKey=$key');
     await VendasService.removerContasReceberVinculadasAVenda(
       lojaId: lojaId,
       vendaKey: hiveKeyOrNull(key),
@@ -443,7 +459,8 @@ class SoftDeleteService {
       cliente = null;
     }
     if (cliente != null && cliente.historico != null) {
-      cliente.historico!.removeWhere((h) => identical(h, venda) || h.key == key);
+      cliente.historico!
+          .removeWhere((h) => identical(h, venda) || h.key == key);
       await cliente.save();
       try {
         await ClientesFirestoreService.syncCliente(cliente, lojaId: lojaId);
@@ -466,9 +483,8 @@ class SoftDeleteService {
       hiveKey: key,
       trashKey: trashKey,
       deleteAt: deleteAt.toIso8601String(),
-      motivoExclusao: (motivoExclusao ?? '').trim().isEmpty
-          ? null
-          : motivoExclusao!.trim(),
+      motivoExclusao:
+          (motivoExclusao ?? '').trim().isEmpty ? null : motivoExclusao!.trim(),
       atorUid: (atorUid ?? '').trim().isEmpty ? null : atorUid!.trim(),
       vendedorUid: uidSeller.isEmpty ? null : uidSeller,
       vendedorEmail: emailSeller.isEmpty ? null : emailSeller,
@@ -486,9 +502,8 @@ class SoftDeleteService {
       vendedorEmail: emailSeller,
       pedidoId: idFb.isNotEmpty ? idFb : id,
       clienteNome: nomeCliente.isEmpty ? 'Cliente' : nomeCliente,
-      motivo: (motivoExclusao ?? '').trim().isEmpty
-          ? null
-          : motivoExclusao!.trim(),
+      motivo:
+          (motivoExclusao ?? '').trim().isEmpty ? null : motivoExclusao!.trim(),
       adminUid: (atorUid ?? '').trim().isEmpty ? null : atorUid!.trim(),
       pendingId: id,
     );
@@ -551,10 +566,12 @@ class SoftDeleteService {
         final trashBox = await _trashProdutosBox();
         final prod = trashBox.get(r.trashKey);
         if (prod == null) {
-          logW('⚠️ [SOFT-DELETE] undo: produto ausente na lixeira (trashKey=${r.trashKey})');
+          logW(
+              '⚠️ [SOFT-DELETE] undo: produto ausente na lixeira (trashKey=${r.trashKey})');
           return false;
         }
-        final mainBox = await Hive.openBox<Produto>(HiveBoxNames.produtos(r.lojaId));
+        final mainBox =
+            await Hive.openBox<Produto>(HiveBoxNames.produtos(r.lojaId));
         prod.lojaId = r.lojaId;
         await trashBox.delete(r.trashKey);
         try {
@@ -578,6 +595,7 @@ class SoftDeleteService {
             await ProdutoExclusaoRemotaService.limparEstoquePendenteSoftDelete(
               lojaId: r.lojaId,
               produtoIdFirebase: idFb,
+              expectedRevision: prod.stockRevision,
             );
           } catch (e) {
             logW(
@@ -596,13 +614,16 @@ class SoftDeleteService {
         final trashBox = await _trashVendasBox();
         final vendaNaLixeira = trashBox.get(r.trashKey);
         if (vendaNaLixeira == null) {
-          logW('⚠️ [SOFT-DELETE] undo: venda ausente na lixeira (trashKey=${r.trashKey})');
+          logW(
+              '⚠️ [SOFT-DELETE] undo: venda ausente na lixeira (trashKey=${r.trashKey})');
           return false;
         }
         final vendaParaRestaurar = _cloneVendaParaHive(vendaNaLixeira);
         vendaParaRestaurar.lojaId = r.lojaId;
-        final vendasBox = await Hive.openBox<Venda>(HiveBoxNames.vendas(r.lojaId));
-        final clientesBox = await Hive.openBox<Cliente>(HiveBoxNames.clientes(r.lojaId));
+        final vendasBox =
+            await Hive.openBox<Venda>(HiveBoxNames.vendas(r.lojaId));
+        final clientesBox =
+            await Hive.openBox<Cliente>(HiveBoxNames.clientes(r.lojaId));
         await trashBox.delete(r.trashKey);
         try {
           await vendasBox.add(vendaParaRestaurar);
@@ -612,7 +633,8 @@ class SoftDeleteService {
             error: e,
             st: st,
           );
-          final nk = await trashBox.add(_cloneVendaParaHive(vendaParaRestaurar));
+          final nk =
+              await trashBox.add(_cloneVendaParaHive(vendaParaRestaurar));
           _pending[idx] = r.copyWith(trashKey: nk);
           await _save();
           return false;
@@ -620,7 +642,9 @@ class SoftDeleteService {
         Cliente? cliente;
         try {
           cliente = clientesBox.values.firstWhere(
-            (c) => c.lojaId == r.lojaId && c.nome == vendaParaRestaurar.clienteNome,
+            (c) =>
+                c.lojaId == r.lojaId &&
+                c.nome == vendaParaRestaurar.clienteNome,
           );
         } catch (_) {
           cliente = null;
@@ -628,7 +652,8 @@ class SoftDeleteService {
         if (cliente != null) {
           cliente.adicionarHistorico(vendaParaRestaurar, lojaId: r.lojaId);
           try {
-            await ClientesFirestoreService.syncCliente(cliente, lojaId: r.lojaId);
+            await ClientesFirestoreService.syncCliente(cliente,
+                lojaId: r.lojaId);
           } catch (_) {}
         }
         try {
@@ -667,7 +692,8 @@ class SoftDeleteService {
           );
         }
         try {
-          await VendasFirestoreService.syncVenda(vendaParaRestaurar, lojaId: r.lojaId);
+          await VendasFirestoreService.syncVenda(vendaParaRestaurar,
+              lojaId: r.lojaId);
         } catch (e) {
           logW(
             '[SOFT-DELETE] undo venda: sync Firestore falhou (type=${e.runtimeType})',
@@ -698,10 +724,12 @@ class SoftDeleteService {
         final trashBox = await _trashClientesBox();
         final cliente = trashBox.get(r.trashKey);
         if (cliente == null) {
-          logW('⚠️ [SOFT-DELETE] undo: cliente ausente na lixeira (trashKey=${r.trashKey})');
+          logW(
+              '⚠️ [SOFT-DELETE] undo: cliente ausente na lixeira (trashKey=${r.trashKey})');
           return false;
         }
-        final mainBox = await Hive.openBox<Cliente>(HiveBoxNames.clientes(r.lojaId));
+        final mainBox =
+            await Hive.openBox<Cliente>(HiveBoxNames.clientes(r.lojaId));
         cliente.lojaId = r.lojaId;
         await trashBox.delete(r.trashKey);
         try {
@@ -722,7 +750,8 @@ class SoftDeleteService {
         return true;
       }
     } catch (e, st) {
-      logE('❌ [SOFT-DELETE] Erro ao desfazer (type=${e.runtimeType})', error: e, st: st);
+      logE('❌ [SOFT-DELETE] Erro ao desfazer (type=${e.runtimeType})',
+          error: e, st: st);
       return false;
     }
     return false;
@@ -785,8 +814,8 @@ class SoftDeleteService {
       final trashBox = await _trashProdutosBox();
       final prod = trashBox.get(r.trashKey);
       if (prod != null) {
-        final status =
-            await ProdutoExclusaoRemotaService.apagarImagensEEstoqueRemotoComStatus(
+        final status = await ProdutoExclusaoRemotaService
+            .apagarImagensEEstoqueRemotoComStatus(
           produto: prod,
           lojaId: r.lojaId,
         );
@@ -807,7 +836,8 @@ class SoftDeleteService {
         );
       }
       await trashBox.delete(r.trashKey);
-      logD('🗑️ [SOFT-DELETE] Produto excluído permanentemente (Firestore + lixeira local)');
+      logD(
+          '🗑️ [SOFT-DELETE] Produto excluído permanentemente (Firestore + lixeira local)');
     } else if (r.type == 'venda') {
       final trashBox = await _trashVendasBox();
       final venda = trashBox.get(r.trashKey);
@@ -842,8 +872,7 @@ class SoftDeleteService {
       // Só marca enviada se o serviço confirmar gravação (evita engolir falha).
       if (!r.notificacaoEnviada) {
         final sellerUid = (r.vendedorUid ?? venda?.vendedorUid ?? '').trim();
-        final email =
-            (r.vendedorEmail ?? venda?.vendedorEmail ?? '').trim();
+        final email = (r.vendedorEmail ?? venda?.vendedorEmail ?? '').trim();
         final cliente =
             (r.clienteNome ?? venda?.clienteNome ?? 'Cliente').trim();
         final pedidoId = (r.idFirebase.isNotEmpty
@@ -875,15 +904,18 @@ class SoftDeleteService {
           '[M39-NOTIFICACAO] stage=skip_already pendingId=${r.id}',
         );
       }
-      logD('🗑️ [SOFT-DELETE] Venda ${r.idFirebase} excluída permanentemente (Firestore + local)');
+      logD(
+          '🗑️ [SOFT-DELETE] Venda ${r.idFirebase} excluída permanentemente (Firestore + local)');
     } else if (r.type == 'cliente') {
       final trashBox = await _trashClientesBox();
       final cliente = trashBox.get(r.trashKey);
       if (cliente != null && (cliente.idFirebase ?? '').isNotEmpty) {
-        await ClientesFirestoreService.deleteCliente(cliente.idFirebase!, lojaId: r.lojaId);
+        await ClientesFirestoreService.deleteCliente(cliente.idFirebase!,
+            lojaId: r.lojaId);
       }
       await trashBox.delete(r.trashKey);
-      logD('🗑️ [SOFT-DELETE] Cliente ${r.idFirebase} excluído permanentemente (Firestore + local)');
+      logD(
+          '🗑️ [SOFT-DELETE] Cliente ${r.idFirebase} excluído permanentemente (Firestore + local)');
     }
   }
 

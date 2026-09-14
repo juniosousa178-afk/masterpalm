@@ -525,6 +525,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       estoqueDocId: doc,
       variacoesMap: variacoesMap,
       estoquePorTamanho: estoqueMapa,
+      expectedRevision: p.stockRevision,
     );
   }
 
@@ -559,6 +560,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       lojaId: lojaId!,
       estoqueDocId: doc,
       chaves: chaves,
+      expectedRevision: pBase.stockRevision,
     );
     if (!ok) return false;
     await ProdutoExclusaoTombstoneService.ensureHydratedForLoja(lojaId!);

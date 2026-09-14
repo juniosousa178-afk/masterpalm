@@ -404,6 +404,18 @@ class VendasService {
     return null;
   }
 
+  static String? _pedidoIdPersistidoFromPrePedidoIntent({
+    required String saleIntentId,
+    required String origin,
+  }) {
+    if (origin.trim() != SaleIntentOrigins.prePedido) return null;
+    const prefix = 'pre_pedido:';
+    final intent = saleIntentId.trim();
+    if (!intent.startsWith(prefix)) return null;
+    final pedidoId = intent.substring(prefix.length).trim();
+    return pedidoId.isEmpty ? null : pedidoId;
+  }
+
   static Future<void> _coordinatedSaleIntentRevertBestEffort({
     required String lojaId,
     required String saleIntentId,
@@ -2151,6 +2163,12 @@ class VendasService {
 
     final coordinatedOrigin =
         (saleIntentOrigin ?? SaleIntentOrigins.pdvManual).trim();
+    final pedidoPersistidoId = _pedidoIdPersistidoFromPrePedidoIntent(
+      saleIntentId: coordinatedIntentId,
+      origin: coordinatedOrigin,
+    );
+    final usaPedidoPersistidoBackend = pedidoPersistidoId != null &&
+        EstoqueTransactionService.usaBackendConfiavel;
     SaleIntentReservation? saleIntentReservation;
     var saleIntentStatus = SaleIntentStatus.reserved;
 
@@ -2164,6 +2182,10 @@ class VendasService {
         saleIntentId: coordinatedIntentId,
         origin: coordinatedOrigin,
         stockEffectHash: stockEffectHash,
+        requiredOperationId: pedidoPersistidoId == null
+            ? null
+            : EstoqueTransactionService.orderSaleOperationId(
+                pedidoPersistidoId),
       );
       saleIntentStatus = saleIntentReservation.status;
       debugPrint(
@@ -2267,12 +2289,23 @@ class VendasService {
           'tamanho=$tam cor=$cor sellerUid=${(vendedorUid ?? '').trim()}',
         );
       }
-      final baixaOp = await EstoqueTransactionService
-          .baixarEstoqueTransactionBatchIdempotente(
-        lojaId: lojaEfetiva,
-        itens: txItems,
-        operationId: idFirebaseReservado,
-      );
+      final baixaOp = usaPedidoPersistidoBackend
+          ? await EstoqueTransactionService.baixarEstoquePedidoIdempotente(
+              lojaId: lojaEfetiva,
+              pedidoId: pedidoPersistidoId,
+            )
+          : await EstoqueTransactionService
+              .baixarEstoqueTransactionBatchIdempotente(
+              lojaId: lojaEfetiva,
+              itens: txItems,
+              operationId: idFirebaseReservado,
+              backendItems: EstoqueTransactionService.usaBackendConfiavel
+                  ? VendaComboEstoqueExpansion.montarItensParaBackend(
+                      itens: itens,
+                      produtos: produtosLinhaOriginal,
+                      selecoes: itensComboSelecaoPorIndice)
+                  : null,
+            );
       debugPrint(
         '[H1-TRACE] stage=after_batch_idempotent '
         'lojaId=$lojaEfetiva opId=$idFirebaseReservado '
@@ -2286,7 +2319,8 @@ class VendasService {
       );
       txResults = baixaOp.transactionResults;
       baixaEstoqueConcluida = true;
-      baixaEstoqueAplicadaNestaExecucao = baixaOp.baixaAplicadaNestaExecucao;
+      baixaEstoqueAplicadaNestaExecucao =
+          !usaPedidoPersistidoBackend && baixaOp.baixaAplicadaNestaExecucao;
 
       if (isCoordinatedPdv && saleIntentStatus == SaleIntentStatus.reserved) {
         saleIntentStatus = await _coordinatedSaleIntentAdvance(

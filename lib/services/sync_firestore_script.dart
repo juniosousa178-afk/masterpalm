@@ -14,6 +14,7 @@ import 'firestore_paths.dart';
 import 'store_resolver_facade.dart';
 import 'sync_queue_service.dart';
 import 'vendas_firestore_service.dart';
+import 'catalogo_sync_service.dart';
 
 /// Script completo para sincronizar TODAS as coleções do Hive → Firestore
 /// Garante que o banco de dados do Firestore está 100% atualizado com o app local
@@ -103,90 +104,19 @@ class SyncFirestoreScript {
 
   /// Sincroniza todos os produtos do Hive → Firestore
   static Future<Map<String, int>> _syncProdutos(String lojaId) async {
-    int synced = 0;
-    int errors = 0;
-
-    try {
-      final boxName = HiveBoxNames.produtos(lojaId);
-
-      if (!Hive.isBoxOpen(boxName)) {
-        await Hive.openBox<Produto>(boxName);
+    var synced = 0;
+    var errors = 0;
+    final box = await Hive.openBox<Produto>(HiveBoxNames.produtos(lojaId));
+    for (final produto in box.values) {
+      if (produto.lojaId != lojaId) continue;
+      try {
+        await CatalogoSyncService.syncProduto(produto, target: SyncTarget.draft, lojaIdOverride: lojaId);
+        synced++;
+      } catch (error) {
+        debugPrint('[PRODUTOS] Sync editorial pendente: ${error.runtimeType}');
+        errors++;
       }
-
-      final box = Hive.box<Produto>(boxName);
-      debugPrint('📦 [PRODUTOS] Total no Hive: ${box.length}');
-
-      final batch = _db.batch();
-      final produtosRef = _db
-          .collection('lojas')
-          .doc(lojaId)
-          .collection('produtos');
-
-      for (int i = 0; i < box.length; i++) {
-        final produto = box.getAt(i);
-        if (produto == null) continue;
-
-        try {
-          final produtoId = produto.key?.toString() ??
-              produto.slug.replaceAll(' ', '_').toLowerCase();
-
-          final data = {
-            'id': produtoId,
-            'lojaId': lojaId,
-            'nome': produto.nome,
-            'slug': produto.slug,
-            'descricao': produto.descricao,
-            // Catálogo público: nunca persistir custo em `produtos`
-            'custoReal': FieldValue.delete(),
-            'custo': FieldValue.delete(),
-            'frete': produto.frete,
-            'gastosFixos': produto.gastosFixos,
-            'gastosVariaveis': produto.gastosVariaveis,
-            'precoSugerido': produto.precoSugerido,
-            'precoFinal': produto.precoFinal,
-            'precoUnitario': produto.precoUnitario,
-            'quantidade': produto.quantidade,
-            'estoquePorTamanho': produto.estoquePorTamanho,
-            'categoria': produto.categoria,
-            'subcategoria': produto.subcategoria,
-            'imagens': produto.imagens,
-            'tamanhos': produto.tamanhos,
-            'publicadoNoCatalogo': produto.publicadoNoCatalogo,
-            'ativoNoRascunho': produto.ativoNoRascunho,
-            'emPromocao': produto.emPromocao,
-            'createdAt': FieldValue.serverTimestamp(),
-            'updatedAt': FieldValue.serverTimestamp(),
-          };
-
-          batch.set(
-            produtosRef.doc(produtoId),
-            data,
-            SetOptions(merge: true),
-          );
-
-          synced++;
-
-          // Commit a cada 500 (limite do Firestore é 500)
-          if (synced % 450 == 0) {
-            await batch.commit();
-            debugPrint('✅ [PRODUTOS] Batch committed: $synced produtos');
-          }
-
-        } catch (e) {
-          debugPrint('❌ [PRODUTOS] Erro no produto (type=${e.runtimeType})');
-          errors++;
-        }
-      }
-
-      // Commit final
-      await batch.commit();
-      debugPrint('✅ [PRODUTOS] Sincronizados: $synced | Erros: $errors');
-
-    } catch (e) {
-      debugPrint('❌ [PRODUTOS] Erro geral (type=${e.runtimeType})');
-      errors++;
     }
-
     return {'synced': synced, 'errors': errors};
   }
 
@@ -471,32 +401,7 @@ class SyncFirestoreScript {
 
   /// Limpa dados de TESTE do Firestore (usar com cuidado!)
   static Future<void> limparDadosTeste(String lojaId) async {
-    debugPrint('⚠️ [SYNC-SCRIPT] LIMPANDO DADOS DE TESTE...');
-
-    try {
-      final collections = ['produtos', 'clientes', 'vendas', 'categorias', 'fornecedores'];
-
-      for (final collectionName in collections) {
-        final snapshot = await _db
-            .collection('lojas')
-            .doc(lojaId)
-            .collection(collectionName)
-            .get();
-
-        debugPrint('🗑️ [LIMPAR] $collectionName: ${snapshot.docs.length} docs');
-
-        final batch = _db.batch();
-        for (final doc in snapshot.docs) {
-          batch.delete(doc.reference);
-        }
-        await batch.commit();
-      }
-
-      debugPrint('✅ [LIMPAR] Dados de teste removidos');
-
-    } catch (e) {
-      debugPrint('❌ [LIMPAR] Erro (type=${e.runtimeType})');
-    }
+    throw StateError('Limpeza Firestore legada desativada. Estoque e catálogo exigem reconciliação autorizada no servidor.');
   }
 
   /// Sincroniza APENAS produtos (útil para atualizações rápidas)

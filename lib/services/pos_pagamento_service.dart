@@ -3,6 +3,7 @@
 import 'dart:convert';
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:crypto/crypto.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
@@ -73,6 +74,7 @@ class PosPagamentoService {
     required String formaPagamento,
     String? cupomRoletaCodigo,
     double? cupomRoletaDesconto,
+
     /// Quando true, estoque já foi baixado (ex.: via [VendasService.registrarVendaMulti]
     /// coordenado com Sale Intent). Grava marcador e pula nova baixa.
     bool estoqueJaBaixado = false,
@@ -87,17 +89,24 @@ class PosPagamentoService {
         '🎯 [PÓS-PAGAMENTO] Iniciando processamento para venda: $vendaId | lojaId=$lojaId | valorTotal=$valorTotal',
       );
 
-      final firestore = FirebaseFirestore.instance;
-      final baixaRef = firestore
-          .collection('lojas')
-          .doc(lojaId)
-          .collection('estoque_baixa_pagamento')
-          .doc(vendaId);
+      final usarMarcadorLegado = debugFirestoreOverride != null ||
+          !EstoqueTransactionService.usaBackendConfiavel;
+      final baixaRef = usarMarcadorLegado
+          ? _firestore
+              .collection('lojas')
+              .doc(lojaId)
+              .collection('estoque_baixa_pagamento')
+              .doc(vendaId)
+          : null;
 
-      final baixaSnap = await baixaRef.get();
-      final data = baixaSnap.data();
-      final baixaJaAplicada = baixaSnap.exists && (data?['baixaAplicada'] == true);
-      final efeitosJaProcessados = baixaSnap.exists && (data?['posPagamentoProcessado'] == true);
+      final baixaSnap = await baixaRef?.get();
+      final data = baixaSnap?.data();
+      final baixaJaAplicada = baixaSnap != null &&
+          baixaSnap.exists &&
+          (data?['baixaAplicada'] == true);
+      final efeitosJaProcessados = baixaSnap != null &&
+          baixaSnap.exists &&
+          (data?['posPagamentoProcessado'] == true);
 
       if (baixaJaAplicada && efeitosJaProcessados) {
         debugPrint(
@@ -116,15 +125,17 @@ class PosPagamentoService {
           'ℹ️ [ESTOQUE_BAIXA] Estoque já baixado via venda coordenada; gravando marcador sem nova baixa. '
           'lojaId=$lojaId, vendaId=$vendaId',
         );
-        await baixaRef.set({
-          'baixaAplicada': true,
-          'lojaId': lojaId,
-          'vendaId': vendaId,
-          'origem': 'pos_pagamento_estoque_ja_baixado',
-          'valorTotal': valorTotal,
-          'quantidadeItens': items.length,
-          'createdAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
+        if (baixaRef != null) {
+          await baixaRef.set({
+            'baixaAplicada': true,
+            'lojaId': lojaId,
+            'vendaId': vendaId,
+            'origem': 'pos_pagamento_estoque_ja_baixado',
+            'valorTotal': valorTotal,
+            'quantidadeItens': items.length,
+            'createdAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+        }
       } else {
         debugPrint(
           '[CATALOGO_POS_PAGAMENTO_BAIXA_START] vendaId=$vendaId lojaId=$lojaId itens=${items.length}',
@@ -136,15 +147,17 @@ class PosPagamentoService {
         // 1. Baixar estoque dos produtos (regra: baixa antes de marcar como pago)
         await _baixarEstoque(lojaId, items, vendaId: vendaId);
 
-        await baixaRef.set({
-          'baixaAplicada': true,
-          'lojaId': lojaId,
-          'vendaId': vendaId,
-          'origem': 'pos_pagamento',
-          'valorTotal': valorTotal,
-          'quantidadeItens': items.length,
-          'createdAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
+        if (baixaRef != null) {
+          await baixaRef.set({
+            'baixaAplicada': true,
+            'lojaId': lojaId,
+            'vendaId': vendaId,
+            'origem': 'pos_pagamento',
+            'valorTotal': valorTotal,
+            'quantidadeItens': items.length,
+            'createdAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+        }
 
         debugPrint(
           '✅ [ESTOQUE_BAIXA] Baixa registrada como aplicada. lojaId=$lojaId, vendaId=$vendaId',
@@ -227,13 +240,15 @@ class PosPagamentoService {
       );
 
       try {
-        await baixaRef.set({
-          'posPagamentoProcessado': true,
-          'posPagamentoProcessadoAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
-        debugPrint(
-          '✅ [PÓS-PAGAMENTO] Marcado posPagamentoProcessado=true para vendaId=$vendaId | lojaId=$lojaId',
-        );
+        if (baixaRef != null) {
+          await baixaRef.set({
+            'posPagamentoProcessado': true,
+            'posPagamentoProcessadoAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+          debugPrint(
+            '✅ [PÓS-PAGAMENTO] Marcado posPagamentoProcessado=true para vendaId=$vendaId | lojaId=$lojaId',
+          );
+        }
       } catch (e) {
         debugPrint(
           '⚠️ [PÓS-PAGAMENTO] Falha ao marcar posPagamentoProcessado (type=${e.runtimeType}) '
@@ -279,7 +294,8 @@ class PosPagamentoService {
   }
 
   /// Atualiza o status da venda para "pago"
-  static Future<void> _atualizarStatusVenda(String lojaId, String vendaId) async {
+  static Future<void> _atualizarStatusVenda(
+      String lojaId, String vendaId) async {
     try {
       // Atualizar no serviço de catálogo
       await CatalogoVendaService.atualizarStatusPedido(
@@ -296,7 +312,9 @@ class PosPagamentoService {
         venda.observacao = '${venda.observacao}\n[PAGO em ${DateTime.now()}]';
         await venda.save();
       }
-      if (kDebugMode) debugPrint('📌 [HIVE_BOX] pos_pagamento vendasBox lojaId=$lojaId');
+      if (kDebugMode) {
+        debugPrint('📌 [HIVE_BOX] pos_pagamento vendasBox lojaId=$lojaId');
+      }
 
       debugPrint('✅ Status da venda atualizado para: pago');
     } catch (e) {
@@ -313,7 +331,8 @@ class PosPagamentoService {
     List<Map<String, dynamic>> items, {
     String? vendaId,
   }) async {
-    final produtosBox = await Hive.openBox<Produto>(HiveBoxNames.produtos(lojaId));
+    final produtosBox =
+        await Hive.openBox<Produto>(HiveBoxNames.produtos(lojaId));
 
     final docIdsParaHive = <String>{};
     for (final raw in items) {
@@ -323,7 +342,8 @@ class PosPagamentoService {
       if (pid.isEmpty) {
         final slug = (raw['slug'] ?? '').toString().trim();
         if (slug.isNotEmpty) {
-          final resolved = await ProdutosFirestoreService.findEstoqueProdutoDocIdBySlug(
+          final resolved =
+              await ProdutosFirestoreService.findEstoqueProdutoDocIdBySlug(
             lojaId: lojaId,
             slug: slug,
           );
@@ -342,7 +362,8 @@ class PosPagamentoService {
     }
 
     final (vendaItens, comboPorIndice) =
-        VendaComboEstoqueExpansion.carrinhoMapsParaVendaItensComComboSelecao(items);
+        VendaComboEstoqueExpansion.carrinhoMapsParaVendaItensComComboSelecao(
+            items);
 
     if (vendaItens.isEmpty) {
       debugPrint(
@@ -352,6 +373,29 @@ class PosPagamentoService {
         'Nenhum item válido para baixa de estoque. '
         'Não é possível confirmar o pagamento sem baixar o estoque.',
       );
+    }
+
+    final produtosRaiz = <Produto>[];
+    for (final item in vendaItens) {
+      Produto? encontrado;
+      final pid = (item.productId ?? '').trim();
+      for (final produto in produtosBox.values) {
+        if (produto.lojaId != lojaId) continue;
+        if (pid.isNotEmpty && produto.idFirebase.trim() == pid) {
+          encontrado = produto;
+          break;
+        }
+        if (pid.isEmpty && produto.nome.trim() == item.produtoNome.trim()) {
+          encontrado = produto;
+          break;
+        }
+      }
+      if (encontrado == null) {
+        throw Exception(
+          'Produto não encontrado no Hive para baixa pós-pagamento: ${item.produtoNome}.',
+        );
+      }
+      produtosRaiz.add(encontrado);
     }
 
     final (itensParaEstoque, produtosEncontrados, _) =
@@ -393,10 +437,32 @@ class PosPagamentoService {
 
     List<EstoqueTransactionResult> txResults;
     try {
-      txResults = await EstoqueTransactionService.baixarEstoqueTransactionBatch(
-        lojaId: lojaId,
-        itens: txItems,
-      );
+      if (EstoqueTransactionService.usaBackendConfiavel) {
+        final venda = (vendaId ?? '').trim();
+        if (venda.isEmpty) {
+          throw StateError('Pós-pagamento via backend exige vendaId estável.');
+        }
+        final opId =
+            'pos_pagamento_${sha256.convert(utf8.encode('$lojaId|$venda'))}';
+        final result = await EstoqueTransactionService
+            .baixarEstoqueTransactionBatchIdempotente(
+          lojaId: lojaId,
+          itens: txItems,
+          operationId: opId,
+          backendItems: VendaComboEstoqueExpansion.montarItensParaBackend(
+            itens: vendaItens,
+            produtos: produtosRaiz,
+            selecoes: comboPorIndice,
+          ),
+        );
+        txResults = result.transactionResults;
+      } else {
+        txResults =
+            await EstoqueTransactionService.baixarEstoqueTransactionBatch(
+          lojaId: lojaId,
+          itens: txItems,
+        );
+      }
     } catch (e, st) {
       debugPrint(
         '[CATALOGO_POS_PAGAMENTO_BAIXA_FAIL] vendaId=$vendaId lojaId=$lojaId '
@@ -406,7 +472,8 @@ class PosPagamentoService {
       rethrow;
     }
 
-    await EstoqueTransactionService.removerDoCatalogoSeEstoqueZerado(lojaId, txResults);
+    await EstoqueTransactionService.removerDoCatalogoSeEstoqueZerado(
+        lojaId, txResults);
 
     List<EstoqueTransactionResult> txResultsComboCap = const [];
     try {
@@ -417,7 +484,8 @@ class PosPagamentoService {
           result: result,
         );
       }
-      txResultsComboCap = await ComboKitStockService.aplicarTetoEstoqueComboAposBaixa(
+      txResultsComboCap =
+          await ComboKitStockService.aplicarTetoEstoqueComboAposBaixa(
         lojaId: lojaId,
         produtosBox: produtosBox,
         produtoIdsDebitadosNaVenda:
@@ -453,7 +521,8 @@ class PosPagamentoService {
   /// No fluxo admin (`estoqueJaBaixado`), reutiliza número já registrado em
   /// `participantes` pelo CampaignEngine em vez de gerar outro.
   @visibleForTesting
-  static Future<({String numero, bool canonico})> resolverNumeroSorteParaPosPagamento({
+  static Future<({String numero, bool canonico})>
+      resolverNumeroSorteParaPosPagamento({
     required String lojaId,
     required String vendaId,
     required bool estoqueJaBaixado,
@@ -640,7 +709,8 @@ class PosPagamentoService {
       // Enviar via Cloud Function ou serviço de email
       final projectId = Firebase.app().options.projectId;
       final response = await http.post(
-        Uri.parse('https://southamerica-east1-$projectId.cloudfunctions.net/sendEmail'),
+        Uri.parse(
+            'https://southamerica-east1-$projectId.cloudfunctions.net/sendEmail'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'to': destinatario,
@@ -755,7 +825,8 @@ class PosPagamentoService {
     bool incluirNumeroSorte = true,
   }) async {
     try {
-      final temCupom = cupomRoletaCodigo != null && cupomRoletaCodigo.isNotEmpty;
+      final temCupom =
+          cupomRoletaCodigo != null && cupomRoletaCodigo.isNotEmpty;
       final blocoSorteio = incluirNumeroSorte
           ? '''
 
@@ -786,16 +857,16 @@ class PosPagamentoService {
                   .toString();
 
           final itensLinhas = itens.map<String>((e) {
-            final map = e is Map
-                ? Map<String, dynamic>.from(e)
-                : <String, dynamic>{};
+            final map =
+                e is Map ? Map<String, dynamic>.from(e) : <String, dynamic>{};
             final qtd = (map['quantidade'] as num?)?.toInt() ?? 1;
             final nomeItem = (map['nome'] ?? map['name'] ?? '').toString();
             return '➡ ${qtd}x $nomeItem';
           }).join('\n');
 
           const tempoEntregaPadrao = '45 - 60min';
-          final formaPagamentoExibir = formaPagamento.isEmpty ? 'Não informado' : formaPagamento;
+          final formaPagamentoExibir =
+              formaPagamento.isEmpty ? 'Não informado' : formaPagamento;
 
           mensagem = '''
 Olá $nome, aqui é o atendente virtual da *${lojaNome.toUpperCase()}*.
@@ -824,7 +895,8 @@ Obrigado por comprar conosco! 💜
         }
       } catch (e) {
         if (kDebugMode) {
-          debugPrint('pos_pagamento: erro ao buscar pedido para mensagem (type=${e.runtimeType})');
+          debugPrint(
+              'pos_pagamento: erro ao buscar pedido para mensagem (type=${e.runtimeType})');
         }
       }
 
@@ -877,7 +949,8 @@ Obrigado por comprar conosco! 💜
       // Enviar via Cloud Function que usa canais/whatsapp (WhatsApp Cloud API)
       final projectId = Firebase.app().options.projectId;
       final response = await http.post(
-        Uri.parse('https://southamerica-east1-$projectId.cloudfunctions.net/sendWhatsAppOrderConfirmation'),
+        Uri.parse(
+            'https://southamerica-east1-$projectId.cloudfunctions.net/sendWhatsAppOrderConfirmation'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'lojaId': lojaId,
@@ -951,8 +1024,11 @@ Obrigado por comprar conosco! 💜
       // 2) clientes_catalogo (cupons roleta por email) — USO ESPECÍFICO
       if (tipo == 'desconto' || tipo == 'frete_gratis') {
         final clienteData = pedidoData['cliente'] as Map<String, dynamic>?;
-        final telefone = (clienteData?['telefone'] ?? '').toString().replaceAll(RegExp(r'[^0-9]'), '');
-        final email = (clienteData?['email'] ?? '').toString().trim().toLowerCase();
+        final telefone = (clienteData?['telefone'] ?? '')
+            .toString()
+            .replaceAll(RegExp(r'[^0-9]'), '');
+        final email =
+            (clienteData?['email'] ?? '').toString().trim().toLowerCase();
 
         if (telefone.isNotEmpty) {
           // 1) estoque_clientes (admin) — side-effect para historico admin
@@ -980,7 +1056,8 @@ Obrigado por comprar conosco! 💜
                 }
               ]),
             });
-            debugPrint('🎁 Cupom da roleta ativado (estoque_clientes): ${premioRoleta['codigo']}');
+            debugPrint(
+                '🎁 Cupom da roleta ativado (estoque_clientes): ${premioRoleta['codigo']}');
           }
         }
 
@@ -1007,12 +1084,14 @@ Obrigado por comprar conosco! 💜
               'ativo': true,
               'origem': 'roleta_sorte',
             });
-            debugPrint('🎁 Cupom da roleta salvo no perfil do cliente (catálogo): $codigo');
+            debugPrint(
+                '🎁 Cupom da roleta salvo no perfil do cliente (catálogo): $codigo');
           }
         }
       }
 
-      debugPrint('✅ Prêmio da roleta ativado: tipo=$tipo, código=${premioRoleta['codigo']}');
+      debugPrint(
+          '✅ Prêmio da roleta ativado: tipo=$tipo, código=${premioRoleta['codigo']}');
     } catch (e) {
       debugPrint('❌ Erro ao ativar prêmio da roleta (type=${e.runtimeType})');
       // Não lança exceção para não bloquear o fluxo principal

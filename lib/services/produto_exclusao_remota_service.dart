@@ -11,6 +11,7 @@ import 'firestore_paths.dart';
 import 'produto_exclusao_tombstone_service.dart';
 import 'produto_imagens_storage_cleanup.dart';
 import 'produtos_firestore_service.dart';
+import 'stock_catalog_backend_service.dart';
 
 enum ProdutoExclusaoRemotaStatus {
   confirmada,
@@ -75,6 +76,26 @@ class ProdutoExclusaoRemotaService {
   }) async {
     final id = produto.idFirebase.trim();
     if (lojaId.isEmpty || id.isEmpty) return false;
+    if (!ProdutoExclusaoTombstoneService.usandoFirestoreOverride) {
+      try {
+        final response = await StockCatalogBackendService.deleteProduct(
+          lojaId,
+          id,
+          expectedRevision: produto.stockRevision,
+        );
+        _hidratarRevisaoProdutoDeRespostaBackend(produto, response);
+        _invalidarCacheCatalogo(lojaId);
+        return true;
+      } catch (e, st) {
+        logE(
+          '[EXCLUSAO_REMOTA] Falha no comando delete pendingSoftDelete',
+          tag: 'EXCLUSAO',
+          error: e,
+          st: st,
+        );
+        return false;
+      }
+    }
     try {
       await FirebaseFirestore.instance
           .collection('lojas')
@@ -82,13 +103,13 @@ class ProdutoExclusaoRemotaService {
           .collection(FSPaths.estoqueProdutosCol)
           .doc(id)
           .set(
-            {
-              ProdutosFirestoreService.fieldEstoquePendingSoftDelete: true,
-              ProdutosFirestoreService.fieldEstoquePendingSoftDeleteAt:
-                  FieldValue.serverTimestamp(),
-            },
-            SetOptions(merge: true),
-          );
+        {
+          ProdutosFirestoreService.fieldEstoquePendingSoftDelete: true,
+          ProdutosFirestoreService.fieldEstoquePendingSoftDeleteAt:
+              FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
       return true;
     } catch (e, st) {
       logE(
@@ -105,9 +126,19 @@ class ProdutoExclusaoRemotaService {
   static Future<void> limparEstoquePendenteSoftDelete({
     required String lojaId,
     required String produtoIdFirebase,
+    required int expectedRevision,
   }) async {
     final id = produtoIdFirebase.trim();
     if (lojaId.isEmpty || id.isEmpty) return;
+    if (!ProdutoExclusaoTombstoneService.usandoFirestoreOverride) {
+      await StockCatalogBackendService.undoDeleteProduct(
+        lojaId,
+        id,
+        expectedRevision: expectedRevision,
+      );
+      _invalidarCacheCatalogo(lojaId);
+      return;
+    }
     try {
       await FirebaseFirestore.instance
           .collection('lojas')
@@ -115,11 +146,11 @@ class ProdutoExclusaoRemotaService {
           .collection(FSPaths.estoqueProdutosCol)
           .doc(id)
           .update({
-            ProdutosFirestoreService.fieldEstoquePendingSoftDelete:
-                FieldValue.delete(),
-            ProdutosFirestoreService.fieldEstoquePendingSoftDeleteAt:
-                FieldValue.delete(),
-          });
+        ProdutosFirestoreService.fieldEstoquePendingSoftDelete:
+            FieldValue.delete(),
+        ProdutosFirestoreService.fieldEstoquePendingSoftDeleteAt:
+            FieldValue.delete(),
+      });
     } catch (e, st) {
       logW(
         '[EXCLUSAO_REMOTA] limpar pendingSoftDelete (doc pode não existir): '
@@ -131,7 +162,8 @@ class ProdutoExclusaoRemotaService {
 
   /// Exclusão permanente (após janela de undo) ou fluxo sem soft delete: imagens + `estoque_produtos`.
   /// Catálogo já deve ter sido removido na fase imediata do soft delete; chamadas repetidas são idempotentes.
-  static Future<ProdutoExclusaoRemotaStatus> apagarImagensEEstoqueRemotoComStatus({
+  static Future<ProdutoExclusaoRemotaStatus>
+      apagarImagensEEstoqueRemotoComStatus({
     required Produto produto,
     required String lojaId,
   }) async {
@@ -148,18 +180,39 @@ class ProdutoExclusaoRemotaService {
       return ProdutoExclusaoRemotaStatus.pendente;
     }
 
-    final okT = await ProdutoExclusaoTombstoneService.registrarExclusaoProdutoCompleto(
-      lojaId: lojaId,
-      estoqueDocId: eid,
-      slug: produto.slug.trim().isNotEmpty ? produto.slug : null,
-    );
-    if (!okT) {
-      logE(
-        '[TOMBSTONE_FAIL_ABORT_DELETE] tombstone p=true nao confirmado; abortando '
-        'imagem+delete (loja=$lojaId doc=$eid)',
-        tag: 'EXCLUSAO',
+    if (!ProdutoExclusaoTombstoneService.usandoFirestoreOverride) {
+      try {
+        final response = await StockCatalogBackendService.deleteProduct(
+          lojaId,
+          eid,
+          expectedRevision: produto.stockRevision,
+        );
+        _hidratarRevisaoProdutoDeRespostaBackend(produto, response);
+      } catch (e, st) {
+        logE(
+          '[TOMBSTONE_FAIL_ABORT_DELETE] comando delete nao confirmado; '
+          'abortando imagem+delete loja=$lojaId eid=$eid',
+          tag: 'EXCLUSAO',
+          error: e,
+          st: st,
+        );
+        return ProdutoExclusaoRemotaStatus.pendente;
+      }
+    } else {
+      final okT = await ProdutoExclusaoTombstoneService
+          .registrarExclusaoProdutoCompleto(
+        lojaId: lojaId,
+        estoqueDocId: eid,
+        slug: produto.slug.trim().isNotEmpty ? produto.slug : null,
       );
-      return ProdutoExclusaoRemotaStatus.pendente;
+      if (!okT) {
+        logE(
+          '[TOMBSTONE_FAIL_ABORT_DELETE] tombstone p=true nao confirmado; abortando '
+          'imagem+delete (loja=$lojaId doc=$eid)',
+          tag: 'EXCLUSAO',
+        );
+        return ProdutoExclusaoRemotaStatus.pendente;
+      }
     }
 
     // Storage: best-effort (após tombstone confirmar).
@@ -176,23 +229,41 @@ class ProdutoExclusaoRemotaService {
         st: st,
       );
     }
-    try {
-      await ProdutosFirestoreService.deleteProdutoRobusto(
-        produto: produto,
-        lojaId: lojaId,
-      );
-    } catch (e, st) {
-      logE(
-        '[TOMBSTONE_STALE] delete estoque falhou apos [TOMBSTONE_OK] p=true; '
-        'doc remoto pode existir (limpeza manual possivel) loja=$lojaId eid=$eid. '
-        'Detalhe: deleteProdutoRobusto',
-        tag: 'EXCLUSAO',
-        error: e,
-        st: st,
-      );
-      return ProdutoExclusaoRemotaStatus.pendente;
+    if (ProdutoExclusaoTombstoneService.usandoFirestoreOverride) {
+      try {
+        await ProdutosFirestoreService.deleteProdutoRobusto(
+          produto: produto,
+          lojaId: lojaId,
+        );
+      } catch (e, st) {
+        logE(
+          '[TOMBSTONE_STALE] delete estoque falhou apos [TOMBSTONE_OK] p=true; '
+          'doc remoto pode existir (limpeza manual possivel) loja=$lojaId eid=$eid. '
+          'Detalhe: deleteProdutoRobusto',
+          tag: 'EXCLUSAO',
+          error: e,
+          st: st,
+        );
+        return ProdutoExclusaoRemotaStatus.pendente;
+      }
     }
     return ProdutoExclusaoRemotaStatus.confirmada;
+  }
+
+  static void _hidratarRevisaoProdutoDeRespostaBackend(
+    Produto produto,
+    Map<String, dynamic> response,
+  ) {
+    final products = response['products'];
+    if (products is! List) return;
+    for (final raw in products) {
+      if (raw is! Map) continue;
+      final id = (raw['productId'] ?? '').toString().trim();
+      if (id != produto.idFirebase.trim()) continue;
+      final rev = (raw['stockRevision'] as num?)?.toInt();
+      if (rev != null) produto.stockRevision = rev;
+      return;
+    }
   }
 
   static Future<void> apagarImagensEEstoqueRemoto({

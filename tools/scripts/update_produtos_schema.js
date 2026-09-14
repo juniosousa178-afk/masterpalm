@@ -1,3 +1,5 @@
+// Retired: Admin SDK bypasses Rules; this snapshot writer is not safe after cutover.
+throw new Error('Legacy stock/catalog writer retired. Use the stock catalog protocol; no direct writes are permitted.');
 // tools/scripts/update_produtos_schema.js
 // Normaliza os documentos de produtos para o catálogo web (draft + publicados)
 

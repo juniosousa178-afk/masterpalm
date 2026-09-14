@@ -1,3 +1,4 @@
+import '../core/produto_stock_revision.dart';
 // lib/screens/estoque_screen.dart
 // Tela completa de estoque com TODAS as funcionalidades:
 // - Importação (XLSX, CSV, PDF)
@@ -60,6 +61,7 @@ import 'barcode_scanner_screen.dart';
 import 'nova_venda/variacao_selection_sheet.dart';
 import 'public_catalog_screen.dart';
 import '../services/catalog_publish_service.dart';
+import '../services/catalogo_web_apos_estoque_service.dart';
 import '../services/marketplace_service.dart';
 import '../services/movimentacao_estoque_service.dart';
 import '../services/estoque_service.dart';
@@ -230,6 +232,19 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
           _comprasRevendaPendentesCount = revendaPendentes;
         });
       }
+
+      // Recupera sync de catálogo que falhou após estoque (Hive sobrevive ao app).
+      // Não reexecuta venda nem baixa — só draft → live dos IDs pendentes.
+      unawaited(CatalogoWebAposEstoqueService.tentarRecuperarPendencias(
+        lojaId: lojaId,
+        produtosBox: _box,
+      ).catchError((Object e, StackTrace st) {
+        logE(
+          'Falha ao recuperar pendências de catálogo (type=${e.runtimeType})',
+          error: e,
+          st: st,
+        );
+      }));
 
       // Sync em background (não bloqueia a abertura da tela)
       _syncEstoqueEmBackground(lojaId);
@@ -2621,6 +2636,11 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
   }
 
   Future<void> _ajustarQuantidade(Produto p, int delta) async {
+    if (hasPendingStockMutation(p)) {
+      _showSnackBar('Há um ajuste pendente. Sincronize o produto antes de alterar novamente.', isError: true);
+      return;
+    }
+
     if (!_podeEditarEstoque) {
       _showSnackBar(kProdutoCadastroDeniedMessage, isError: true);
       return;
@@ -2640,6 +2660,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     final nova = (p.quantidade + delta).clamp(0, 99999);
     if (nova == p.quantidade) return;
     final qtdMov = nova - p.quantidade;
+    markPendingStockMutation(p, operationId: newStockOperationId(), baseRevision: p.stockRevision);
     p.quantidade = nova;
     p.updatedAt = DateTime.now();
     await p.save();
@@ -3357,7 +3378,11 @@ Future<void> _unificarDuplicados() async {
         final dup = lista[i];
         if (dup.idFirebase.isNotEmpty) {
           try {
-            await ProdutosFirestoreService.deleteProduto(dup.idFirebase, lojaId: lojaId);
+            await ProdutosFirestoreService.deleteProduto(
+              dup.idFirebase,
+              lojaId: lojaId,
+              expectedRevision: dup.stockRevision,
+            );
           } catch (e, st) {
             logE('[ESTOQUE] Erro ao excluir duplicata no Firestore (id=${dup.idFirebase})', error: e, st: st);
             falhasFirestore++;

@@ -37,6 +37,7 @@ class CatalogEstoqueHelper {
   }
 
   /// Fallback numérico: prioridade explícita; [quantidade] só se nenhum campo “de estoque” existir.
+  /// Usar apenas quando a grade está **ausente**. Grade zerada não cai aqui.
   static int readFallbackNumericStock(Map<String, dynamic> m) {
     const keys = <String>[
       'estoque_atual',
@@ -55,12 +56,60 @@ class CatalogEstoqueHelper {
     return parseQtd(m['quantidade']);
   }
 
+  /// O modelo usa grade/atributos para distinguir variações; tipoProduto
+  /// distingue simples de combo, não produto sem grade de produto variável.
+  /// Uma grade vazia só é esgotada se restar evidência de variação.
+  static bool _hasVariacoesGrade(Map<String, dynamic> p) {
+    final raw = p['variacoes'];
+    if (raw is! Map) return false;
+    if (raw.isNotEmpty) return true;
+    return _hasVariationAttributes(p);
+  }
+
+  static bool _hasVariationAttributes(Map<String, dynamic> p) {
+    for (final field in ['tamanhos', 'cores']) {
+      final values = p[field];
+      if (values is List && values.any((v) => v.toString().trim().isNotEmpty)) {
+        return true;
+      }
+    }
+    return _hasExplicitFlatGrade(p['estoquePorTamanho']) ||
+        _hasExplicitFlatGrade(p['estoquePorCor']) ||
+        _hasExplicitFlatGrade(p['variacoesExtraTipo']);
+  }
+
+  /// Comparação central do domínio; preserva a primeira grafia para exibição.
+  /// Aliases no mesmo mapa não são saldos independentes. Em conflito usa o
+  /// menor saldo, evitando que um alias antigo ressuscite uma célula zerada.
+  static Map<String, dynamic> _semAliases(Map<dynamic, dynamic> raw) {
+    final out = <String, dynamic>{};
+    final displayByKey = <String, String>{};
+    for (final e in raw.entries) {
+      final display = e.key.toString();
+      final key = ProdutoVariacaoExtra.normKey(display);
+      final previous = displayByKey[key];
+      if (previous == null) {
+        displayByKey[key] = display;
+        out[display] = e.value;
+      } else if (ProdutoVariacaoExtra.somarCelula(e.value) <
+          ProdutoVariacaoExtra.somarCelula(out[previous])) {
+        out[previous] = e.value;
+      }
+    }
+    return out;
+  }
+
+  /// Grade plana (`estoquePorTamanho` / `estoquePorCor`): só conta se tiver
+  /// chave. `{}` é o default Hive de produto simples e não é grade.
+  static bool _hasExplicitFlatGrade(dynamic raw) =>
+      raw is Map && raw.isNotEmpty;
+
   static int _sumVariacoesTotal(Map<String, dynamic>? variacoes) {
     if (variacoes == null || variacoes.isEmpty) return 0;
     var s = 0;
     variacoes.forEach((_, cores) {
       if (cores is Map) {
-        for (final v in cores.values) {
+        for (final v in _semAliases(cores).values) {
           s += ProdutoVariacaoExtra.somarCelula(v);
         }
       }
@@ -74,7 +123,7 @@ class CatalogEstoqueHelper {
     variacoes.forEach((t, cores) {
       if (cores is Map) {
         for (final k in cores.keys) {
-          set.add(k.toString());
+          set.add(ProdutoVariacaoExtra.normKey(k.toString()));
         }
       }
     });
@@ -83,10 +132,9 @@ class CatalogEstoqueHelper {
 
   static dynamic _rawCellNoMapa(Map<dynamic, dynamic> mapa, String cor) {
     if (cor.isEmpty) return null;
-    if (mapa.containsKey(cor)) return mapa[cor];
-    final lower = cor.toLowerCase();
-    for (final e in mapa.entries) {
-      if (e.key.toString().toLowerCase() == lower) return e.value;
+    final key = ProdutoVariacaoExtra.normKey(cor);
+    for (final e in _semAliases(mapa).entries) {
+      if (ProdutoVariacaoExtra.normKey(e.key) == key) return e.value;
     }
     return null;
   }
@@ -98,7 +146,7 @@ class CatalogEstoqueHelper {
   static int _sumMapValuesNested(Map<dynamic, dynamic>? map) {
     if (map == null || map.isEmpty) return 0;
     var s = 0;
-    for (final v in map.values) {
+    for (final v in _semAliases(map).values) {
       s += ProdutoVariacaoExtra.somarCelula(v);
     }
     return s;
@@ -115,10 +163,16 @@ class CatalogEstoqueHelper {
     Map<String, dynamic> m, {
     required bool isCombo,
   }) {
-    final estoqueBase = readFallbackNumericStock(m);
+    final estoqueTamRaw = m['estoquePorTamanho'];
+    final variacoesRaw = m['variacoes'];
+    final estoqueCorRaw = m['estoquePorCor'];
+    final hasExplicitGrade = _hasVariacoesGrade(m) ||
+        _hasExplicitFlatGrade(estoqueTamRaw) ||
+        _hasExplicitFlatGrade(estoqueCorRaw);
+    final estoqueBase =
+        (hasExplicitGrade || _hasVariationAttributes(m)) ? 0 : readFallbackNumericStock(m);
 
     Map<String, int>? estoquePorTamanho;
-    final estoqueTamRaw = m['estoquePorTamanho'];
     var somaTam = 0;
     if (estoqueTamRaw is Map && estoqueTamRaw.isNotEmpty) {
       estoquePorTamanho = {};
@@ -133,16 +187,15 @@ class CatalogEstoqueHelper {
     }
 
     Map<String, dynamic>? variacoes;
-    final variacoesRaw = m['variacoes'];
     if (variacoesRaw is Map && variacoesRaw.isNotEmpty) {
-      variacoes = asMapDeep(variacoesRaw);
+      variacoes = asMapDeep(variacoesRaw).map((key, value) =>
+          MapEntry(key, value is Map ? _semAliases(value) : value));
     }
 
     Map<String, int>? mapCorRoot;
-    final estoqueCorRaw = m['estoquePorCor'];
     if (estoqueCorRaw is Map && estoqueCorRaw.isNotEmpty) {
       mapCorRoot = {};
-      estoqueCorRaw.forEach((key, value) {
+      _semAliases(estoqueCorRaw).forEach((key, value) {
         final q = parseQtd(value);
         if (q > 0) mapCorRoot![key.toString()] = q;
       });
@@ -154,7 +207,7 @@ class CatalogEstoqueHelper {
     if (mapCorRoot != null && variacoes != null && variacoes.isNotEmpty) {
       final inVar = _coresPresentesEmVariacoes(variacoes);
       for (final e in mapCorRoot.entries) {
-        if (!inVar.contains(e.key)) {
+        if (!inVar.contains(ProdutoVariacaoExtra.normKey(e.key))) {
           extraRootCor += e.value;
         }
       }
@@ -179,39 +232,27 @@ class CatalogEstoqueHelper {
 
     var somaCorOnly = mapCorRoot == null ? 0 : mapCorRoot.values.fold(0, (a, b) => a + b);
 
-    int quantidadeTotal;
-    if (isCombo) {
-      if (somaVar > 0) {
-        quantidadeTotal = somaVar + extraRootCor;
-      } else if (somaTam > 0) {
-        quantidadeTotal = somaTam;
-      } else if (somaCorOnly > 0 && variacoes == null) {
-        quantidadeTotal = somaCorOnly;
-      } else if (estoquePorCorOut != null && variacoes != null && somaVar == 0) {
-        quantidadeTotal = estoquePorCorOut.values.fold(0, (a, b) => a + b) + extraRootCor;
-      } else {
-        // Sem estoque real: não inventar quantidade (evita combo “fantasma” no catálogo).
-        quantidadeTotal = estoqueBase > 0 ? estoqueBase : 0;
-      }
+    // Grade canônica reconhecida (vazia apenas com atributos): não herda
+    // estoquePorTamanho / estoquePorCor agregados da mesma grade.
+    // Cores em estoquePorCor que não estão na grade (`extraRootCor`)
+    // continuam saldo independente. Sem `variacoes`: tamanho-only / cor-only.
+    final int quantidadeTotal;
+    if (_hasVariacoesGrade(m)) {
+      quantidadeTotal = (variacoes == null || variacoes.isEmpty)
+          ? 0
+          : somaVar + extraRootCor;
+    } else if (somaTam > 0) {
+      quantidadeTotal = somaTam;
+    } else if (somaCorOnly > 0) {
+      quantidadeTotal = somaCorOnly;
+    } else if (isCombo) {
+      quantidadeTotal = estoqueBase > 0 ? estoqueBase : 0;
     } else {
-      if (somaVar > 0) {
-        quantidadeTotal = somaVar + extraRootCor;
-      } else if (somaTam > 0) {
-        quantidadeTotal = somaTam;
-      } else if (mapCorRoot != null && somaCorOnly > 0) {
-        quantidadeTotal = somaCorOnly;
-      } else {
-        quantidadeTotal = estoqueBase;
-      }
+      quantidadeTotal = estoqueBase;
     }
 
-    final temAlgum = somaVar > 0 ||
-        extraRootCor > 0 ||
-        somaTam > 0 ||
-        somaCorOnly > 0 ||
-        estoqueBase > 0;
-    // Combo também precisa de estoque > 0 em alguma forma (não listar kit zerado).
-    final incluirNoCatalogo = temAlgum;
+    // Grade zerada não usa agregado antigo; produto simples sem grade usa estoqueBase.
+    final incluirNoCatalogo = quantidadeTotal > 0;
 
     return (
       quantidadeTotal: quantidadeTotal,
@@ -223,30 +264,12 @@ class CatalogEstoqueHelper {
   }
 
   /// Há pelo menos uma variação (ou total) com estoque > 0?
+  /// Mesma precedência de [processStockFromFirestoreMap] (grade zerada ≠ ausente).
   static bool temAlgumaVariacaoComEstoquePositivo(Map<String, dynamic> p) {
-    final v = p['variacoes'];
-    if (v is Map) {
-      for (final cores in v.values) {
-        if (cores is Map) {
-          for (final q in cores.values) {
-            if (ProdutoVariacaoExtra.somarCelula(q) > 0) return true;
-          }
-        }
-      }
-    }
-    final et = p['estoquePorTamanho'];
-    if (et is Map) {
-      for (final q in et.values) {
-        if (parseQtd(q) > 0) return true;
-      }
-    }
-    final ec = p['estoquePorCor'];
-    if (ec is Map) {
-      for (final q in ec.values) {
-        if (parseQtd(q) > 0) return true;
-      }
-    }
-    return parseQtd(p['quantidade']) > 0;
+    return processStockFromFirestoreMap(
+      p,
+      isCombo: _ehComboMap(p),
+    ).quantidadeTotal > 0;
   }
 
   static bool _ehComboMap(Map<String, dynamic> p) {
@@ -272,56 +295,75 @@ class CatalogEstoqueHelper {
     final c = cor.trim();
     final ex = variacaoExtra.trim();
     final variacoes = p['variacoes'];
-    if (variacoes is Map && variacoes.isNotEmpty) {
-      if (tam.isNotEmpty && variacoes[tam] is Map) {
-        final mapa = variacoes[tam] as Map;
-        if (c.isNotEmpty) {
-          final cell = _rawCellNoMapa(mapa, c);
-          if (ProdutoVariacaoExtra.celulaTemExtrasNaoVazios(cell)) {
-            if (ex.isEmpty) return 0;
-            final q = ProdutoVariacaoExtra.quantidadeNaCelula(cell, ex);
-            if (q > 0) return q;
-          } else {
-            final q = _qtdCorNoMapa(mapa, c);
-            if (q > 0) return q;
-          }
-        }
-        return _sumMapValuesNested(mapa);
-      }
-      if ((tam.isEmpty || tam == 'sem-tamanho') &&
-          variacoes['sem-tamanho'] is Map) {
-        final mapa = variacoes['sem-tamanho'] as Map;
-        if (c.isNotEmpty) {
-          final cell = _rawCellNoMapa(mapa, c);
-          if (ProdutoVariacaoExtra.celulaTemExtrasNaoVazios(cell)) {
-            if (ex.isEmpty) return 0;
-            final q = ProdutoVariacaoExtra.quantidadeNaCelula(cell, ex);
-            if (q > 0) return q;
-          } else {
-            final q = _qtdCorNoMapa(mapa, c);
-            if (q > 0) return q;
-          }
-        }
-        return _sumMapValuesNested(mapa);
-      }
-    }
     final ept = p['estoquePorTamanho'];
     final epc = p['estoquePorCor'];
+    if (_hasVariacoesGrade(p) && variacoes is Map) {
+      if (variacoes.isNotEmpty) {
+        if (c.isNotEmpty &&
+            ex.isEmpty &&
+            (tam.isEmpty || tam == 'sem-tamanho') &&
+            epc is Map &&
+            !_coresPresentesEmVariacoes(asMapDeep(variacoes))
+                .contains(ProdutoVariacaoExtra.normKey(c)) &&
+            _rawCellNoMapa(epc, c) != null) {
+          return _qtdCorNoMapa(epc, c);
+        }
+        if (tam.isNotEmpty && variacoes[tam] is Map) {
+          final mapa = variacoes[tam] as Map;
+          if (c.isNotEmpty) {
+            return _qtdCelulaOuZero(mapa, c, ex);
+          }
+          return _sumMapValuesNested(mapa);
+        }
+        if ((tam.isEmpty || tam == 'sem-tamanho') &&
+            variacoes['sem-tamanho'] is Map) {
+          final mapa = variacoes['sem-tamanho'] as Map;
+          if (c.isNotEmpty) {
+            return _qtdCelulaOuZero(mapa, c, ex);
+          }
+          return _sumMapValuesNested(mapa);
+        }
+      }
+      if (tam.isNotEmpty || c.isNotEmpty) {
+        return 0;
+      }
+    }
     if (ept is Map && tam.isNotEmpty) {
-      final qt = parseQtd(ept[tam]);
-      if (qt > 0) {
+      if (_rawCellNoMapa(ept, tam) != null) {
+        final qt = parseQtd(_rawCellNoMapa(ept, tam));
         if (epc is Map && c.isNotEmpty) {
-          final qc = _qtdCorNoMapa(epc, c);
-          if (qc > 0) return qc < qt ? qc : qt;
+          if (_rawCellNoMapa(epc, c) != null) {
+            final qc = _qtdCorNoMapa(epc, c);
+            return qc < qt ? qc : qt;
+          }
+          return 0;
         }
         return qt;
       }
     }
     if (epc is Map && c.isNotEmpty) {
-      final qc = _qtdCorNoMapa(epc, c);
-      if (qc > 0) return qc;
+      if (_rawCellNoMapa(epc, c) != null) {
+        return _qtdCorNoMapa(epc, c);
+      }
+      return 0;
+    }
+    if (_hasVariacoesGrade(p) ||
+        _hasExplicitFlatGrade(ept) ||
+        _hasExplicitFlatGrade(epc) ||
+        _hasVariationAttributes(p)) {
+      return 0;
     }
     return parseQtd(p['quantidade']);
+  }
+
+  static int _qtdCelulaOuZero(Map<dynamic, dynamic> mapa, String cor, String extra) {
+    final cell = _rawCellNoMapa(mapa, cor);
+    if (cell == null) return 0;
+    if (ProdutoVariacaoExtra.celulaTemExtrasNaoVazios(cell)) {
+      if (extra.isEmpty) return 0;
+      return ProdutoVariacaoExtra.quantidadeNaCelula(cell, extra);
+    }
+    return ProdutoVariacaoExtra.somarCelula(cell);
   }
 
   /// Para uma receita **por kit** já resolvida (ex.: seleção do combo configurável),

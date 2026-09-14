@@ -1,3 +1,4 @@
+import 'stock_catalog_backend_service.dart';
 // lib/services/cloud_sync_service.dart
 // Serviço responsável por sincronizar dados da loja (perfil, produtos, fotos)
 // com Firebase Firestore e Firebase Storage, sempre usando o storeId atual.
@@ -20,15 +21,6 @@ class CloudSyncService {
   // -------------------------------------------------------------
   // Helpers internos
   // -------------------------------------------------------------
-
-  static String _slugify(String text) {
-    return text
-        .trim()
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
-        .replaceAll(RegExp(r'-+'), '-')
-        .replaceAll(RegExp(r'^-|-$'), '');
-  }
 
   static String? _mimeFromExt(String ext) {
     final e = ext.toLowerCase();
@@ -318,19 +310,9 @@ if (lojaId == null) {
   ) async {
     final m = Map<String, dynamic>.from(raw);
 
-    // DocId (slug)
-    final docId = (() {
-      final slug = (m["slug"] ?? "").toString().trim();
-      if (slug.isNotEmpty) return slug;
-
-      final nome = (m["nome"] ?? m["name"] ?? "").toString().trim();
-      if (nome.isNotEmpty) return _slugify(nome);
-
-      final id = (m["id"] ?? "").toString();
-      if (id.isNotEmpty) return _slugify(id);
-
-      return FirebaseFirestore.instance.collection("tmp").doc().id;
-    })();
+    // An import cannot create a second stock authority in the public catalog.
+    final docId = (m['productId'] ?? m['idFirebase'] ?? m['id'] ?? '').toString().trim();
+    if (docId.isEmpty) throw StateError('Importe o produto no estoque antes de sincronizar o catálogo.');
 
     // Fotos
     final imagens = List<String>.from(m["imagens"] ?? const []);
@@ -355,12 +337,7 @@ if (lojaId == null) {
       "publicadoEm": FieldValue.serverTimestamp(),
     };
 
-    await FirebaseFirestore.instance
-        .collection("lojas")
-        .doc(lojaId)
-        .collection("produtos")
-        .doc(docId)
-        .set(payload, SetOptions(merge: true));
+    await StockCatalogBackendService.saveEditorial(lojaId, docId, payload);
   }
 
   // -------------------------------------------------------------

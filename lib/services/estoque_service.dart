@@ -16,6 +16,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import '../core/produto_custo_guard.dart';
+import '../core/produto_stock_revision.dart';
+import 'stock_catalog_backend_service.dart';
 import '../core/produto_variacao_extra.dart';
 import '../models/produto.dart';
 import 'combo_kit_stock_service.dart';
@@ -194,6 +196,10 @@ class EstoqueService {
       return EstoqueResult.erro(msg);
     }
 
+    if (debugFirestoreOverride == null && EstoqueTransactionService.usaBackendConfiavel && hasPendingStockMutation(produto)) {
+      return EstoqueResult.erro('Há um ajuste pendente neste produto. Sincronize antes de uma nova movimentação.');
+    }
+
     debugPrint('$tag Produto encontrado: ${produto.nome}');
     debugPrint('$tag   - usaVariacoes: ${produto.usaVariacoes}');
     debugPrint('$tag   - variacoes: ${produto.variacoes}');
@@ -336,7 +342,10 @@ class EstoqueService {
         await produto.save();
       }
 
-      await _sincronizarComFirestore(produto, lojaId);
+      final syncResult = await _sincronizarComFirestore(produto, lojaId);
+      if (syncResult == ResultadoAjusteEstoque.erro && debugFirestoreOverride == null && EstoqueTransactionService.usaBackendConfiavel) {
+        return EstoqueResult.erro('A entrada está pendente de confirmação no servidor. Sincronize antes de repetir.');
+      }
 
       if (estoqueDepois != estoqueAntes) {
         await _recalcularCombosDepoisAjusteManual(
@@ -736,6 +745,42 @@ class EstoqueService {
     Produto produto,
     String lojaId,
   ) async {
+    if (debugFirestoreOverride == null && EstoqueTransactionService.usaBackendConfiavel) {
+      if (produto.idFirebase.trim().isEmpty || !produto.isInBox) return ResultadoAjusteEstoque.erro;
+      try {
+        if (!hasPendingStockMutation(produto)) {
+          markPendingStockMutation(produto, operationId: newStockOperationId(), baseRevision: produto.stockRevision);
+          await produto.save();
+        }
+        final response = await StockCatalogBackendService.command(
+          lojaId: lojaId, operationId: produto.pendingStockOperationId!, kind: 'replace',
+          items: [{'productId': produto.idFirebase, 'expectedRevision': produto.pendingStockBaseRevision ?? produto.stockRevision}],
+          editorial: <String, dynamic>{},
+          definition: {
+            'quantidade': produto.quantidade,
+            'tipoProduto': produto.tipoProduto,
+            'variacoes': produto.variacoes == null ? null : ProdutoVariacaoExtra.sanitizeVariacoesMapForFirestore(
+              Map<String, dynamic>.from(produto.variacoes!)),
+            'estoquePorTamanho': produto.estoquePorTamanho,
+            'tamanhos': produto.tamanhos, 'cores': produto.cores,
+            'variacoesExtraTipo': produto.variacoesExtraTipo ?? <String, dynamic>{},
+            'itensCombo': produto.itensCombo ?? <Map<String, dynamic>>[],
+            'comboConfig': produto.comboConfig,
+          },
+        );
+        final box = produto.box;
+        if (box is! Box<Produto>) throw StateError('Caixa de produtos indisponível.');
+        for (final result in EstoqueTransactionService.resultadosDoBackend(response)) {
+          await EstoqueTransactionService.atualizarHiveAposTransacao(
+            produtosBox: box, lojaId: lojaId, result: result);
+        }
+        return ResultadoAjusteEstoque.sucesso;
+      } catch (error, stack) {
+        debugPrint('[ESTOQUE-SYNC] Comando de ajuste pendente: $error\n$stack');
+        return ResultadoAjusteEstoque.erro;
+      }
+    }
+
     const tag = '[ESTOQUE-SYNC]';
     int? remoteQtd;
     bool divergenciaRelevante = false;

@@ -27,6 +27,7 @@ import 'catalogo_live_inline_policy.dart';
 import 'catalogo_queue_publish_plan.dart';
 import 'catalogo_sync_attempt_context.dart';
 import 'produto_cadastro_pos_save_service.dart';
+import 'produto_stock_catalog_cadastro_sync.dart';
 
 /// Tipos de operação suportados
 enum SyncOperationType {
@@ -63,6 +64,9 @@ class SyncQueueItem {
   /// Origem sanitizada do enfileiramento (ex.: produto_form.save).
   final String? catalogoQueueSourceOrigin;
 
+  /// Intent stockCatalog congelada (operationId + payload) para retry idêntico.
+  final String? stockIntentJson;
+
   SyncQueueItem({
     required this.id,
     required this.type,
@@ -77,6 +81,7 @@ class SyncQueueItem {
     this.catalogoPublishPlan = CatalogoQueuePublishPlan.legadoInline,
     this.catalogoPublishPhase = CatalogoQueuePublishPhase.aguardandoEstoque,
     this.catalogoQueueSourceOrigin,
+    this.stockIntentJson,
   });
 
   SyncQueueItem copyWith({
@@ -87,6 +92,7 @@ class SyncQueueItem {
     CatalogoQueuePublishPlan? catalogoPublishPlan,
     CatalogoQueuePublishPhase? catalogoPublishPhase,
     String? catalogoQueueSourceOrigin,
+    String? stockIntentJson,
   }) {
     return SyncQueueItem(
       id: id,
@@ -104,6 +110,7 @@ class SyncQueueItem {
           catalogoPublishPhase ?? this.catalogoPublishPhase,
       catalogoQueueSourceOrigin:
           catalogoQueueSourceOrigin ?? this.catalogoQueueSourceOrigin,
+      stockIntentJson: stockIntentJson ?? this.stockIntentJson,
     );
   }
 
@@ -125,6 +132,7 @@ class SyncQueueItem {
         'catalogoPublishPhase': catalogoPublishPhase.index,
         if (catalogoQueueSourceOrigin != null)
           'catalogoQueueSourceOrigin': catalogoQueueSourceOrigin,
+        if (stockIntentJson != null) 'stockIntentJson': stockIntentJson,
       };
 
   factory SyncQueueItem.fromMap(Map<String, dynamic> m) => SyncQueueItem(
@@ -144,6 +152,7 @@ class SyncQueueItem {
             .values[(m['catalogoPublishPhase'] as int?) ?? 0],
         catalogoQueueSourceOrigin:
             m['catalogoQueueSourceOrigin'] as String?,
+        stockIntentJson: m['stockIntentJson'] as String?,
       );
 
   /// operationId para idempotência
@@ -232,6 +241,7 @@ class SyncQueueService {
     CatalogoQueuePublishPhase catalogoPublishPhase =
         CatalogoQueuePublishPhase.aguardandoEstoque,
     String? catalogoQueueSourceOrigin,
+    String? stockIntentJson,
   }) async {
     await _instance._enqueue(
       type,
@@ -243,6 +253,7 @@ class SyncQueueService {
       catalogoPublishPlan: catalogoPublishPlan,
       catalogoPublishPhase: catalogoPublishPhase,
       catalogoQueueSourceOrigin: catalogoQueueSourceOrigin,
+      stockIntentJson: stockIntentJson,
     );
   }
 
@@ -286,6 +297,7 @@ class SyncQueueService {
     CatalogoQueuePublishPhase catalogoPublishPhase =
         CatalogoQueuePublishPhase.aguardandoEstoque,
     String? catalogoQueueSourceOrigin,
+    String? stockIntentJson,
   }) async {
     await _ensureBox();
     final box = _box!;
@@ -307,6 +319,7 @@ class SyncQueueService {
       catalogoPublishPlan: catalogoPublishPlan,
       catalogoPublishPhase: catalogoPublishPhase,
       catalogoQueueSourceOrigin: catalogoQueueSourceOrigin,
+      stockIntentJson: stockIntentJson,
     );
 
     await box.put(id, jsonEncode(item.toMap()));
@@ -684,12 +697,16 @@ class SyncQueueService {
     SyncQueueItem item,
     Produto produto,
   ) async {
+    final frozen = ProdutoStockCatalogCadastroIntent.tryDecode(
+      item.stockIntentJson,
+    );
     final status = await ProdutosFirestoreService.syncProdutoComStatus(
       produto,
       lojaId: item.lojaId,
       bumpHiveTimestamp: false,
       writeOrigin: 'sync_queue.upsert_produto',
       enqueueOnFailure: false,
+      frozenStockIntent: frozen,
     );
     return _tratarStatusEstoqueFila(item, status);
   }
@@ -703,6 +720,9 @@ class SyncQueueService {
     );
 
     var current = item;
+    final frozen = ProdutoStockCatalogCadastroIntent.tryDecode(
+      item.stockIntentJson,
+    );
 
     if (current.catalogoPublishPhase ==
         CatalogoQueuePublishPhase.aguardandoEstoque) {
@@ -716,6 +736,7 @@ class SyncQueueService {
         catalogoLiveInlinePolicy:
             CatalogoLiveInlinePolicy.ignorarPorquePosSaveCanonico,
         catalogoDiagContext: diagContext,
+        frozenStockIntent: frozen,
       );
       final ok = await _tratarStatusEstoqueFila(current, status);
       if (!ok) return false;

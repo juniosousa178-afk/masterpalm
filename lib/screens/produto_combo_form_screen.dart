@@ -1,3 +1,4 @@
+import '../services/stock_catalog_backend_service.dart';
 // lib/screens/produto_combo_form_screen.dart
 // Tela de cadastro de Combo/Kit – produto virtual que agrupa outros produtos.
 // Ao vender, dá baixa individual em cada item.
@@ -570,9 +571,7 @@ class _ProdutoComboFormScreenState extends State<ProdutoComboFormScreen> {
         'descontoComboPercentual': _descontoComboPercentual,
         'updatedAt': FieldValue.serverTimestamp(),
       };
-      final base = FirebaseFirestore.instance.collection('lojas').doc(lojaId);
-      await base.collection('draft_produtos').doc(docIdCatalogo).set(data, SetOptions(merge: true));
-      await base.collection('produtos').doc(docIdCatalogo).set(data, SetOptions(merge: true));
+      await StockCatalogBackendService.saveEditorial(lojaId, docIdCatalogo, data);
     } catch (_) {}
   }
 

@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../models/produto_firestore.dart';
+import 'stock_catalog_backend_service.dart';
 
 /// Serviço de produtos com fluxo RASCUNHO → PUBLICADO.
 /// Estrutura:
@@ -196,19 +197,15 @@ final num nPreco = (rawPreco is num)
     String? id,
     required Map<String, dynamic> data,
   }) async {
-    final map = Map<String, dynamic>.from(data);
-    map['ativo'] = (map['ativo'] is bool) ? map['ativo'] : true;
-    map['publicar'] = (map['publicar'] is bool) ? map['publicar'] : false;
-    map['updatedAt'] = FieldValue.serverTimestamp();
-
-    if (id == null || id.isEmpty) {
-      final ref = await _colDraft(lojaId).add(map);
-      await ref.update({'id': ref.id});
-      return ref.id;
-    } else {
-      await _colDraft(lojaId).doc(id).set(map, SetOptions(merge: true));
-      return id;
+    if (id == null || id.trim().isEmpty) {
+      throw StateError('Cadastre o produto no estoque antes de editar seu catálogo.');
     }
+    await StockCatalogBackendService.saveEditorial(lojaId, id, {
+      ...data,
+      if (data['publicar'] is bool) 'publicadoNoCatalogo': data['publicar'],
+      if (data['ativo'] is bool) 'catalog_ativo': data['ativo'],
+    });
+    return id;
   }
 
   Future<void> setProdutoPublicar({
@@ -216,10 +213,7 @@ final num nPreco = (rawPreco is num)
     required String produtoId,
     required bool publicar,
   }) async {
-    await _colDraft(lojaId).doc(produtoId).set(
-      {'publicar': publicar, 'updatedAt': FieldValue.serverTimestamp()},
-      SetOptions(merge: true),
-    );
+    await StockCatalogBackendService.saveEditorial(lojaId, produtoId, {'publicadoNoCatalogo': publicar});
   }
 
   Future<void> setProdutoAtivoDraft({
@@ -227,17 +221,15 @@ final num nPreco = (rawPreco is num)
     required String produtoId,
     required bool ativo,
   }) async {
-    await _colDraft(lojaId).doc(produtoId).set(
-      {'ativo': ativo, 'updatedAt': FieldValue.serverTimestamp()},
-      SetOptions(merge: true),
-    );
+    await StockCatalogBackendService.saveEditorial(lojaId, produtoId, {'catalog_ativo': ativo});
   }
 
   Future<void> deleteProdutoDraft({
     required String lojaId,
     required String produtoId,
   }) async {
-    await _colDraft(lojaId).doc(produtoId).delete();
+    await StockCatalogBackendService.saveEditorial(lojaId, produtoId,
+        {'publicadoNoCatalogo': false, 'catalog_ativo': false});
   }
 
   Future<Map<String, dynamic>?> getProdutoDraft({
@@ -280,62 +272,12 @@ final num nPreco = (rawPreco is num)
     }, SetOptions(merge: true));
   }
 
-  /// Commit em chunks (sem usar clamp que retorna num).
-  Future<void> _commitInChunks(List<void Function(WriteBatch)> ops) async {
-    const maxBatch = 450; // margem de segurança
-    for (var i = 0; i < ops.length; i += maxBatch) {
-      final end = (i + maxBatch <= ops.length) ? i + maxBatch : ops.length;
-      final batch = _db.batch();
-      for (final op in ops.sublist(i, end)) {
-        op(batch);
-      }
-      await batch.commit();
-    }
-  }
-
-  /// Publica PRODUTOS do rascunho para o site.
-  /// - somenteMarcados == true: faz UPSERT apenas dos marcados (NÃO apaga o restante do live).
-  /// - somenteMarcados == false: limpa live e regrava tudo que estiver ativo no rascunho.
+  /// Reconciles current canonical products. Publication intent is server-owned editorial state.
   Future<void> publishDraftProductsToLive(
     String lojaId, {
     bool somenteMarcados = true,
   }) async {
-    await _ensureOwnerUid(lojaId);
-
-    final ref = _db.collection('lojas').doc(lojaId);
-    final liveCol = ref.collection('produtos');
-    final draftCol = ref.collection('draft_produtos');
-
-    final ops = <void Function(WriteBatch)>[];
-
-    if (!somenteMarcados) {
-      // Publicação completa: limpa o live antes
-      final liveSnap = await liveCol.get();
-      for (final d in liveSnap.docs) {
-        ops.add((b) => b.delete(liveCol.doc(d.id)));
-      }
-    }
-
-    // Filtra rascunho
-    Query<Map<String, dynamic>> q = draftCol;
-    if (somenteMarcados) {
-      q = q.where('publicar', isEqualTo: true);
-    }
-    final draftSnap = await q.get();
-
-    for (final d in draftSnap.docs) {
-      final data = Map<String, dynamic>.from(d.data());
-      final ativo = (data['ativo'] is bool) ? data['ativo'] as bool : true;
-      if (!ativo) continue;
-
-      // Carimbo de data/hora ao publicar
-      data['updatedAt'] = FieldValue.serverTimestamp();
-      data['publicadoEm'] = FieldValue.serverTimestamp();
-
-      ops.add((b) => b.set(liveCol.doc(d.id), data, SetOptions(merge: true)));
-    }
-
-    await _commitInChunks(ops);
+    await StockCatalogBackendService.publishAll(lojaId);
   }
 
   /// Publica TUDO: config + produtos (somente marcados por padrão).

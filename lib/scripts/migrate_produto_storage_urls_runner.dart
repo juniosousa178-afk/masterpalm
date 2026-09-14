@@ -7,6 +7,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import '../services/stock_catalog_backend_service.dart';
 
 import 'package:master_palm/firebase_options.dart';
 import 'package:master_palm/scripts/migrate_log.dart';
@@ -131,19 +132,6 @@ Future<MigrateProdutoUrlsResult> runMigrateProdutoStorageUrls(
       final snap = await q.get();
       migrateLogOut('  Coleção $col — ${snap.docs.length} docs');
 
-      WriteBatch? batch;
-      var batchCount = 0;
-
-      Future<void> flushBatch() async {
-        if (batch == null || batchCount == 0) return;
-        if (options.commit) {
-          await batch!.commit();
-          totalWrites += batchCount;
-        }
-        batch = null;
-        batchCount = 0;
-      }
-
       for (final doc in snap.docs) {
         final data = Map<String, dynamic>.from(doc.data());
         final patch = <String, dynamic>{};
@@ -191,22 +179,13 @@ Future<MigrateProdutoUrlsResult> runMigrateProdutoStorageUrls(
         if (touched) {
           totalDocs++;
           if (options.commit) {
-            batch ??= db.batch();
-            batch!.update(doc.reference, patch);
-            batchCount++;
-            if (batchCount >= 400) {
-              await batch!.commit();
-              totalWrites += batchCount;
-              batch = null;
-              batchCount = 0;
-            }
+            final canonicalId = (data['id'] ?? doc.id).toString();
+            await StockCatalogBackendService.saveEditorial(lojaId, canonicalId, patch);
+            totalWrites++;
           }
         }
       }
 
-      if (options.commit) {
-        await flushBatch();
-      }
     }
 
     await runCol(_liveCol);
@@ -219,10 +198,10 @@ Future<MigrateProdutoUrlsResult> runMigrateProdutoStorageUrls(
   migrateLogOut('Lojas processadas: $lojasCount');
   migrateLogOut('Documentos de produto com alteração: $totalDocs');
   if (options.commit) {
-    migrateLogOut('Updates aplicados (operações em batch): $totalWrites');
+    migrateLogOut('Produtos atualizados pelo backend: $totalWrites');
   } else {
     migrateLogOut(
-        'Dry-run: nada foi gravado. commit=true + env admin para aplicar.');
+        'Dry-run: nada foi gravado. commit=true + autorização server-trusted para aplicar.');
   }
 
   if (FirebaseAuth.instance.currentUser != null) {

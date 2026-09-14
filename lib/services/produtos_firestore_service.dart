@@ -41,6 +41,8 @@ import 'produto_import_sync_prep_service.dart';
 import '../core/produto_firestore_doc_id_validator.dart';
 import 'produto_pull_skip_guard.dart';
 import 'sync_mass_delete_guard.dart';
+import 'produto_stock_catalog_cadastro_sync.dart';
+import 'stock_catalog_backend_service.dart';
 import '../src/blob_fetch_stub.dart'
     if (dart.library.html) '../src/blob_fetch_web.dart'
     as blob_fetch;
@@ -72,6 +74,9 @@ enum ProdutoSyncRemotoStatus {
 
 class ProdutosFirestoreService {
   static FirebaseFirestore? debugFirestoreOverride;
+
+  /// Produção / app real: protocolo server-trusted. FakeFirestore só em testes.
+  static bool get usaBackendConfiavel => debugFirestoreOverride == null;
 
   @visibleForTesting
   static bool get debugForbidFirestoreAccess =>
@@ -1385,6 +1390,7 @@ class ProdutosFirestoreService {
     CatalogoSyncAttemptContext? catalogoDiagContext,
     CatalogoLiveInlinePolicy catalogoLiveInlinePolicy =
         CatalogoLiveInlinePolicy.executar,
+    ProdutoStockCatalogCadastroIntent? frozenStockIntent,
   }) async {
     ultimoErroSyncSanitizado = null;
     limparFalhasUpsertCatalogo();
@@ -1551,6 +1557,22 @@ class ProdutosFirestoreService {
       if (bumpHiveTimestamp) {
         produto.updatedAt = DateTime.now();
         await produto.save();
+      }
+
+      if (usaBackendConfiavel) {
+        return await _syncProdutoViaStockCatalogBackend(
+          produto: produto,
+          storeId: storeId,
+          produtoId: produtoId,
+          bumpHiveTimestamp: bumpHiveTimestamp,
+          forcePushFromCadastro: forcePushFromCadastro,
+          writeOrigin: writeOrigin,
+          enqueueOnFailure: enqueueOnFailure,
+          gradeBaseline: gradeBaseline,
+          catalogoLiveInlinePolicy: catalogoLiveInlinePolicy,
+          updatedAtBeforeBump: updatedAtBeforeBump,
+          frozenStockIntent: frozenStockIntent,
+        );
       }
 
       final docRef = _db
@@ -2037,8 +2059,169 @@ class ProdutosFirestoreService {
           catalogoQueueSourceOrigin: CatalogoQueueSourceOrigins.sanitizar(
             writeOrigin,
           ),
+          stockIntentJson: frozenStockIntent?.encode() ??
+              (hasPendingStockMutation(produto)
+                  ? ProdutoStockCatalogCadastroIntent(
+                      operationId: produto.pendingStockOperationId!,
+                      kind: 'replace',
+                      items: [
+                        {
+                          'productId': produto.idFirebase.isNotEmpty
+                              ? produto.idFirebase
+                              : produto.slug,
+                          'expectedRevision':
+                              produto.pendingStockBaseRevision ??
+                                  produto.stockRevision,
+                        }
+                      ],
+                      editorial:
+                          ProdutoStockCatalogCadastroSync.buildEditorial(
+                              produto),
+                      definition:
+                          ProdutoStockCatalogCadastroSync.buildDefinition(
+                              produto),
+                      expectedRevision: produto.pendingStockBaseRevision ??
+                          produto.stockRevision,
+                    ).encode()
+                  : null),
         );
         return ProdutoSyncRemotoStatus.pendenteFila;
+      }
+      return ProdutoSyncRemotoStatus.falhaRemota;
+    }
+  }
+
+  /// Create/replace/editorial via backend; revisão CAS = intent observada.
+  static Future<ProdutoSyncRemotoStatus> _syncProdutoViaStockCatalogBackend({
+    required Produto produto,
+    required String storeId,
+    required String produtoId,
+    required bool bumpHiveTimestamp,
+    required bool forcePushFromCadastro,
+    required bool enqueueOnFailure,
+    required DateTime? updatedAtBeforeBump,
+    String? writeOrigin,
+    ProdutoFormGradeBaseline? gradeBaseline,
+    CatalogoLiveInlinePolicy catalogoLiveInlinePolicy =
+        CatalogoLiveInlinePolicy.executar,
+    ProdutoStockCatalogCadastroIntent? frozenStockIntent,
+  }) async {
+    // Existência apenas para escolher create vs replace — NÃO para abençoar CAS.
+    var documentExists = false;
+    Map<String, dynamic>? existingData;
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('lojas')
+          .doc(storeId)
+          .collection(FSPaths.estoqueProdutosCol)
+          .doc(produtoId)
+          .get();
+      documentExists = snap.exists;
+      existingData = snap.data();
+    } catch (e) {
+      logW(
+        '[PRODUTOS-SYNC] leitura de existência falhou (type=${e.runtimeType}) — '
+        'seguindo com intent; create/replace decidido pelo servidor',
+      );
+      documentExists = frozenStockIntent?.kind != 'create';
+    }
+
+    if (shouldSkipStaleProdutoPushOnAutoSync(
+      local: produto,
+      existingData: documentExists ? existingData : null,
+      bumpHiveTimestamp: bumpHiveTimestamp,
+      updatedAtBeforeBump: updatedAtBeforeBump,
+      forcePushFromCadastro: forcePushFromCadastro,
+    )) {
+      logW(
+        '[PUSH_EDIT_GUARD] backend push ignorado — remoto mais recente que Hive '
+        '(doc=$produtoId forceCadastro=$forcePushFromCadastro)',
+        tag: 'PUSH_EDIT_GUARD',
+      );
+      return ProdutoSyncRemotoStatus.semMudancas;
+    }
+
+    final observed = ProdutoStockCatalogCadastroSync.observedRevisionForSave(
+      produto: produto,
+      gradeBaseline: gradeBaseline,
+    );
+    // A revisão CAS é sempre a observada na intent — nunca remoteRevAtSave.
+
+    ProdutoStockCatalogCadastroIntent? intent;
+    try {
+      intent = await ProdutoStockCatalogCadastroSync.buildOrReuseIntent(
+        produto: produto,
+        produtoId: produtoId,
+        documentExists: documentExists,
+        forcePushFromCadastro: forcePushFromCadastro,
+        gradeBaseline: gradeBaseline,
+        frozenIntent: frozenStockIntent,
+      );
+      // expectedRevision da intent permanece a observada — não remoteRevAtSave.
+      if (intent.kind == 'replace' &&
+          intent.expectedRevision != null &&
+          intent.expectedRevision != observed &&
+          frozenStockIntent == null) {
+        throw StateError(
+          'CAS revision must stay as observed intent ($observed), '
+          'got ${intent.expectedRevision}',
+        );
+      }
+
+      final response = await ProdutoStockCatalogCadastroSync.sendIntent(
+        lojaId: storeId,
+        intent: intent,
+      );
+      await ProdutoStockCatalogCadastroSync.applyBackendResponseToHive(
+        produto: produto,
+        lojaId: storeId,
+        response: response,
+      );
+
+      if (produto.idFirebase.isEmpty) {
+        produto.idFirebase = produtoId;
+        await produto.save();
+      }
+
+      // Catálogo derivado já sai na mesma transação do comando server-side.
+      logD(
+        '✅ [PRODUTOS-SYNC] backend kind=${intent.kind} op=${intent.operationId} '
+        'observedRev=$observed produto=$produtoId',
+      );
+      return ProdutoSyncRemotoStatus.confirmado;
+    } catch (e, st) {
+      ultimoErroSyncSanitizado = ProdutoSyncErroUtil.sanitizar(e);
+      logE(
+        '❌ [PRODUTOS-SYNC] backend sync falhou (type=${e.runtimeType})',
+        error: e,
+        st: st,
+      );
+      if (!enqueueOnFailure) return ProdutoSyncRemotoStatus.falhaRemota;
+      final key = produto.key;
+      final boxName =
+          produto.box?.name ?? HiveBoxNames.produtos(storeId);
+      if (key != null) {
+        final parsedKey = key is int ? key : int.tryParse(key.toString());
+        if (parsedKey != null) {
+          await SyncQueueService.enqueue(
+            type: SyncOperationType.upsertProduto,
+            lojaId: storeId,
+            boxName: boxName,
+            entityKey: parsedKey,
+            lastError: ultimoErroSyncSanitizado,
+            catalogoPublishPlan:
+                catalogoLiveInlinePolicy ==
+                        CatalogoLiveInlinePolicy.ignorarPorquePosSaveCanonico
+                    ? CatalogoQueuePublishPlan.canonicoAposEstoque
+                    : CatalogoQueuePublishPlan.legadoInline,
+            catalogoPublishPhase: CatalogoQueuePublishPhase.aguardandoEstoque,
+            catalogoQueueSourceOrigin: CatalogoQueueSourceOrigins.sanitizar(
+              writeOrigin,
+            ),
+            stockIntentJson: intent?.encode() ?? frozenStockIntent?.encode(),
+          );
+          return ProdutoSyncRemotoStatus.pendenteFila;
+        }
       }
       return ProdutoSyncRemotoStatus.falhaRemota;
     }
@@ -3132,7 +3315,41 @@ class ProdutosFirestoreService {
     required int novaQuantidade,
     Map<String, dynamic>? variacoes,
     Map<String, int>? estoquePorTamanho,
+    int? expectedRevision,
+    String? operationId,
   }) async {
+    if (usaBackendConfiavel) {
+      final rev = expectedRevision;
+      if (rev == null) {
+        throw StateError(
+          'atualizarQuantidade exige expectedRevision observada e comando backend; '
+          'write direto em estoque_produtos foi removido.',
+        );
+      }
+      final op = (operationId ?? '').trim().isEmpty
+          ? newStockOperationId()
+          : operationId!.trim();
+      await StockCatalogBackendService.command(
+        lojaId: lojaId,
+        operationId: op,
+        kind: 'replace',
+        items: [
+          {'productId': produtoId, 'expectedRevision': rev},
+        ],
+        editorial: const <String, dynamic>{},
+        definition: {
+          'quantidade': novaQuantidade,
+          if (variacoes != null)
+            'variacoes': sanitizeVariacoesForFirestore(
+              Map<String, dynamic>.from(variacoes),
+            ),
+          if (estoquePorTamanho != null)
+            'estoquePorTamanho': estoquePorTamanho,
+        },
+      );
+      return;
+    }
+
     try {
       final updateData = <String, dynamic>{
         'quantidade': novaQuantidade,
@@ -3201,6 +3418,12 @@ class ProdutosFirestoreService {
     /// Só com `true` permite apagar muitos docs excedentes de uma vez.
     bool allowMassDelete = false,
   }) async {
+    if (usaBackendConfiavel) {
+      throw StateError(
+        'limparProdutosExcedentesNoFirestore desativado: exclusão em massa '
+        'exige comandos backend individuais com operationId; writer direto retirado.',
+      );
+    }
     try {
       final idsLocais = produtosBox.values
           .where((p) => p.lojaId == lojaId && p.idFirebase.isNotEmpty)
@@ -3299,11 +3522,33 @@ class ProdutosFirestoreService {
     }
   }
 
-  /// Deleta um produto do Firestore
-  static Future<void> deleteProduto(String produtoId, {String? lojaId}) async {
+  /// Deleta um produto do Firestore (produção: protocolo backend delete CAS).
+  static Future<void> deleteProduto(
+    String produtoId, {
+    String? lojaId,
+    int? expectedRevision,
+    String? operationId,
+  }) async {
     try {
       final storeId = lojaId ?? await StoreResolverFacade.resolveForAdminApp();
       if (storeId == null || storeId.isEmpty) return;
+
+      if (usaBackendConfiavel) {
+        final rev = expectedRevision;
+        if (rev == null) {
+          throw StateError(
+            'deleteProduto exige expectedRevision observada (CAS backend).',
+          );
+        }
+        await StockCatalogBackendService.deleteProduct(
+          storeId,
+          produtoId,
+          expectedRevision: rev,
+          operationId: operationId,
+        );
+        logD('🗑️ [PRODUTOS-SYNC] Produto $produtoId deletado via backend');
+        return;
+      }
 
       final ref = _db
           .collection('lojas')
@@ -3340,8 +3585,19 @@ class ProdutosFirestoreService {
   }) async {
     final idFb = produto.idFirebase.trim();
     if (idFb.isNotEmpty) {
-      await deleteProduto(idFb, lojaId: lojaId);
+      await deleteProduto(
+        idFb,
+        lojaId: lojaId,
+        expectedRevision: produto.stockRevision,
+      );
       return;
+    }
+
+    if (usaBackendConfiavel) {
+      throw StateError(
+        'deleteProdutoRobusto: idFirebase vazio — exclusão sem doc id exige '
+        'resolução canónica no backend; writer direto de fallback desativado.',
+      );
     }
 
     final col = _db

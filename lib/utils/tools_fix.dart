@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hive/hive.dart';
+import '../services/stock_catalog_backend_service.dart';
 
 const rightBucket =
     'https://firebasestorage.googleapis.com/v0/b/masterpalm-58c46.firebasestorage.app/o/';
@@ -105,7 +106,8 @@ Future<void> corrigirUrlsImagens() async {
       }
 
       if (changedProd) {
-        await p.reference.update(up);
+        final canonicalId = (pd['id'] ?? p.id).toString();
+        await StockCatalogBackendService.saveEditorial(loja.id, canonicalId, up);
       }
     }
   }

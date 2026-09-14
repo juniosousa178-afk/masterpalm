@@ -1,3 +1,5 @@
+// Retired: Admin SDK bypasses Rules; this snapshot writer is not safe after cutover.
+throw new Error('Legacy stock/catalog writer retired. Use the stock catalog protocol; no direct writes are permitted.');
 // Script para corrigir estrutura final das lojas
 // DECISÃO: Usar SLUG como loja principal, UID como redirect
 const admin = require('firebase-admin');

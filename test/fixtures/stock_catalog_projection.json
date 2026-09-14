@@ -1,0 +1,176 @@
+[
+  {
+    "name": "simple-empty",
+    "canonical": {
+      "quantidade": 1,
+      "variacoes": {}
+    },
+    "display": {
+      "quantidade": 1,
+      "variacoes": {}
+    },
+    "total": 1
+  },
+  {
+    "name": "simple-absent",
+    "canonical": {
+      "quantidade": 1
+    },
+    "display": {
+      "quantidade": 1
+    },
+    "total": 1
+  },
+  {
+    "name": "zero-grade",
+    "canonical": {
+      "variacoes": {
+        "P": {
+          "Azul": 0
+        }
+      },
+      "estoquePorTamanho": {
+        "P": 9
+      },
+      "estoquePorCor": {
+        "azul": 9
+      }
+    },
+    "display": {
+      "quantidade": 0,
+      "variacoes": {
+        "P": {
+          "Azul": 0
+        }
+      },
+      "estoquePorTamanho": {
+        "P": 0
+      }
+    },
+    "total": 0
+  },
+  {
+    "name": "empty-variable",
+    "canonical": {
+      "variacoes": {},
+      "tamanhos": [
+        "P"
+      ],
+      "estoquePorTamanho": {
+        "P": 9
+      }
+    },
+    "display": {
+      "quantidade": 0,
+      "variacoes": {},
+      "tamanhos": [
+        "P"
+      ],
+      "estoquePorTamanho": {}
+    },
+    "total": 0
+  },
+  {
+    "name": "color-alias",
+    "canonical": {
+      "variacoes": {
+        "P": {
+          "Azul": 2,
+          " azul ": 0,
+          "Vermelho": 2
+        }
+      }
+    },
+    "display": {
+      "quantidade": 2,
+      "variacoes": {
+        "P": {
+          "Azul": 0,
+          "Vermelho": 2
+        }
+      }
+    },
+    "total": 2
+  },
+  {
+    "name": "root-extra",
+    "canonical": {
+      "variacoes": {
+        "P": {
+          "Azul": 0
+        }
+      },
+      "estoquePorCor": {
+        "azul": 9,
+        "Rosa": 2
+      }
+    },
+    "display": {
+      "quantidade": 2,
+      "variacoes": {
+        "P": {
+          "Azul": 0
+        }
+      },
+      "estoquePorCor": {
+        "azul": 9,
+        "Rosa": 2
+      }
+    },
+    "total": 2
+  },
+  {
+    "name": "private-cost",
+    "canonical": {
+      "variacoes": {
+        "P": {
+          "Azul": {
+            "_sem_extra": 1,
+            "__custoUnitario": 12.5
+          }
+        }
+      }
+    },
+    "display": {
+      "quantidade": 1,
+      "variacoes": {
+        "P": {
+          "Azul": {
+            "_sem_extra": 1
+          }
+        }
+      }
+    },
+    "total": 1
+  },
+  {
+    "name": "size-only",
+    "canonical": {
+      "estoquePorTamanho": {
+        "P": 2
+      }
+    },
+    "display": {
+      "quantidade": 2,
+      "estoquePorTamanho": {
+        "P": 2
+      }
+    },
+    "total": 2
+  },
+  {
+    "name": "color-only",
+    "canonical": {
+      "estoquePorCor": {
+        "Azul": 2
+      }
+    },
+    "display": {
+      "quantidade": 2,
+      "estoquePorCor": {
+        "Azul": 2
+      }
+    },
+    "total": 2
+  }
+]

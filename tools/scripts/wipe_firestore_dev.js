@@ -1,3 +1,5 @@
+// Retired: Admin SDK bypasses Rules; this snapshot writer is not safe after cutover.
+throw new Error('Legacy stock/catalog writer retired. Use the stock catalog protocol; no direct writes are permitted.');
 // tools/scripts/wipe_firestore_dev.js
 // ⚠️ CUIDADO: script destrutivo. Use só em ambiente de desenvolvimento.
 
