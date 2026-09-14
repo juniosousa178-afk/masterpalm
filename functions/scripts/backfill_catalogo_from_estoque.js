@@ -1,3 +1,5 @@
+// Retired: Admin SDK bypasses Rules; this snapshot writer is not safe after cutover.
+throw new Error('Legacy stock/catalog writer retired. Use the stock catalog protocol; no direct writes are permitted.');
 /**
  * Alinha `draft_produtos` e `produtos` (catálogo) com `estoque_produtos`
  * usando o MESMO id de documento do estoque (pós-correção no app).

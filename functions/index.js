@@ -1,3 +1,4 @@
+import {executeOrderStockCommand} from './src/stockCatalogOrders.js';
 /* Cloud Functions v2 — Multilojas + Mercado Pago (Pedidos & Planos) + Subdomínios
    - Fretes (Correios, Melhor Envio, Frenet) + Skeleton PagSeguro / Ton / InfinitePay (ESM)
    - Node 20
@@ -10,6 +11,8 @@ import { onDocumentCreated, onDocumentWritten } from "firebase-functions/v2/fire
 import { setGlobalOptions } from "firebase-functions/v2";
 import { defineSecret } from "firebase-functions/params";
 import crypto from "node:crypto";
+import {SERVER_PUBLISH_AUTH} from "./src/stockCatalogAccess.js";
+import {executeStockCommand, publishStockProduct, publishStockAll} from "./src/stockCatalogCommands.js";
 
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
@@ -4428,32 +4431,12 @@ export const publishLojaDraft = onDocumentWritten(
       { merge: true }
     );
 
-    const draftProdCol = lojaRef.collection("draft_produtos");
-    const draftSnap = await draftProdCol.get();
-
-    console.log(`[publishLojaDraft] Encontrados ${draftSnap.size} produtos em draft_produtos para loja ${lojaId}`);
-
-    const batch = db.batch();
-
-    draftSnap.forEach((doc) => {
-      const prodId = doc.id;
-      const data = doc.data() || {};
-
-      const baseData = {
-        ...data,
-        id: data.id || prodId,
-        updatedAt: nowTs,
-      };
-
-      const prodRef = lojaRef.collection("produtos").doc(prodId);
-      batch.set(prodRef, baseData, { merge: true });
+    // Server-owned grant provisioned independently of client-editable profiles.
+    // Never copy event/draft stock. Each product is re-read in a transaction.
+    await publishStockAll(db, String(lojaId), SERVER_PUBLISH_AUTH);
+    await lojaRef.collection('draft_config').doc('config').update({
+      admin_publish: false, updatedAt: nowTs,
     });
-
-    // volta flag
-    const draftCfgRef = lojaRef.collection("draft_config").doc("config");
-    batch.set(draftCfgRef, { admin_publish: false, updatedAt: nowTs }, { merge: true });
-
-    await batch.commit();
     console.log(`[publishLojaDraft] Publicação concluída para loja ${lojaId}`);
   }
 );
@@ -5521,3 +5504,40 @@ export const onSiteConfigUpdated = onDocumentWritten(
     }
   }
 );
+
+// Stock/catalog protocol v1. No fallback to direct client writes.
+function stockCallableError(error) {
+  const allowed = new Set(['unauthenticated','permission-denied','invalid-argument',
+    'failed-precondition','aborted','already-exists','resource-exhausted','not-found']);
+  return new HttpsError(allowed.has(error?.code) ? error.code : 'internal',
+    allowed.has(error?.code) ? error.message : 'Stock operation failed');
+}
+export const stockCatalogCommand = onCall(async request => {
+  try { return await executeStockCommand(db, request.data, request.auth); }
+  catch (error) { throw stockCallableError(error); }
+});
+export const catalogPublishOne = onCall(async request => {
+  try {
+    if (!request.data || Object.keys(request.data).some(k => !['lojaId','productId'].includes(k))) {
+      throw new HttpsError('invalid-argument', 'Publish accepts identifiers only');
+    }
+    return await publishStockProduct(db, request.data.lojaId, request.data.productId, request.auth);
+  } catch (error) { throw stockCallableError(error); }
+});
+export const catalogPublishAll = onCall(async request => {
+  try {
+    if (!request.data || Object.keys(request.data).some(k => k !== 'lojaId')) {
+      throw new HttpsError('invalid-argument', 'Publish accepts lojaId only');
+    }
+    return await publishStockAll(db, request.data.lojaId, request.auth);
+  } catch (error) { throw stockCallableError(error); }
+});
+
+export const stockCatalogOrderSale = onCall(async request => {
+  try {
+    if (!request.data || Object.keys(request.data).some(k => !['lojaId','orderId'].includes(k))) {
+      throw new HttpsError('invalid-argument', 'Order stock command accepts identifiers only');
+    }
+    return await executeOrderStockCommand(db, request.data.lojaId, request.data.orderId, request.auth);
+  } catch (error) { throw stockCallableError(error); }
+});

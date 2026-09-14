@@ -210,51 +210,7 @@ async function processarPosPagamento(orderId, payment, lojaIdFromPayment = null)
  * Baixa estoque dos produtos vendidos
  */
 async function baixarEstoque(lojaId, itens) {
-  try {
-    console.log(`📦 Baixando estoque de ${itens.length} itens...`);
-
-    for (const item of itens) {
-      const productId = item.productId || item.produtosId || item.id;
-
-      if (!productId) {
-        console.warn('⚠️ Item sem productId/produtosId:', item.nome);
-        continue;
-      }
-
-      const productRef = db
-        .collection('lojas')
-        .doc(lojaId)
-        .collection('produtos')
-        .doc(productId);
-
-      const productDoc = await productRef.get();
-
-      if (!productDoc.exists) {
-        console.warn('⚠️ Produto não encontrado:', productId);
-        continue;
-      }
-
-      const productData = productDoc.data();
-      const estoqueAtual = productData.estoque ?? productData.quantidade ?? 0;
-      const quantidade = item.quantidade || 1;
-      const novoEstoque = Math.max(0, estoqueAtual - quantidade);
-
-      const updateData = {
-        estoque: novoEstoque,
-        quantidade: novoEstoque,
-        estoque_atual: novoEstoque,
-        ultimaVenda: FieldValue.serverTimestamp(),
-      };
-      if (novoEstoque <= 0) updateData.ativo = false;
-      await productRef.update(updateData);
-
-      console.log(`📦 Estoque atualizado: ${item.nome} (${estoqueAtual} → ${novoEstoque})`);
-    }
-
-    console.log('✅ Estoque baixado com sucesso!');
-  } catch (error) {
-    console.error('❌ Erro ao baixar estoque:', error);
-  }
+  throw new Error('Legacy post-payment stock writer retired; use the canonical stock command with the shared operation identity.');
 }
 
 /**

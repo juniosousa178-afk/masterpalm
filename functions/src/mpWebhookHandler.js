@@ -1,3 +1,5 @@
+import {runStockTransaction} from './stockCatalogCommands.js';
+import {applyOrderStockInTransaction} from './stockCatalogOrders.js';
 /**
  * Handler do Webhook Mercado Pago – MasterPalm
  *
@@ -464,8 +466,6 @@ export async function processMpWebhook(paymentId, mailOpts = {}) {
     return true;
   }
 
-  const items = order.items || order.itens || [];
-
   emitWebhookLog({
     event: "mpWebhook_stock_update_started",
     severity: "info",
@@ -477,7 +477,7 @@ export async function processMpWebhook(paymentId, mailOpts = {}) {
 
   // Transação atômica: garante que apenas uma execução processa (evita duplicar baixa de estoque)
   try {
-    await getDb().runTransaction(async (tx) => {
+    await runStockTransaction(getDb(), async (tx) => {
     const procDoc = await tx.get(webhookProcessedRef);
     if (procDoc.exists) {
       return; // Já processado por outra requisição
@@ -502,6 +502,16 @@ export async function processMpWebhook(paymentId, mailOpts = {}) {
       return;
     }
 
+    // Revalidate the same payment against the order snapshot read in this transaction.
+    const currentValidation = validateMpPaymentAgainstOrder({
+      payment, expectedCents: orderTotalToCents(ord.total), resolvedLojaId, orderId: String(orderId),
+    });
+    if (!currentValidation.ok) throw new Error('Order changed after payment validation');
+
+    // Shared engine reads canonical stock and atomically projects catalog.
+    // Read order/marker first; no transaction reads follow this call.
+    await applyOrderStockInTransaction(tx, db, String(resolvedLojaId), String(orderId), ord, 2);
+
     tx.set(webhookProcessedRef, {
       paymentId: String(paymentId),
       orderId,
@@ -524,95 +534,7 @@ export async function processMpWebhook(paymentId, mailOpts = {}) {
     }
     tx.set(orderRefToUse, updatePayload, { merge: true });
 
-    for (const it of items) {
-      const pId = it.productId || it.produtosId || it.id || it.slug;
-      if (!pId) continue;
-      const qty = Number(it.qty ?? it.quantidade ?? 0);
-      if (qty <= 0) continue;
 
-      const tamanho = (it.tamanho ?? "").toString().trim();
-      const cor = (it.cor ?? "").toString().trim();
-      const temVariacao = tamanho || cor;
-
-      const produtosRef = db
-        .collection(COLLECTION_LOJAS)
-        .doc(resolvedLojaId)
-        .collection("produtos")
-        .doc(String(pId));
-      const estoqueRef = db
-        .collection(COLLECTION_LOJAS)
-        .doc(resolvedLojaId)
-        .collection("estoque_produtos")
-        .doc(String(pId));
-
-      let updateProdutos = {};
-      let updateEstoque = {};
-
-      // Priorizar estoque_produtos como fonte (alinhado com app/admin). Fallback para produtos.
-      const estoqueSnap = await tx.get(estoqueRef);
-      const prodSnap = await tx.get(produtosRef);
-      const data = (estoqueSnap.exists && estoqueSnap.data())
-        ? estoqueSnap.data()
-        : (prodSnap.exists && prodSnap.data())
-          ? prodSnap.data()
-          : {};
-
-      if (temVariacao) {
-        const variacoesRaw = data.variacoes;
-        const estoquePorTamanhoRaw = data.estoquePorTamanho;
-
-        const variacoes = variacoesRaw && typeof variacoesRaw === "object"
-          ? JSON.parse(JSON.stringify(variacoesRaw))
-          : null;
-        const estoquePorTamanho = estoquePorTamanhoRaw && typeof estoquePorTamanhoRaw === "object"
-          ? JSON.parse(JSON.stringify(estoquePorTamanhoRaw))
-          : null;
-
-        const usaVariacoes = variacoes && Object.keys(variacoes).length > 0 && tamanho && cor;
-        const temEstoquePorTamanho = estoquePorTamanho && Object.keys(estoquePorTamanho).length > 0 && tamanho;
-
-        if (usaVariacoes) {
-          const mapaTamanho = variacoes[tamanho];
-          if (mapaTamanho && typeof mapaTamanho === "object") {
-            const disponivel = (mapaTamanho[cor] ?? 0) | 0;
-            const novo = Math.max(0, disponivel - qty);
-            if (novo > 0) {
-              mapaTamanho[cor] = novo;
-            } else {
-              delete mapaTamanho[cor];
-            }
-            if (Object.keys(mapaTamanho).length === 0) delete variacoes[tamanho];
-            const qtdTotal = Object.values(variacoes).reduce((acc, m) => acc + Object.values(m).reduce((a, b) => a + (b | 0), 0), 0);
-            updateProdutos = { variacoes, quantidade: qtdTotal, estoque: qtdTotal, estoque_atual: qtdTotal, updatedAt: nowTs };
-            if (qtdTotal <= 0) updateProdutos.ativo = false;
-            updateEstoque = { variacoes, quantidade: qtdTotal, updatedAt: nowTs };
-          }
-        } else if (temEstoquePorTamanho) {
-          const disponivel = (estoquePorTamanho[tamanho] ?? 0) | 0;
-          const novo = Math.max(0, disponivel - qty);
-          if (novo > 0) {
-            estoquePorTamanho[tamanho] = novo;
-          } else {
-            delete estoquePorTamanho[tamanho];
-          }
-          const qtdTotal = Object.values(estoquePorTamanho).reduce((a, b) => a + (b | 0), 0);
-          updateProdutos = { estoquePorTamanho, quantidade: qtdTotal, estoque: qtdTotal, estoque_atual: qtdTotal, updatedAt: nowTs };
-          if (qtdTotal <= 0) updateProdutos.ativo = false;
-          updateEstoque = { estoquePorTamanho, quantidade: qtdTotal, updatedAt: nowTs };
-        }
-      }
-
-      if (Object.keys(updateProdutos).length === 0) {
-        const currentQty = (data.quantidade ?? data.estoque ?? 0) | 0;
-        const novoEstoque = Math.max(0, currentQty - qty);
-        updateProdutos = { estoque: novoEstoque, quantidade: novoEstoque, estoque_atual: novoEstoque, updatedAt: nowTs };
-        if (novoEstoque <= 0) updateProdutos.ativo = false;
-        updateEstoque = { quantidade: novoEstoque, updatedAt: nowTs };
-      }
-
-      tx.set(produtosRef, updateProdutos, { merge: true });
-      tx.set(estoqueRef, updateEstoque, { merge: true });
-    }
     });
   } catch (txErr) {
     emitWebhookLog({

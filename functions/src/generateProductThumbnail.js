@@ -196,37 +196,16 @@ export const generateProductThumbnail = onObjectFinalized(
           .collection("produtos")
           .doc(parsed.produtoId);
 
-        const prodSnap = await prodRef.get();
-        if (prodSnap.exists) {
-          await prodRef.set(
-            {
-              fotoThumbUrl: signedUrl,
-              fotoOriginalUrl: originalSignedUrl,
-              updatedAt: FieldValue.serverTimestamp(),
-            },
-            { merge: true }
-          );
-          console.log("[generateProductThumbnail] Firestore atualizado:", prodRef.path);
-        } else {
-          // Tentar draft_produtos
-          const draftRef = db
-            .collection("lojas")
-            .doc(parsed.lojaId)
-            .collection("draft_produtos")
-            .doc(parsed.produtoId);
-          const draftSnap = await draftRef.get();
-          if (draftSnap.exists) {
-            await draftRef.set(
-              {
-                fotoThumbUrl: signedUrl,
-                fotoOriginalUrl: originalSignedUrl,
-                updatedAt: FieldValue.serverTimestamp(),
-              },
-              { merge: true }
-            );
-            console.log("[generateProductThumbnail] Firestore draft atualizado:", draftRef.path);
-          }
-        }
+        await db.runTransaction(async tx => {
+          const draftRef = db.collection('lojas').doc(parsed.lojaId)
+            .collection('draft_produtos').doc(parsed.produtoId);
+          const [prodSnap, draftSnap] = await Promise.all([tx.get(prodRef), tx.get(draftRef)]);
+          const patch = {fotoThumbUrl: signedUrl, fotoOriginalUrl: originalSignedUrl,
+            updatedAt: FieldValue.serverTimestamp()};
+          // update cannot recreate a product removed by a concurrent stock command.
+          if (prodSnap.exists) tx.update(prodRef, patch);
+          if (draftSnap.exists) tx.update(draftRef, patch);
+        });
       }
     } catch (err) {
       console.error("[generateProductThumbnail] Erro:", err);
