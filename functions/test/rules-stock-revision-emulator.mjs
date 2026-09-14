@@ -1,6 +1,7 @@
 ﻿/**
- * R8.4 ÔÇö Firestore Rules stockRevision enforcement (E1ÔÇôE8).
- * Exige FIRESTORE_EMULATOR_HOST (firebase emulators:exec).
+ * R8.4 — Firestore Rules stockRevision / direct client write denial (E1–E8).
+ * Under TRUSTED_BACKEND_PLUS_RULES every client mutation of estoque_produtos is denied.
+ * Exige FIRESTORE_EMULATOR_HOST (local emulator only).
  */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -8,12 +9,11 @@ import { fileURLToPath } from "node:url";
 import {
   initializeTestEnvironment,
   assertFails,
-  assertSucceeds,
 } from "@firebase/rules-unit-testing";
 
 const emulatorHost = process.env.FIRESTORE_EMULATOR_HOST;
 if (!emulatorHost) {
-  console.error("FIRESTORE_EMULATOR_HOST n├úo definido ÔÇö abortando.");
+  console.error("FIRESTORE_EMULATOR_HOST não definido — abortando.");
   process.exit(1);
 }
 
@@ -85,10 +85,10 @@ async function main() {
       email: "owner@test.com",
     });
 
-    console.log("E1 ÔÇö cliente novo v├ílido (8ÔåÆ9)");
+    console.log("E1 — even valid R+1 client write denied (backend-only)");
     await check(
-      "E1 valid revision increment",
-      assertSucceeds(
+      "E1 valid revision increment denied",
+      assertFails(
         estoqueRef(owner).update({
           quantidade: 9,
           stockRevision: 9,
@@ -97,23 +97,7 @@ async function main() {
       ),
     );
 
-    await testEnv.withSecurityRulesDisabled(async (context) => {
-      await context
-        .firestore()
-        .collection("lojas")
-        .doc(LOJA_ID)
-        .collection("estoque_produtos")
-        .doc(PROD_ID)
-        .set({
-          nome: "Prod base",
-          quantidade: 10,
-          variacoes: {},
-          stockRevision: 8,
-          stockOperationId: "op-base",
-        });
-    });
-
-    console.log("E2 ÔÇö cliente antigo sem revision");
+    console.log("E2 — cliente antigo sem revision");
     await check(
       "E2 legacy grade change rejected",
       assertFails(
@@ -123,7 +107,7 @@ async function main() {
       ),
     );
 
-    console.log("E3 ÔÇö mesma revision grade diferente");
+    console.log("E3 — mesma revision grade diferente");
     await check(
       "E3 same revision different grade",
       assertFails(
@@ -135,7 +119,7 @@ async function main() {
       ),
     );
 
-    console.log("E4 ÔÇö revision regressiva");
+    console.log("E4 — revision regressiva");
     await check(
       "E4 revision regression",
       assertFails(
@@ -147,7 +131,7 @@ async function main() {
       ),
     );
 
-    console.log("E5 ÔÇö salto de revision");
+    console.log("E5 — salto de revision");
     await check(
       "E5 revision jump",
       assertFails(
@@ -159,10 +143,10 @@ async function main() {
       ),
     );
 
-    console.log("E6 ÔÇö retry mesma operationId");
+    console.log("E6 — client retry / apply denied (no client authority)");
     await check(
-      "E6 first apply",
-      assertSucceeds(
+      "E6 first apply denied",
+      assertFails(
         estoqueRef(owner).update({
           quantidade: 9,
           stockRevision: 9,
@@ -171,8 +155,8 @@ async function main() {
       ),
     );
     await check(
-      "E6 idempotent retry",
-      assertSucceeds(
+      "E6 idempotent retry denied",
+      assertFails(
         estoqueRef(owner).update({
           quantidade: 9,
           stockRevision: 9,
@@ -181,26 +165,10 @@ async function main() {
       ),
     );
 
-    await testEnv.withSecurityRulesDisabled(async (context) => {
-      await context
-        .firestore()
-        .collection("lojas")
-        .doc(LOJA_ID)
-        .collection("estoque_produtos")
-        .doc(PROD_ID)
-        .set({
-          nome: "Prod base",
-          quantidade: 10,
-          variacoes: {},
-          stockRevision: 8,
-          stockOperationId: "op-base",
-        });
-    });
-
-    console.log("E7 ÔÇö edi├º├úo nome sem estoque");
+    console.log("E7 — metadata-only client write denied");
     await check(
-      "E7 metadata-only",
-      assertSucceeds(
+      "E7 metadata-only denied",
+      assertFails(
         estoqueRef(owner).update({
           nome: "Prod renomeado",
         }),
@@ -223,7 +191,7 @@ async function main() {
         });
     });
 
-    console.log("E8 ÔÇö documento stale revision 7 sobre 9");
+    console.log("E8 — documento stale revision 7 sobre 9");
     await check(
       "E8 stale full overwrite",
       assertFails(

@@ -94,6 +94,16 @@ service cloud.firestore {
         || isLojaMemberElevated(lojaId);
     }
 
+    // Stock/catalog protocol: authority is a dedicated server-maintained grant.
+    function stockCatalogActive(lojaId) {
+      let state = get(/databases/$(database)/documents/lojas/$(lojaId)/stock_catalog_control/state).data;
+      return state.protocolVersion == 1 && state.mode == 'active' && state.migrationComplete == true;
+    }
+    function stockCatalogReader(lojaId) {
+      return isSignedIn()
+        && get(/databases/$(database)/documents/lojas/$(lojaId)/stock_catalog_access/$(request.auth.uid)).data.enabled == true;
+    }
+
     // R8.4 — enforcement monotônico de stockRevision em estoque_produtos
     function estoqueStockRevisionVal(data) {
       return data.get('stockRevision', 0);
@@ -890,13 +900,35 @@ service cloud.firestore {
         allow create, update, delete: if false;
       }
 
+      match /stock_catalog_control/{id} {
+        allow read: if stockCatalogReader(lojaId);
+        allow write: if false;
+      }
+      match /stock_catalog_access/{uid} {
+        allow read: if isSignedIn() && request.auth.uid == uid;
+        allow write: if false;
+      }
+      match /stock_catalog_operations/{id} {
+        allow read: if stockCatalogReader(lojaId);
+        allow write: if false;
+      }
+      match /stock_catalog_dependencies/{id} {
+        allow read: if stockCatalogReader(lojaId);
+        allow write: if false;
+      }
+      // Obsolete mirrors are not another route into the public catalog.
+      match /produtos_draft/{id} { allow read, write: if false; }
+      match /products/{id} { allow read, write: if false; }
+
       // Rascunho: produtos (simples e combo) com imagens, itensCombo, variacoes
       match /draft_produtos/{prodId} {
-        allow read, write: if isAdminOrSystem();
+        allow read: if stockCatalogReader(lojaId);
+        allow create, update, delete: if false;
       }
 
       match /produtos_rascunho/{prodId} {
-        allow read, write: if isAdminOrSystem();
+        allow read: if false;
+        allow create, update, delete: if false;
       }
 
       match /members/{memberId} {
@@ -957,17 +989,14 @@ service cloud.firestore {
 
       // Catalogo publico: produtos (simples e combo) com imagens, itensCombo, variacoes
       match /produtos/{prodId} {
-        allow read: if resource != null;
-        allow create, delete: if isAdminOrSystem();
-        // Update: admin total OU dono/vendedor apenas incrementando vendasCatalogoTotal (denorm pós-venda catálogo)
-        allow update: if isAdminOrSystem()
-          || (belongsToStore(lojaId) && isVendasCatalogoTotalOnlySafeUpdate());
+        allow read: if resource != null && stockCatalogActive(lojaId);
+        allow create, update, delete: if false;
       }
 
       // Só o espelho publicado para o catálogo (denormalizado; sem escrita pública list/get).
       match /produtos_publicos/{produtoId} {
-        allow read: if true;
-        allow create, update, delete: if isAdminOrSystem() || belongsToStore(lojaId);
+        allow read: if false;
+        allow create, update, delete: if false;
       }
 
       match /vendas/{vendaId} {
@@ -1018,15 +1047,14 @@ service cloud.firestore {
 
       // Estoque: dono da loja, admin ou vendedor + enforcement stockRevision (R8.4)
       match /estoque_produtos/{prodId} {
-        allow read: if belongsToStore(lojaId);
-        allow create: if belongsToStore(lojaId) && isValidEstoqueProdutoStockCreate();
-        allow update: if belongsToStore(lojaId) && isValidEstoqueProdutoStockUpdate();
-        allow delete: if belongsToStore(lojaId);
+        allow read: if stockCatalogReader(lojaId);
+        allow create, update, delete: if false;
       }
 
       // Exclusão definitiva (tombstone): mesma regra de estoque — nunca cruza loja.
       match /exclusao_produto/{tombId} {
-        allow read, write: if belongsToStore(lojaId);
+        allow read: if stockCatalogReader(lojaId);
+        allow create, update, delete: if false;
       }
 
       match /estoque_clientes/{clienteId} {
@@ -1365,20 +1393,8 @@ service cloud.firestore {
       // Idempotência do pós-pagamento do catálogo/WhatsApp.
       // Usado pelo PosPagamentoService para evitar baixa duplicada de estoque.
       match /estoque_baixa_pagamento/{markerId} {
-        allow read: if isStoreMember(lojaId);
-
-        allow create: if isStoreMember(lojaId)
-          && request.resource.data.lojaId == lojaId
-          && (
-            isLegacyMarkerCreate()
-            || isV1MarkerCreate(lojaId, markerId)
-          );
-
-        allow update: if isStoreMember(lojaId)
-          && request.resource.data.lojaId == lojaId
-          && isLegacyMarkerUpdate();
-
-        allow delete: if isAdminOrSystem() && isLegacyMarkerDelete();
+        allow read: if stockCatalogReader(lojaId);
+        allow create, update, delete: if false;
       }
 
       // M3.2-A — coordenação remota de intenção de venda (saleIntentId).
@@ -1482,8 +1498,7 @@ service cloud.firestore {
     match /stores/{storeId} {
       allow read: if resource != null;
       match /products/{prodId} {
-        allow read: if resource != null;
-        allow create, update, delete: if isAdminOrSystem();
+        allow read, write: if false;
       }
     }
 
