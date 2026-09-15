@@ -95,12 +95,16 @@ service cloud.firestore {
     }
 
     // Stock/catalog protocol: authority is a dedicated server-maintained grant.
+    // exists() keeps missing control/grant from aborting OR short-circuit evaluation.
     function stockCatalogActive(lojaId) {
-      let state = get(/databases/$(database)/documents/lojas/$(lojaId)/stock_catalog_control/state).data;
-      return state.protocolVersion == 1 && state.mode == 'active' && state.migrationComplete == true;
+      return exists(/databases/$(database)/documents/lojas/$(lojaId)/stock_catalog_control/state)
+        && get(/databases/$(database)/documents/lojas/$(lojaId)/stock_catalog_control/state).data.protocolVersion == 1
+        && get(/databases/$(database)/documents/lojas/$(lojaId)/stock_catalog_control/state).data.mode == 'active'
+        && get(/databases/$(database)/documents/lojas/$(lojaId)/stock_catalog_control/state).data.migrationComplete == true;
     }
     function stockCatalogReader(lojaId) {
       return isSignedIn()
+        && exists(/databases/$(database)/documents/lojas/$(lojaId)/stock_catalog_access/$(request.auth.uid))
         && get(/databases/$(database)/documents/lojas/$(lojaId)/stock_catalog_access/$(request.auth.uid)).data.enabled == true;
     }
 
@@ -1047,14 +1051,18 @@ service cloud.firestore {
       }
 
       // Estoque: dono da loja, admin ou vendedor + enforcement stockRevision (R8.4)
+      // Inactive/no-control stores: belonging members may READ for Hive/sync refresh.
+      // Writes remain DENY for all clients (trusted backend only).
       match /estoque_produtos/{prodId} {
-        allow read: if stockCatalogReader(lojaId);
+        allow read: if stockCatalogReader(lojaId)
+          || (belongsToStore(lojaId) && !stockCatalogActive(lojaId));
         allow create, update, delete: if false;
       }
 
       // Exclusão definitiva (tombstone): mesma regra de estoque — nunca cruza loja.
       match /exclusao_produto/{tombId} {
-        allow read: if stockCatalogReader(lojaId);
+        allow read: if stockCatalogReader(lojaId)
+          || (belongsToStore(lojaId) && !stockCatalogActive(lojaId));
         allow create, update, delete: if false;
       }
 

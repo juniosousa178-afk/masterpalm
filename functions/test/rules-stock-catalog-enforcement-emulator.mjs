@@ -24,8 +24,12 @@ before(async () => {
     await db.doc('lojas/rules_inactive/stock_catalog_control/state').set({protocolVersion: 1, mode: 'inactive', migrationComplete: false});
     await db.doc('lojas/rules_inactive/produtos/p').set({ativo: true, nome: 'inactive'});
     await db.doc('lojas/rules_inactive/estoque_produtos/p').set({quantidade: 1, stockRevision: 0});
+    await db.doc('lojas/rules_inactive').set({ownerUid: 'inactive-owner'});
+    await db.doc('lojas/rules_nocontrol').set({ownerUid: 'nocontrol-owner'});
     await db.doc('lojas/rules_migrated_inactive/stock_catalog_control/state').set({protocolVersion: 1, mode: 'inactive', migrationComplete: true});
     await db.doc('lojas/rules_migrated_inactive/produtos/p').set({ativo: true, nome: 'migrated-inactive'});
+    await db.doc('lojas/rules_migrated_inactive/estoque_produtos/p').set({quantidade: 1, stockRevision: 0});
+    await db.doc('lojas/rules_migrated_inactive').set({ownerUid: 'migrated-owner'});
   });
 });
 after(async () => { await env?.cleanup(); });
@@ -91,6 +95,27 @@ test('emergency public GET inactive-with-control ALLOW', async () => {
 });
 test('emergency public GET ACTIVE ALLOW', async () => {
   await assertSucceeds(unauth().doc('lojas/rules_a/produtos/p').get());
+});
+test('inactive same-store member can READ estoque_produtos; write still DENY', async () => {
+  const db = env.authenticatedContext('inactive-owner').firestore();
+  await assertSucceeds(db.doc('lojas/rules_inactive/estoque_produtos/p').get());
+  await assertFails(db.doc('lojas/rules_inactive/estoque_produtos/p').update({quantidade: 9}));
+});
+test('no-control same-store member can READ estoque_produtos', async () => {
+  const db = env.authenticatedContext('nocontrol-owner').firestore();
+  await assertSucceeds(db.doc('lojas/rules_nocontrol/estoque_produtos/p').get());
+});
+test('other-store cannot READ inactive estoque_produtos; unauth DENY', async () => {
+  const other = env.authenticatedContext('stranger').firestore();
+  await assertFails(other.doc('lojas/rules_inactive/estoque_produtos/p').get());
+  await assertFails(unauth().doc('lojas/rules_inactive/estoque_produtos/p').get());
+});
+test('ACTIVE store private stock read still requires grant (owner without grant DENY)', async () => {
+  // rules_a has grant for 'owner' only — stranger denied; granted owner allowed.
+  const stranger = env.authenticatedContext('stranger').firestore();
+  await assertFails(stranger.doc('lojas/rules_a/estoque_produtos/p').get());
+  const granted = env.authenticatedContext('owner').firestore();
+  await assertSucceeds(granted.doc('lojas/rules_a/estoque_produtos/p').get());
 });
 test('control, operation marker, dependency and tombstone cannot be spoofed', async () => {
   for (const path of ['stock_catalog_control/state','stock_catalog_operations/fake','stock_catalog_dependencies/p','exclusao_produto/p','estoque_baixa_pagamento/fake']) {
