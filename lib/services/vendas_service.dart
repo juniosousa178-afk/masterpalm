@@ -28,6 +28,7 @@ import 'catalogo_web_apos_estoque_service.dart';
 import 'combo_kit_stock_service.dart';
 import 'estoque_transaction_service.dart';
 import 'movimentacao_estoque_service.dart';
+import 'web_build_convergence_service.dart';
 import 'venda_combo_estoque_expansion.dart';
 import 'venda_custo_mercadoria.dart';
 import 'venda_edicao_estoque_diff.dart';
@@ -2289,23 +2290,25 @@ class VendasService {
           'tamanho=$tam cor=$cor sellerUid=${(vendedorUid ?? '').trim()}',
         );
       }
-      final baixaOp = usaPedidoPersistidoBackend
-          ? await EstoqueTransactionService.baixarEstoquePedidoIdempotente(
-              lojaId: lojaEfetiva,
-              pedidoId: pedidoPersistidoId,
-            )
-          : await EstoqueTransactionService
-              .baixarEstoqueTransactionBatchIdempotente(
-              lojaId: lojaEfetiva,
-              itens: txItems,
-              operationId: idFirebaseReservado,
-              backendItems: EstoqueTransactionService.usaBackendConfiavel
-                  ? VendaComboEstoqueExpansion.montarItensParaBackend(
-                      itens: itens,
-                      produtos: produtosLinhaOriginal,
-                      selecoes: itensComboSelecaoPorIndice)
-                  : null,
-            );
+      final baixaOp = await PdvMutationGate.run(() async {
+        return usaPedidoPersistidoBackend
+            ? await EstoqueTransactionService.baixarEstoquePedidoIdempotente(
+                lojaId: lojaEfetiva,
+                pedidoId: pedidoPersistidoId,
+              )
+            : await EstoqueTransactionService
+                .baixarEstoqueTransactionBatchIdempotente(
+                lojaId: lojaEfetiva,
+                itens: txItems,
+                operationId: idFirebaseReservado,
+                backendItems: EstoqueTransactionService.usaBackendConfiavel
+                    ? VendaComboEstoqueExpansion.montarItensParaBackend(
+                        itens: itens,
+                        produtos: produtosLinhaOriginal,
+                        selecoes: itensComboSelecaoPorIndice)
+                    : null,
+              );
+      });
       debugPrint(
         '[H1-TRACE] stage=after_batch_idempotent '
         'lojaId=$lojaEfetiva opId=$idFirebaseReservado '

@@ -54,6 +54,18 @@ class Web {
     }
   }
 
+  static void localStorageRemove(String key) {
+    try {
+      html.window.localStorage.remove(key);
+    } catch (_) {}
+  }
+
+  static void locationReload() {
+    try {
+      html.window.location.reload();
+    } catch (_) {}
+  }
+
   static void setMetaThemeColor(String hex) {
     final el = html.document.querySelector('meta[name="theme-color"]')
         as html.MetaElement?;

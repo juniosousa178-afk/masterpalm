@@ -1,7 +1,7 @@
 import {recipe, componentIntents, comboOrder, recalculateFixedCombos} from './stockCatalogCombo.js';
 import {createHash} from 'node:crypto';
 import {FieldValue} from 'firebase-admin/firestore';
-import {documentId, storeRef, requireAuthenticated, authorizeStockTransaction, SERVER_PAYMENT_AUTH} from './stockCatalogAccess.js';
+import {documentId, storeRef, requireAuthenticated, authorizeStockTransaction, authorizeStockCommand, SERVER_PAYMENT_AUTH} from './stockCatalogAccess.js';
 import {isMap, stockError, normalizeStock, projectCatalog, quantity, resolveKey, resolveExtraKey, validateEditorial, inferStockKind} from './catalogStockProjection.js';
 
 const MAX_PRODUCTS = 25;
@@ -125,7 +125,9 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
       : command.kind === 'tombstoneVariation' ? 'delete'
       : command.kind === 'clearVariationTombstone' ? 'undo'
       : command.kind;
-    const uid = await authorizeStockTransaction(tx, base, auth, permission);
+    const authz = await authorizeStockCommand(tx, db, base, auth, permission, command.kind);
+    const uid = authz.uid;
+    const legacyCompat = authz.legacyCompat === true;
     const opRef = base.collection('stock_catalog_operations').doc(command.operationId);
     const op = await tx.get(opRef);
     if (op.exists && (op.data().requestHash !== hash || op.data().actorUid !== uid)) throw stockError('already-exists', 'Operation identity conflict');
@@ -165,7 +167,13 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
         base.collection('exclusao_produto').doc(id),
       );
       const creating = command.kind === 'create' && targetIds.has(id);
-      if ((!stock.exists || !draft.exists) && !creating) throw stockError('failed-precondition', 'Canonical product and editorial draft required');
+      if (legacyCompat) {
+        // Inactive/legacy sale: estoque_produtos only; draft/dependency optional.
+        if (!stock.exists) throw stockError('failed-precondition', 'Canonical product required');
+        if (creating) throw stockError('invalid-argument', 'Unsupported command');
+      } else if ((!stock.exists || !draft.exists) && !creating) {
+        throw stockError('failed-precondition', 'Canonical product and editorial draft required');
+      }
       if (creating && stock.exists) throw stockError('already-exists', 'Product already exists');
       // Full-product tombstones (p:true) block stock commands until undo/reconcile.
       // Partial variation markers (p:false + v.*) must not freeze the whole product.
@@ -173,11 +181,32 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
       if (fullProductTombstone && !(command.kind === 'undo' && targetIds.has(id)) && !stock.data()?.pendingSoftDelete) {
         throw stockError('failed-precondition', 'Product tombstone requires reconciliation');
       }
-      if ((!dependency.exists || !Array.isArray(dependency.data().comboIds)) && !creating) throw stockError('failed-precondition', 'Dependency migration required');
-      for (const related of (dependency.data()?.comboIds ?? [])) if (!ids.includes(documentId(related))) ids.push(related);
-      const data = normalizeStock(creating ? newDefinition : stock.data()); quantity(data.stockRevision);
+      if (!legacyCompat && (!dependency.exists || !Array.isArray(dependency.data().comboIds)) && !creating) {
+        throw stockError('failed-precondition', 'Dependency migration required');
+      }
+      const dependencyData = dependency.exists && Array.isArray(dependency.data()?.comboIds)
+        ? dependency.data()
+        : {comboIds: []};
+      for (const related of (dependencyData.comboIds ?? [])) if (!ids.includes(documentId(related))) ids.push(related);
+      const rawStock = creating ? newDefinition : {...(stock.data() || {})};
+      if (rawStock.stockRevision === undefined || rawStock.stockRevision === null) {
+        rawStock.stockRevision = 0;
+      }
+      const data = normalizeStock(rawStock); quantity(data.stockRevision);
       for (const component of recipe(data)) if (!ids.includes(component.productId)) ids.push(component.productId);
-      records.set(id, {stockRef, draftRef, dependency, creating, originalRecipe: recipe(data), data, beforeHash: fingerprint(stockEffect(data)), originalRevision: data.stockRevision, editorial: draft.data() ?? validateEditorial(command.editorial)});
+      const editorial = draft.exists
+        ? draft.data()
+        : (legacyCompat
+            ? {
+                nome: (stock.data()?.nome ?? stock.data()?.name ?? '').toString(),
+                publicadoNoCatalogo: stock.data()?.publicadoNoCatalogo === true,
+              }
+            : validateEditorial(command.editorial));
+      records.set(id, {
+        stockRef, draftRef, dependency: {exists: dependency.exists, data: () => dependencyData},
+        draftExists: draft.exists, creating, originalRecipe: recipe(data), data,
+        beforeHash: fingerprint(stockEffect(data)), originalRevision: data.stockRevision, editorial,
+      });
     }
     comboOrder(records);
     const appliedItems = [];
@@ -277,12 +306,19 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
         writes.push(() => tx.update(tombRef, patch));
       }
       set(r.stockRef, {...p.stock, stockUpdatedAt: FieldValue.serverTimestamp()});
-      set(r.draftRef, {...p.draft, updatedAt: FieldValue.serverTimestamp()});
-      const live = base.collection('produtos').doc(id);
-      if (p.live) set(live, {...p.live, updatedAt: FieldValue.serverTimestamp()}); else remove(live);
+      // Inactive compat: never create draft/dependency/control/grants; update draft/live only if draft already existed.
+      if (!legacyCompat || r.draftExists) {
+        set(r.draftRef, {...p.draft, updatedAt: FieldValue.serverTimestamp()});
+        const live = base.collection('produtos').doc(id);
+        if (p.live) set(live, {...p.live, updatedAt: FieldValue.serverTimestamp()}); else remove(live);
+      }
     }
-    writes.push(() => tx.create(opRef, {actorUid: uid, kind: command.kind, requestHash: hash, items: appliedItems, catalogCountDeltas, status: 'applied',
-      result: {productIds: ids}, sourceOperationId: command.sourceOperationId ?? null, createdAt: FieldValue.serverTimestamp()}));
+    writes.push(() => tx.create(opRef, {
+      actorUid: uid, kind: command.kind, requestHash: hash, items: appliedItems, catalogCountDeltas, status: 'applied',
+      result: {productIds: ids}, sourceOperationId: command.sourceOperationId ?? null,
+      legacyCompat: legacyCompat === true,
+      createdAt: FieldValue.serverTimestamp(),
+    }));
     if (sourceRef) writes.push(() => tx.update(sourceRef, {restoredBy: command.operationId}));
     if (writes.length + reservedWrites > 100) throw stockError('resource-exhausted', 'Stock transaction write budget exceeded');
     for (const write of writes) write();

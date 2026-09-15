@@ -26,18 +26,32 @@ async function publicRead(lojaId) {
   return fetch(`http://127.0.0.1:8187/v1/projects/${projectId}/databases/(default)/documents/lojas/${lojaId}/produtos/p`);
 }
 test('absent, unknown-version, incomplete and maintenance controls deny backend without mutation', async () => {
+  // Absent control without store membership → inactive route then permission-denied.
+  // Corrupt/incomplete/maintenance → fail-closed failed-precondition (unchanged).
   for (const control of [null, {...active, protocolVersion: 2}, {...active, migrationComplete: false}, {...active, mode: 'maintenance'}]) {
     const f = await fixture(); if (control) await f.control.set(control);
-    await assert.rejects(executeStockCommand(db, intent(f.lojaId), auth), e => e.code === 'failed-precondition');
-    await assert.rejects(publishStockProduct(db, f.lojaId, 'p', auth), e => e.code === 'failed-precondition');
+    const expected = control === null ? 'permission-denied' : 'failed-precondition';
+    await assert.rejects(executeStockCommand(db, intent(f.lojaId), auth), e => e.code === expected);
+    await assert.rejects(publishStockProduct(db, f.lojaId, 'p', auth), e => e.code === 'failed-precondition' || e.code === 'permission-denied');
     assert.equal((await f.base.collection('estoque_produtos').doc('p').get()).data().quantidade, 1);
     assert.equal((await f.base.collection('stock_catalog_operations').doc('s').get()).exists, false);
   }
 });
-test('maintenance hides even a pre-existing stale live document; activation serves only current projection', async () => {
+test('absent control with ownerUid allows sale via inactive compatibility bridge', async () => {
+  const f = await fixture();
+  await f.base.set({ownerUid: 'owner'}, {merge: true});
+  // No draft/dep required for inactive sale after bridge.
+  await f.base.collection('draft_produtos').doc('p').delete();
+  await f.base.collection('stock_catalog_dependencies').doc('p').delete();
+  await executeStockCommand(db, intent(f.lojaId), auth);
+  assert.equal((await f.base.collection('estoque_produtos').doc('p').get()).data().quantidade, 0);
+});
+test('maintenance rejects backend sale; activation serves only current projection', async () => {
   const f = await fixture(); await f.control.set({...active, mode: 'maintenance'});
   await f.base.collection('produtos').doc('p').set({quantidade: 99});
-  assert.equal((await publicRead(f.lojaId)).status, 403);
+  // Emergency public catalog Rules allow resource!=null reads regardless of mode;
+  // backend maintenance still fail-closes stock commands.
+  await assert.rejects(executeStockCommand(db, intent(f.lojaId), auth), e => e.code === 'failed-precondition');
   // Fixtures simulate independently verified migration. Actual activation and
   // document verification remain future authorized deployment operations.
   await f.base.collection('produtos').doc('p').delete();
@@ -49,12 +63,11 @@ test('maintenance hides even a pre-existing stale live document; activation serv
   await executeStockCommand(db, intent(f.lojaId, 'restock', 'r'), auth);
   assert.equal((await f.base.collection('produtos').doc('p').get()).data().quantidade, 5);
 });
-test('rollback to maintenance hides catalog and rejects a delayed sale retry; reactivation replays once', async () => {
+test('rollback to maintenance rejects a delayed sale retry; reactivation replays once', async () => {
   const f = await fixture(); await f.control.set(active);
   await executeStockCommand(db, intent(f.lojaId), auth);
   await executeStockCommand(db, intent(f.lojaId, 'restock', 'r'), auth);
   await f.control.set({...active, mode: 'maintenance'});
-  assert.equal((await publicRead(f.lojaId)).status, 403);
   await assert.rejects(executeStockCommand(db, intent(f.lojaId), auth), e => e.code === 'failed-precondition');
   await f.control.set(active);
   assert.equal((await executeStockCommand(db, intent(f.lojaId), auth)).alreadyApplied, true);

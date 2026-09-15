@@ -31,6 +31,8 @@ class Web {
   static Map<String, String> get localStorage => <String, String>{};
   static void localStorageSet(String key, String value) {}
   static String? localStorageGet(String key) => null;
+  static void localStorageRemove(String key) {}
+  static void locationReload() {}
 
   static void setMetaThemeColor(String hex) {}
 

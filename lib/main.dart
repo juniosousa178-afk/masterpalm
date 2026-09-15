@@ -184,6 +184,7 @@ import 'services/remote_config_service.dart';
 
 // Provider services
 import 'services/auth_service.dart';
+import 'services/web_build_convergence_service.dart';
 
 // Hive models
 import 'models/cliente.dart';
@@ -4162,8 +4163,55 @@ final WebNavLogObserver _webNavLogObserver = WebNavLogObserver();
 // ===========================================================================
 // 📱 APP PRINCIPAL (com Provider no topo)
 // ===========================================================================
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  final WebBuildConvergenceService _buildConvergence =
+      WebBuildConvergenceService(localBuildId: kCatalogDiagBuildId);
+  bool _convergenceChecked = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (kIsWeb) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _checkWebBuild());
+    }
+  }
+
+  Future<void> _checkWebBuild() async {
+    if (_convergenceChecked || !mounted) return;
+    _convergenceChecked = true;
+    final result = await _buildConvergence.check();
+    if (!mounted) return;
+    if (!result.mismatch) {
+      _buildConvergence.clearReloadGuardIfMatched(result.remoteBuildId);
+      return;
+    }
+    if (!result.shouldPromptReload) return;
+    if (PdvMutationGate.isMutationInFlight) return;
+    final messenger = scaffoldMessengerKey.currentState;
+    messenger?.showSnackBar(
+      SnackBar(
+        content: Text(
+          'Nova versão disponível (${result.remoteBuildId}). '
+          'Atualize para continuar com segurança.',
+        ),
+        duration: const Duration(seconds: 12),
+        action: SnackBarAction(
+          label: 'Atualizar',
+          onPressed: () {
+            if (PdvMutationGate.isMutationInFlight) return;
+            _buildConvergence.convergeNow(result.remoteBuildId);
+          },
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {

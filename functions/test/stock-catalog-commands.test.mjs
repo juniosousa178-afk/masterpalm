@@ -93,8 +93,9 @@ test('missing data/capability and client-supplied stock/revision are rejected', 
   for (const field of ['stockRevision','available','stock']) await denied(executeStockCommand(db, {...cmd, [field]: 9}, owner), 'invalid-argument');
   await base.collection('estoque_produtos').doc('p').delete();
   await denied(executeStockCommand(db, cmd, owner), 'failed-precondition');
+  // Absent control routes to inactive compat; without store membership → permission-denied.
   await base.collection('stock_catalog_control').doc('state').delete();
-  await denied(executeStockCommand(db, cmd, owner), 'failed-precondition');
+  await denied(executeStockCommand(db, cmd, owner), 'permission-denied');
 });
 test('non-stock editorial edit succeeds without accepting derived stock', async () => {
   const {base, lojaId} = await seed();
