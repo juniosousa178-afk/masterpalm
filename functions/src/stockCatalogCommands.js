@@ -2,7 +2,7 @@ import {recipe, componentIntents, comboOrder, recalculateFixedCombos} from './st
 import {createHash} from 'node:crypto';
 import {FieldValue} from 'firebase-admin/firestore';
 import {documentId, storeRef, requireAuthenticated, authorizeStockTransaction, authorizeStockCommand, SERVER_PAYMENT_AUTH} from './stockCatalogAccess.js';
-import {isMap, stockError, normalizeStock, projectCatalog, quantity, resolveKey, resolveExtraKey, validateEditorial, inferStockKind} from './catalogStockProjection.js';
+import {isMap, stockError, normalizeStock, projectCatalog, quantity, resolveKey, resolveExtraKey, validateEditorial, inferStockKind, resolveLegacyCompatStockKind} from './catalogStockProjection.js';
 
 const MAX_PRODUCTS = 25;
 const ordered = value => Array.isArray(value) ? value.map(ordered) : isMap(value)
@@ -137,7 +137,14 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
       const products = [];
       for (const id of op.data().result.productIds) {
         const current = await tx.get(base.collection('estoque_produtos').doc(documentId(id)));
-        if (current.exists) products.push({productId: id, ...normalizeStock(current.data())});
+        if (current.exists) {
+          let snapshot = current.data();
+          if (legacyCompat) {
+            const resolved = resolveLegacyCompatStockKind(snapshot);
+            snapshot = {...snapshot, stockKind: resolved.stockKind};
+          }
+          products.push({productId: id, ...normalizeStock(snapshot)});
+        }
       }
       return {alreadyApplied: true, operationId: command.operationId, products};
     }
@@ -188,9 +195,21 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
         ? dependency.data()
         : {comboIds: []};
       for (const related of (dependencyData.comboIds ?? [])) if (!ids.includes(documentId(related))) ids.push(related);
-      const rawStock = creating ? newDefinition : {...(stock.data() || {})};
+      let rawStock = creating ? newDefinition : {...(stock.data() || {})};
       if (rawStock.stockRevision === undefined || rawStock.stockRevision === null) {
         rawStock.stockRevision = 0;
+      }
+      let omitInferredStockKind = false;
+      if (legacyCompat && !creating) {
+        const resolved = resolveLegacyCompatStockKind(rawStock);
+        omitInferredStockKind = resolved.stockKindSource === 'inferred';
+        rawStock = {...rawStock, stockKind: resolved.stockKind};
+        console.info(JSON.stringify({
+          route: 'legacyCompat',
+          stockKindSource: resolved.stockKindSource,
+          effectiveStockKind: resolved.stockKind,
+          operation: command.kind,
+        }));
       }
       const data = normalizeStock(rawStock); quantity(data.stockRevision);
       for (const component of recipe(data)) if (!ids.includes(component.productId)) ids.push(component.productId);
@@ -206,6 +225,7 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
         stockRef, draftRef, dependency: {exists: dependency.exists, data: () => dependencyData},
         draftExists: draft.exists, creating, originalRecipe: recipe(data), data,
         beforeHash: fingerprint(stockEffect(data)), originalRevision: data.stockRevision, editorial,
+        omitInferredStockKind,
       });
     }
     comboOrder(records);
@@ -305,12 +325,21 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
         for (const key of command.tombstoneKeys) patch[`v.${key}`] = FieldValue.delete();
         writes.push(() => tx.update(tombRef, patch));
       }
-      set(r.stockRef, {...p.stock, stockUpdatedAt: FieldValue.serverTimestamp()});
+      const stockWrite = {...p.stock};
+      // Runtime-only inference: never persist an inferred stockKind onto legacy docs.
+      if (r.omitInferredStockKind) delete stockWrite.stockKind;
+      set(r.stockRef, {...stockWrite, stockUpdatedAt: FieldValue.serverTimestamp()});
       // Inactive compat: never create draft/dependency/control/grants; update draft/live only if draft already existed.
       if (!legacyCompat || r.draftExists) {
-        set(r.draftRef, {...p.draft, updatedAt: FieldValue.serverTimestamp()});
+        const draftWrite = {...p.draft};
+        if (r.omitInferredStockKind) delete draftWrite.stockKind;
+        set(r.draftRef, {...draftWrite, updatedAt: FieldValue.serverTimestamp()});
         const live = base.collection('produtos').doc(id);
-        if (p.live) set(live, {...p.live, updatedAt: FieldValue.serverTimestamp()}); else remove(live);
+        if (p.live) {
+          const liveWrite = {...p.live};
+          if (r.omitInferredStockKind) delete liveWrite.stockKind;
+          set(live, {...liveWrite, updatedAt: FieldValue.serverTimestamp()});
+        } else remove(live);
       }
     }
     writes.push(() => tx.create(opRef, {

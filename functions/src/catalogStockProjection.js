@@ -79,6 +79,16 @@ export function inferStockKind(p) {
   if (p.tipoProduto === 'combo' || (Array.isArray(p.itensCombo) && p.itensCombo.length)) return 'combo';
   return nonempty(p.variacoes) || hasVariationAttributes(p) ? 'variation' : 'simple';
 }
+const VALID_STOCK_KINDS = Object.freeze(['simple', 'variation', 'combo']);
+/** LegacyCompat only: preserve valid explicit kind; infer when absent; fail closed on invalid explicit. */
+export function resolveLegacyCompatStockKind(p) {
+  const raw = p?.stockKind;
+  if (raw !== undefined && raw !== null && raw !== '') {
+    if (!VALID_STOCK_KINDS.includes(raw)) throw stockError('failed-precondition', 'Invalid stockKind');
+    return {stockKind: raw, stockKindSource: 'explicit'};
+  }
+  return {stockKind: inferStockKind(p), stockKindSource: 'inferred'};
+}
 export function normalizeStock(p) {
   if (!['simple', 'variation', 'combo'].includes(p.stockKind)) throw stockError('failed-precondition', 'Stock migration required');
   const out = {...p};

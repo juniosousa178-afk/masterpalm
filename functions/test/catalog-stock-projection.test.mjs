@@ -1,9 +1,16 @@
 import {readFileSync} from 'node:fs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {normalizeStock, projectCatalog, inferStockKind, normKey, validateEditorial} from '../src/catalogStockProjection.js';
+import {normalizeStock, projectCatalog, inferStockKind, resolveLegacyCompatStockKind, normKey, validateEditorial} from '../src/catalogStockProjection.js';
 const base = {quantidade: 1, stockKind: 'simple', stockRevision: 3};
 const published = {nome: 'Peça', publicadoNoCatalogo: true};
+test('resolveLegacyCompatStockKind preserves valid, infers absent, rejects invalid', () => {
+  assert.deepEqual(resolveLegacyCompatStockKind({quantidade: 2}), {stockKind: 'simple', stockKindSource: 'inferred'});
+  assert.deepEqual(resolveLegacyCompatStockKind({stockKind: 'combo', itensCombo: [{productId: 'a'}]}), {
+    stockKind: 'combo', stockKindSource: 'explicit',
+  });
+  assert.throws(() => resolveLegacyCompatStockKind({stockKind: 'nope'}), e => e.message === 'Invalid stockKind');
+});
 for (const variations of [undefined, null, {}]) {
   test(`simple with ${JSON.stringify(variations)} remains available`, () => {
     const stock = {...base, ...(variations === undefined ? {} : {variacoes: variations})};
