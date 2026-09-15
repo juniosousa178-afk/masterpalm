@@ -2,7 +2,7 @@ import test, {before, after} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {initializeTestEnvironment, assertFails, assertSucceeds} from '@firebase/rules-unit-testing';
-import {disableNetwork, enableNetwork, setDoc, doc} from 'firebase/firestore';
+import {disableNetwork, enableNetwork, setDoc, doc, collection, getDocs, query, where, limit} from 'firebase/firestore';
 if (process.env.FIRESTORE_EMULATOR_HOST !== '127.0.0.1:8187') throw new Error('Only the local emulator is authorized');
 const projectId = 'demo-stock-catalog';
 const rules = readFileSync(new URL('../../firestore.rules', import.meta.url), 'utf8');
@@ -16,12 +16,26 @@ before(async () => {
     await db.doc('lojas/rules_a/stock_catalog_control/state').set({protocolVersion: 1, mode: 'active', migrationComplete: true});
     await db.doc('lojas/rules_a/stock_catalog_access/owner').set({enabled: true, permissions: {sale: true}});
     for (const col of ['estoque_produtos','produtos','draft_produtos','produtos_publicos']) {
-      await db.doc(`lojas/rules_a/${col}/p`).set({quantidade: 0, stockRevision: 1, ativo: false});
+      await db.doc(`lojas/rules_a/${col}/p`).set({quantidade: 0, stockRevision: 1, ativo: true});
     }
+    // Emergency public-read matrix fixtures (recovery plan A–D).
+    await db.doc('lojas/rules_nocontrol/produtos/p').set({ativo: true, nome: 'nocontrol'});
+    await db.doc('lojas/rules_nocontrol/estoque_produtos/p').set({quantidade: 1, stockRevision: 0});
+    await db.doc('lojas/rules_inactive/stock_catalog_control/state').set({protocolVersion: 1, mode: 'inactive', migrationComplete: false});
+    await db.doc('lojas/rules_inactive/produtos/p').set({ativo: true, nome: 'inactive'});
+    await db.doc('lojas/rules_inactive/estoque_produtos/p').set({quantidade: 1, stockRevision: 0});
+    await db.doc('lojas/rules_migrated_inactive/stock_catalog_control/state').set({protocolVersion: 1, mode: 'inactive', migrationComplete: true});
+    await db.doc('lojas/rules_migrated_inactive/produtos/p').set({ativo: true, nome: 'migrated-inactive'});
   });
 });
 after(async () => { await env?.cleanup(); });
 const root = () => env.authenticatedContext('old-admin', {email: 'root@example.test'}).firestore();
+const unauth = () => env.unauthenticatedContext().firestore();
+async function listAtivoProdutos(lojaId) {
+  const db = unauth();
+  const modular = db._delegate ?? db;
+  return getDocs(query(collection(modular, `lojas/${lojaId}/produtos`), where('ativo', '==', true), limit(10)));
+}
 for (const col of ['estoque_produtos','produtos','draft_produtos','produtos_publicos','produtos_rascunho','products','produtos_draft']) {
   test(`legacy admin direct protected CRUD denied: ${col}`, async () => {
     const ref = root().doc(`lojas/rules_a/${col}/p`);
@@ -48,9 +62,35 @@ test('authorized owner still cannot use direct write; cross-store grant denied',
   await assertFails(db.doc('lojas/rules_b/stock_catalog_access/owner').set({enabled: true}));
 });
 test('unauthenticated mutation denied; final active public read allowed', async () => {
-  const db = env.unauthenticatedContext().firestore();
+  const db = unauth();
   await assertFails(db.doc('lojas/rules_a/produtos/p').set({ativo: true}));
   await assertSucceeds(db.doc('lojas/rules_a/produtos/p').get());
+});
+// --- Emergency public-read regression tests (recovery plan EXPECTED_NEW_TEST_COUNT=6) ---
+test('emergency public GET no-control ALLOW', async () => {
+  await assertSucceeds(unauth().doc('lojas/rules_nocontrol/produtos/p').get());
+  // Baseline resource!=null: nonexistent remains denied.
+  await assertFails(unauth().doc('lojas/rules_nocontrol/produtos/missing').get());
+});
+test('emergency public LIST no-control ALLOW', async () => {
+  const snap = await assertSucceeds(listAtivoProdutos('rules_nocontrol'));
+  assert.ok(snap.size >= 1);
+});
+test('emergency public LIST migrated-inactive ALLOW', async () => {
+  const snap = await assertSucceeds(listAtivoProdutos('rules_migrated_inactive'));
+  assert.ok(snap.size >= 1);
+});
+test('emergency public LIST ACTIVE ALLOW', async () => {
+  const snap = await assertSucceeds(listAtivoProdutos('rules_a'));
+  assert.ok(snap.size >= 1);
+});
+test('emergency public GET inactive-with-control ALLOW', async () => {
+  await assertSucceeds(unauth().doc('lojas/rules_inactive/produtos/p').get());
+  // Protected stock write remains DENY on inactive stores.
+  await assertFails(root().doc('lojas/rules_inactive/estoque_produtos/p').set({quantidade: 9, stockRevision: 1}));
+});
+test('emergency public GET ACTIVE ALLOW', async () => {
+  await assertSucceeds(unauth().doc('lojas/rules_a/produtos/p').get());
 });
 test('control, operation marker, dependency and tombstone cannot be spoofed', async () => {
   for (const path of ['stock_catalog_control/state','stock_catalog_operations/fake','stock_catalog_dependencies/p','exclusao_produto/p','estoque_baixa_pagamento/fake']) {

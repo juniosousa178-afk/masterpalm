@@ -988,8 +988,9 @@ service cloud.firestore {
       }
 
       // Catalogo publico: produtos (simples e combo) com imagens, itensCombo, variacoes
+      // Public READ must remain available to legacy/inactive stores (no stockCatalogActive gate).
       match /produtos/{prodId} {
-        allow read: if resource != null && stockCatalogActive(lojaId);
+        allow read: if resource != null;
         allow create, update, delete: if false;
       }
 
