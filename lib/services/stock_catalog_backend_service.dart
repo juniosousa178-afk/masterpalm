@@ -180,6 +180,9 @@ class StockCatalogBackendService {
 
   /// The caller allocates and persists operationId with its intent, before sending.
   /// Retries retain the same identity; identical new sales must have different IDs.
+  ///
+  /// [atomicPdvSale] opt-in: backend commits canonical estoque_vendas + stock
+  /// in one transaction. Omit for old clients (stock-only + client syncVenda).
   static Future<Map<String, dynamic>> command({
     required String lojaId,
     required String operationId,
@@ -189,7 +192,12 @@ class StockCatalogBackendService {
     Map<String, dynamic>? editorial,
     Map<String, dynamic>? definition,
     List<String>? tombstoneKeys,
+    bool atomicPdvSale = false,
+    Map<String, dynamic>? sale,
   }) async {
+    if (atomicPdvSale && sale == null) {
+      throw ArgumentError('atomicPdvSale requires sale payload');
+    }
     final rawPayload = <String, dynamic>{
       'protocolVersion': 1,
       'lojaId': _id(lojaId),
@@ -202,6 +210,9 @@ class StockCatalogBackendService {
       if (definition != null)
         'definition': Map<String, dynamic>.from(definition),
       if (tombstoneKeys != null) 'tombstoneKeys': List<String>.from(tombstoneKeys),
+      if (atomicPdvSale) 'atomicPdvSale': true,
+      if (atomicPdvSale && sale != null)
+        'sale': Map<String, dynamic>.from(sale),
     };
     final payload =
         Map<String, dynamic>.from(jsonDecode(jsonEncode(rawPayload)) as Map);

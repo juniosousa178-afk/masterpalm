@@ -1,13 +1,21 @@
 // Política: quando a UI da Nova Venda pode liberar loading pós-persistência local.
 
 /// Checkpoint seguro para encerrar spinner/sucesso sem esperar sync/campanha.
+///
+/// For atomic PDV sale, [authoritativeRemoteSaleCommitted] must be true —
+/// success UI must not run before backend sale+stock commit.
 bool canReleaseUiAfterLocalPersist({
   required bool hivePersisted,
   required bool journalCompleted,
   required bool isFiado,
   required bool fiadoReceivableReady,
   required bool saleIntentPersistedOrSkipped,
+  bool authoritativeRemoteSaleCommitted = true,
+  bool requireAuthoritativeRemoteSale = false,
 }) {
+  if (requireAuthoritativeRemoteSale && !authoritativeRemoteSaleCommitted) {
+    return false;
+  }
   if (!hivePersisted || !journalCompleted) return false;
   if (isFiado) return fiadoReceivableReady;
   return saleIntentPersistedOrSkipped;

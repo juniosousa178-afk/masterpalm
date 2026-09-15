@@ -1,0 +1,181 @@
+{
+  "classification": "MASTERPALM_GLOBAL_SALE_PARTIAL_STATE_FALSE_SUCCESS_EMERGENCY_LOCAL_GREEN",
+  "entry": {
+    "BASE_COMMIT": "75851a9856cdd443cf84c8fe480839753697b982",
+    "LOCAL_WORKTREE": "C:\\Users\\Pichau\\AppData\\Local\\Temp\\masterpalm-sale-stock-atomicity-emergency-local",
+    "HEAD_BEFORE": "75851a9856cdd443cf84c8fe480839753697b982",
+    "WORKTREE_CLEAN_BEFORE": true,
+    "HISTORICAL_WIP_UNTOUCHED": true,
+    "RECOMMENDED_RECOVERY_STRATEGY": "B",
+    "STOCK_KIND_FIX_ROLLBACK_REQUIRED": false,
+    "SALE_B_REPAIR_REQUIRED": true,
+    "SALE_B_REPAIR_AUTHORIZED": false,
+    "SALE_FLOW_SAFE_FOR_GENERAL_USE": false,
+    "CUSTOMER_CONTROLLED_TEST_SALES_ALLOWED": false,
+    "STOCK_CATALOG_ROLLOUT_FROZEN": true,
+    "GRADE_RECOVERY_IMPLEMENTATION_PAUSED": true
+  },
+  "incident": {
+    "stock_applied": true,
+    "remote_estoque_vendas_absent": true,
+    "local_ui_success_shown": true,
+    "SALE_AND_STOCK_CURRENTLY_ATOMIC_PRE_FIX": false,
+    "UI_SUCCESS_BEFORE_REMOTE_SALE_COMMIT_PRE_FIX": true
+  },
+  "current_flow": {
+    "CURRENT_FINALIZE_SOURCE": "lib/screens/nova_venda_modal.dart -> lib/services/vendas_service.dart::_registrarVendaMultiCorpo",
+    "CURRENT_STOCK_CALL_SOURCE": "lib/services/estoque_transaction_service.dart::baixarEstoqueTransactionBatchIdempotente",
+    "CURRENT_SYNC_VENDA_SOURCE": "lib/services/vendas_firestore_service.dart::syncVenda",
+    "CURRENT_HIVE_SAVE_SOURCE": "lib/services/vendas_service.dart Hive vendasBox.add",
+    "CURRENT_SUCCESS_MODAL_SOURCE": "lib/screens/nova_venda_modal.dart::_mostrarSucessoVenda",
+    "CURRENT_INTENT_COMPLETION_SOURCE": "lib/services/vendas_service.dart::_coordinatedSaleIntentAdvance(completed)",
+    "CURRENT_STOCK_TRANSACTION_SOURCE": "functions/src/stockCatalogCommands.js::executeStockCommandInTransaction",
+    "CURRENT_TRANSACTION_WRITES_ESTOQUE_VENDAS_PRE_FIX": false
+  },
+  "canonical_sale": {
+    "CANONICAL_SALE_SERIALIZER": "VendasFirestoreService.syncVenda + buildCanonicalEstoqueVendaDoc",
+    "CANONICAL_SALE_COLLECTION": "lojas/{lojaId}/estoque_vendas/{saleId}",
+    "CANONICAL_DOCUMENT_ID_RULE": "saleId == operationId",
+    "CANONICAL_SERVER_TIMESTAMP_FIELDS": ["data", "createdAt", "updatedAt"],
+    "CANONICAL_SALE_ID": "operationId",
+    "CANONICAL_OPERATION_ID": "journal/sale-intent reserved operationId",
+    "SALE_AND_OPERATION_ID_LINK": "identical string; retry same op same sale"
+  },
+  "protocol": {
+    "ATOMIC_PROTOCOL_NEGOTIATION_REQUIRED": true,
+    "NEW_WEB_ATOMIC_SIGNAL": "atomicPdvSale=true + sale envelope",
+    "OLD_WEB_COMPATIBILITY_STRATEGY": "omit flag => stock-only + client syncVenda",
+    "FUNCTION_FIRST_WITH_OLD_WEB_SAFE": true,
+    "WEB_RELEASE_REQUIRED": true,
+    "REQUIRED_FUNCTION_DEPLOY_TARGETS": ["stockCatalogCommand"],
+    "mixed_version_matrix": [
+      {"CLIENT": "old", "FUNCTION": "old", "SALE_PERSISTENCE_OWNER": "client syncVenda", "STOCK_OWNER": "stockCatalogCommand", "SAFE": false},
+      {"CLIENT": "old", "FUNCTION": "new", "SALE_PERSISTENCE_OWNER": "client syncVenda", "STOCK_OWNER": "stockCatalogCommand", "SAFE": true},
+      {"CLIENT": "new", "FUNCTION": "old", "SALE_PERSISTENCE_OWNER": "n/a reject", "STOCK_OWNER": "n/a", "SAFE": true},
+      {"CLIENT": "new", "FUNCTION": "new", "SALE_PERSISTENCE_OWNER": "backend atomic", "STOCK_OWNER": "backend atomic", "SAFE": true}
+    ]
+  },
+  "invariants": {
+    "SALE_AND_STOCK_SINGLE_TRANSACTION": true,
+    "ATOMIC_FAILURE_STATE": "NO_SALE_NO_STOCK_CHANGE",
+    "LEGACY_STOCK_KIND_FIX_PRESERVED": true,
+    "STOCK_KIND_BACKFILL": false,
+    "RETRY_AFTER_COMMIT_RETURNS_EXISTING_RESULT": true,
+    "DOUBLE_STOCK_DECREMENT": false,
+    "DUPLICATE_SALE": false,
+    "NATHY_SALE_B_PARTIAL_STATE_REPRO_PRE_FIX": true,
+    "NATHY_SALE_B_PARTIAL_STATE_IMPOSSIBLE_POST_FIX": true,
+    "CLIENT_REMOTE_SYNC_VENDA_AFTER_ATOMIC_COMMIT": false,
+    "HIVE_ROLE": "MIRROR",
+    "HIVE_UPDATE_AFTER_REMOTE_COMMIT": true,
+    "HIVE_FAILURE_AFTER_SERVER_COMMIT_BEHAVIOR": "success_with_local_refresh_warning_no_estorno_no_second_remote_sale",
+    "SUCCESS_MODAL_BEFORE_BACKEND_ATOMIC_COMMIT": false,
+    "INTENT_COMPLETED_BEFORE_ATOMIC_COMMIT": false,
+    "OFFLINE_FINAL_SALE_SEMANTICS": "blocked_error_no_success",
+    "OFFLINE_SUCCESS_MODAL": false,
+    "HISTORY_AUTHORITY": "FIRESTORE",
+    "ATOMIC_COMMITTED_SALE_HISTORY_VISIBLE": true,
+    "ATOMIC_SALE_SCOPE": "ACTIVE_and_legacyCompat_no_control_final_PDV",
+    "ACTIVE_SALE_ATOMICITY_IMPLEMENTED": true,
+    "INACTIVE_SALE_ATOMICITY_IMPLEMENTED": true,
+    "PDV_COMBO_REACHABLE": true,
+    "FIADO_SHARED_CODE_TOUCHED": true,
+    "FIADO_BEHAVIOR_CHANGED": false,
+    "PAYMENT_VALIDATION_DELTA": "backend validates paid==total unless explicit saldoFiado; no pricing redesign",
+    "PRICING_REDESIGN": false,
+    "RULES_CHANGE_REQUIRED": false,
+    "RESTORE_CHANGE_REQUIRED": false,
+    "CANCEL_CHANGE_REQUIRED": false,
+    "DELETE_CHANGE_REQUIRED": false,
+    "AUTHENTICATION_CHANGED": false,
+    "STORE_MEMBERSHIP_CHANGED": false,
+    "ACTIVE_AUTHORIZATION_CHANGED": false,
+    "LEGACY_COMPAT_AUTHORIZATION_CHANGED": false,
+    "ATOMIC_SALE_IN_FLIGHT_PROTECTED_FROM_RELOAD": true,
+    "ATOMIC_SALE_RESPONSE_CONTRACT": ["alreadyApplied", "operationId", "products", "saleCommitted", "saleId", "authoritativeSalePersisted", "authoritativeStockCommitted"]
+  },
+  "gates": {
+    "ANALYZE_NEW_ISSUES": 0,
+    "WEB_BUILD_GREEN": true,
+    "FUNCTIONS_DISCOVERY_OK": true,
+    "BROAD_BACKEND_TEST_RUN": false,
+    "BROAD_FLUTTER_TEST_RUN": false,
+    "PRODUCTION_READS": 0,
+    "PRODUCTION_WRITES": 0,
+    "PRODUCTION_TEST_SALES": 0,
+    "SYNTHETIC_PRODUCTION_CALLS": 0,
+    "FUNCTION_DEPLOYS": 0,
+    "RULES_DEPLOYS": 0,
+    "HOSTING_DEPLOYS": 0,
+    "GIT_STAGES": 0,
+    "GIT_COMMITS": 0,
+    "GIT_PUSHES": 0,
+    "SALE_B_REMOTE_SALE_INSERTED": false,
+    "SALE_B_STOCK_CORRECTED": false,
+    "SALE_B_OPERATION_CHANGED": false,
+    "SALE_B_IDEMPOTENCY_CHANGED": false
+  },
+  "tests": {
+    "backend": {
+      "path": "functions/test/stock-catalog-atomic-pdv-sale.test.mjs",
+      "pass": 22,
+      "fail": 0
+    },
+    "web": {
+      "paths": [
+        "test/atomic_pdv_sale_web_contract_test.dart",
+        "test/m39_sprint4_r4_venda_perf_test.dart"
+      ],
+      "pass": 17,
+      "fail": 0
+    }
+  },
+  "patch_identities": {
+    "ATOMIC_SALE_FUNCTION_PATCH_SHA256": "8f9a587ffd7dac90292af9979821239e770afbe6497c53c203409a0a31bd431d",
+    "ATOMIC_SALE_WEB_PATCH_SHA256": "432edba3dacb76efaefe8717f049e9bea64fb8b7c21059ff59f45f7b7267a6f6",
+    "ATOMIC_SALE_COMBINED_PATCH_SHA256": "9babdaebfff4fdfeb9d1d64fbd58707bd45b59b95da6ecead34074865f6ec833"
+  },
+  "changed_paths": {
+    "FUNCTION_SOURCE_PATHS": [
+      "functions/src/stockCatalogCommands.js",
+      "functions/src/stockCatalogPdvSale.js"
+    ],
+    "WEB_SOURCE_PATHS": [
+      "lib/services/vendas_service.dart",
+      "lib/services/estoque_transaction_service.dart",
+      "lib/services/stock_catalog_backend_service.dart",
+      "lib/services/atomic_pdv_sale_payload.dart",
+      "lib/core/nova_venda_ui_release_policy.dart"
+    ],
+    "TEST_PATHS": [
+      "functions/test/stock-catalog-atomic-pdv-sale.test.mjs",
+      "test/atomic_pdv_sale_web_contract_test.dart"
+    ],
+    "ARTIFACT_PATHS": [
+      "artifacts/estoque/GLOBAL_SALE_PARTIAL_STATE_FALSE_SUCCESS_EMERGENCY_LOCAL.md",
+      "artifacts/estoque/GLOBAL_SALE_PARTIAL_STATE_FALSE_SUCCESS_EMERGENCY_LOCAL.json"
+    ],
+    "RULES_PATHS": [],
+    "UNRELATED_PATHS": []
+  },
+  "syncVenda_callsites": [
+    {"CALLSITE": "vendas_service._registrarVendaMultiCorpo", "PURPOSE": "PDV final sale remote write", "FINAL_PDV_SALE": true, "STILL_REQUIRED": false, "ACTION": "bypass_after_atomic"},
+    {"CALLSITE": "vendas_service edit path", "PURPOSE": "edit sale sync", "FINAL_PDV_SALE": false, "STILL_REQUIRED": true, "ACTION": "preserve"},
+    {"CALLSITE": "vendas_firestore_service / sync queue", "PURPOSE": "retry/backfill", "FINAL_PDV_SALE": false, "STILL_REQUIRED": true, "ACTION": "preserve"},
+    {"CALLSITE": "catalogo_venda_service", "PURPOSE": "catalog/order sales", "FINAL_PDV_SALE": false, "STILL_REQUIRED": true, "ACTION": "preserve"},
+    {"CALLSITE": "soft_delete_service", "PURPOSE": "restore sale", "FINAL_PDV_SALE": false, "STILL_REQUIRED": true, "ACTION": "preserve"}
+  ],
+  "next": "MASTERPALM_GLOBAL_SALE_PARTIAL_STATE_FALSE_SUCCESS_EMERGENCY_RELEASE_READINESS",
+  "stop": {
+    "no_stage": true,
+    "no_commit": true,
+    "no_push": true,
+    "no_deploy": true,
+    "no_sale_b_repair": true,
+    "no_migration": true,
+    "no_activation": true,
+    "no_grants": true,
+    "grade_paused": true,
+    "rollout_frozen": true
+  }
+}

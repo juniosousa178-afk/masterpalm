@@ -1,0 +1,186 @@
+{
+  "classification": "MASTERPALM_GLOBAL_SALE_PARTIAL_STATE_FALSE_SUCCESS_EMERGENCY_RELEASE_READINESS_GREEN",
+  "entry": {
+    "LOCAL_GREEN": "MASTERPALM_GLOBAL_SALE_PARTIAL_STATE_FALSE_SUCCESS_EMERGENCY_LOCAL_GREEN",
+    "LOCAL_BASE": "75851a9856cdd443cf84c8fe480839753697b982",
+    "LOCAL_WORKTREE": "C:\\Users\\Pichau\\AppData\\Local\\Temp\\masterpalm-sale-stock-atomicity-emergency-local",
+    "HEAD_BEFORE_RELEASE": "75851a9856cdd443cf84c8fe480839753697b982",
+    "DIFF_CHECK_GREEN": true,
+    "HISTORICAL_WIP_UNTOUCHED": true,
+    "SALE_FLOW_SAFE_FOR_GENERAL_USE": false,
+    "CUSTOMER_CONTROLLED_TEST_SALES_ALLOWED": false,
+    "SALE_B_REPAIR_REQUIRED": true,
+    "SALE_B_REPAIR_AUTHORIZED": false,
+    "STOCK_CATALOG_ROLLOUT_FROZEN": true,
+    "GRADE_RECOVERY_IMPLEMENTATION_PAUSED": true,
+    "GRADE_SELECTOR_INCIDENT_REMAINS_OPEN": true
+  },
+  "patch_identities": {
+    "RECOMPUTED_FUNCTION_PATCH_SHA256": "8f9a587ffd7dac90292af9979821239e770afbe6497c53c203409a0a31bd431d",
+    "RECOMPUTED_WEB_PATCH_SHA256": "432edba3dacb76efaefe8717f049e9bea64fb8b7c21059ff59f45f7b7267a6f6",
+    "RECOMPUTED_COMBINED_PATCH_SHA256": "9babdaebfff4fdfeb9d1d64fbd58707bd45b59b95da6ecead34074865f6ec833",
+    "FUNCTION_PATCH_MATCH": true,
+    "WEB_PATCH_MATCH": true,
+    "COMBINED_PATCH_MATCH": true,
+    "STAGED_FUNCTION_PATCH_SHA256": "8f9a587ffd7dac90292af9979821239e770afbe6497c53c203409a0a31bd431d",
+    "STAGED_WEB_PATCH_SHA256": "432edba3dacb76efaefe8717f049e9bea64fb8b7c21059ff59f45f7b7267a6f6",
+    "STAGED_COMBINED_PATCH_SHA256": "9babdaebfff4fdfeb9d1d64fbd58707bd45b59b95da6ecead34074865f6ec833"
+  },
+  "production_baseline": {
+    "PROJECT": "masterpalm-58c46",
+    "FUNCTION": "stockCatalogCommand",
+    "LIVE_REVISION": "stockcatalogcommand-00003-xiz",
+    "RULES": "2781401861d96b45867d98f68a0f0d2c3898ed546296eb2c4fbdb445661af071",
+    "WEB": "web-c46d4d9",
+    "VERSION_JSON": "web-c46d4d9",
+    "PRODUCTION_BASELINE_EXACT": true,
+    "PRODUCTION_METADATA_DRIFT": false
+  },
+  "protocol": {
+    "ATOMIC_PROTOCOL_OPT_IN": true,
+    "ATOMIC_PROTOCOL_FLAG": "atomicPdvSale=true",
+    "OLD_PROTOCOL_BEHAVIOR_PRESERVED": true,
+    "NEW_PROTOCOL_ATOMIC": true,
+    "FUNCTION_FIRST_WITH_OLD_WEB_SAFE": true,
+    "FUNCTION_FIRST_TRANSITION_SAFE": true,
+    "OLD_WEB_GENERAL_SALE_SAFETY": false,
+    "NEW_WEB_WITH_OLD_FUNCTION_ALLOWED": false,
+    "HOSTING_FIRST_ALLOWED": false,
+    "HOSTING_RELEASE_REQUIRED": true,
+    "RELEASE_ORDER_FROZEN": true,
+    "RELEASE_COMMIT_STRATEGY": "ONE_COMMIT_TARGETED_STAGED_DEPLOYS",
+    "mixed_version_matrix": [
+      {"CLIENT": "OLD", "FUNCTION": "00003_old", "ATOMIC_FLAG": "absent", "SALE_OWNER": "client_syncVenda", "STOCK_OWNER": "stockCatalogCommand", "SAFE_FOR_RELEASE_TRANSITION": false},
+      {"CLIENT": "OLD", "FUNCTION": "NEW_atomic", "ATOMIC_FLAG": "absent", "SALE_OWNER": "client_syncVenda", "STOCK_OWNER": "stockCatalogCommand", "SAFE_FOR_RELEASE_TRANSITION": true},
+      {"CLIENT": "NEW", "FUNCTION": "NEW_atomic", "ATOMIC_FLAG": "true", "SALE_OWNER": "backend_atomic", "STOCK_OWNER": "backend_atomic", "SAFE_FOR_RELEASE_TRANSITION": true},
+      {"CLIENT": "NEW", "FUNCTION": "OLD", "ATOMIC_FLAG": "n/a_reject", "SALE_OWNER": "n/a", "STOCK_OWNER": "n/a", "SAFE_FOR_RELEASE_TRANSITION": false}
+    ]
+  },
+  "invariants": {
+    "SALE_AND_STOCK_SINGLE_TRANSACTION": true,
+    "STOCK_ONLY_SUCCESS_POSSIBLE": false,
+    "SALE_ONLY_SUCCESS_POSSIBLE": false,
+    "LEGACY_STOCK_KIND_FIX_PRESERVED": true,
+    "STOCK_KIND_BACKFILL": false,
+    "NATHY_SALE_B_REGRESSION_PRESENT": true,
+    "NATHY_SALE_B_PARTIAL_STATE_IMPOSSIBLE_POST_FIX": true,
+    "RETRY_AFTER_COMMIT_RETURNS_EXISTING_RESULT": true,
+    "DUPLICATE_SALE": false,
+    "DOUBLE_STOCK_DECREMENT": false,
+    "OPERATION_ID_SEMANTICS_PRESERVED": true,
+    "SIMPLE_ATOMIC_GREEN": true,
+    "VARIATION_ATOMIC_GREEN": true,
+    "SELECTED_SIZE_ONLY_DECREMENTED": true,
+    "OTHER_SIZES_UNCHANGED": true,
+    "COMBO_ATOMIC_RESULT": "GREEN",
+    "ACTIVE_ATOMIC_SALE_GREEN": true,
+    "ACTIVE_STOCK_REVISION_CAS_PRESERVED": true,
+    "ACTIVE_STALE_REVISION": "NO_SALE_NO_STOCK_CHANGE",
+    "ACTIVE_AUTHORIZATION_CHANGED": false,
+    "NO_CONTROL_ATOMIC_SALE_GREEN": true,
+    "INACTIVE_ATOMIC_SALE_GREEN": true,
+    "MIGRATION_REQUIRED": false,
+    "ACTIVATION_REQUIRED": false,
+    "GRANT_REQUIRED": false,
+    "FAILURE_MATRIX_GREEN": true,
+    "CANONICAL_SALE_SCHEMA_REUSED": true,
+    "PARALLEL_SALE_SCHEMA_CREATED": false,
+    "HISTORY_COMPATIBLE": true,
+    "CLIENT_SYNC_VENDA_AFTER_ATOMIC_SUCCESS": false,
+    "UNRELATED_SYNC_VENDA_CALLS_PRESERVED": true,
+    "HIVE_ROLE": "MIRROR",
+    "SUCCESS_MODAL_BEFORE_ATOMIC_COMMIT": false,
+    "INTENT_COMPLETED_BEFORE_ATOMIC_COMMIT": false,
+    "OFFLINE_SUCCESS_MODAL": false,
+    "OFFLINE_FINAL_SALE_SEMANTICS": "blocked_error_no_success",
+    "PDV_MUTATION_GATE_PRESERVED": true,
+    "ATOMIC_SALE_IN_FLIGHT_PROTECTED_FROM_RELOAD": true,
+    "RULES_CHANGE_REQUIRED": false
+  },
+  "tests": {
+    "BACKEND_TEST_MANIFEST": ["functions/test/stock-catalog-atomic-pdv-sale.test.mjs"],
+    "BACKEND_TESTS": "22/22",
+    "WEB_TEST_MANIFEST": [
+      "test/atomic_pdv_sale_web_contract_test.dart",
+      "test/m39_sprint4_r4_venda_perf_test.dart"
+    ],
+    "WEB_TESTS": "17/17",
+    "ANALYZE_NEW_ISSUES": 0,
+    "WEB_BUILD_GREEN": true,
+    "LOCAL_WEB_RELEASE": "build/web GREEN",
+    "FUNCTION_DISCOVERY_GREEN": true,
+    "STOCK_CATALOG_COMMAND_EXPORT_GREEN": true,
+    "EMULATOR_8187_PORT_CONFLICT": "NON_BLOCKING_LOCAL_HARNESS_ISSUE",
+    "BACKEND_TEST_VALIDATION": "VALID_ON_8199",
+    "BROAD_BACKEND_TEST_RUN": false,
+    "BROAD_FLUTTER_TEST_RUN": false,
+    "FIADO_74_RESIDUAL_RERUN": false,
+    "FIADO_SHARED_CODE_TOUCHED": true,
+    "FIADO_REGRESSION": "GREEN",
+    "FIADO_NOTE": "contas_receber_upsert_apos_venda_fiada_test fails identically on clean 75851a9; not attributable to atomic patch"
+  },
+  "release_git": {
+    "RELEASE_BRANCH": "stock-catalog/emergency-atomic-pdv-sale",
+    "REMOTE_BRANCH_EXISTS_BEFORE_PUSH": false,
+    "COMMIT_PARENT": "75851a9856cdd443cf84c8fe480839753697b982",
+    "ATOMIC_SALE_RELEASE_COMMIT": null,
+    "PUSH_ATTEMPTS": 0,
+    "COMMITS": 0,
+    "PUSHES": 0,
+    "LOCAL_RELEASE_HEAD": null,
+    "REMOTE_RELEASE_HEAD": null,
+    "REMOTE_HEAD_MATCHES_LOCAL": null
+  },
+  "stage_plans": {
+    "STAGE1_REQUIRED_FUNCTION_TARGETS": ["stockCatalogCommand"],
+    "STAGE1_PLANNED_SCOPE": "functions:stockCatalogCommand",
+    "STAGE1_DEPLOY_ATTEMPTS_MAX": 1,
+    "STAGE1_OLD_WEB_COMPATIBILITY_REQUIRED": true,
+    "HOSTING_RELEASE_REQUIRED": true,
+    "HOSTING_DEPLOY_BEFORE_FUNCTION_GREEN": false,
+    "FUNCTION_DEPLOYS": 0,
+    "HOSTING_DEPLOYS": 0,
+    "RULES_DEPLOYS": 0
+  },
+  "changed_paths": {
+    "FUNCTION_SOURCE_PATHS": [
+      "functions/src/stockCatalogCommands.js",
+      "functions/src/stockCatalogPdvSale.js"
+    ],
+    "WEB_SOURCE_PATHS": [
+      "lib/services/vendas_service.dart",
+      "lib/services/estoque_transaction_service.dart",
+      "lib/services/stock_catalog_backend_service.dart",
+      "lib/services/atomic_pdv_sale_payload.dart",
+      "lib/core/nova_venda_ui_release_policy.dart"
+    ],
+    "TEST_PATHS": [
+      "functions/test/stock-catalog-atomic-pdv-sale.test.mjs",
+      "test/atomic_pdv_sale_web_contract_test.dart"
+    ],
+    "ARTIFACT_PATHS": [
+      "artifacts/estoque/GLOBAL_SALE_PARTIAL_STATE_FALSE_SUCCESS_EMERGENCY_LOCAL.md",
+      "artifacts/estoque/GLOBAL_SALE_PARTIAL_STATE_FALSE_SUCCESS_EMERGENCY_LOCAL.json",
+      "artifacts/estoque/GLOBAL_SALE_PARTIAL_STATE_FALSE_SUCCESS_EMERGENCY_RELEASE_READINESS.md",
+      "artifacts/estoque/GLOBAL_SALE_PARTIAL_STATE_FALSE_SUCCESS_EMERGENCY_RELEASE_READINESS.json"
+    ],
+    "RULES_PATHS": [],
+    "UNRELATED_PATHS": []
+  },
+  "sale_b": {
+    "SALE_B_REMOTE_SALE_INSERTED": false,
+    "SALE_B_STOCK_CORRECTED": false,
+    "SALE_B_OPERATION_CHANGED": false,
+    "SALE_B_IDEMPOTENCY_CHANGED": false
+  },
+  "next": "MASTERPALM_GLOBAL_SALE_PARTIAL_STATE_FALSE_SUCCESS_EMERGENCY_FUNCTION_PRODUCTION_RELEASE",
+  "stop": {
+    "no_function_deploy": true,
+    "no_hosting_deploy": true,
+    "no_rules_deploy": true,
+    "no_sale_b_repair": true,
+    "customer_sales_blocked": true,
+    "grade_paused": true,
+    "rollout_frozen": true
+  }
+}

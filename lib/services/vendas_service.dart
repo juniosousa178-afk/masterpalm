@@ -38,6 +38,7 @@ import 'sale_intent_service.dart';
 import 'conta_receber_service.dart';
 import 'conta_receber_firestore_service.dart';
 import 'conta_receber_venda_backfill.dart';
+import 'atomic_pdv_sale_payload.dart';
 
 /// Persistência Hive falhou e o estorno pré-Hive do estoque remoto também falhou.
 class VendaPersistenciaInconsistenciaCritica implements Exception {
@@ -2229,6 +2230,9 @@ class VendasService {
     List<EstoqueTransactionResult> txResultsComboCap = [];
     var baixaEstoqueConcluida = false;
     var baixaEstoqueAplicadaNestaExecucao = false;
+    final useAtomicPdvSale = EstoqueTransactionService.usaBackendConfiavel &&
+        !usaPedidoPersistidoBackend;
+    var remoteAtomicSaleCommitted = false;
     late Venda venda;
     late final dynamic addedKey;
     late final double subtotal;
@@ -2290,6 +2294,133 @@ class VendasService {
           'tamanho=$tam cor=$cor sellerUid=${(vendedorUid ?? '').trim()}',
         );
       }
+
+      Map<String, dynamic>? atomicSalePayload;
+      if (useAtomicPdvSale) {
+        // Commercial fields must be frozen before the authoritative stock+sale txn.
+        final preSubtotal = itens.fold<double>(
+          0.0,
+          (acc, it) => acc + (it.precoUnitario * it.quantidade),
+        );
+        final preTotal = preSubtotal * (1 - descontoPct / 100) + frete;
+        var payDinheiro = dinheiro;
+        var payPix = pix;
+        var payCartao = cartao;
+        if (!isFiado && payDinheiro == 0 && payPix == 0 && payCartao == 0) {
+          payDinheiro = preTotal;
+        }
+        final prePago = payDinheiro + payPix + payCartao;
+        final preSaldoFiado = isFiado
+            ? calcularSaldoFiado(total: preTotal, totalPagoAgora: prePago)
+            : 0.0;
+        final preCusto = VendaCustoMercadoria.somarCustoReal(
+          itens: itensParaEstoque,
+          produtos: produtosEncontrados,
+          linhaContaCustoMercadoria: linhaContaCustoMercadoria,
+        );
+        final preUnidades = VendaCustoMercadoria.unidadesMercadoria(
+          itens: itensParaEstoque,
+          linhaContaCustoMercadoria: linhaContaCustoMercadoria,
+        );
+        final preTaxas = VendaCustoMercadoria.taxasLegadoVendaApk(
+          custoMercadoria: preCusto,
+          unidadesMercadoria: preUnidades,
+        );
+        final preOrigens = <String?>[];
+        for (var i = 0; i < itensParaEstoque.length; i++) {
+          if (linhaContaCustoMercadoria[i]) {
+            preOrigens.add(itensParaEstoque[i].origemCustoItem);
+          }
+        }
+        final preOrigemCusto = VendaCustoMercadoria.agregarOrigemCustoVenda(
+          custoProdutos: preCusto,
+          origensLinhasAtivas: preOrigens,
+        );
+        final linhas = itens.map((it) {
+          final variacoes = <String>[];
+          if (it.tamanho.isNotEmpty) variacoes.add('Tam: ${it.tamanho}');
+          if (it.cor.isNotEmpty) variacoes.add('Cor: ${it.cor}');
+          if (it.variacaoExtraResumo.isNotEmpty) {
+            variacoes.add(it.variacaoExtraResumo);
+          }
+          final variacoesStr =
+              variacoes.isNotEmpty ? ' (${variacoes.join(', ')})' : '';
+          return "${it.quantidade} x ${it.produtoNome}$variacoesStr - R\$ ${_fmt2(it.precoUnitario)}";
+        }).join('\n');
+        final vencStr = dataVencimentoFiado != null
+            ? 'Vencimento: ${dataVencimentoFiado.day.toString().padLeft(2, '0')}/${dataVencimentoFiado.month.toString().padLeft(2, '0')}/${dataVencimentoFiado.year}'
+            : '';
+        final linhasPagamento = <String>[
+          if (payDinheiro > 0) "Pagamento Dinheiro: R\$ ${_fmt2(payDinheiro)}",
+          if (payPix > 0) "Pagamento Pix: R\$ ${_fmt2(payPix)}",
+          if (payCartao > 0) "Pagamento Cartão: R\$ ${_fmt2(payCartao)}",
+        ];
+        if (isFiado && preSaldoFiado > 0.01) {
+          var fiadoLinha = 'Fiado - R\$ ${_fmt2(preSaldoFiado)}. $vencStr';
+          if (quantidadeParcelasFiado > 1) {
+            fiadoLinha +=
+                ' Parcelas fiado: $quantidadeParcelasFiado. Intervalo: $intervaloParcelasDias dias.';
+          }
+          linhasPagamento.add(fiadoLinha);
+        } else if (isFiado && linhasPagamento.isEmpty) {
+          linhasPagamento.add('Fiado - R\$ ${_fmt2(preTotal)}. $vencStr');
+        }
+        final formasPre = linhasPagamento.join('\n');
+        final produtosDescricao =
+            "$linhas\nFrete: R\$ ${_fmt2(frete)}\nDesconto: ${descontoPct.toStringAsFixed(0)}%\nTotal: R\$ ${_fmt2(preTotal)}\n$formasPre";
+        atomicSalePayload = buildAtomicPdvSalePayload(
+          clienteNome: cliente.nome,
+          clienteId: cliente.key?.toString() ?? cliente.idFirebase,
+          produtosDescricao: produtosDescricao,
+          quantidade: itens.length,
+          preco: preSubtotal,
+          total: preTotal,
+          formasPagamento: formasPre,
+          frete: frete,
+          desconto: descontoPct,
+          descontoValor: preSubtotal * (descontoPct / 100),
+          observacao: observacao.trim(),
+          pagamentoDinheiro: payDinheiro,
+          pagamentoPix: payPix,
+          pagamentoCartao: payCartao,
+          taxas: preTaxas,
+          custoProdutos: preCusto,
+          tamanho: '',
+          vendedor: vendedor,
+          vendedorUid: vendedorUid,
+          vendedorNome: vendedorNome,
+          vendedorEmail: vendedorEmail,
+          origemCusto: preOrigemCusto,
+          itensComboSelecaoJson:
+              VendaComboEstoqueExpansion.serializeItensComboSelecaoPorIndice(
+            itensComboSelecaoPorIndice,
+          ),
+          saldoFiado: preSaldoFiado,
+          quantidadeParcelasFiado: quantidadeParcelasFiado,
+          intervaloParcelasDias: intervaloParcelasDias,
+          dataVencimentoFiado: dataVencimentoFiado?.toIso8601String(),
+          itens: itens
+              .map((item) => <String, dynamic>{
+                    'produtoNome': item.produtoNome,
+                    'quantidade': item.quantidade,
+                    'tamanho': item.tamanho,
+                    'cor': item.cor,
+                    'precoUnitario': item.precoUnitario,
+                    'precoTotal': item.precoUnitario * item.quantidade,
+                    if ((item.productId ?? '').trim().isNotEmpty)
+                      'productId': item.productId!.trim(),
+                    if (item.variacaoExtraResumo.trim().isNotEmpty)
+                      'variacaoExtraResumo': item.variacaoExtraResumo.trim(),
+                    if (item.extraValor.trim().isNotEmpty)
+                      'extraValor': item.extraValor.trim(),
+                    'custoUnitario': item.custoUnitario ?? 0.0,
+                    'origemCustoItem':
+                        item.origemCustoItem ?? 'desconhecido',
+                  })
+              .toList(),
+        );
+      }
+
       final baixaOp = await PdvMutationGate.run(() async {
         return usaPedidoPersistidoBackend
             ? await EstoqueTransactionService.baixarEstoquePedidoIdempotente(
@@ -2307,12 +2438,16 @@ class VendasService {
                         produtos: produtosLinhaOriginal,
                         selecoes: itensComboSelecaoPorIndice)
                     : null,
+                atomicPdvSale: useAtomicPdvSale,
+                atomicSale: atomicSalePayload,
               );
       });
+      remoteAtomicSaleCommitted = baixaOp.authoritativeAtomicSale;
       debugPrint(
         '[H1-TRACE] stage=after_batch_idempotent '
         'lojaId=$lojaEfetiva opId=$idFirebaseReservado '
-        'baixaAplicada=${baixaOp.baixaAplicadaNestaExecucao}',
+        'baixaAplicada=${baixaOp.baixaAplicadaNestaExecucao} '
+        'atomicSale=$remoteAtomicSaleCommitted',
       );
       debugPrint(
         '[M39-ESTOQUE-VENDA] stage=firestore '
@@ -2324,6 +2459,11 @@ class VendasService {
       baixaEstoqueConcluida = true;
       baixaEstoqueAplicadaNestaExecucao =
           !usaPedidoPersistidoBackend && baixaOp.baixaAplicadaNestaExecucao;
+      if (useAtomicPdvSale && !remoteAtomicSaleCommitted) {
+        throw StateError(
+          'Backend atomic PDV sale did not confirm authoritative sale commit',
+        );
+      }
 
       if (isCoordinatedPdv && saleIntentStatus == SaleIntentStatus.reserved) {
         saleIntentStatus = await _coordinatedSaleIntentAdvance(
@@ -2582,7 +2722,9 @@ class VendasService {
       if (e is VendaOperationInterruptedException) {
         rethrow;
       }
-      if (baixaEstoqueConcluida && baixaEstoqueAplicadaNestaExecucao) {
+      if (baixaEstoqueConcluida &&
+          baixaEstoqueAplicadaNestaExecucao &&
+          !remoteAtomicSaleCommitted) {
         Object? erroEstorno;
         try {
           await estornarBaixaPosFalhaAntesDePersistirVendaHive(
@@ -2627,6 +2769,17 @@ class VendasService {
             operationId: idFirebaseReservado,
           );
         }
+      } else if (remoteAtomicSaleCommitted) {
+        // Server already committed sale+stock; Hive mirror failure must not
+        // reverse stock or invent a second remote sale.
+        debugPrint(
+          '[VENDAS-SERVICE] Hive/local falhou após commit atômico remoto; '
+          'sem estorno. Verifique histórico. err=$e',
+        );
+        onSyncError?.call(
+          'Venda gravada na nuvem, mas o espelho local falhou. '
+          'Atualize o histórico de vendas.',
+        );
       }
       rethrow;
     }
@@ -2658,36 +2811,40 @@ class VendasService {
     if (isFiado && saldoFiado > 0.01) {
       final vencimento = dataVencimentoFiado;
       if (vencimento == null) {
-        try {
-          await devolverEstoqueParaVendaRemovida(
-            venda: venda,
-            produtosBox: produtosBox,
-            lojaId: lojaEfetiva,
-          );
-        } catch (estE) {
-          debugPrint(
-            '⚠️ [VENDAS-SERVICE] Falha ao estornar estoque (fiado sem vencimento): $estE',
-          );
+        if (!remoteAtomicSaleCommitted) {
+          try {
+            await devolverEstoqueParaVendaRemovida(
+              venda: venda,
+              produtosBox: produtosBox,
+              lojaId: lojaEfetiva,
+            );
+          } catch (estE) {
+            debugPrint(
+              '⚠️ [VENDAS-SERVICE] Falha ao estornar estoque (fiado sem vencimento): $estE',
+            );
+          }
+          await _excluirVendaHiveSeguro(vendasBox, venda, vendaHiveKey);
         }
-        await _excluirVendaHiveSeguro(vendasBox, venda, vendaHiveKey);
         throw ArgumentError('Informe a data de vencimento da venda fiada.');
       }
       if (!_podeVincularContaReceberAVenda(
         vendaHiveKey: vendaHiveKey,
         vendaIdEstavel: vendaIdVinculo,
       )) {
-        try {
-          await devolverEstoqueParaVendaRemovida(
-            venda: venda,
-            produtosBox: produtosBox,
-            lojaId: lojaEfetiva,
-          );
-        } catch (estE) {
-          debugPrint(
-            '⚠️ [VENDAS-SERVICE] Falha ao estornar estoque (fiado sem chave Hive): $estE',
-          );
+        if (!remoteAtomicSaleCommitted) {
+          try {
+            await devolverEstoqueParaVendaRemovida(
+              venda: venda,
+              produtosBox: produtosBox,
+              lojaId: lojaEfetiva,
+            );
+          } catch (estE) {
+            debugPrint(
+              '⚠️ [VENDAS-SERVICE] Falha ao estornar estoque (fiado sem chave Hive): $estE',
+            );
+          }
+          await _excluirVendaHiveSeguro(vendasBox, venda, vendaHiveKey);
         }
-        await _excluirVendaHiveSeguro(vendasBox, venda, vendaHiveKey);
         debugPrint(
           '⚠️ [VENDAS-SERVICE] Fiado sem vínculo: addedKey=$addedKey venda.key=${venda.key} idFirebase=$vendaIdVinculo',
         );
@@ -2787,6 +2944,18 @@ class VendasService {
             ? detalheErro
             : 'Não foi possível gerar a conta a receber. $detalheErro';
         onSyncError?.call(msgUsuario);
+        if (remoteAtomicSaleCommitted) {
+          // Sale+stock already authoritative; do not reverse stock or delete
+          // remote sale. Contas can be reconciled separately.
+          debugPrint(
+            '[VENDAS-SERVICE] Fiado local falhou após commit atômico; '
+            'estoque/venda remota preservados.',
+          );
+          throw ArgumentError(
+            'Venda gravada na nuvem, mas a conta a receber local falhou. '
+            'Verifique Contas a Receber e o histórico.',
+          );
+        }
         Object? erroEstorno;
         try {
           final forcar = debugForcarFalhaEstornoPosFiadoRollback;
@@ -2854,6 +3023,8 @@ class VendasService {
           isFiado: fiadoAtivo,
           fiadoReceivableReady: true,
           saleIntentPersistedOrSkipped: salePersistedOrSkipped,
+          requireAuthoritativeRemoteSale: useAtomicPdvSale,
+          authoritativeRemoteSaleCommitted: remoteAtomicSaleCommitted,
         )) {
       try {
         debugPrint('[M39-VENDA-PERF] stage=ui_release');
@@ -2898,7 +3069,13 @@ class VendasService {
       onSyncError?.call('Cliente não sincronizado. Verifique a conexão.');
     }
 
-    // 10) sincroniza venda com Firestore
+    // 10) sincroniza venda com Firestore (skip when backend already committed)
+    if (remoteAtomicSaleCommitted) {
+      debugPrint(
+        '[VENDAS-SERVICE] atomic PDV: skip client syncVenda '
+        'saleId=$idFirebaseReservado',
+      );
+    } else {
     try {
       final ok = await VendasFirestoreService.syncVenda(
         venda,
@@ -2936,6 +3113,26 @@ class VendasService {
       onSyncError?.call(
         'Venda salva localmente, mas não sincronizou na nuvem. Verifique a conexão ou tente sincronizar novamente.',
       );
+    }
+    }
+
+    if (remoteAtomicSaleCommitted && isFiado && saldoFiado > 0.01) {
+      try {
+        final rep = await ContaReceberVendaBackfillService
+            .republicarContasVinculadasAVenda(
+          lojaId: lojaEfetiva,
+          venda: venda,
+        );
+        if (rep > 0) {
+          debugPrint(
+            '[VENDAS-SERVICE] contas_receber republicadas pós-atomic qtd=$rep vendaId=$vendaIdVinculo',
+          );
+        }
+      } catch (e) {
+        debugPrint(
+          '⚠️ [VENDAS-SERVICE] Falha ao republicar contas fiado pós-atomic (type=${e.runtimeType})',
+        );
+      }
     }
 
     // 11) 🎯 Registra participação em campanhas de sorteio (CENTRALIZADO)

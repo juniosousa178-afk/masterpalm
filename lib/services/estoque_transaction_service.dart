@@ -94,16 +94,25 @@ class EstoqueBaixaOperationResult {
   const EstoqueBaixaOperationResult({
     required this.status,
     required this.transactionResults,
+    this.saleCommitted = false,
+    this.saleId,
   });
 
   final EstoqueBaixaOperationStatus status;
   final List<EstoqueTransactionResult> transactionResults;
+
+  /// Backend atomic PDV: canonical estoque_vendas committed with stock.
+  final bool saleCommitted;
+  final String? saleId;
 
   bool get baixaAplicadaNestaExecucao =>
       status == EstoqueBaixaOperationStatus.applied;
 
   bool get baixaJaAplicadaAnteriormente =>
       status == EstoqueBaixaOperationStatus.alreadyApplied;
+
+  bool get authoritativeAtomicSale =>
+      saleCommitted && (saleId ?? '').trim().isNotEmpty;
 }
 
 /// Resultado da reconciliação atômica de estoque na edição de venda.
@@ -2132,17 +2141,25 @@ class EstoqueTransactionService {
   }
 
   /// Baixa idempotente por [operationId] — marker V1 + estoque na mesma transação.
+  ///
+  /// When [atomicPdvSale] is true, [atomicSale] is committed as canonical
+  /// `estoque_vendas/{operationId}` in the same backend transaction.
   static Future<EstoqueBaixaOperationResult>
       baixarEstoqueTransactionBatchIdempotente({
     required String lojaId,
     required List<Map<String, dynamic>> itens,
     required String operationId,
     List<Map<String, dynamic>>? backendItems,
+    bool atomicPdvSale = false,
+    Map<String, dynamic>? atomicSale,
   }) async {
     final opId = operationId.trim();
     if (opId.isEmpty) {
       throw ArgumentError.value(
           operationId, 'operationId', 'não pode ser vazio');
+    }
+    if (atomicPdvSale && atomicSale == null) {
+      throw ArgumentError('atomicPdvSale requires atomicSale payload');
     }
 
     if (debugFirestoreOverride == null) {
@@ -2155,12 +2172,19 @@ class EstoqueTransactionService {
         operationId: opId,
         kind: 'sale',
         items: backendItems,
+        atomicPdvSale: atomicPdvSale,
+        sale: atomicSale,
       );
+      final saleCommitted = response['saleCommitted'] == true ||
+          response['authoritativeSalePersisted'] == true;
+      final saleIdRaw = (response['saleId'] ?? '').toString().trim();
       return EstoqueBaixaOperationResult(
         status: response['alreadyApplied'] == true
             ? EstoqueBaixaOperationStatus.alreadyApplied
             : EstoqueBaixaOperationStatus.applied,
         transactionResults: resultadosDoBackend(response),
+        saleCommitted: atomicPdvSale && saleCommitted,
+        saleId: saleIdRaw.isNotEmpty ? saleIdRaw : (atomicPdvSale ? opId : null),
       );
     }
 
