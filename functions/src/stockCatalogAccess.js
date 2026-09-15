@@ -6,6 +6,11 @@ export const SERVER_PUBLISH_AUTH = Object.freeze({uid: 'stock-catalog-publisher'
 /** Commands allowed on the inactive/legacy sale compatibility bridge only. */
 export const INACTIVE_COMPAT_ALLOWED_KINDS = Object.freeze(['sale', 'restore']);
 
+/** Product mutation kinds allowed on the inactive/NO_CONTROL compatibility bridge. */
+export const INACTIVE_PRODUCT_COMPAT_ALLOWED_KINDS = Object.freeze([
+  'create', 'replace', 'editorial', 'delete',
+]);
+
 export function documentId(value, label = 'id') {
   if (typeof value !== 'string' || !value.trim() || value !== value.trim() || value.includes('/') ||
       value === '.' || value === '..' || /^__.*__$/.test(value) || Buffer.byteLength(value) > 256) {
@@ -48,12 +53,16 @@ export function isInactiveCompatRoute(route) {
   return route === 'NO_CONTROL' || route === 'INACTIVE';
 }
 
-/** ACTIVE protocol: control + migrationComplete + dedicated grant. Unchanged semantics. */
-export async function authorizeStockTransaction(tx, base, auth, permission) {
-  const uid = requireAuthenticated(auth);
+function rejectReservedServerIdentity(auth, uid) {
   if ([SERVER_PUBLISH_AUTH, SERVER_PAYMENT_AUTH].some(identity => uid === identity.uid && auth !== identity)) {
     throw stockError('permission-denied', 'Reserved server identity');
   }
+}
+
+/** ACTIVE protocol: control + migrationComplete + dedicated grant. Unchanged semantics. */
+export async function authorizeStockTransaction(tx, base, auth, permission) {
+  const uid = requireAuthenticated(auth);
+  rejectReservedServerIdentity(auth, uid);
   const [control, access] = await tx.getAll(
     base.collection('stock_catalog_control').doc('state'),
     base.collection('stock_catalog_access').doc(uid),
@@ -74,12 +83,11 @@ export async function authorizeStockTransaction(tx, base, auth, permission) {
  * Inactive/legacy sale bridge auth: authenticated store membership only.
  * Does NOT require ACTIVE, migrationComplete, or rollout grants.
  * Does NOT create control/grants/migration markers.
+ * Intentionally allows sellers with vendas/sale — MUST NOT be reused for product/publish.
  */
 export async function authorizeInactiveLegacySale(tx, db, base, auth, kind) {
   const uid = requireAuthenticated(auth);
-  if ([SERVER_PUBLISH_AUTH, SERVER_PAYMENT_AUTH].some(identity => uid === identity.uid && auth !== identity)) {
-    throw stockError('permission-denied', 'Reserved server identity');
-  }
+  rejectReservedServerIdentity(auth, uid);
   if (!INACTIVE_COMPAT_ALLOWED_KINDS.includes(kind)) {
     throw stockError('failed-precondition', 'Stock protocol unavailable or migration incomplete');
   }
@@ -113,8 +121,61 @@ export async function authorizeInactiveLegacySale(tx, db, base, auth, kind) {
   throw stockError('permission-denied', 'Stock operation not authorized for this store');
 }
 
+function sellerHasProductCadastroPermission(perms) {
+  if (!perms || typeof perms !== 'object' || Array.isArray(perms)) return false;
+  return perms.estoque === true || perms.produtos === true || perms.cadastro === true ||
+    perms.estoque_produtos === true || perms.product === true || perms.products === true;
+}
+
 /**
- * Resolve route + authorize. ACTIVE uses grant protocol; inactive sale uses membership.
+ * Owner/admin (or seller with explicit estoque/produtos/cadastro) membership.
+ * Does NOT allow vendas-only sellers. Shared by product + publish inactive bridges.
+ */
+async function authorizeInactiveOwnerAdminOrCadastro(tx, db, base, auth) {
+  const uid = requireAuthenticated(auth);
+  rejectReservedServerIdentity(auth, uid);
+  const [loja, seller, member] = await tx.getAll(
+    base,
+    base.collection('vendedores').doc(uid),
+    base.collection('members').doc(uid),
+  );
+  if (!loja.exists) throw stockError('permission-denied', 'Store not found');
+  const data = loja.data() || {};
+  if (data.ownerUid === uid) return uid;
+  if (data.admins && data.admins[uid] === true) return uid;
+  if (member.exists) {
+    const role = (member.data()?.role ?? '').toString();
+    if (role === 'owner' || role === 'admin') return uid;
+  }
+  if (seller.exists && seller.data()?.ativo === true) {
+    const perms = seller.data()?.permissoes || {};
+    if (sellerHasProductCadastroPermission(perms)) return uid;
+  }
+  throw stockError('permission-denied', 'Stock operation not authorized for this store');
+}
+
+/**
+ * Inactive/NO_CONTROL product mutation auth (create/replace/editorial/delete).
+ * Separate from sale auth — vendas-only sellers are denied.
+ */
+export async function authorizeInactiveLegacyProductMutation(tx, db, base, auth, kind) {
+  if (!INACTIVE_PRODUCT_COMPAT_ALLOWED_KINDS.includes(kind)) {
+    throw stockError('failed-precondition', 'Stock protocol unavailable or migration incomplete');
+  }
+  return authorizeInactiveOwnerAdminOrCadastro(tx, db, base, auth);
+}
+
+/**
+ * Inactive/NO_CONTROL catalog publish auth.
+ * Separate from sale auth and from ACTIVE publisher grants.
+ */
+export async function authorizeInactiveLegacyPublish(tx, db, base, auth) {
+  return authorizeInactiveOwnerAdminOrCadastro(tx, db, base, auth);
+}
+
+/**
+ * Resolve route + authorize stockCatalogCommand.
+ * ACTIVE → grants; sale/restore → sale membership; product kinds → product membership.
  */
 export async function authorizeStockCommand(tx, db, base, auth, permission, kind) {
   const control = await tx.get(base.collection('stock_catalog_control').doc('state'));
@@ -127,6 +188,31 @@ export async function authorizeStockCommand(tx, db, base, auth, permission, kind
     throw stockError('failed-precondition', 'Stock protocol unavailable or migration incomplete');
   }
   // NO_CONTROL | INACTIVE
-  const uid = await authorizeInactiveLegacySale(tx, db, base, auth, kind);
+  if (INACTIVE_COMPAT_ALLOWED_KINDS.includes(kind)) {
+    const uid = await authorizeInactiveLegacySale(tx, db, base, auth, kind);
+    return {uid, route, legacyCompat: true};
+  }
+  if (INACTIVE_PRODUCT_COMPAT_ALLOWED_KINDS.includes(kind)) {
+    const uid = await authorizeInactiveLegacyProductMutation(tx, db, base, auth, kind);
+    return {uid, route, legacyCompat: true};
+  }
+  throw stockError('failed-precondition', 'Stock protocol unavailable or migration incomplete');
+}
+
+/**
+ * Resolve route + authorize catalogPublishOne/All.
+ * ACTIVE → grant publish; NO_CONTROL/INACTIVE → owner/admin publish bridge.
+ */
+export async function authorizePublishCommand(tx, db, base, auth) {
+  const control = await tx.get(base.collection('stock_catalog_control').doc('state'));
+  const route = classifyStockControlState(control);
+  if (route === 'ACTIVE') {
+    const uid = await authorizeStockTransaction(tx, base, auth, 'publish');
+    return {uid, route, legacyCompat: false};
+  }
+  if (route === 'INVALID') {
+    throw stockError('failed-precondition', 'Stock protocol unavailable or migration incomplete');
+  }
+  const uid = await authorizeInactiveLegacyPublish(tx, db, base, auth);
   return {uid, route, legacyCompat: true};
 }

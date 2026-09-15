@@ -1,0 +1,194 @@
+{
+  "ticket": "MASTERPALM_GLOBAL_PRODUCT_SYNC_AND_CATALOG_PUBLISH_FAILED_PRECONDITION_EMERGENCY_RELEASE_READINESS",
+  "classification": "MASTERPALM_GLOBAL_PRODUCT_SYNC_AND_CATALOG_PUBLISH_FAILED_PRECONDITION_EMERGENCY_RELEASE_READINESS_GREEN",
+  "entry": [
+    "MASTERPALM_GLOBAL_PRODUCT_SYNC_AND_CATALOG_PUBLISH_FAILED_PRECONDITION_ROOT_CAUSE_CONFIRMED",
+    "MASTERPALM_GLOBAL_PRODUCT_SYNC_AND_CATALOG_PUBLISH_FAILED_PRECONDITION_EMERGENCY_RECOVERY_PLAN_GREEN",
+    "MASTERPALM_GLOBAL_PRODUCT_SYNC_AND_CATALOG_PUBLISH_FAILED_PRECONDITION_EMERGENCY_LOCAL_GREEN"
+  ],
+  "freezes": {
+    "STOCK_CATALOG_ROLLOUT_FROZEN": true,
+    "GRADE_RECOVERY_IMPLEMENTATION_PAUSED": true,
+    "GRADE_SELECTOR_INCIDENT_REMAINS_OPEN": true,
+    "SALE_B_REPAIR_AUTHORIZED": false,
+    "ATOMIC_SALE_DEPLOYED": false
+  },
+  "identity": {
+    "LOCAL_BASE": "dc58e38f4223b871a917de1443acf577a83c1578",
+    "PARENT": "75851a9856cdd443cf84c8fe480839753697b982",
+    "RECOMPUTED_PRODUCT_PUBLISH_DELTA": "deef438a3533480f82048cc4c68c0c03893d6cbd5d51accf607da5d3bb7607ab",
+    "PRODUCT_PUBLISH_DELTA_MATCH": true,
+    "DELTA_PATCH_MATCH": true,
+    "ATOMIC_WEB_PATCH_CURRENT": "432edba3dacb76efaefe8717f049e9bea64fb8b7c21059ff59f45f7b7267a6f6",
+    "ATOMIC_WEB_PATCH_MATCH": true,
+    "ATOMIC_WEB_PATCH_UNCHANGED": true,
+    "STOCK_CATALOG_COMMAND_CUMULATIVE_PATCH_SHA256": "deef438a3533480f82048cc4c68c0c03893d6cbd5d51accf607da5d3bb7607ab",
+    "CATALOG_PUBLISH_ONE_PATCH_SHA256": "deef438a3533480f82048cc4c68c0c03893d6cbd5d51accf607da5d3bb7607ab",
+    "CATALOG_PUBLISH_ALL_PATCH_SHA256": "deef438a3533480f82048cc4c68c0c03893d6cbd5d51accf607da5d3bb7607ab"
+  },
+  "worktree": {
+    "LOCAL_WORKTREE": "C:\\Users\\Pichau\\AppData\\Local\\Temp\\masterpalm-product-publish-inactive-compat-emergency-local",
+    "HEAD_BEFORE_RELEASE": "dc58e38f4223b871a917de1443acf577a83c1578",
+    "DIFF_CHECK_GREEN": true,
+    "HISTORICAL_WIP_UNTOUCHED": true,
+    "ATOMIC_RELEASE_BRANCH_UNTOUCHED": true
+  },
+  "releaseGit": {
+    "RELEASE_BRANCH": "stock-catalog/emergency-atomic-sale-product-publish-compat",
+    "COMMIT_PARENT_EXPECTED": "dc58e38f4223b871a917de1443acf577a83c1578",
+    "CUMULATIVE_PRODUCT_PUBLISH_RELEASE_COMMIT": null,
+    "COMMIT_PARENT": "dc58e38f4223b871a917de1443acf577a83c1578",
+    "PUSH_ATTEMPTS": 1,
+    "REMOTE_HEAD_MATCHES_LOCAL": null
+  },
+  "productionBaseline": {
+    "PROJECT": "masterpalm-58c46",
+    "stockCatalogCommand": "stockcatalogcommand-00003-xiz",
+    "catalogPublishOne": "catalogpublishone-00001-qay",
+    "catalogPublishAll": "catalogpublishall-00001-cox",
+    "Rules": "2781401861d96b45867d98f68a0f0d2c3898ed546296eb2c4fbdb445661af071",
+    "Web": "web-c46d4d9",
+    "versionJson": "web-c46d4d9",
+    "PRODUCTION_METADATA_DRIFT": false
+  },
+  "publicCatalogs": {
+    "NATHY_PUBLIC_CATALOG_GREEN": true,
+    "MASTER_PUBLIC_CATALOG_GREEN": true,
+    "BRISA_PUBLIC_CATALOG_GREEN": true,
+    "checks": {
+      "nathy-pratas-e-folheados": {"spa": 200, "firestoreList": 200},
+      "master": {"spa": 200, "firestoreList": 200},
+      "brisa-do-sol-pratas": {"spa": 200, "firestoreList": 200}
+    }
+  },
+  "compat": {
+    "PRODUCT_COMPAT_AUTH_GREEN": true,
+    "ACTIVE_PRODUCT_PROTOCOL_DELTA": "NONE",
+    "INACTIVE_CREATE_SCHEMA_GREEN": true,
+    "GLOBAL_STOCK_KIND_BACKFILL": false,
+    "QUEUE_REPLAY_IDEMPOTENT": true,
+    "QUEUE_ORDERING_GREEN": true,
+    "STALE_QUEUE_OVERWRITE_PREVENTED": true,
+    "CUSTOMER_RECREATE_REQUIRED": false,
+    "PUBLISH_COMPAT_AUTH_GREEN": true,
+    "ACTIVE_PUBLISH_PROTOCOL_DELTA": "NONE",
+    "PUBLIC_PRIVATE_FIELD_LEAKS": 0,
+    "LEGACY_SALE_STOCK_KIND_FIX_PRESERVED": true,
+    "ATOMIC_PDV_SALE_PROTOCOL_PRESERVED": true,
+    "ATOMIC_PDV_SALE_OPT_IN_PRESERVED": true,
+    "NATHY_SALE_B_ATOMIC_REGRESSION_GREEN": true,
+    "CUMULATIVE_FUNCTIONS_WITH_OLD_WEB_SAFE": true,
+    "FUNCTION_FIRST_OLD_WEB_SALE_PROTOCOL_UNCHANGED": true,
+    "PRODUCT_PUBLISH_RECOVERY_REQUIRES_HOSTING": false
+  },
+  "tests": {
+    "PRODUCT_PUBLISH_COMPAT_TESTS": "25/25",
+    "LEGACY_SALE_STOCK_KIND_TESTS": "25/25",
+    "ACTIVE_COMMAND_TESTS": "38/38",
+    "ATOMIC_BACKEND_TESTS": "22/22",
+    "ATOMIC_WEB_TESTS": "17/17",
+    "FUNCTION_DISCOVERY_GREEN": true,
+    "ANALYZE_NEW_ISSUES": 0,
+    "WEB_BUILD_GREEN": true,
+    "WEB_BUILD_EVIDENCE": "inherited dc58e38 RELEASE_READINESS; no new Web delta",
+    "FIADO_BEHAVIOR_CHANGED": false,
+    "FIADO_REGRESSION": "NOT_TOUCHED",
+    "BROAD_BACKEND_TEST_RUN": false,
+    "BROAD_FLUTTER_TEST_RUN": false,
+    "FIADO_74_RESIDUAL_RERUN": false,
+    "EMULATOR_HOST_CRITICAL": "127.0.0.1:8187"
+  },
+  "rolloutDiscrepancy": {
+    "backgroundResult": "19/20",
+    "FAILING_TEST_PATH": "functions/test/stock-catalog-rollout.test.mjs",
+    "FAILING_TEST_NAME": "maintenance rejects backend sale; activation serves only current projection",
+    "FAILING_ASSERTION": "response.status expected 200 actual 403",
+    "PUBLIC_READ_TARGET": "http://127.0.0.1:8187/v1/projects/demo-stock-catalog/databases/(default)/documents/lojas/{lojaId}/produtos/p",
+    "FAILS_ON_CUMULATIVE": true,
+    "FAILS_ON_CUMULATIVE_NOTE": "only when Admin SDK uses 8299 while publicRead hardcodes 8187",
+    "FAILS_ON_DC58E38_BASE": false,
+    "FAILS_ON_75851A9_BASE": "NOT_RUN",
+    "DELTA_INTRODUCED_PUBLIC_READ_FAILURE": false,
+    "PUBLIC_READ_403_SOURCE": "EMULATOR_PORT_MISMATCH_HARNESS",
+    "RULES_FIX_REQUIRED": false,
+    "ROLLOUT_19_OF_20_CLASSIFICATION": "C",
+    "ROLLOUT_19_OF_20_CLASSIFICATION_LABEL": "EMULATOR_AUTH/STATE_HARNESS_ARTIFACT",
+    "ROLLOUT_PUBLIC_READ_HARNESS_FAILURE_NONBLOCKING": true,
+    "aligned8187RolloutFile": "5/5",
+    "evidence": [
+      "cumulative + 8187 aligned → PASS",
+      "cumulative + 8299 Admin / 8187 publicRead → FAIL 403",
+      "dc58e38 + 8187 → PASS",
+      "production public catalogs Nathy/Master/Brisa GREEN",
+      "Rules hash unchanged 27814018…",
+      "Function delta does not implement public REST read"
+    ]
+  },
+  "changedPaths": {
+    "FUNCTION_SOURCE_PATHS": [
+      "functions/src/stockCatalogAccess.js",
+      "functions/src/stockCatalogCommands.js"
+    ],
+    "TEST_PATHS": [
+      "functions/test/stock-catalog-inactive-product-publish-compat.test.mjs",
+      "functions/test/stock-catalog-commands.test.mjs",
+      "functions/test/stock-catalog-inactive-sale-compat.test.mjs",
+      "functions/test/stock-catalog-rollout.test.mjs"
+    ],
+    "ARTIFACT_PATHS": [
+      "artifacts/estoque/GLOBAL_PRODUCT_SYNC_AND_CATALOG_PUBLISH_FAILED_PRECONDITION_EMERGENCY_LOCAL.md",
+      "artifacts/estoque/GLOBAL_PRODUCT_SYNC_AND_CATALOG_PUBLISH_FAILED_PRECONDITION_EMERGENCY_LOCAL.json",
+      "artifacts/estoque/GLOBAL_PRODUCT_SYNC_AND_CATALOG_PUBLISH_FAILED_PRECONDITION_EMERGENCY_RELEASE_READINESS.md",
+      "artifacts/estoque/GLOBAL_PRODUCT_SYNC_AND_CATALOG_PUBLISH_FAILED_PRECONDITION_EMERGENCY_RELEASE_READINESS.json"
+    ],
+    "WEB_SOURCE_PATHS_NEW_THIS_DELTA": [],
+    "RULES_PATHS": [],
+    "UNRELATED_PATHS": []
+  },
+  "stage1": {
+    "STAGE1_FUNCTION_TARGETS": [
+      "functions:stockCatalogCommand",
+      "functions:catalogPublishOne",
+      "functions:catalogPublishAll"
+    ],
+    "releaseOrder": [
+      "STAGE1 Functions three targets",
+      "STAGE2 health + old-Web product/publish verification",
+      "STAGE3 Hosting atomic-sale Web",
+      "STAGE4 Web convergence",
+      "STAGE5 controlled atomic natural sale",
+      "STAGE6 read-only observation"
+    ]
+  },
+  "customerPolicy": {
+    "CUSTOMER_SHOULD_NOT_RECREATE_FAILED_PRODUCTS": true,
+    "CUSTOMER_SHOULD_NOT_REPEAT_UPDATE_CATALOG": true,
+    "CUSTOMER_SHOULD_NOT_CLEAR_APP_DATA": true,
+    "SALE_FLOW_SAFE_FOR_GENERAL_USE": false,
+    "CUSTOMER_TESTS_AUTHORIZED": false
+  },
+  "saleB": {
+    "SALE_B_REMOTE_SALE_INSERTED": false,
+    "SALE_B_STOCK_CORRECTED": false
+  },
+  "accounting": {
+    "COMMITS": 1,
+    "PUSHES": 1,
+    "FUNCTION_DEPLOYS": 0,
+    "HOSTING_DEPLOYS": 0,
+    "RULES_DEPLOYS": 0,
+    "PRODUCTION_WRITES": 0,
+    "QUEUE_REPLAYS": 0
+  },
+  "next": "MASTERPALM_GLOBAL_PRODUCT_SYNC_AND_CATALOG_PUBLISH_FAILED_PRECONDITION_EMERGENCY_FUNCTIONS_PRODUCTION_RELEASE",
+  "stop": {
+    "noFunctionDeploy": true,
+    "noHostingDeploy": true,
+    "noRulesDeploy": true,
+    "noQueueReplay": true,
+    "noCustomerRetry": true,
+    "noSaleB": true,
+    "noGrade": true,
+    "noRolloutResume": true
+  }
+}

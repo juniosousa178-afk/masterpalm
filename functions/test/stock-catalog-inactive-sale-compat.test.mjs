@@ -5,8 +5,9 @@ import {executeStockCommand} from '../src/stockCatalogCommands.js';
 import {classifyStockControlState, INACTIVE_COMPAT_ALLOWED_KINDS} from '../src/stockCatalogAccess.js';
 import {inferStockKind, resolveLegacyCompatStockKind} from '../src/catalogStockProjection.js';
 
-if (process.env.FIRESTORE_EMULATOR_HOST !== '127.0.0.1:8187') {
-  throw new Error('Local emulator required; refusing any other endpoint');
+const __emuHost = process.env.FIRESTORE_EMULATOR_HOST || '';
+if (!/^127\.0\.0\.1:\d+$/.test(__emuHost)) {
+  throw new Error('Local emulator required; refusing any other endpoint: ' + __emuHost);
 }
 const db = new Firestore({projectId: 'demo-stock-catalog'});
 after(() => db.terminate());

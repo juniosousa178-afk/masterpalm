@@ -4,7 +4,8 @@ import {initializeApp, deleteApp} from 'firebase-admin/app';
 import {getFirestore} from 'firebase-admin/firestore';
 import {executeStockCommand, publishStockProduct} from '../src/stockCatalogCommands.js';
 
-if (process.env.FIRESTORE_EMULATOR_HOST !== '127.0.0.1:8187') throw new Error('Exact local emulator required');
+const __emuHost = process.env.FIRESTORE_EMULATOR_HOST || '';
+if (!/^127\.0\.0\.1:\d+$/.test(__emuHost)) throw new Error('Local emulator required; refusing any other endpoint: ' + __emuHost);
 const projectId = 'demo-stock-catalog';
 const app = initializeApp({projectId}, `rollout-${Date.now()}`), db = getFirestore(app);
 after(() => deleteApp(app));

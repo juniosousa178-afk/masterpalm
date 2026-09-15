@@ -1,7 +1,7 @@
 import {recipe, componentIntents, comboOrder, recalculateFixedCombos} from './stockCatalogCombo.js';
 import {createHash} from 'node:crypto';
 import {FieldValue} from 'firebase-admin/firestore';
-import {documentId, storeRef, requireAuthenticated, authorizeStockTransaction, authorizeStockCommand, SERVER_PAYMENT_AUTH} from './stockCatalogAccess.js';
+import {documentId, storeRef, requireAuthenticated, authorizeStockCommand, authorizePublishCommand, SERVER_PAYMENT_AUTH, INACTIVE_PRODUCT_COMPAT_ALLOWED_KINDS} from './stockCatalogAccess.js';
 import {isMap, stockError, normalizeStock, projectCatalog, quantity, resolveKey, resolveExtraKey, validateEditorial, inferStockKind, resolveLegacyCompatStockKind} from './catalogStockProjection.js';
 import {ATOMIC_PDV_SALE_FLAG, parseAtomicPdvSale, buildCanonicalEstoqueVendaDoc} from './stockCatalogPdvSale.js';
 
@@ -204,10 +204,10 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
         base.collection('exclusao_produto').doc(id),
       );
       const creating = command.kind === 'create' && targetIds.has(id);
+      const productCompatKind = legacyCompat && INACTIVE_PRODUCT_COMPAT_ALLOWED_KINDS.includes(command.kind);
       if (legacyCompat) {
-        // Inactive/legacy sale: estoque_produtos only; draft/dependency optional.
-        if (!stock.exists) throw stockError('failed-precondition', 'Canonical product required');
-        if (creating) throw stockError('invalid-argument', 'Unsupported command');
+        // Sale/restore: estoque_produtos required. Product create may create the doc.
+        if (!creating && !stock.exists) throw stockError('failed-precondition', 'Canonical product required');
       } else if ((!stock.exists || !draft.exists) && !creating) {
         throw stockError('failed-precondition', 'Canonical product and editorial draft required');
       }
@@ -232,7 +232,8 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
       let omitInferredStockKind = false;
       if (legacyCompat && !creating) {
         const resolved = resolveLegacyCompatStockKind(rawStock);
-        omitInferredStockKind = resolved.stockKindSource === 'inferred';
+        // Persist inferred kind only on replace (definition rewrite). Sale/editorial/delete do not backfill.
+        omitInferredStockKind = resolved.stockKindSource === 'inferred' && command.kind !== 'replace';
         rawStock = {...rawStock, stockKind: resolved.stockKind};
         console.info(JSON.stringify({
           route: 'legacyCompat',
@@ -246,14 +247,16 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
       const editorial = draft.exists
         ? draft.data()
         : (legacyCompat
-            ? {
-                nome: (stock.data()?.nome ?? stock.data()?.name ?? '').toString(),
-                publicadoNoCatalogo: stock.data()?.publicadoNoCatalogo === true,
-              }
+            ? (creating || productCompatKind
+                ? validateEditorial(command.editorial ?? {})
+                : {
+                    nome: (stock.data()?.nome ?? stock.data()?.name ?? '').toString(),
+                    publicadoNoCatalogo: stock.data()?.publicadoNoCatalogo === true,
+                  })
             : validateEditorial(command.editorial));
       records.set(id, {
         stockRef, draftRef, dependency: {exists: dependency.exists, data: () => dependencyData},
-        draftExists: draft.exists, creating, originalRecipe: recipe(data), data,
+        draftExists: draft.exists, creating, productCompatKind, originalRecipe: recipe(data), data,
         beforeHash: fingerprint(stockEffect(data)), originalRevision: data.stockRevision, editorial,
         omitInferredStockKind,
       });
@@ -299,7 +302,7 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
     // Budget is checked before queuing any write on the Firestore transaction.
     const set = (ref, data, merge = false) => writes.push(() => merge ? tx.set(ref, data, {merge: true}) : tx.set(ref, data));
     const remove = ref => writes.push(() => tx.delete(ref));
-    if (newDefinition) {
+    if (newDefinition && !legacyCompat) {
       const rootId = items[0].productId;
       const oldIds = new Set(command.kind === 'create' ? [] : records.get(rootId).originalRecipe.map(i => i.productId));
       const newIds = new Set(recipe(records.get(rootId).data).map(i => i.productId));
@@ -356,11 +359,13 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
         writes.push(() => tx.update(tombRef, patch));
       }
       const stockWrite = {...p.stock};
-      // Runtime-only inference: never persist an inferred stockKind onto legacy docs.
+      // Runtime-only inference: never persist an inferred stockKind onto legacy docs
+      // except create (always persisted) and replace (definition rewrite).
       if (r.omitInferredStockKind) delete stockWrite.stockKind;
       set(r.stockRef, {...stockWrite, stockUpdatedAt: FieldValue.serverTimestamp()});
-      // Inactive compat: never create draft/dependency/control/grants; update draft/live only if draft already existed.
-      if (!legacyCompat || r.draftExists) {
+      // Sale/restore inactive: update draft/live only if draft already existed.
+      // Product inactive compat: always write draft_produtos (no control/grants).
+      if (!legacyCompat || r.draftExists || r.productCompatKind || r.creating) {
         const draftWrite = {...p.draft};
         if (r.omitInferredStockKind) delete draftWrite.stockKind;
         set(r.draftRef, {...draftWrite, updatedAt: FieldValue.serverTimestamp()});
@@ -401,19 +406,51 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
     return result;
 }
 
+function synthesizeLegacyEditorial(stockData) {
+  const data = stockData || {};
+  const nome = (data.nome ?? data.name ?? '').toString();
+  return validateEditorial({
+    nome,
+    publicadoNoCatalogo: data.publicadoNoCatalogo === true,
+    exibir_no_catalogo: data.exibir_no_catalogo !== false,
+    ocultar_catalogo: data.ocultar_catalogo === true,
+    catalog_ativo: data.catalog_ativo !== false,
+    ...(typeof data.preco === 'number' ? {preco: data.preco} : {}),
+    ...(typeof data.preco_venda === 'number' ? {preco_venda: data.preco_venda} : {}),
+    ...(Array.isArray(data.imagens) ? {imagens: data.imagens} : {}),
+    ...(typeof data.descricao === 'string' ? {descricao: data.descricao} : {}),
+  });
+}
+
 export async function publishStockProduct(db, lojaId, productId, auth) {
   requireAuthenticated(auth); documentId(productId, 'productId');
   const base = storeRef(db, lojaId);
   return runStockTransaction(db, async tx => {
-    await authorizeStockTransaction(tx, base, auth, 'publish');
+    const authz = await authorizePublishCommand(tx, db, base, auth);
     const sref = base.collection('estoque_produtos').doc(productId), dref = base.collection('draft_produtos').doc(productId);
     const [stock, draft, tombstone] = await tx.getAll(sref, dref, base.collection('exclusao_produto').doc(productId));
-    if (!stock.exists || !draft.exists) throw stockError('failed-precondition', 'Migration or reconciliation required');
+    if (!stock.exists) throw stockError('failed-precondition', 'Canonical product required');
+    if (!draft.exists && !authz.legacyCompat) {
+      throw stockError('failed-precondition', 'Migration or reconciliation required');
+    }
     const fullTomb = tombstone.exists && tombstone.data()?.p === true;
-    const p = projectCatalog({...stock.data(), ...(fullTomb ? {pendingSoftDelete: true} : {})}, draft.data(), productId);
-    tx.set(dref, {...p.draft, updatedAt: FieldValue.serverTimestamp()});
+    let canonical = {...stock.data(), ...(fullTomb ? {pendingSoftDelete: true} : {})};
+    if (authz.legacyCompat) {
+      const resolved = resolveLegacyCompatStockKind(canonical);
+      canonical = {...canonical, stockKind: resolved.stockKind};
+    }
+    const editorial = draft.exists ? draft.data() : synthesizeLegacyEditorial(stock.data());
+    const p = projectCatalog(canonical, editorial, productId);
+    // Publish projection may use runtime-inferred kind; do not backfill stockKind onto legacy stock.
+    const draftWrite = {...p.draft};
+    if (authz.legacyCompat && !('stockKind' in (stock.data() || {}))) delete draftWrite.stockKind;
+    tx.set(dref, {...draftWrite, updatedAt: FieldValue.serverTimestamp()});
     const live = base.collection('produtos').doc(productId);
-    if (p.live) tx.set(live, {...p.live, updatedAt: FieldValue.serverTimestamp()}); else tx.delete(live);
+    if (p.live) {
+      const liveWrite = {...p.live};
+      if (authz.legacyCompat && !('stockKind' in (stock.data() || {}))) delete liveWrite.stockKind;
+      tx.set(live, {...liveWrite, updatedAt: FieldValue.serverTimestamp()});
+    } else tx.delete(live);
     return {productId, available: p.live !== null, revision: p.stock.stockRevision};
   });
 }
@@ -421,7 +458,7 @@ export async function publishStockProduct(db, lojaId, productId, auth) {
 export async function publishStockAll(db, lojaId, auth) {
   requireAuthenticated(auth);
   const base = storeRef(db, lojaId);
-  await runStockTransaction(db, tx => authorizeStockTransaction(tx, base, auth, 'publish'));
+  await runStockTransaction(db, tx => authorizePublishCommand(tx, db, base, auth));
   let last, count = 0;
   do {
     let query = base.collection('estoque_produtos').orderBy('__name__').limit(100);
