@@ -20,6 +20,7 @@ import 'reconciliacao_vendas_clientes_service.dart';
 import 'store_resolver_facade.dart';
 import 'sync_queue_service.dart';
 import 'sync_queue_recovery_mode.dart';
+import 'sync_queue_recovery_diagnostics.dart';
 import 'vendas_firestore_service.dart';
 
 /// Resultado da sincronização automática
@@ -56,6 +57,7 @@ class AutoSyncService {
   /// Chamado ao login, ao reconectar internet e opcionalmente ao abrir telas.
   static Future<AutoSyncResult> syncCompleto() async {
     if (!SyncQueueRecoveryMode.allowsAutomaticQueueProcessing) {
+      SyncQueueRecoveryDiagnostics.noteAutoSyncServiceSuppressed();
       logD(
         '🔄 [AUTO-SYNC] skipped — SyncQueueRecoveryMode active '
         '(no processPending / FullSync this session)',

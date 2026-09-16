@@ -171,6 +171,7 @@ import 'services/notificacao_service.dart';
 import 'services/auto_sync_service.dart';
 import 'services/sync_queue_service.dart';
 import 'services/sync_queue_recovery_mode.dart';
+import 'services/sync_queue_recovery_diagnostics.dart';
 import 'services/soft_delete_service.dart';
 import 'services/financeiro_soft_delete_service.dart';
 
@@ -761,6 +762,7 @@ Future<void> _bootstrapLoggedInHeavy({required bool firebaseOk}) async {
       SyncQueueService.setOnReconnect(AutoSyncService.syncEmBackground);
       SyncQueueService.startConnectivityListener();
       if (SyncQueueRecoveryMode.allowsAutomaticQueueProcessing) {
+        SyncQueueRecoveryDiagnostics.markBootstrapStarted();
         unawaited(SyncQueueService.processPending().then((r) {
           if (r.processed > 0) {
             logD(
@@ -768,6 +770,7 @@ Future<void> _bootstrapLoggedInHeavy({required bool firebaseOk}) async {
           }
         }));
       } else {
+        SyncQueueRecoveryDiagnostics.noteBootstrapAutosyncSuppressed();
         logD(
           '📋 [BOOT_DEFERRED] SyncQueue processPending skipped — recovery mode',
         );
@@ -4114,8 +4117,10 @@ Future<void> _bootstrapDeferredFull({
       SyncQueueService.setOnReconnect(AutoSyncService.syncEmBackground);
       SyncQueueService.startConnectivityListener();
       if (SyncQueueRecoveryMode.allowsAutomaticQueueProcessing) {
+        SyncQueueRecoveryDiagnostics.markBootstrapStarted();
         unawaited(SyncQueueService.processPending());
       } else {
+        SyncQueueRecoveryDiagnostics.noteBootstrapAutosyncSuppressed();
         logD(
           '📋 [BOOT] SyncQueue processPending skipped — recovery mode',
         );

@@ -32,6 +32,8 @@ import '../services/reconciliacao_vendas_clientes_service.dart';
 import '../services/firestore_critical_listener_service.dart';
 import '../services/auto_sync_service.dart';
 import '../services/sync_queue_service.dart';
+import '../services/sync_queue_recovery_mode.dart';
+import '../services/sync_queue_recovery_diagnostics.dart';
 import '../models/produto.dart';
 import '../models/cliente.dart';
 import '../models/fornecedor.dart';
@@ -182,6 +184,9 @@ class _HomeScreenState extends State<HomeScreen>
       Future<void>.delayed(Duration(milliseconds: kIsWeb ? 1400 : 220), () {
         BootPerfLog.markBoot('initial_sync_start');
         if (!mounted) return;
+        if (!SyncQueueRecoveryMode.allowsAutomaticQueueProcessing) {
+          SyncQueueRecoveryDiagnostics.noteHomeAutosyncSuppressed();
+        }
         AutoSyncService.syncCompleto().then((r) {
           BootPerfLog.markBoot('initial_sync_end', detail: 'ok=${r.sucesso}');
           if (mounted) {

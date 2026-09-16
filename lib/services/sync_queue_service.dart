@@ -30,6 +30,7 @@ import 'catalogo_sync_attempt_context.dart';
 import 'produto_cadastro_pos_save_service.dart';
 import 'produto_stock_catalog_cadastro_sync.dart';
 import 'sync_queue_recovery_mode.dart';
+import 'sync_queue_recovery_diagnostics.dart';
 import 'sync_queue_local_file.dart'
     if (dart.library.html) 'sync_queue_local_file_stub.dart' as sync_queue_local_file;
 
@@ -428,6 +429,7 @@ class SyncQueueService {
           r != ConnectivityResult.none);
       if (hasConnection) {
         if (!SyncQueueRecoveryMode.allowsAutomaticQueueProcessing) {
+          SyncQueueRecoveryDiagnostics.noteConnectivityAutosyncSuppressed();
           logD(
             '🌐 [SYNC-QUEUE] Rede detectada, mas recovery mode ativo — '
             'processPending/AutoSync NÃO disparados',
@@ -513,6 +515,7 @@ class SyncQueueService {
   Future<SyncQueueResult> _processPending({String? scopeLojaId}) async {
     // Defense-in-depth: recovery mode must never mutate or hit the network.
     if (!SyncQueueRecoveryMode.allowsAutomaticQueueProcessing) {
+      SyncQueueRecoveryDiagnostics.noteProcessPendingBlocked();
       logD('[SYNC_QUEUE] processPending NO-OP — recovery mode');
       return SyncQueueResult(
         processed: 0,
@@ -587,6 +590,8 @@ class SyncQueueService {
             continue;
           }
 
+          // Escape observability: processPending path only (not processOneById).
+          SyncQueueRecoveryDiagnostics.noteQueueHandlerExecution();
           final result = await _executeItem(item);
 
           if (result) {
@@ -990,6 +995,7 @@ class SyncQueueService {
   /// Em recovery mode: bloqueado (não isola um item — agenda processPending).
   static Future<bool> retryItem(String id) async {
     if (!SyncQueueRecoveryMode.allowsAutomaticQueueProcessing) {
+      SyncQueueRecoveryDiagnostics.noteRetryItemBlocked();
       logW(
         '[SYNC_QUEUE] retryItem blocked in recovery mode id=$id — '
         'use processOneById',

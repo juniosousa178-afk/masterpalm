@@ -6,6 +6,8 @@
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
+import 'sync_queue_recovery_diagnostics.dart';
+
 /// Explicit local recovery / diagnostic mode for the offline sync queue.
 ///
 /// When active:
@@ -47,6 +49,7 @@ class SyncQueueRecoveryMode {
     _active = true;
     _activationSource = source;
     _activatedAt = DateTime.now().toUtc();
+    SyncQueueRecoveryDiagnostics.markRecoveryResolved(source: source);
   }
 
   /// Deactivate (tests / leaving recovery). Does not process the queue.
@@ -87,5 +90,6 @@ class SyncQueueRecoveryMode {
   @visibleForTesting
   static void resetForTests() {
     deactivateForSession();
+    SyncQueueRecoveryDiagnostics.clearSession();
   }
 }
