@@ -19,6 +19,7 @@ import 'full_sync_service.dart';
 import 'reconciliacao_vendas_clientes_service.dart';
 import 'store_resolver_facade.dart';
 import 'sync_queue_service.dart';
+import 'sync_queue_recovery_mode.dart';
 import 'vendas_firestore_service.dart';
 
 /// Resultado da sincronização automática
@@ -54,6 +55,16 @@ class AutoSyncService {
   /// Executa sincronização completa Firestore → Hive.
   /// Chamado ao login, ao reconectar internet e opcionalmente ao abrir telas.
   static Future<AutoSyncResult> syncCompleto() async {
+    if (!SyncQueueRecoveryMode.allowsAutomaticQueueProcessing) {
+      logD(
+        '🔄 [AUTO-SYNC] skipped — SyncQueueRecoveryMode active '
+        '(no processPending / FullSync this session)',
+      );
+      return AutoSyncResult()
+        ..sucesso = true
+        ..erro = 'queue_recovery_mode';
+    }
+
     if (_isRunning) {
       logD('🔄 [AUTO-SYNC] Já em execução, ignorando chamada duplicada');
       return AutoSyncResult()..sucesso = true;

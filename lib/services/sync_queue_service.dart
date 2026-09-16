@@ -8,6 +8,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:hive/hive.dart';
 
@@ -28,6 +29,9 @@ import 'catalogo_queue_publish_plan.dart';
 import 'catalogo_sync_attempt_context.dart';
 import 'produto_cadastro_pos_save_service.dart';
 import 'produto_stock_catalog_cadastro_sync.dart';
+import 'sync_queue_recovery_mode.dart';
+import 'sync_queue_local_file.dart'
+    if (dart.library.html) 'sync_queue_local_file_stub.dart' as sync_queue_local_file;
 
 /// Tipos de operação suportados
 enum SyncOperationType {
@@ -340,6 +344,10 @@ class SyncQueueService {
 
   /// Agenda processamento (debounce)
   void _scheduleProcess() {
+    if (!SyncQueueRecoveryMode.allowsAutomaticQueueProcessing) {
+      logD('[SYNC_QUEUE] scheduleProcess skipped — recovery mode');
+      return;
+    }
     Future.delayed(const Duration(milliseconds: 800), () {
       processPending();
     });
@@ -347,6 +355,10 @@ class SyncQueueService {
 
   /// Solicita processamento da fila após lote — escopo explícito de loja.
   static void requestProcessWhenOnline({required String lojaId}) {
+    if (!SyncQueueRecoveryMode.allowsAutomaticQueueProcessing) {
+      logD('[SYNC_QUEUE] requestProcessWhenOnline skipped — recovery mode');
+      return;
+    }
     final scoped = lojaId.trim();
     if (scoped.isEmpty) return;
     _processRequestCount++;
@@ -355,6 +367,9 @@ class SyncQueueService {
   }
 
   void _scheduleScopedProcess() {
+    if (!SyncQueueRecoveryMode.allowsAutomaticQueueProcessing) {
+      return;
+    }
     Future.delayed(const Duration(milliseconds: 800), () async {
       final scope = _pendingProcessScopeLojaId;
       _pendingProcessScopeLojaId = null;
@@ -412,6 +427,13 @@ class SyncQueueService {
       final hasConnection = results.any((r) =>
           r != ConnectivityResult.none);
       if (hasConnection) {
+        if (!SyncQueueRecoveryMode.allowsAutomaticQueueProcessing) {
+          logD(
+            '🌐 [SYNC-QUEUE] Rede detectada, mas recovery mode ativo — '
+            'processPending/AutoSync NÃO disparados',
+          );
+          return;
+        }
         logD('🌐 [SYNC-QUEUE] Rede detectada, processando fila...');
         processPending();
         _onReconnectCallback?.call();
@@ -489,6 +511,18 @@ class SyncQueueService {
   }
 
   Future<SyncQueueResult> _processPending({String? scopeLojaId}) async {
+    // Defense-in-depth: recovery mode must never mutate or hit the network.
+    if (!SyncQueueRecoveryMode.allowsAutomaticQueueProcessing) {
+      logD('[SYNC_QUEUE] processPending NO-OP — recovery mode');
+      return SyncQueueResult(
+        processed: 0,
+        failed: 0,
+        skipped: 0,
+        deadLetterSkipped: 0,
+        blockedByRecoveryMode: true,
+      );
+    }
+
     if (_isProcessing) {
       // Outro ciclo em andamento: reagendar para não perder itens recém-enfileirados (ex.: cadastro web).
       _scheduleProcess();
@@ -952,7 +986,16 @@ class SyncQueueService {
 
   /// Reprocessar um item: zera tentativas, remove dead-letter e reagenda sync.
   /// Funciona para falha preservada ou pendente com erros anteriores.
+  ///
+  /// Em recovery mode: bloqueado (não isola um item — agenda processPending).
   static Future<bool> retryItem(String id) async {
+    if (!SyncQueueRecoveryMode.allowsAutomaticQueueProcessing) {
+      logW(
+        '[SYNC_QUEUE] retryItem blocked in recovery mode id=$id — '
+        'use processOneById',
+      );
+      return false;
+    }
     await _instance._ensureBox();
     final raw = _instance._box!.get(id);
     final map = _instance._rawToMap(raw);
@@ -1074,6 +1117,314 @@ class SyncQueueService {
     }
     return null;
   }
+
+  // ---------------------------------------------------------------------------
+  // Recovery safety: metadata inventory / backup / isolated executor
+  // ---------------------------------------------------------------------------
+
+  /// Types allowed for isolated recovery execution (not autosync).
+  /// Legacy sale is never allowed.
+  static bool isRecoveryExecutionAllowed(SyncOperationType type) {
+    switch (type) {
+      case SyncOperationType.upsertCliente:
+      case SyncOperationType.upsertFornecedor:
+      case SyncOperationType.upsertProduto:
+        return true;
+      case SyncOperationType.upsertVenda:
+        return false;
+    }
+  }
+
+  static String _sanitizeErrorCategory(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return 'none';
+    var t = raw.trim();
+    t = t.replaceAll(
+      RegExp(r'[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}', caseSensitive: false),
+      '[redacted-email]',
+    );
+    t = t.replaceAll(RegExp(r'\+?\d[\d\s().-]{7,}\d'), '[redacted-phone]');
+    if (t.length > 120) t = '${t.substring(0, 120)}…';
+    return t;
+  }
+
+  static String _payloadFingerprint(String? rawJson) {
+    if (rawJson == null || rawJson.isEmpty) return 'empty';
+    return sha256.convert(utf8.encode(rawJson)).toString();
+  }
+
+  static SyncQueueMetadataEntry _toMetadataEntry({
+    required String id,
+    required SyncQueueItem item,
+    required String? rawJson,
+  }) {
+    final status = item.deadLetter ? 'failed_dead_letter' : 'pending';
+    return SyncQueueMetadataEntry(
+      queueItemId: id,
+      storeId: item.lojaId,
+      itemType: item.type.name,
+      status: status,
+      createdAtMs: item.createdAt,
+      lastAttemptAtMs: item.lastAttemptAt,
+      attemptCount: item.attemptCount,
+      deadLetter: item.deadLetter,
+      operationId: item.operationId,
+      lastErrorCategory: _sanitizeErrorCategory(item.lastError),
+      payloadFingerprint: _payloadFingerprint(rawJson),
+      entityKey: item.entityKey,
+      catalogoPublishPhase: item.catalogoPublishPhase.name,
+      catalogoQueueSourceOrigin: item.catalogoQueueSourceOrigin,
+    );
+  }
+
+  /// Metadata-only inventory. READ ONLY. No processPending / network / mutation.
+  static Future<List<SyncQueueMetadataEntry>> listQueueMetadata({
+    String? storeId,
+    SyncOperationType? type,
+    String? status,
+  }) async {
+    await _instance._ensureBox();
+    final box = _instance._box!;
+    final out = <SyncQueueMetadataEntry>[];
+    final storeFilter = storeId?.trim();
+    final statusFilter = status?.trim().toLowerCase();
+
+    for (final k in box.keys) {
+      final id = k.toString();
+      final raw = box.get(k);
+      final rawStr = raw is String ? raw : (raw == null ? null : jsonEncode(raw));
+      final map = _instance._rawToMap(raw);
+      if (map == null) continue;
+      final item = SyncQueueItem.fromMap(map);
+      if (storeFilter != null &&
+          storeFilter.isNotEmpty &&
+          item.lojaId != storeFilter) {
+        continue;
+      }
+      if (type != null && item.type != type) continue;
+      final entry = _toMetadataEntry(id: id, item: item, rawJson: rawStr);
+      if (statusFilter != null && statusFilter.isNotEmpty) {
+        if (entry.status.toLowerCase() != statusFilter) continue;
+      }
+      out.add(entry);
+    }
+    out.sort((a, b) => b.createdAtMs.compareTo(a.createdAtMs));
+    return out;
+  }
+
+  /// Aggregate counts by type / store / status. READ ONLY.
+  static Future<SyncQueueAggregateInventory> aggregateQueueInventory({
+    String? storeId,
+  }) async {
+    final entries = await listQueueMetadata(storeId: storeId);
+    final byType = <String, int>{};
+    final byStore = <String, int>{};
+    final byStatus = <String, int>{};
+    var pending = 0;
+    var failed = 0;
+    for (final e in entries) {
+      byType[e.itemType] = (byType[e.itemType] ?? 0) + 1;
+      byStore[e.storeId] = (byStore[e.storeId] ?? 0) + 1;
+      byStatus[e.status] = (byStatus[e.status] ?? 0) + 1;
+      if (e.deadLetter) {
+        failed++;
+      } else {
+        pending++;
+      }
+    }
+    return SyncQueueAggregateInventory(
+      total: entries.length,
+      pending: pending,
+      failed: failed,
+      byType: byType,
+      byStore: byStore,
+      byStatus: byStatus,
+    );
+  }
+
+  /// Non-destructive raw backup bundle (SENSITIVE — may contain payloads).
+  /// Does not mutate the queue. Does not log payload contents.
+  static Future<SyncQueueBackupBundle> exportRawBackupBundle() async {
+    await _instance._ensureBox();
+    final box = _instance._box!;
+    final records = <String, String>{};
+    for (final k in box.keys) {
+      final raw = box.get(k);
+      if (raw == null) continue;
+      final asString =
+          raw is String ? raw : jsonEncode(raw is Map ? raw : {'v': raw});
+      records[k.toString()] = asString;
+    }
+    final exportedAt = DateTime.now().toUtc().toIso8601String();
+    final payload = <String, dynamic>{
+      'schemaVersion': 1,
+      'sensitivity': 'SENSITIVE_LOCAL_RECOVERY_MATERIAL',
+      'boxName': _boxName,
+      'exportedAtUtc': exportedAt,
+      'recordCount': records.length,
+      'records': records,
+    };
+    final encoded = const JsonEncoder.withIndent('  ').convert(payload);
+    final bytes = utf8.encode(encoded);
+    final digest = sha256.convert(bytes).toString();
+    return SyncQueueBackupBundle(
+      schemaVersion: 1,
+      boxName: _boxName,
+      exportedAtUtc: exportedAt,
+      recordCount: records.length,
+      contentSha256: digest,
+      utf8Bytes: bytes,
+      sensitivityLabel: 'SENSITIVE_LOCAL_RECOVERY_MATERIAL',
+    );
+  }
+
+  /// Writes backup outside the app repo by caller-chosen absolute path.
+  /// Source queue is not mutated. Not available on web (use [exportRawBackupBundle]).
+  static Future<SyncQueueBackupIntegrity> writeRawBackupToPath(
+    String absolutePath,
+  ) async {
+    final bundle = await exportRawBackupBundle();
+    await sync_queue_local_file.writeSyncQueueBackupFile(
+      absolutePath,
+      bundle.utf8Bytes,
+    );
+    return SyncQueueBackupIntegrity(
+      path: absolutePath,
+      recordCount: bundle.recordCount,
+      exportedAtUtc: bundle.exportedAtUtc,
+      boxName: bundle.boxName,
+      contentSha256: bundle.contentSha256,
+      schemaVersion: bundle.schemaVersion,
+      sensitivityLabel: bundle.sensitivityLabel,
+    );
+  }
+
+  /// Isolated single-item executor. Never calls processPending / retryItem.
+  static Future<SyncQueueOneItemResult> processOneById({
+    required String queueItemId,
+    required String expectedStoreId,
+    required SyncOperationType expectedType,
+    bool dryRun = false,
+  }) async {
+    await _instance._ensureBox();
+    final box = _instance._box!;
+    final raw = box.get(queueItemId);
+    final map = _instance._rawToMap(raw);
+    if (map == null) {
+      return SyncQueueOneItemResult(
+        outcome: SyncQueueOneItemOutcome.notFound,
+        queueItemId: queueItemId,
+        dryRun: dryRun,
+        message: 'queue item not found',
+      );
+    }
+    final item = SyncQueueItem.fromMap(map);
+
+    if (item.lojaId != expectedStoreId.trim()) {
+      return SyncQueueOneItemResult(
+        outcome: SyncQueueOneItemOutcome.storeMismatch,
+        queueItemId: queueItemId,
+        dryRun: dryRun,
+        itemType: item.type.name,
+        storeId: item.lojaId,
+        message: 'store guard failed',
+      );
+    }
+    if (item.type != expectedType) {
+      return SyncQueueOneItemResult(
+        outcome: SyncQueueOneItemOutcome.typeMismatch,
+        queueItemId: queueItemId,
+        dryRun: dryRun,
+        itemType: item.type.name,
+        storeId: item.lojaId,
+        message: 'type guard failed',
+      );
+    }
+
+    if (item.type == SyncOperationType.upsertVenda) {
+      return SyncQueueOneItemResult(
+        outcome: SyncQueueOneItemOutcome.blockedLegacySaleRecovery,
+        queueItemId: queueItemId,
+        dryRun: dryRun,
+        itemType: item.type.name,
+        storeId: item.lojaId,
+        message: 'legacy sale queue replay is hard-blocked',
+        mutatedQueue: false,
+      );
+    }
+
+    if (!isRecoveryExecutionAllowed(item.type)) {
+      return SyncQueueOneItemResult(
+        outcome: SyncQueueOneItemOutcome.blockedUnsupportedType,
+        queueItemId: queueItemId,
+        dryRun: dryRun,
+        itemType: item.type.name,
+        storeId: item.lojaId,
+        message: 'unsupported queue type for recovery executor',
+        mutatedQueue: false,
+      );
+    }
+
+    if (dryRun) {
+      return SyncQueueOneItemResult(
+        outcome: SyncQueueOneItemOutcome.dryRunOk,
+        queueItemId: queueItemId,
+        dryRun: true,
+        itemType: item.type.name,
+        storeId: item.lojaId,
+        message: 'dry-run validation ok; no network; no mutation',
+        mutatedQueue: false,
+      );
+    }
+
+    // Execute exactly one item — never iterate siblings / processPending.
+    final debugHook = debugOneItemExecuteHook;
+    if (debugHook != null) {
+      final ok = await debugHook(item);
+      if (ok) {
+        await box.delete(queueItemId);
+      }
+      return SyncQueueOneItemResult(
+        outcome: ok
+            ? SyncQueueOneItemOutcome.executedSuccess
+            : SyncQueueOneItemOutcome.executedFailure,
+        queueItemId: queueItemId,
+        dryRun: false,
+        itemType: item.type.name,
+        storeId: item.lojaId,
+        mutatedQueue: ok,
+        message: ok ? 'debug hook success' : 'debug hook failure',
+      );
+    }
+
+    final ok = await _instance._executeItem(item);
+    if (ok) {
+      await box.delete(queueItemId);
+      return SyncQueueOneItemResult(
+        outcome: SyncQueueOneItemOutcome.executedSuccess,
+        queueItemId: queueItemId,
+        dryRun: false,
+        itemType: item.type.name,
+        storeId: item.lojaId,
+        mutatedQueue: true,
+        message: 'executed and removed',
+      );
+    }
+    // Failure path of _executeItem may have incremented attempts — that is
+    // intentional for real replay; dry-run never reaches here.
+    return SyncQueueOneItemResult(
+      outcome: SyncQueueOneItemOutcome.executedFailure,
+      queueItemId: queueItemId,
+      dryRun: false,
+      itemType: item.type.name,
+      storeId: item.lojaId,
+      mutatedQueue: true,
+      message: 'execute returned false (attempts may have been recorded)',
+    );
+  }
+
+  /// Test hook: when set, [processOneById] uses this instead of real handlers.
+  @visibleForTesting
+  static Future<bool> Function(SyncQueueItem item)? debugOneItemExecuteHook;
 }
 
 /// Contagens para painel de diagnóstico.
@@ -1125,14 +1476,160 @@ class SyncQueueResult {
   /// Itens em dead-letter ignorados neste ciclo (não são erro; permanecem na box).
   final int deadLetterSkipped;
 
+  /// true quando [SyncQueueRecoveryMode] bloqueou o ciclo (zero mutações).
+  final bool blockedByRecoveryMode;
+
   SyncQueueResult({
     required this.processed,
     required this.failed,
     required this.skipped,
     this.deadLetterSkipped = 0,
+    this.blockedByRecoveryMode = false,
   });
 
   @override
   String toString() =>
-      'SyncQueueResult(processed: $processed, failed: $failed, skipped: $skipped, deadLetterSkipped: $deadLetterSkipped)';
+      'SyncQueueResult(processed: $processed, failed: $failed, skipped: $skipped, deadLetterSkipped: $deadLetterSkipped, blockedByRecoveryMode: $blockedByRecoveryMode)';
+}
+
+/// Metadata-only queue inventory row (no entity payload).
+class SyncQueueMetadataEntry {
+  final String queueItemId;
+  final String storeId;
+  final String itemType;
+  final String status;
+  final int createdAtMs;
+  final int lastAttemptAtMs;
+  final int attemptCount;
+  final bool deadLetter;
+  final String operationId;
+  final String lastErrorCategory;
+  final String payloadFingerprint;
+  final int entityKey;
+  final String catalogoPublishPhase;
+  final String? catalogoQueueSourceOrigin;
+
+  const SyncQueueMetadataEntry({
+    required this.queueItemId,
+    required this.storeId,
+    required this.itemType,
+    required this.status,
+    required this.createdAtMs,
+    required this.lastAttemptAtMs,
+    required this.attemptCount,
+    required this.deadLetter,
+    required this.operationId,
+    required this.lastErrorCategory,
+    required this.payloadFingerprint,
+    required this.entityKey,
+    required this.catalogoPublishPhase,
+    this.catalogoQueueSourceOrigin,
+  });
+
+  Map<String, dynamic> toSafeJson() => {
+        'queueItemId': queueItemId,
+        'storeId': storeId,
+        'itemType': itemType,
+        'status': status,
+        'createdAtMs': createdAtMs,
+        'lastAttemptAtMs': lastAttemptAtMs,
+        'attemptCount': attemptCount,
+        'deadLetter': deadLetter,
+        'operationId': operationId,
+        'lastErrorCategory': lastErrorCategory,
+        'payloadFingerprint': payloadFingerprint,
+        'entityKey': entityKey,
+        'catalogoPublishPhase': catalogoPublishPhase,
+        if (catalogoQueueSourceOrigin != null)
+          'catalogoQueueSourceOrigin': catalogoQueueSourceOrigin,
+      };
+}
+
+class SyncQueueAggregateInventory {
+  final int total;
+  final int pending;
+  final int failed;
+  final Map<String, int> byType;
+  final Map<String, int> byStore;
+  final Map<String, int> byStatus;
+
+  const SyncQueueAggregateInventory({
+    required this.total,
+    required this.pending,
+    required this.failed,
+    required this.byType,
+    required this.byStore,
+    required this.byStatus,
+  });
+}
+
+class SyncQueueBackupBundle {
+  final int schemaVersion;
+  final String boxName;
+  final String exportedAtUtc;
+  final int recordCount;
+  final String contentSha256;
+  final List<int> utf8Bytes;
+  final String sensitivityLabel;
+
+  const SyncQueueBackupBundle({
+    required this.schemaVersion,
+    required this.boxName,
+    required this.exportedAtUtc,
+    required this.recordCount,
+    required this.contentSha256,
+    required this.utf8Bytes,
+    required this.sensitivityLabel,
+  });
+}
+
+class SyncQueueBackupIntegrity {
+  final String path;
+  final int recordCount;
+  final String exportedAtUtc;
+  final String boxName;
+  final String contentSha256;
+  final int schemaVersion;
+  final String sensitivityLabel;
+
+  const SyncQueueBackupIntegrity({
+    required this.path,
+    required this.recordCount,
+    required this.exportedAtUtc,
+    required this.boxName,
+    required this.contentSha256,
+    required this.schemaVersion,
+    required this.sensitivityLabel,
+  });
+}
+
+enum SyncQueueOneItemOutcome {
+  notFound,
+  storeMismatch,
+  typeMismatch,
+  blockedLegacySaleRecovery,
+  blockedUnsupportedType,
+  dryRunOk,
+  executedSuccess,
+  executedFailure,
+}
+
+class SyncQueueOneItemResult {
+  final SyncQueueOneItemOutcome outcome;
+  final String queueItemId;
+  final bool dryRun;
+  final String? itemType;
+  final String? storeId;
+  final String message;
+  final bool mutatedQueue;
+
+  const SyncQueueOneItemResult({
+    required this.outcome,
+    required this.queueItemId,
+    required this.dryRun,
+    required this.message,
+    this.itemType,
+    this.storeId,
+    this.mutatedQueue = false,
+  });
 }

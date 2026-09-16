@@ -170,6 +170,7 @@ import 'services/produto_auto_sync_service.dart';
 import 'services/notificacao_service.dart';
 import 'services/auto_sync_service.dart';
 import 'services/sync_queue_service.dart';
+import 'services/sync_queue_recovery_mode.dart';
 import 'services/soft_delete_service.dart';
 import 'services/financeiro_soft_delete_service.dart';
 
@@ -759,12 +760,18 @@ Future<void> _bootstrapLoggedInHeavy({required bool firebaseOk}) async {
       await SyncQueueService.init();
       SyncQueueService.setOnReconnect(AutoSyncService.syncEmBackground);
       SyncQueueService.startConnectivityListener();
-      unawaited(SyncQueueService.processPending().then((r) {
-        if (r.processed > 0) {
-          logD(
-              '📋 [BOOT_DEFERRED] SyncQueue: ${r.processed} itens processados');
-        }
-      }));
+      if (SyncQueueRecoveryMode.allowsAutomaticQueueProcessing) {
+        unawaited(SyncQueueService.processPending().then((r) {
+          if (r.processed > 0) {
+            logD(
+                '📋 [BOOT_DEFERRED] SyncQueue: ${r.processed} itens processados');
+          }
+        }));
+      } else {
+        logD(
+          '📋 [BOOT_DEFERRED] SyncQueue processPending skipped — recovery mode',
+        );
+      }
     } catch (e) {
       logW('⚠️ [BOOT_DEFERRED] SyncQueueService (type=${e.runtimeType})');
     }
@@ -3111,6 +3118,15 @@ Future<void> main() async {
       // Captura URL inicial para decisão catálogo vs app (evita redirect durante bootstrap)
       final initialUri = Uri.base;
       _initialWebUri = initialUri;
+      // QUEUE RECOVERY MODE: resolve BEFORE any SyncQueue / AutoSync bootstrap.
+      // Explicit opt-in only (?mpQueueRecovery=1). Does not process the queue.
+      SyncQueueRecoveryMode.resolveFromUri(initialUri);
+      if (SyncQueueRecoveryMode.isActive) {
+        logD(
+          '[QUEUE_RECOVERY] active source=${SyncQueueRecoveryMode.activationSource} '
+          '— automatic processPending disabled for this session',
+        );
+      }
       if (initialUri.queryParameters['diag'] == '1' &&
           initialUri.queryParameters['appStartTrace'] == '1') {
         AppStartTraceCollector.clear();
@@ -4097,7 +4113,13 @@ Future<void> _bootstrapDeferredFull({
       await SyncQueueService.init();
       SyncQueueService.setOnReconnect(AutoSyncService.syncEmBackground);
       SyncQueueService.startConnectivityListener();
-      unawaited(SyncQueueService.processPending());
+      if (SyncQueueRecoveryMode.allowsAutomaticQueueProcessing) {
+        unawaited(SyncQueueService.processPending());
+      } else {
+        logD(
+          '📋 [BOOT] SyncQueue processPending skipped — recovery mode',
+        );
+      }
     } catch (_) {}
     await _openRemainingHiveBoxes();
     await _bootstrapDeferred(firebaseOk: firebaseOk);
