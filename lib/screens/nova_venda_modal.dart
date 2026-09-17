@@ -12,6 +12,7 @@ import '../core/logger.dart';
 import '../core/nova_venda_line_identity.dart';
 import '../core/access_scope_service.dart';
 import '../core/produto_cadastro_gate.dart';
+import '../core/produto_grade_pdv_hydration.dart';
 import '../core/produto_variacao_extra.dart';
 import '../core/strict_product_resolution.dart';
 import '../core/venda_finalizacao_reentrada_guard.dart';
@@ -23,6 +24,7 @@ import '../models/cliente.dart';
 import '../models/produto.dart';
 import '../models/venda.dart';
 import '../models/venda_item.dart';
+import '../services/produto_grade_pdv_hydration_service.dart';
 import '../services/venda_combo_estoque_expansion.dart';
 import '../services/vendas_service.dart';
 import '../services/limits_guard.dart';
@@ -471,6 +473,191 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     return preco > 0 ? preco : _precoDoProduto(p);
   }
 
+  void _aplicarProdutoSimplesNaLinha(int index, Produto produto) {
+    setState(() {
+      produtosSelecionados[index]['produto'] = produto.nome;
+      produtosSelecionados[index]['productId'] =
+          produto.idFirebase.trim().isNotEmpty ? produto.idFirebase : null;
+      produtosSelecionados[index]['preco'] = _precoDoProduto(produto);
+      produtosSelecionados[index]['tamanho'] = '';
+      produtosSelecionados[index]['cor'] = '';
+      produtosSelecionados[index]['extraValor'] = '';
+      produtosSelecionados[index]['variacaoExtraResumo'] = '';
+      produtosSelecionados[index].remove('itensComboComSelecao');
+      produtosSelecionados[index].remove('comboConfiguravelResumo');
+      produtosSelecionados[index]['quantidade'] = 1;
+    });
+  }
+
+  Future<void> _abrirSheetVariacaoLinha({
+    required int index,
+    required Produto produto,
+    BuildContext? sheetContext,
+    bool hydrateOnOpen = true,
+  }) async {
+    final ctx = sheetContext ?? context;
+    final seedId = gradePdvProductId(produto);
+    await NovaVendaVariacaoSheet.show(
+      ctx,
+      produto: produto,
+      preco: _precoDoProduto(produto),
+      produtosBox: widget.produtosBox,
+      lojaId: lojaId,
+      hydrateOnOpen: hydrateOnOpen,
+      onConfirmar: (tam, cor, qtd, extraEv, extraResumo) {
+        if (!mounted) return;
+        final live = (seedId != null
+                ? ProdutoGradePdvHydrationService.findProdutoInBox(
+                    produtosBox: widget.produtosBox,
+                    lojaId: lojaId,
+                    productId: seedId,
+                  )
+                : null) ??
+            produto;
+        setState(() {
+          final precoLinha = _precoDoProdutoComVariacao(live, tam);
+          produtosSelecionados[index]['produto'] = live.nome;
+          produtosSelecionados[index]['productId'] =
+              live.idFirebase.trim().isNotEmpty ? live.idFirebase : null;
+          produtosSelecionados[index]['preco'] = precoLinha;
+          produtosSelecionados[index]['tamanho'] = tam;
+          produtosSelecionados[index]['cor'] = cor;
+          produtosSelecionados[index]['quantidade'] = qtd;
+          produtosSelecionados[index]['extraValor'] = extraEv;
+          produtosSelecionados[index]['variacaoExtraResumo'] = extraResumo;
+          produtosSelecionados[index].remove('itensComboComSelecao');
+          produtosSelecionados[index].remove('comboConfiguravelResumo');
+        });
+      },
+    );
+  }
+
+  /// Gate determinístico: hidrata por productId antes de decidir SIMPLE vs seletor.
+  Future<void> _resolverProdutoLinhaComHidratacaoGrade({
+    required int index,
+    required Produto seed,
+    BuildContext? sheetContext,
+  }) async {
+    // Sinal positivo local → abre sheet imediatamente (binding ao vivo rehidrata).
+    if (gradePdvHasLocalVariationSignal(seed)) {
+      await _abrirSheetVariacaoLinha(
+        index: index,
+        produto: seed,
+        sheetContext: sheetContext,
+      );
+      return;
+    }
+
+    final productId = gradePdvProductId(seed);
+    final jaAutoritativo = productId != null &&
+        ProdutoGradePdvHydrationService.isSessionAuthoritative(
+          lojaId: lojaId,
+          productId: productId,
+        );
+    if (jaAutoritativo) {
+      final live = ProdutoGradePdvHydrationService.findProdutoInBox(
+            produtosBox: widget.produtosBox,
+            lojaId: lojaId,
+            productId: productId,
+          ) ??
+          seed;
+      if (gradePdvHasLocalVariationSignal(live)) {
+        await _abrirSheetVariacaoLinha(
+          index: index,
+          produto: live,
+          sheetContext: sheetContext,
+        );
+      } else {
+        _aplicarProdutoSimplesNaLinha(index, live);
+      }
+      return;
+    }
+
+    if (!mounted) return;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const PopScope(
+        canPop: false,
+        child: Center(
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Carregando variações…'),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    GradePdvHydrationResult result;
+    try {
+      result = await ProdutoGradePdvHydrationService.resolveForPdvSelection(
+        lojaId: lojaId,
+        seed: seed,
+        produtosBox: widget.produtosBox,
+      );
+    } finally {
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+    }
+    if (!mounted) return;
+
+    // Stale guard: se a linha mudou de produto enquanto hidratava, ignore.
+    final linhaAtual = produtosSelecionados[index];
+    final nomeLinha = (linhaAtual['produto'] ?? '').toString().trim();
+    if (nomeLinha.isNotEmpty &&
+        nomeLinha.toLowerCase() != seed.nome.toLowerCase() &&
+        (linhaAtual['productId'] ?? '').toString().trim().isNotEmpty &&
+        productId != null &&
+        (linhaAtual['productId'] as String).trim() != productId) {
+      return;
+    }
+
+    if (result.isReadyWithVariation && result.produto != null) {
+      if (!context.mounted) return;
+      await _abrirSheetVariacaoLinha(
+        index: index,
+        produto: result.produto!,
+        hydrateOnOpen: false,
+      );
+      return;
+    }
+    if (result.isReadyWithoutVariation) {
+      _aplicarProdutoSimplesNaLinha(index, result.produto ?? seed);
+      return;
+    }
+
+    if (!context.mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.clearSnackBars();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          result.errorMessage ?? 'Não foi possível carregar as variações',
+        ),
+        action: SnackBarAction(
+          label: 'Tentar',
+          onPressed: () {
+            _resolverProdutoLinhaComHidratacaoGrade(
+              index: index,
+              seed: seed,
+              sheetContext: sheetContext,
+            );
+          },
+        ),
+      ),
+    );
+  }
+
   /// Combo já configurado na linha — preservar [preco] definido pelo sheet (não repor pelo cadastro).
   bool _linhaComboProtegida(Map<String, dynamic> item) {
     final sel = item['itensComboComSelecao'];
@@ -736,24 +923,9 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
               precoFallback: (item['preco'] ?? 0.0) as double,
             );
           } else if (temVariacao) {
-            await NovaVendaVariacaoSheet.show(
-              context,
+            await _abrirSheetVariacaoLinha(
+              index: index,
               produto: prod,
-              preco: _precoDoProduto(prod),
-              onConfirmar: (t, c, qtd, extraEv, extraResumo) {
-                setState(() {
-                  final precoLinha = _precoDoProdutoComVariacao(prod, t);
-                  produtosSelecionados[index]['tamanho'] = t;
-                  produtosSelecionados[index]['cor'] = c;
-                  produtosSelecionados[index]['preco'] = precoLinha;
-                  produtosSelecionados[index]['quantidade'] = qtd;
-                  produtosSelecionados[index]['extraValor'] = extraEv;
-                  produtosSelecionados[index]['variacaoExtraResumo'] =
-                      extraResumo;
-                  produtosSelecionados[index].remove('itensComboComSelecao');
-                  produtosSelecionados[index].remove('comboConfiguravelResumo');
-                });
-              },
             );
           }
         },
@@ -2651,45 +2823,9 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                       );
                                     },
                                     onProductNeedsVariation: (produto) async {
-                                      await NovaVendaVariacaoSheet.show(
-                                        context,
-                                        produto: produto,
-                                        preco: _precoDoProduto(produto),
-                                        onConfirmar: (tam, cor, qtd, extraEv, extraResumo) {
-                                          setState(() {
-                                            final precoLinha =
-                                                _precoDoProdutoComVariacao(
-                                                  produto,
-                                                  tam,
-                                                );
-                                            produtosSelecionados[index]['produto'] =
-                                                produto.nome;
-                                            produtosSelecionados[index]['productId'] =
-                                                produto.idFirebase
-                                                    .trim()
-                                                    .isNotEmpty
-                                                ? produto.idFirebase
-                                                : null;
-                                            produtosSelecionados[index]['preco'] =
-                                                precoLinha;
-                                            produtosSelecionados[index]['tamanho'] =
-                                                tam;
-                                            produtosSelecionados[index]['cor'] =
-                                                cor;
-                                            produtosSelecionados[index]['quantidade'] =
-                                                qtd;
-                                            produtosSelecionados[index]['extraValor'] =
-                                                extraEv;
-                                            produtosSelecionados[index]['variacaoExtraResumo'] =
-                                                extraResumo;
-                                            produtosSelecionados[index].remove(
-                                              'itensComboComSelecao',
-                                            );
-                                            produtosSelecionados[index].remove(
-                                              'comboConfiguravelResumo',
-                                            );
-                                          });
-                                        },
+                                      await _resolverProdutoLinhaComHidratacaoGrade(
+                                        index: index,
+                                        seed: produto,
                                       );
                                     },
                                     onTextChanged: (v) {
@@ -2819,64 +2955,12 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                               prod,
                                             ),
                                           );
-                                        } else if (prod.usaVariacoes ||
-                                            prod.estoquePorTamanho.isNotEmpty) {
-                                          await NovaVendaVariacaoSheet.show(
-                                            navigator.context,
-                                            produto: prod,
-                                            preco: _precoDoProduto(prod),
-                                            onConfirmar: (tam, cor, qtd, extraEv, extraResumo) {
-                                              if (!mounted) return;
-                                              setState(() {
-                                                final precoLinha =
-                                                    _precoDoProdutoComVariacao(
-                                                      prod,
-                                                      tam,
-                                                    );
-                                                produtosSelecionados[index]['produto'] =
-                                                    prod.nome;
-                                                produtosSelecionados[index]['productId'] =
-                                                    prod.idFirebase
-                                                        .trim()
-                                                        .isNotEmpty
-                                                    ? prod.idFirebase
-                                                    : null;
-                                                produtosSelecionados[index]['preco'] =
-                                                    precoLinha;
-                                                produtosSelecionados[index]['tamanho'] =
-                                                    tam;
-                                                produtosSelecionados[index]['cor'] =
-                                                    cor;
-                                                produtosSelecionados[index]['quantidade'] =
-                                                    qtd;
-                                                produtosSelecionados[index]['extraValor'] =
-                                                    extraEv;
-                                                produtosSelecionados[index]['variacaoExtraResumo'] =
-                                                    extraResumo;
-                                              });
-                                            },
-                                          );
                                         } else {
-                                          setState(() {
-                                            produtosSelecionados[index]['produto'] =
-                                                prod.nome;
-                                            produtosSelecionados[index]['productId'] =
-                                                prod.idFirebase
-                                                    .trim()
-                                                    .isNotEmpty
-                                                ? prod.idFirebase
-                                                : null;
-                                            produtosSelecionados[index]['preco'] =
-                                                _precoDoProduto(prod);
-                                            produtosSelecionados[index]['tamanho'] =
-                                                '';
-                                            produtosSelecionados[index]['cor'] =
-                                                '';
-                                            produtosSelecionados[index]['extraValor'] =
-                                                '';
-                                            produtosSelecionados[index]['variacaoExtraResumo'] =
-                                                '';
-                                          });
+                                          await _resolverProdutoLinhaComHidratacaoGrade(
+                                            index: index,
+                                            seed: prod,
+                                            sheetContext: navigator.context,
+                                          );
                                         }
                                       },
                                     ),
@@ -3831,8 +3915,8 @@ class _ProdutoDropdown extends StatelessWidget {
 
         if (p.ehCombo && onProductIsCombo != null) {
           await onProductIsCombo!(p);
-        } else if ((p.usaVariacoes || p.estoquePorTamanho.isNotEmpty) &&
-            onProductNeedsVariation != null) {
+        } else if (onProductNeedsVariation != null) {
+          // Sempre resolve via parent: hidratação determinística antes de SIMPLE.
           await onProductNeedsVariation!(p);
         } else {
           onChanged(
