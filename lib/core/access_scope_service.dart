@@ -6,6 +6,7 @@ import 'package:hive/hive.dart';
 
 import '../models/venda.dart';
 import '../utils/role_utils.dart';
+import 'store_membership_authz.dart';
 
 /// Snapshot imutável do sujeito autenticado para filtros de isolamento.
 @immutable
@@ -184,11 +185,48 @@ abstract final class AccessScopeService {
   static bool canAccessFinanceiro(AccessScopeIdentity id) =>
       canSeeFinancial(id);
 
-  /// Cadastro/edição/exclusão/ajuste de inventário — somente admin/programador.
-  /// Independente de [canConsultStock] (consulta qty/preço).
-  static bool canManageStock(AccessScopeIdentity id) => id.isAdmin;
+  /// Cadastro/edição/exclusão/ajuste de inventário.
+  ///
+  /// Canonical client capability:
+  /// - global admin/programador compatibility ([id.isAdmin]), OR
+  /// - current-store membership elevated (Rules `isLojaMemberElevated`:
+  ///   members.role in owner|admin) via [storeMembership].
+  ///
+  /// When [storeMembership] is omitted/null, only the global privileged path
+  /// applies (store path fails closed). Loading/error snapshots do not grant.
+  /// Wrong-store snapshots must not be passed; callers bind current lojaId.
+  static bool canManageStock(
+    AccessScopeIdentity id, {
+    StoreMembershipSnapshot? storeMembership,
+    String? currentStoreId,
+  }) {
+    if (id.isAdmin) return true;
+    if (storeMembership == null) return false;
+    final uid = id.uid.trim();
+    if (uid.isEmpty || storeMembership.uid.trim() != uid) return false;
+    if (currentStoreId != null &&
+        currentStoreId.trim().isNotEmpty &&
+        !StoreMembershipAuthz.snapshotMatchesCurrentStore(
+          snap: storeMembership,
+          currentStoreId: currentStoreId,
+        )) {
+      return false;
+    }
+    return StoreMembershipAuthz.snapshotGrantsProductManagement(
+      storeMembership,
+    );
+  }
 
-  static bool canEditStock(AccessScopeIdentity id) => canManageStock(id);
+  static bool canEditStock(
+    AccessScopeIdentity id, {
+    StoreMembershipSnapshot? storeMembership,
+    String? currentStoreId,
+  }) =>
+      canManageStock(
+        id,
+        storeMembership: storeMembership,
+        currentStoreId: currentStoreId,
+      );
 
   /// Operações administrativas de clientes (importação, reset de senha do catálogo).
   static bool canManageCustomers(AccessScopeIdentity id) => id.isAdmin;

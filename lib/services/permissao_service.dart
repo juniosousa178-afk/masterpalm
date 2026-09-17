@@ -4,6 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'plano_service.dart';
 import 'vendedor_service.dart';
+import 'store_membership_authz_service.dart';
+import '../core/store_membership_authz.dart';
 
 class PermissaoService {
   /// Chaves conhecidas (Home portal + telas). Fonte única para mapas de acesso.
@@ -156,6 +158,13 @@ class PermissaoService {
       return false;
     }
 
+    // Store-scoped elevated membership (owner|admin) grants product/stock menu
+    // without elevating global tipo_usuario. Aligns with Rules isLojaMemberElevated.
+    if (tipo == 'vendedor' && chave == 'estoque') {
+      final storeScoped = await _vendedorStoreMembershipGrantsEstoque();
+      if (storeScoped) return true;
+    }
+
     // ✅ VENDEDOR: Carregar permissões dinâmicas do Firestore
     if (tipo == 'vendedor') {
       final permissoesDinamicas = await _carregarPermissoesVendedorFirestore();
@@ -215,6 +224,30 @@ class PermissaoService {
     }
   }
 
+  /// Current-store members.role owner|admin → estoque menu (fail-closed).
+  static Future<bool> _vendedorStoreMembershipGrantsEstoque() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return false;
+      final boxSessao = await Hive.openBox('sessao');
+      final storeId =
+          (boxSessao.get('store_id') ?? boxSessao.get('storeId') ?? '')
+              .toString()
+              .trim();
+      if (storeId.isEmpty) return false;
+      final snap = await sharedStoreMembershipAuthz().fetchOnce(
+        storeId: storeId,
+        uid: user.uid,
+      );
+      return StoreMembershipAuthz.snapshotGrantsProductManagement(snap);
+    } catch (e) {
+      debugPrint(
+        '⚠️ [PERMISSAO] membership estoque check failed type=${e.runtimeType}',
+      );
+      return false;
+    }
+  }
+
   /// ✅ Verifica se vendedor tem ALGUMA permissão liberada
   static Future<bool> vendedorTemAlgumaPermissao() async {
     final boxSessao = await Hive.openBox('sessao');
@@ -222,6 +255,8 @@ class PermissaoService {
         .trim().toLowerCase();
 
     if (tipo != 'vendedor') return true; // Admin/programador sempre tem
+
+    if (await _vendedorStoreMembershipGrantsEstoque()) return true;
 
     final permissoes = await _carregarPermissoesVendedorFirestore();
 

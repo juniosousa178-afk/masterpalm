@@ -1,16 +1,28 @@
 // Gate único de cadastro/edição de produtos (Sprint4-R2.1).
 
 import 'package:flutter/material.dart';
+import 'package:hive/hive.dart';
 
 import '../models/produto.dart';
+import '../services/store_membership_authz_service.dart';
 import 'access_scope_service.dart';
+import 'loja_id_adapter.dart';
+import 'store_membership_authz.dart';
 
 const kProdutoCadastroDeniedMessage =
     'Você não possui permissão para editar produtos.';
 
-/// Acesso a formulários de cadastro/edição (produto avulso, kit, inventário).
-bool podeAbrirCadastroProduto(AccessScopeIdentity id) =>
-    AccessScopeService.canManageStock(id);
+/// Sync check: global privileged OR explicit membership snapshot.
+bool podeAbrirCadastroProduto(
+  AccessScopeIdentity id, {
+  StoreMembershipSnapshot? storeMembership,
+  String? currentStoreId,
+}) =>
+    AccessScopeService.canManageStock(
+      id,
+      storeMembership: storeMembership,
+      currentStoreId: currentStoreId,
+    );
 
 /// Estoque disponível para listagem do vendedor (sem deps de gestão comercial).
 bool produtoEstoqueDisponivelParaVendedor(Produto p) {
@@ -37,10 +49,42 @@ bool produtoEstoqueDisponivelParaVendedor(Produto p) {
   return p.quantidade > 0;
 }
 
+Future<String?> _currentStoreIdFromSession() async {
+  try {
+    final sessao = Hive.isBoxOpen('sessao')
+        ? Hive.box('sessao')
+        : await Hive.openBox('sessao');
+    return normalizeFromBox(sessao)?.trim();
+  } catch (_) {
+    return null;
+  }
+}
+
+/// Resolves membership for [storeId] (session fallback) then evaluates capability.
+Future<bool> resolveProdutoCadastroAccess({
+  AccessScopeIdentity? identity,
+  String? storeId,
+  StoreMembershipAuthzService? membershipService,
+}) async {
+  final id = identity ?? await AccessScopeService.loadIdentity();
+  if (id.isAdmin) return true;
+
+  final loja = (storeId ?? await _currentStoreIdFromSession() ?? '').trim();
+  if (loja.isEmpty || id.uid.trim().isEmpty) return false;
+
+  final svc = membershipService ?? sharedStoreMembershipAuthz();
+  final snap = await svc.fetchOnce(storeId: loja, uid: id.uid);
+  return AccessScopeService.canManageStock(
+    id,
+    storeMembership: snap,
+    currentStoreId: loja,
+  );
+}
+
 /// Snackbar + false se vendedor/sem permissão.
 Future<bool> ensureProdutoCadastroAccess(BuildContext context) async {
-  final id = await AccessScopeService.loadIdentity();
-  if (podeAbrirCadastroProduto(id)) return true;
+  final ok = await resolveProdutoCadastroAccess();
+  if (ok) return true;
   if (context.mounted) {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text(kProdutoCadastroDeniedMessage)),

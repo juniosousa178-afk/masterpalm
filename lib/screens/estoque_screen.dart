@@ -25,6 +25,8 @@ import '../core/logger.dart';
 import '../core/access_scope_service.dart';
 import '../core/produto_cadastro_gate.dart';
 import '../core/produto_custo_guard.dart';
+import '../core/store_membership_authz.dart';
+import '../services/store_membership_authz_service.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
@@ -531,7 +533,30 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     final podeRecuperacao =
         await ProdutoSyncRecoveryAccess.podeAcessarRecuperacao();
     final scope = await AccessScopeService.loadIdentity();
-    final podeEditar = AccessScopeService.canEditStock(scope);
+    final lojaId = (_lojaId ??
+            await LojaIdService.getWithTimeoutThenSessionFallback(
+              timeout: const Duration(seconds: 3),
+            ))
+        ?.trim();
+    StoreMembershipSnapshot? membership;
+    if (!scope.isAdmin &&
+        lojaId != null &&
+        lojaId.isNotEmpty &&
+        scope.uid.trim().isNotEmpty) {
+      membership = await sharedStoreMembershipAuthz().fetchOnce(
+        storeId: lojaId,
+        uid: scope.uid,
+      );
+      // Keep live membership in sync for store switches / revocation.
+      unawaited(sharedStoreMembershipAuthz().bindCurrentStore(lojaId));
+    }
+    final podeEditar = AccessScopeService.canEditStock(
+      scope,
+      storeMembership: membership,
+      currentStoreId: lojaId,
+    );
+    // Consulta: permissão menu OU capability de gestão (membro elevado).
+    final temAcessoEstoque = permitido || podeEditar;
     final podeVerCusto =
         AccessScopeService.canSeeStockCostAndSupplier(scope);
     final podeVerTotais =
@@ -539,7 +564,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     if (!mounted) return;
     setState(() {
       _scope = scope;
-      _temPermissao = permitido;
+      _temPermissao = temAcessoEstoque;
       _podeRecuperacaoSync = podeRecuperacao;
       _podeEditarEstoque = podeEditar;
       _podeVerCusto = podeVerCusto;
