@@ -81,6 +81,12 @@ void markPendingStockMutation(
   p.pendingStockBaseRevision = baseRevision ?? p.stockRevision;
 }
 
+/// Limpa pendência local para permitir reconstrução de intent (novo operationId).
+void clearPendingStockMutation(Produto p) {
+  p.pendingStockOperationId = null;
+  p.pendingStockBaseRevision = null;
+}
+
 /// Indica pendência explícita — **não** usa relógio local vs servidor.
 bool hasPendingStockMutation(Produto p) =>
     p.pendingStockOperationId != null &&

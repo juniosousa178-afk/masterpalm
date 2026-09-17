@@ -43,6 +43,7 @@ import 'produto_pull_skip_guard.dart';
 import 'sync_mass_delete_guard.dart';
 import 'produto_stock_catalog_cadastro_sync.dart';
 import 'stock_catalog_backend_service.dart';
+import '../core/produto_variation_cas_rebase.dart';
 import '../src/blob_fetch_stub.dart'
     if (dart.library.html) '../src/blob_fetch_web.dart'
     as blob_fetch;
@@ -2145,10 +2146,17 @@ class ProdutosFirestoreService {
       produto: produto,
       gradeBaseline: gradeBaseline,
     );
-    // A revisão CAS é sempre a observada na intent — nunca remoteRevAtSave.
 
     ProdutoStockCatalogCadastroIntent? intent;
+    Object? syncError;
+    StackTrace? syncStack;
     try {
+      // Online replace: rebase CAS sobre remoto (não usa frozen stale revision).
+      final useRemoteRebase = forcePushFromCadastro &&
+          documentExists &&
+          existingData != null &&
+          frozenStockIntent == null;
+
       intent = await ProdutoStockCatalogCadastroSync.buildOrReuseIntent(
         produto: produto,
         produtoId: produtoId,
@@ -2156,12 +2164,15 @@ class ProdutosFirestoreService {
         forcePushFromCadastro: forcePushFromCadastro,
         gradeBaseline: gradeBaseline,
         frozenIntent: frozenStockIntent,
+        remoteStockData: useRemoteRebase ? existingData : null,
+        allowRemoteCasRebase: useRemoteRebase,
       );
-      // expectedRevision da intent permanece a observada — não remoteRevAtSave.
+
       if (intent.kind == 'replace' &&
           intent.expectedRevision != null &&
-          intent.expectedRevision != observed &&
-          frozenStockIntent == null) {
+          !useRemoteRebase &&
+          frozenStockIntent == null &&
+          intent.expectedRevision != observed) {
         throw StateError(
           'CAS revision must stay as observed intent ($observed), '
           'got ${intent.expectedRevision}',
@@ -2183,18 +2194,79 @@ class ProdutosFirestoreService {
         await produto.save();
       }
 
-      // Catálogo derivado já sai na mesma transação do comando server-side.
       logD(
         '✅ [PRODUTOS-SYNC] backend kind=${intent.kind} op=${intent.operationId} '
-        'observedRev=$observed produto=$produtoId',
+        'expectedRev=${intent.expectedRevision} observedRev=$observed '
+        'rebase=$useRemoteRebase produto=$produtoId',
       );
       return ProdutoSyncRemotoStatus.confirmado;
     } catch (e, st) {
-      ultimoErroSyncSanitizado = ProdutoSyncErroUtil.sanitizar(e);
+      syncError = e;
+      syncStack = st;
+      // Conflito CAS recuperável: rebase + retry limitado (novo operationId).
+      if (forcePushFromCadastro &&
+          frozenStockIntent == null &&
+          ProdutoVariationCasRebase.isStockRevisionConflict(e)) {
+        for (var attempt = 1;
+            attempt <= ProdutoVariationCasRebase.maxConflictRetries;
+            attempt++) {
+          try {
+            final snap = await FirebaseFirestore.instance
+                .collection('lojas')
+                .doc(storeId)
+                .collection(FSPaths.estoqueProdutosCol)
+                .doc(produtoId)
+                .get();
+            if (!snap.exists || snap.data() == null) break;
+            intent = await ProdutoStockCatalogCadastroSync
+                .rebuildReplaceIntentAfterConflict(
+              produto: produto,
+              produtoId: produtoId,
+              remoteData: Map<String, dynamic>.from(snap.data()!),
+              gradeBaseline: gradeBaseline,
+            );
+            final response =
+                await ProdutoStockCatalogCadastroSync.sendIntent(
+              lojaId: storeId,
+              intent: intent,
+            );
+            await ProdutoStockCatalogCadastroSync.applyBackendResponseToHive(
+              produto: produto,
+              lojaId: storeId,
+              response: response,
+            );
+            logD(
+              '✅ [PRODUTOS-SYNC] CAS rebase ok attempt=$attempt '
+              'op=${intent.operationId} rev=${intent.expectedRevision}',
+            );
+            return ProdutoSyncRemotoStatus.confirmado;
+          } on ProdutoCasConflictException catch (conflict) {
+            ultimoErroSyncSanitizado = conflict.message;
+            logE('❌ [PRODUTOS-SYNC] CAS merge inseguro: ${conflict.message}');
+            return ProdutoSyncRemotoStatus.falhaRemota;
+          } catch (retryErr, retrySt) {
+            syncError = retryErr;
+            syncStack = retrySt;
+            if (!ProdutoVariationCasRebase.isStockRevisionConflict(retryErr) ||
+                attempt >= ProdutoVariationCasRebase.maxConflictRetries) {
+              break;
+            }
+          }
+        }
+      }
+
+      final err = syncError ?? e;
+      if (err is ProdutoCasConflictException) {
+        ultimoErroSyncSanitizado = err.message;
+        logE('❌ [PRODUTOS-SYNC] CAS merge inseguro: ${err.message}');
+        return ProdutoSyncRemotoStatus.falhaRemota;
+      }
+
+      ultimoErroSyncSanitizado = ProdutoSyncErroUtil.sanitizar(err);
       logE(
-        '❌ [PRODUTOS-SYNC] backend sync falhou (type=${e.runtimeType})',
-        error: e,
-        st: st,
+        '❌ [PRODUTOS-SYNC] backend sync falhou (type=${err.runtimeType})',
+        error: err,
+        st: syncStack ?? st,
       );
       if (!enqueueOnFailure) return ProdutoSyncRemotoStatus.falhaRemota;
       final key = produto.key;
@@ -2203,6 +2275,13 @@ class ProdutosFirestoreService {
       if (key != null) {
         final parsedKey = key is int ? key : int.tryParse(key.toString());
         if (parsedKey != null) {
+          // Não congelar intent com revisão stale de conflito CAS —
+          // a fila deve reconstruir no retry.
+          final currentIntent = intent;
+          final enqueueFrozenIntent = currentIntent != null &&
+              !ProdutoVariationCasRebase.isStockRevisionConflict(err);
+          final intentJson =
+              enqueueFrozenIntent ? currentIntent.encode() : null;
           await SyncQueueService.enqueue(
             type: SyncOperationType.upsertProduto,
             lojaId: storeId,
@@ -2218,7 +2297,7 @@ class ProdutosFirestoreService {
             catalogoQueueSourceOrigin: CatalogoQueueSourceOrigins.sanitizar(
               writeOrigin,
             ),
-            stockIntentJson: intent?.encode() ?? frozenStockIntent?.encode(),
+            stockIntentJson: intentJson,
           );
           return ProdutoSyncRemotoStatus.pendenteFila;
         }

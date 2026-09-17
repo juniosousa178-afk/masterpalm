@@ -1,5 +1,6 @@
 // Cadastro/fila → protocolo stockCatalogCommand (create/replace/editorial).
-// A revisão CAS vem da intent observada, nunca de uma releitura no save.
+// Replace online: rebase CAS sobre estoque remoto (preserva vendas) + expectedRevision
+// autoritativo. Offline / sem remoto: revisão observada na baseline/Hive.
 
 import 'dart:convert';
 
@@ -11,6 +12,7 @@ import '../core/produto_estoque_grade_snapshot.dart';
 import '../core/produto_form_grade_hydration.dart';
 import '../core/produto_stock_revision.dart';
 import '../core/produto_variacao_extra.dart';
+import '../core/produto_variation_cas_rebase.dart';
 import '../models/produto.dart';
 import 'estoque_transaction_service.dart';
 import 'stock_catalog_backend_service.dart';
@@ -75,7 +77,7 @@ class ProdutoStockCatalogCadastroIntent {
 class ProdutoStockCatalogCadastroSync {
   ProdutoStockCatalogCadastroSync._();
 
-  /// Revisão observada na abertura/criação da intent — nunca a remota do save.
+  /// Revisão observada na abertura/criação da intent (baseline offline).
   static int observedRevisionForSave({
     required Produto produto,
     ProdutoFormGradeBaseline? gradeBaseline,
@@ -88,6 +90,27 @@ class ProdutoStockCatalogCadastroSync {
       return produto.pendingStockBaseRevision!;
     }
     return produto.stockRevision;
+  }
+
+  /// Reconstrói intent de replace a partir do estado local + remoto autoritativo.
+  /// Gera novo operationId (hash muda com expectedRevision).
+  static Future<ProdutoStockCatalogCadastroIntent> rebuildReplaceIntentAfterConflict({
+    required Produto produto,
+    required String produtoId,
+    required Map<String, dynamic> remoteData,
+    ProdutoFormGradeBaseline? gradeBaseline,
+  }) async {
+    clearPendingStockMutation(produto);
+    if (produto.isInBox) await produto.save();
+    return buildOrReuseIntent(
+      produto: produto,
+      produtoId: produtoId,
+      documentExists: true,
+      forcePushFromCadastro: true,
+      gradeBaseline: gradeBaseline,
+      remoteStockData: remoteData,
+      allowRemoteCasRebase: true,
+    );
   }
 
   static Map<String, dynamic> buildEditorial(Produto produto) {
@@ -195,11 +218,13 @@ class ProdutoStockCatalogCadastroSync {
     required bool forcePushFromCadastro,
     ProdutoFormGradeBaseline? gradeBaseline,
     ProdutoStockCatalogCadastroIntent? frozenIntent,
+    Map<String, dynamic>? remoteStockData,
+    bool allowRemoteCasRebase = false,
   }) async {
     if (frozenIntent != null) return frozenIntent;
 
     final editorial = buildEditorial(produto);
-    final definition = buildDefinition(produto);
+    var definition = buildDefinition(produto);
     final allowStock = allowStockMutationCommand(
       forcePushFromCadastro: forcePushFromCadastro,
       produto: produto,
@@ -215,13 +240,23 @@ class ProdutoStockCatalogCadastroSync {
       def = definition;
     } else if (allowStock) {
       // Mutação de estoque/grade (ou intent pendente): replace CAS.
-      // Metadados-only do cadastro caem em editorial e não reescrevem saldo.
       kind = 'replace';
-      expectedRevision = observedRevisionForSave(
-        produto: produto,
-        gradeBaseline: gradeBaseline,
-      );
-      def = definition;
+      if (allowRemoteCasRebase && remoteStockData != null) {
+        definition = ProdutoVariationCasRebase.rebaseReplaceDefinition(
+          editorDefinition: definition,
+          gradeBaseline: gradeBaseline,
+          remoteData: remoteStockData,
+        );
+        expectedRevision =
+            ProdutoVariationCasRebase.remoteRevision(remoteStockData);
+        def = definition;
+      } else {
+        expectedRevision = observedRevisionForSave(
+          produto: produto,
+          gradeBaseline: gradeBaseline,
+        );
+        def = definition;
+      }
     } else {
       kind = 'editorial';
     }

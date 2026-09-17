@@ -363,3 +363,92 @@ test('ACTIVE valid atomic sale', async () => {
   assert.equal(r.authoritativeStockCommitted, true);
   assert.equal((await base.collection('estoque_vendas').doc('active_ok').get()).exists, true);
 });
+
+test('variation lookup finds trimmed/case-normalized size when remote correct', async () => {
+  const {base, lojaId} = await seedLegacy({
+    omitStockKind: true,
+    product: {
+      quantidade: 4,
+      stockRevision: 1,
+      estoquePorTamanho: {15: 2, 19: 2},
+      variacoes: {15: {'sem-cor': 2}, 19: {'sem-cor': 2}},
+      tamanhos: ['15', '19'],
+    },
+  });
+  await executeStockCommand(db, intent(lojaId, 'var_norm', {
+    atomic: true,
+    item: {size: ' 15 ', color: ''},
+    sale: salePayload({
+      itens: [{
+        produtoNome: 'Anel', quantidade: 1, tamanho: ' 15 ', cor: '',
+        precoUnitario: 10, precoTotal: 10, productId: 'p', custoUnitario: 0,
+        origemCustoItem: 'desconhecido',
+      }],
+      tamanho: ' 15 ',
+    }),
+  }), owner);
+  const stock = (await base.collection('estoque_produtos').doc('p').get()).data();
+  assert.equal(stock.variacoes['15']['sem-cor'], 1);
+  assert.equal(stock.variacoes['19']['sem-cor'], 2);
+});
+
+test('unknown variation rejected without cross-match or stock change', async () => {
+  const {base, lojaId} = await seedLegacy({
+    omitStockKind: true,
+    product: {
+      quantidade: 4,
+      stockRevision: 1,
+      estoquePorTamanho: {15: 2, 19: 2},
+      variacoes: {15: {'sem-cor': 2}, 19: {'sem-cor': 2}},
+      tamanhos: ['15', '19'],
+    },
+  });
+  await denied(
+    executeStockCommand(db, intent(lojaId, 'var_miss', {
+      atomic: true,
+      item: {size: '20', color: ''},
+      sale: salePayload({
+        itens: [{
+          produtoNome: 'Anel', quantidade: 1, tamanho: '20', cor: '',
+          precoUnitario: 10, precoTotal: 10, productId: 'p', custoUnitario: 0,
+          origemCustoItem: 'desconhecido',
+        }],
+        tamanho: '20',
+      }),
+    }), owner),
+    'failed-precondition',
+    'Variation not found',
+  );
+  const stock = (await base.collection('estoque_produtos').doc('p').get()).data();
+  assert.equal(stock.variacoes['15']['sem-cor'], 2);
+  assert.equal(stock.variacoes['19']['sem-cor'], 2);
+  assert.equal((await base.collection('estoque_vendas').doc('var_miss').get()).exists, false);
+});
+
+test('variation cross-match: sell 15 never mutates 19', async () => {
+  const {base, lojaId} = await seedLegacy({
+    omitStockKind: true,
+    product: {
+      quantidade: 4,
+      stockRevision: 1,
+      estoquePorTamanho: {15: 2, 19: 2},
+      variacoes: {15: {'sem-cor': 2}, 19: {'sem-cor': 2}},
+      tamanhos: ['15', '19'],
+    },
+  });
+  await executeStockCommand(db, intent(lojaId, 'var_x', {
+    atomic: true,
+    item: {size: '15', color: ''},
+    sale: salePayload({
+      itens: [{
+        produtoNome: 'Anel', quantidade: 1, tamanho: '15', cor: '',
+        precoUnitario: 10, precoTotal: 10, productId: 'p', custoUnitario: 0,
+        origemCustoItem: 'desconhecido',
+      }],
+      tamanho: '15',
+    }),
+  }), owner);
+  const stock = (await base.collection('estoque_produtos').doc('p').get()).data();
+  assert.equal(stock.variacoes['15']['sem-cor'], 1);
+  assert.equal(stock.variacoes['19']['sem-cor'], 2);
+});

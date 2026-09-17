@@ -46,8 +46,11 @@ class VendaComboEstoqueExpansion {
         }
       }
       return <String, dynamic>{
-        'productId': produto.idFirebase, 'quantity': item.quantidade,
-        'size': item.tamanho, 'color': item.cor, 'extra': item.extraValor,
+        'productId': produto.idFirebase,
+        'quantity': item.quantidade,
+        'size': item.tamanho.trim(),
+        'color': item.cor.trim(),
+        'extra': item.extraValor.trim(),
         if (produto.temComboConfigEfetivo) 'selection': selection,
       };
     });

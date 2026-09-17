@@ -1,5 +1,6 @@
 // Mensagens sanitizadas de falha de sync de produto (UI / fila / logs).
 
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import 'produto_catalogo_upsert_falha.dart';
@@ -11,6 +12,9 @@ class ProdutoSyncErroUtil {
 
   /// Último erro sanitizado do ciclo de [ProdutosFirestoreService.syncProdutoComStatus].
   static String? sanitizar(Object? error, {ProdutoSyncRemotoStatus? status}) {
+    if (error is FirebaseFunctionsException) {
+      return _firebaseCodeLabel(error.code);
+    }
     if (error is FirebaseException) {
       return _firebaseCodeLabel(error.code);
     }
@@ -23,6 +27,11 @@ class ProdutoSyncErroUtil {
     }
     final raw = error?.toString().trim() ?? '';
     if (raw.isEmpty) return null;
+    final lower = raw.toLowerCase();
+    if (lower.contains('stock revision conflict') ||
+        (lower.contains('aborted') && lower.contains('revision'))) {
+      return _firebaseCodeLabel('aborted');
+    }
     if (raw.length > 120) return '${raw.substring(0, 120)}…';
     return raw;
   }
@@ -63,6 +72,8 @@ class ProdutoSyncErroUtil {
         return 'deadline-exceeded (tempo esgotado)';
       case 'resource-exhausted':
         return 'resource-exhausted';
+      case 'aborted':
+        return 'conflito de versão do estoque — reabra o produto e salve novamente';
       case 'app-check-token-invalid':
       case 'app-check-failed':
         return 'app-check (verificação do app)';

@@ -736,9 +736,13 @@ class SyncQueueService {
     SyncQueueItem item,
     Produto produto,
   ) async {
-    final frozen = ProdutoStockCatalogCadastroIntent.tryDecode(
+    var frozen = ProdutoStockCatalogCadastroIntent.tryDecode(
       item.stockIntentJson,
     );
+    // Replace com revisão congelada: reconstruir (evita loop de aborted).
+    if (frozen != null && frozen.kind == 'replace') {
+      frozen = null;
+    }
     final status = await ProdutosFirestoreService.syncProdutoComStatus(
       produto,
       lojaId: item.lojaId,
@@ -746,6 +750,7 @@ class SyncQueueService {
       writeOrigin: 'sync_queue.upsert_produto',
       enqueueOnFailure: false,
       frozenStockIntent: frozen,
+      forcePushFromCadastro: true,
     );
     return _tratarStatusEstoqueFila(item, status);
   }
@@ -759,13 +764,16 @@ class SyncQueueService {
     );
 
     var current = item;
-    final frozen = ProdutoStockCatalogCadastroIntent.tryDecode(
-      item.stockIntentJson,
-    );
 
     if (current.catalogoPublishPhase ==
         CatalogoQueuePublishPhase.aguardandoEstoque) {
       debugCanonicalPhaseEstoqueRuns++;
+      var frozen = ProdutoStockCatalogCadastroIntent.tryDecode(
+        item.stockIntentJson,
+      );
+      if (frozen != null && frozen.kind == 'replace') {
+        frozen = null;
+      }
       final status = await ProdutosFirestoreService.syncProdutoComStatus(
         produto,
         lojaId: item.lojaId,
@@ -776,6 +784,7 @@ class SyncQueueService {
             CatalogoLiveInlinePolicy.ignorarPorquePosSaveCanonico,
         catalogoDiagContext: diagContext,
         frozenStockIntent: frozen,
+        forcePushFromCadastro: true,
       );
       final ok = await _tratarStatusEstoqueFila(current, status);
       if (!ok) return false;
