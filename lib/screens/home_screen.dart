@@ -34,6 +34,7 @@ import '../services/auto_sync_service.dart';
 import '../services/sync_queue_service.dart';
 import '../services/sync_queue_recovery_mode.dart';
 import '../services/sync_queue_recovery_diagnostics.dart';
+import 'variation_stock_recovery_diagnostic_panel.dart';
 import '../models/produto.dart';
 import '../models/cliente.dart';
 import '../models/fornecedor.dart';
@@ -2843,6 +2844,11 @@ class _HomeScreenState extends State<HomeScreen>
                 const SizedBox(height: 2),
                 _buildSaudacaoTituloLoja(),
                 const SizedBox(height: 6),
+                if (SyncQueueRecoveryMode.isActive &&
+                    _lojaIdInterno.isNotEmpty)
+                  VariationStockRecoveryDiagnosticPanel(
+                    storeId: _lojaIdInterno,
+                  ),
                 if (_lojaIdInterno.isNotEmpty)
                   DashboardHomeCards(lojaId: _lojaIdInterno),
                 Expanded(
