@@ -16,6 +16,7 @@ import '../core/produto_estoque_grade_canonical_guard.dart';
 import '../core/produto_form_grade_hydration.dart';
 import '../core/produto_variacao_extra.dart';
 import '../core/produto_estoque_grade_snapshot.dart';
+import '../core/produto_list_remote_hydration.dart';
 import '../core/produto_stock_revision.dart';
 import '../core/produto_stock_version_fields.dart';
 import '../core/produto_stock_write_enforcement.dart';
@@ -2439,9 +2440,21 @@ class ProdutosFirestoreService {
 
       int sincronizados = 0;
       int atualizados = 0;
+      final boxNameAtSyncStart = produtosBox.name;
 
       for (final doc in allDocs) {
         try {
+          if (!listPullTargetStillValid(
+            produtosBoxIsOpen: produtosBox.isOpen,
+            produtosBoxName: produtosBox.name,
+            boxNameAtSyncStart: boxNameAtSyncStart,
+          )) {
+            logW(
+              '[PRODUTOS-SYNC] Abortando pull — box fechada/trocada '
+              '(inicio=$boxNameAtSyncStart atual=${produtosBox.isOpen ? produtosBox.name : "<closed>"})',
+            );
+            break;
+          }
           var data = Map<String, dynamic>.from(doc.data());
           final produtoId = doc.id;
 
@@ -2545,11 +2558,13 @@ class ProdutosFirestoreService {
                       localUpdatedAt: p.updatedAt,
                       remoteUpdatedAt: remoteUpdatedAtForPull,
                     ));
-            final preserveStockRegression =
-                shouldPreserveLocalStockOnRemoteRegression(
-                  local: p,
-                  remoteData: data,
-                );
+            // List/cloud pull (preferRemoteQuantity): remote estoque_produtos
+            // replaces incomplete/stale Hive grade. Autosync keeps CAS guards.
+            final preserveStockRegression = shouldPreserveLocalGradeOnListPull(
+              local: p,
+              remoteData: data,
+              preferRemoteQuantity: preferRemoteQuantity,
+            );
             final preserveLocalEdits =
                 preserveLocalQuantidade || preserveStockRegression;
 

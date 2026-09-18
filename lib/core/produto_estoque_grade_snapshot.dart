@@ -155,6 +155,22 @@ class ProdutoEstoqueGradeSnapshot {
   bool gradeDiffersFrom(ProdutoEstoqueGradeSnapshot other) {
     return !gradeEquals(other);
   }
+
+  /// True when [this] (remote) contains every [other] (local) cell at qty >=
+  /// local and adds keys local lacks — incomplete Hive vs fuller remote.
+  bool isStrictlyMoreCompleteThan(ProdutoEstoqueGradeSnapshot other) {
+    if (other.cells.isEmpty && cells.isEmpty) return false;
+    if (other.cells.isEmpty && cells.isNotEmpty) return true;
+
+    for (final e in other.cells.entries) {
+      final remoteQty = cells[e.key] ?? 0;
+      if (remoteQty < e.value) return false;
+    }
+    for (final k in cells.keys) {
+      if (!other.cells.containsKey(k)) return true;
+    }
+    return quantidadeTotal > other.quantidadeTotal;
+  }
 }
 
 /// Decisão do pull para campos de estoque.

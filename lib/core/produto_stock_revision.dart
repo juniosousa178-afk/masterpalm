@@ -207,6 +207,12 @@ PullStockMergeDecision evaluatePullStockMergeByRevision({
     return PullStockMergeDecision.acceptRemote;
   }
 
+  // Incomplete local vs fuller remote (incl. legacy stockRevision=0):
+  // accept authoritative remote completeness without a revision bump.
+  if (remoteGrade.isStrictlyMoreCompleteThan(localGrade)) {
+    return PullStockMergeDecision.acceptRemote;
+  }
+
   final remoteIncreases = remoteGrade.cellsStrictlyGreaterThan(localGrade);
   if (remoteIncreases.isNotEmpty) {
     return PullStockMergeDecision.preserveLocalGrade;
