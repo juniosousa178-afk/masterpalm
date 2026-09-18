@@ -2,6 +2,7 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../services/stock_catalog_affected_products.dart';
 import '../services/vendas_service.dart' show VendaPersistenciaInconsistenciaCritica;
 
 /// Erro real após percorrer [error] / [cause] / encadeamento de "converted Future".
@@ -22,6 +23,10 @@ Object unwrapDartInteropError(Object e, {int maxDepth = 6}) {
 /// Texto útil para UI (sem code/plugin/path/stack).
 String formatDartErrorForUser(Object e) {
   final root = unwrapDartInteropError(e);
+  if (StockCatalogAffectedProducts.isBackendAffectedLimit(root) ||
+      StockCatalogAffectedProducts.isBackendAffectedLimit(e)) {
+    return StockCatalogAffectedProducts.userMessageForError(root);
+  }
   if (root is FirebaseException) {
     return _firebaseExceptionUserMessage(root);
   }
@@ -75,6 +80,11 @@ String formatSalvarVendaErrorForUser(Object e) {
 
   if (root is VendaPersistenciaInconsistenciaCritica) {
     return _mensagemInconsistenciaCriticaVenda();
+  }
+
+  if (StockCatalogAffectedProducts.isBackendAffectedLimit(root) ||
+      StockCatalogAffectedProducts.isBackendAffectedLimit(e)) {
+    return StockCatalogAffectedProducts.userMessageForError(root);
   }
 
   final detalhe = formatDartErrorForUser(e);

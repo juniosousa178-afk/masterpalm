@@ -31,6 +31,7 @@ import 'movimentacao_estoque_service.dart';
 import 'web_build_convergence_service.dart';
 import 'venda_combo_estoque_expansion.dart';
 import 'venda_custo_mercadoria.dart';
+import 'stock_catalog_affected_products.dart';
 import 'venda_edicao_estoque_diff.dart';
 import 'venda_estoque_remoto_prep_service.dart';
 import 'venda_operation_journal_service.dart';
@@ -1425,6 +1426,8 @@ class VendasService {
       );
       return null;
     }
+
+    StockCatalogAffectedProducts.assertSignedDeltaWithinLimit(itensAssinados);
 
     final deltaHash = VendaEdicaoEstoqueDiff.computeCanonicalDeltaHash(delta);
     final operationId = VendaEdicaoEstoqueDiff.buildEditStockOperationId(
@@ -3295,6 +3298,9 @@ class VendasService {
       );
 
       if (!delta.semMovimento) {
+        StockCatalogAffectedProducts.assertSignedDeltaWithinLimit(
+          VendaEdicaoEstoqueDiff.linhasAssinadasCanonicas(delta),
+        );
         final produtosDasLinhas = <Produto>[];
         for (final item in itens) {
           final p = encontrarProdutoNoEstoque(

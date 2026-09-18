@@ -25,6 +25,7 @@ import '../models/produto.dart';
 import '../models/venda.dart';
 import '../models/venda_item.dart';
 import '../services/produto_grade_pdv_hydration_service.dart';
+import '../services/stock_catalog_affected_products.dart';
 import '../services/venda_combo_estoque_expansion.dart';
 import '../services/vendas_service.dart';
 import '../services/limits_guard.dart';
@@ -1206,6 +1207,24 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     StackTrace? st,
     List<VendaItem>? itensVenda,
   }) {
+    if (StockCatalogAffectedProducts.isBackendAffectedLimit(erro)) {
+      final root = unwrapDartInteropError(erro);
+      final saleCount = root is SavedSaleStockSizeLimitException
+          ? root.saleCount
+          : null;
+      final restockCount = root is SavedSaleStockSizeLimitException
+          ? root.restockCount
+          : null;
+      logE(
+        '❌ [VENDA][$etapa] ${StockCatalogAffectedProducts.errorCategory} '
+        'limit=${StockCatalogAffectedProducts.maxAffectedProducts}'
+        '${saleCount != null ? ' sale=$saleCount' : ''}'
+        '${restockCount != null ? ' restock=$restockCount' : ''}',
+        error: root,
+        st: st,
+      );
+      return;
+    }
     final detalhe = _detalharErroSalvarVenda(erro);
     final diag = dartErrorDiagMeta(erro);
     final itensDiag = _resumoItensVendaParaLog(itensVenda);
@@ -1233,13 +1252,16 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
 
   Future<void> _mostrarErro(String mensagem) async {
     if (!mounted) return;
+    final isLimit = StockCatalogAffectedProducts.isLimitUserMessage(mensagem);
     await showDialog<void>(
       context: context,
       builder: (_) => AlertDialog(
         icon: Icon(Icons.error_outline, size: 48, color: Colors.red.shade700),
-        title: const Text(
-          'Erro ao salvar venda',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        title: Text(
+          isLimit
+              ? StockCatalogAffectedProducts.userTitle
+              : 'Erro ao salvar venda',
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
         ),
         content: SingleChildScrollView(
           child: Text(mensagem, style: const TextStyle(fontSize: 16)),
@@ -2329,8 +2351,11 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
           }
           return;
         case NovaVendaPosSaveUiAction.showErrorDialog:
+          final err = posSave.errorMessage ?? '';
           await _mostrarErro(
-            'A venda não foi salva.\n\n${posSave.errorMessage}',
+            StockCatalogAffectedProducts.isLimitUserMessage(err)
+                ? err
+                : 'A venda não foi salva.\n\n$err',
           );
           return;
         case NovaVendaPosSaveUiAction.showSuccess:

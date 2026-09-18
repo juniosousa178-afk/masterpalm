@@ -24,6 +24,7 @@ import '../models/produto.dart';
 import 'firestore_paths.dart';
 import 'catalog_cache_service.dart';
 import 'catalog_publish_service.dart';
+import 'stock_catalog_affected_products.dart';
 import 'stock_catalog_backend_service.dart';
 import 'produto_exclusao_tombstone_service.dart';
 
@@ -2167,6 +2168,10 @@ class EstoqueTransactionService {
         throw StateError(
             'A venda precisa enviar os itens originais ao servidor.');
       }
+      StockCatalogAffectedProducts.assertItemMapsWithinLimit(
+        backendItems,
+        originalSaleUnchanged: false,
+      );
       final response = await StockCatalogBackendService.command(
         lojaId: lojaId,
         operationId: opId,
@@ -2402,6 +2407,7 @@ class EstoqueTransactionService {
         transactionResults: [],
       );
     }
+    StockCatalogAffectedProducts.assertSignedDeltaWithinLimit(itensAssinados);
     if (itensAssinados.length > _maxItensPorTransacao) {
       throw Exception(
         'Edição com muitos itens de estoque (${itensAssinados.length}). '
@@ -2459,6 +2465,16 @@ class EstoqueTransactionService {
           };
       final sales = resolvedItems.where((r) => r.signedQty < 0).toList();
       final rests = resolvedItems.where((r) => r.signedQty > 0).toList();
+      final saleItems =
+          sales.map((r) => itemPayload(r, -r.signedQty)).toList();
+      final restockItems =
+          rests.map((r) => itemPayload(r, r.signedQty)).toList();
+      StockCatalogAffectedProducts.assertCommandsWithinLimit(
+        saleCount:
+            StockCatalogAffectedProducts.distinctProductIdCount(saleItems),
+        restockCount:
+            StockCatalogAffectedProducts.distinctProductIdCount(restockItems),
+      );
       final merged = <EstoqueTransactionResult>[];
       var already = false;
       if (sales.isNotEmpty) {
@@ -2466,9 +2482,7 @@ class EstoqueTransactionService {
           lojaId: lojaId,
           operationId: sales.length == resolvedItems.length ? opId : '${opId}_sale',
           kind: 'sale',
-          items: sales
-              .map((r) => itemPayload(r, -r.signedQty))
-              .toList(),
+          items: saleItems,
         );
         already = already || response['alreadyApplied'] == true;
         merged.addAll(resultadosDoBackend(response));
@@ -2480,7 +2494,7 @@ class EstoqueTransactionService {
               ? opId
               : '${opId}_restock',
           kind: 'restock',
-          items: rests.map((r) => itemPayload(r, r.signedQty)).toList(),
+          items: restockItems,
         );
         already = already || response['alreadyApplied'] == true;
         merged.addAll(resultadosDoBackend(response));
