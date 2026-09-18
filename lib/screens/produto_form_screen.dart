@@ -15,6 +15,7 @@ import '../core/produto_cadastro_gate.dart';
 import '../core/produto_form_grade_hydration.dart';
 import '../core/produto_variacao_extra.dart';
 import '../core/produto_variation_stock_consistency.dart';
+import '../core/produto_stale_replace_intent.dart';
 import '../models/compra_item_pipeline.dart';
 import '../models/produto.dart';
 import '../services/compra_item_pipeline_store.dart';
@@ -2405,6 +2406,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           'Produto salvo localmente, porém bloqueado para sincronização porque foi marcado para exclusão remota.',
         ProdutoSyncRemotoStatus.recuperacaoManualNecessaria =>
           'Produto salvo no aparelho, mas requer recuperação manual antes da sincronização com a nuvem.',
+        ProdutoSyncRemotoStatus.conflitoVersaoEstoque =>
+          ProdutoStaleReplaceIntent.versionConflictUserMessage,
       };
 
       final sucessoPleno = (remoteStatus == ProdutoSyncRemotoStatus.confirmado ||

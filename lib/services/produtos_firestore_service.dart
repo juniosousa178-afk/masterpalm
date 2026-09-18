@@ -45,6 +45,7 @@ import 'sync_mass_delete_guard.dart';
 import 'produto_stock_catalog_cadastro_sync.dart';
 import 'stock_catalog_backend_service.dart';
 import '../core/produto_variation_cas_rebase.dart';
+import '../core/produto_stale_replace_intent.dart';
 import '../src/blob_fetch_stub.dart'
     if (dart.library.html) '../src/blob_fetch_web.dart'
     as blob_fetch;
@@ -72,6 +73,9 @@ enum ProdutoSyncRemotoStatus {
 
   /// Produto com venda/referência e colisão remota — sem troca automática de ID.
   recuperacaoManualNecessaria,
+
+  /// Replace stale vs remoto sem rebase seguro — não reenviar automaticamente.
+  conflitoVersaoEstoque,
 }
 
 class ProdutosFirestoreService {
@@ -2152,11 +2156,13 @@ class ProdutosFirestoreService {
     Object? syncError;
     StackTrace? syncStack;
     try {
-      // Online replace: rebase CAS sobre remoto (não usa frozen stale revision).
+      // Rebase CAS só com baseline de editor — fila/frozen sem identidade de
+      // célula não pode copiar stock Hive stale sobre remoto mais novo.
       final useRemoteRebase = forcePushFromCadastro &&
           documentExists &&
           existingData != null &&
-          frozenStockIntent == null;
+          frozenStockIntent == null &&
+          gradeBaseline != null;
 
       intent = await ProdutoStockCatalogCadastroSync.buildOrReuseIntent(
         produto: produto,
@@ -2178,6 +2184,38 @@ class ProdutosFirestoreService {
           'CAS revision must stay as observed intent ($observed), '
           'got ${intent.expectedRevision}',
         );
+      }
+
+      final staleDecision = ProdutoStaleReplaceIntent.classify(
+        intent: intent,
+        remoteData: documentExists ? existingData : null,
+        remoteReadAvailable: existingData != null,
+        frozenQueueIntent: frozenStockIntent != null,
+      );
+      if (staleDecision.dispatch == StaleReplaceDispatch.suppress) {
+        await _clearSupersededFrozenPending(
+          produto: produto,
+          frozen: frozenStockIntent ?? intent,
+        );
+        logD(
+          '[STALE_REPLACE] suppress op=${intent.operationId} '
+          '${staleDecision.reason}',
+        );
+        return ProdutoSyncRemotoStatus.semMudancas;
+      }
+      if (staleDecision.dispatch == StaleReplaceDispatch.blockConflict) {
+        markStockConflict(produto);
+        if (produto.isInBox) await produto.save();
+        ultimoErroSyncSanitizado =
+            ProdutoStaleReplaceIntent.versionConflictUserMessage;
+        logE(
+          '[STALE_REPLACE] block op=${intent.operationId} '
+          '${staleDecision.reason}',
+        );
+        return ProdutoSyncRemotoStatus.conflitoVersaoEstoque;
+      }
+      if (staleDecision.dispatch == StaleReplaceDispatch.sendEditorialRebase) {
+        intent = ProdutoStaleReplaceIntent.asEditorialRebase(intent);
       }
 
       final response = await ProdutoStockCatalogCadastroSync.sendIntent(
@@ -2205,8 +2243,10 @@ class ProdutosFirestoreService {
       syncError = e;
       syncStack = st;
       // Conflito CAS recuperável: rebase + retry limitado (novo operationId).
+      // Sem baseline de editor, não rebases — evita overwrite de stock remoto.
       if (forcePushFromCadastro &&
           frozenStockIntent == null &&
+          gradeBaseline != null &&
           ProdutoVariationCasRebase.isStockRevisionConflict(e)) {
         for (var attempt = 1;
             attempt <= ProdutoVariationCasRebase.maxConflictRetries;
@@ -2242,9 +2282,11 @@ class ProdutosFirestoreService {
             );
             return ProdutoSyncRemotoStatus.confirmado;
           } on ProdutoCasConflictException catch (conflict) {
+            markStockConflict(produto);
+            if (produto.isInBox) await produto.save();
             ultimoErroSyncSanitizado = conflict.message;
             logE('❌ [PRODUTOS-SYNC] CAS merge inseguro: ${conflict.message}');
-            return ProdutoSyncRemotoStatus.falhaRemota;
+            return ProdutoSyncRemotoStatus.conflitoVersaoEstoque;
           } catch (retryErr, retrySt) {
             syncError = retryErr;
             syncStack = retrySt;
@@ -2258,9 +2300,22 @@ class ProdutosFirestoreService {
 
       final err = syncError ?? e;
       if (err is ProdutoCasConflictException) {
+        markStockConflict(produto);
+        if (produto.isInBox) await produto.save();
         ultimoErroSyncSanitizado = err.message;
         logE('❌ [PRODUTOS-SYNC] CAS merge inseguro: ${err.message}');
-        return ProdutoSyncRemotoStatus.falhaRemota;
+        return ProdutoSyncRemotoStatus.conflitoVersaoEstoque;
+      }
+      if (ProdutoVariationCasRebase.isStockRevisionConflict(err)) {
+        markStockConflict(produto);
+        if (produto.isInBox) await produto.save();
+        ultimoErroSyncSanitizado =
+            ProdutoStaleReplaceIntent.versionConflictUserMessage;
+        logE(
+          '[STALE_REPLACE] deterministic 409 without retry loop '
+          'op=${intent?.operationId}',
+        );
+        return ProdutoSyncRemotoStatus.conflitoVersaoEstoque;
       }
 
       ultimoErroSyncSanitizado = ProdutoSyncErroUtil.sanitizar(err);
@@ -2305,6 +2360,18 @@ class ProdutosFirestoreService {
       }
       return ProdutoSyncRemotoStatus.falhaRemota;
     }
+  }
+
+  static Future<void> _clearSupersededFrozenPending({
+    required Produto produto,
+    required ProdutoStockCatalogCadastroIntent frozen,
+  }) async {
+    if (!hasPendingStockMutation(produto)) return;
+    if (produto.pendingStockOperationId!.trim() != frozen.operationId.trim()) {
+      return;
+    }
+    clearPendingStockMutation(produto);
+    if (produto.isInBox) await produto.save();
   }
 
   static bool _isDataImageUrl(String? s) =>

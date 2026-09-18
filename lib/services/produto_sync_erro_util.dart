@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import 'produto_catalogo_upsert_falha.dart';
 import 'produtos_firestore_service.dart';
+import '../core/produto_stale_replace_intent.dart';
 
 /// Converte exceções/status de sync em texto curto, sem dados sensíveis.
 class ProdutoSyncErroUtil {
@@ -46,6 +47,8 @@ class ProdutoSyncErroUtil {
         return 'identificador-excluido (tombstone)';
       case ProdutoSyncRemotoStatus.recuperacaoManualNecessaria:
         return 'recuperacao-manual-necessaria';
+      case ProdutoSyncRemotoStatus.conflitoVersaoEstoque:
+        return ProdutoStaleReplaceIntent.versionConflictUserMessage;
       case ProdutoSyncRemotoStatus.falhaRemota:
         return 'falha-remota-sem-enfileirar';
       case ProdutoSyncRemotoStatus.pendenteFila:
@@ -70,10 +73,10 @@ class ProdutoSyncErroUtil {
         return 'unavailable (serviço indisponível)';
       case 'deadline-exceeded':
         return 'deadline-exceeded (tempo esgotado)';
+      case 'aborted':
+        return ProdutoStaleReplaceIntent.versionConflictUserMessage;
       case 'resource-exhausted':
         return 'resource-exhausted';
-      case 'aborted':
-        return 'conflito de versão do estoque — reabra o produto e salve novamente';
       case 'app-check-token-invalid':
       case 'app-check-failed':
         return 'app-check (verificação do app)';

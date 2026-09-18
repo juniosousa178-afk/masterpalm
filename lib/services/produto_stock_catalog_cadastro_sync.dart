@@ -94,7 +94,8 @@ class ProdutoStockCatalogCadastroSync {
 
   /// Reconstrói intent de replace a partir do estado local + remoto autoritativo.
   /// Gera novo operationId (hash muda com expectedRevision).
-  static Future<ProdutoStockCatalogCadastroIntent> rebuildReplaceIntentAfterConflict({
+  static Future<ProdutoStockCatalogCadastroIntent>
+      rebuildReplaceIntentAfterConflict({
     required Produto produto,
     required String produtoId,
     required Map<String, dynamic> remoteData,
@@ -192,7 +193,8 @@ class ProdutoStockCatalogCadastroSync {
       ..variacoesExtraTipo = gradeBaseline.variacoesExtraTipo == null
           ? null
           : Map<String, dynamic>.from(gradeBaseline.variacoesExtraTipo!)
-      ..estoquePorTamanho = Map<String, int>.from(gradeBaseline.estoquePorTamanho)
+      ..estoquePorTamanho =
+          Map<String, int>.from(gradeBaseline.estoquePorTamanho)
       ..tamanhos = List<String>.from(gradeBaseline.tamanhos);
     final baselineSnap =
         ProdutoEstoqueGradeSnapshot.fromProduto(baselineProduto);
@@ -341,7 +343,10 @@ class ProdutoStockCatalogCadastroSync {
 
   static bool isRetryableTransportError(Object error) {
     if (error is FirebaseFunctionsException) {
-      return {'unavailable', 'deadline-exceeded', 'aborted', 'internal'}
+      if (ProdutoVariationCasRebase.isStockRevisionConflict(error)) {
+        return false;
+      }
+      return {'unavailable', 'deadline-exceeded', 'internal'}
           .contains(error.code);
     }
     return false;

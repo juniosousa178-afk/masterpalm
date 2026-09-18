@@ -29,10 +29,12 @@ import 'catalogo_queue_publish_plan.dart';
 import 'catalogo_sync_attempt_context.dart';
 import 'produto_cadastro_pos_save_service.dart';
 import 'produto_stock_catalog_cadastro_sync.dart';
+import '../core/produto_stale_replace_intent.dart';
 import 'sync_queue_recovery_mode.dart';
 import 'sync_queue_recovery_diagnostics.dart';
 import 'sync_queue_local_file.dart'
-    if (dart.library.html) 'sync_queue_local_file_stub.dart' as sync_queue_local_file;
+    if (dart.library.html) 'sync_queue_local_file_stub.dart'
+    as sync_queue_local_file;
 
 /// Tipos de operação suportados
 enum SyncOperationType {
@@ -111,8 +113,7 @@ class SyncQueueItem {
       deadLetter: deadLetter ?? this.deadLetter,
       lastAttemptAt: lastAttemptAt ?? this.lastAttemptAt,
       catalogoPublishPlan: catalogoPublishPlan ?? this.catalogoPublishPlan,
-      catalogoPublishPhase:
-          catalogoPublishPhase ?? this.catalogoPublishPhase,
+      catalogoPublishPhase: catalogoPublishPhase ?? this.catalogoPublishPhase,
       catalogoQueueSourceOrigin:
           catalogoQueueSourceOrigin ?? this.catalogoQueueSourceOrigin,
       stockIntentJson: stockIntentJson ?? this.stockIntentJson,
@@ -155,8 +156,7 @@ class SyncQueueItem {
             .values[(m['catalogoPublishPlan'] as int?) ?? 0],
         catalogoPublishPhase: CatalogoQueuePublishPhase
             .values[(m['catalogoPublishPhase'] as int?) ?? 0],
-        catalogoQueueSourceOrigin:
-            m['catalogoQueueSourceOrigin'] as String?,
+        catalogoQueueSourceOrigin: m['catalogoQueueSourceOrigin'] as String?,
         stockIntentJson: m['stockIntentJson'] as String?,
       );
 
@@ -280,8 +280,7 @@ class SyncQueueService {
       if (item.entityKey != entityKey) continue;
       final err = item.lastError?.trim();
       if (err == null || err.isEmpty) continue;
-      final ms =
-          item.lastAttemptAt > 0 ? item.lastAttemptAt : item.createdAt;
+      final ms = item.lastAttemptAt > 0 ? item.lastAttemptAt : item.createdAt;
       if (ms >= melhorMs) {
         melhorMs = ms;
         melhor = err;
@@ -307,7 +306,8 @@ class SyncQueueService {
     await _ensureBox();
     final box = _box!;
 
-    final id = '${type.name}_${lojaId}_${entityKey}_${DateTime.now().millisecondsSinceEpoch}';
+    final id =
+        '${type.name}_${lojaId}_${entityKey}_${DateTime.now().millisecondsSinceEpoch}';
     final errInicial = lastError != null && lastError.trim().isNotEmpty
         ? SyncQueueService._truncateError(lastError.trim())
         : null;
@@ -425,8 +425,7 @@ class SyncQueueService {
     _instance._connectivitySub = Connectivity()
         .onConnectivityChanged
         .listen((List<ConnectivityResult> results) {
-      final hasConnection = results.any((r) =>
-          r != ConnectivityResult.none);
+      final hasConnection = results.any((r) => r != ConnectivityResult.none);
       if (hasConnection) {
         if (!SyncQueueRecoveryMode.allowsAutomaticQueueProcessing) {
           SyncQueueRecoveryDiagnostics.noteConnectivityAutosyncSuppressed();
@@ -682,12 +681,62 @@ class SyncQueueService {
     }
   }
 
+  Future<void> _markDeterministicConflictDeadLetter(
+    SyncQueueItem item,
+    String error,
+  ) async {
+    await _ensureBox();
+    final updated = item.copyWith(
+      attemptCount: _maxAttempts,
+      lastError: _truncateError(error),
+      deadLetter: true,
+      lastAttemptAt: DateTime.now().millisecondsSinceEpoch,
+    );
+    await _box!.put(item.id, jsonEncode(updated.toMap()));
+  }
+
+  bool _olderReplaceOvertaken(
+    SyncQueueItem item,
+    ProdutoStockCatalogCadastroIntent frozen,
+  ) {
+    final box = _box;
+    if (box == null) return false;
+    final peers = <StaleReplacePeer>[];
+    for (final k in box.keys) {
+      if (k.toString() == item.id) continue;
+      final map = _rawToMap(box.get(k));
+      if (map == null) continue;
+      final other = SyncQueueItem.fromMap(map);
+      if (other.deadLetter) continue;
+      if (other.type != SyncOperationType.upsertProduto) continue;
+      if (other.lojaId != item.lojaId) continue;
+      if (other.entityKey != item.entityKey) continue;
+      final otherFrozen =
+          ProdutoStockCatalogCadastroIntent.tryDecode(other.stockIntentJson);
+      if (otherFrozen == null || otherFrozen.kind != 'replace') continue;
+      peers.add(
+        StaleReplacePeer(
+          createdAt: other.createdAt,
+          expectedRevision:
+              ProdutoStaleReplaceIntent.expectedRevisionOf(otherFrozen),
+        ),
+      );
+    }
+    return ProdutoStaleReplaceIntent.olderIntentMustYield(
+      thisCreatedAt: item.createdAt,
+      thisExpectedRevision:
+          ProdutoStaleReplaceIntent.expectedRevisionOf(frozen),
+      peers: peers,
+    );
+  }
+
   Future<bool> _executeUpsertCliente(SyncQueueItem item) async {
     final box = await Hive.openBox<Cliente>(item.boxName);
     final cliente = box.get(item.entityKey);
 
     if (cliente == null) {
-      logW('⚠️ [SYNC-QUEUE] Cliente key=${item.entityKey} não encontrado no Hive');
+      logW(
+          '⚠️ [SYNC-QUEUE] Cliente key=${item.entityKey} não encontrado no Hive');
       return true; // Remove da fila - entidade foi deletada
     }
 
@@ -700,20 +749,26 @@ class SyncQueueService {
     final venda = box.get(item.entityKey);
 
     if (venda == null) {
-      logW('⚠️ [SYNC-QUEUE] Venda key=${item.entityKey} não encontrada no Hive');
+      logW(
+          '⚠️ [SYNC-QUEUE] Venda key=${item.entityKey} não encontrada no Hive');
       return true;
     }
 
-    logD('📤 [SYNC-DEBUG] SyncQueue processando venda pendente → lojaId=${item.lojaId} | key=${item.entityKey} | cliente=${venda.clienteNome}');
-    final ok = await VendasFirestoreService.syncVenda(venda, lojaId: item.lojaId, enqueueOnFailure: false);
+    logD(
+        '📤 [SYNC-DEBUG] SyncQueue processando venda pendente → lojaId=${item.lojaId} | key=${item.entityKey} | cliente=${venda.clienteNome}');
+    final ok = await VendasFirestoreService.syncVenda(venda,
+        lojaId: item.lojaId, enqueueOnFailure: false);
     if (!ok) {
       // Falha de syncVenda: manter item na fila e registrar tentativa para backoff
-      await _incrementAttempt(item, 'syncVenda retornou false para vendaKey=${item.entityKey}');
-      logW('⚠️ [SYNC-QUEUE] syncVenda falhou para venda pendente (operationId=${item.operationId})');
+      await _incrementAttempt(
+          item, 'syncVenda retornou false para vendaKey=${item.entityKey}');
+      logW(
+          '⚠️ [SYNC-QUEUE] syncVenda falhou para venda pendente (operationId=${item.operationId})');
       return false;
     }
 
-    logD('✅ [SYNC-QUEUE] Venda pendente sincronizada com sucesso (operationId=${item.operationId})');
+    logD(
+        '✅ [SYNC-QUEUE] Venda pendente sincronizada com sucesso (operationId=${item.operationId})');
     return true;
   }
 
@@ -722,7 +777,21 @@ class SyncQueueService {
     final produto = box.get(item.entityKey);
 
     if (produto == null) {
-      logW('⚠️ [SYNC-QUEUE] Produto key=${item.entityKey} não encontrado no Hive');
+      logW(
+          '⚠️ [SYNC-QUEUE] Produto key=${item.entityKey} não encontrado no Hive');
+      return true;
+    }
+
+    final frozen = ProdutoStockCatalogCadastroIntent.tryDecode(
+      item.stockIntentJson,
+    );
+    if (frozen != null &&
+        frozen.kind == 'replace' &&
+        _olderReplaceOvertaken(item, frozen)) {
+      logD(
+        '[STALE_REPLACE] drop overtaken queue item id=${item.id} '
+        'entityKey=${item.entityKey}',
+      );
       return true;
     }
 
@@ -739,10 +808,6 @@ class SyncQueueService {
     var frozen = ProdutoStockCatalogCadastroIntent.tryDecode(
       item.stockIntentJson,
     );
-    // Replace com revisão congelada: reconstruir (evita loop de aborted).
-    if (frozen != null && frozen.kind == 'replace') {
-      frozen = null;
-    }
     final status = await ProdutosFirestoreService.syncProdutoComStatus(
       produto,
       lojaId: item.lojaId,
@@ -771,9 +836,6 @@ class SyncQueueService {
       var frozen = ProdutoStockCatalogCadastroIntent.tryDecode(
         item.stockIntentJson,
       );
-      if (frozen != null && frozen.kind == 'replace') {
-        frozen = null;
-      }
       final status = await ProdutosFirestoreService.syncProdutoComStatus(
         produto,
         lojaId: item.lojaId,
@@ -798,7 +860,8 @@ class SyncQueueService {
         CatalogoQueuePublishPhase.aguardandoDraft) {
       debugCanonicalPhaseDraftRuns++;
       ProdutosFirestoreService.limparFalhasUpsertCatalogo();
-      final draft = await ProdutoCadastroPosSaveService.sincronizarDraftCanonical(
+      final draft =
+          await ProdutoCadastroPosSaveService.sincronizarDraftCanonical(
         produto: produto,
         lojaId: item.lojaId,
         catalogoDiagContext: diagContext,
@@ -876,6 +939,20 @@ class SyncQueueService {
       );
       return false;
     }
+    if (status == ProdutoSyncRemotoStatus.conflitoVersaoEstoque) {
+      final msg = ProdutosFirestoreService.ultimoErroSyncSanitizado ??
+          ProdutoSyncErroUtil.sanitizar(
+            null,
+            status: ProdutoSyncRemotoStatus.conflitoVersaoEstoque,
+          ) ??
+          'conflito-versao-estoque';
+      await _markDeterministicConflictDeadLetter(item, msg);
+      logW(
+        '[STALE_REPLACE] queue dead-letter version conflict '
+        'entityKey=${item.entityKey}',
+      );
+      return false;
+    }
     if (status != ProdutoSyncRemotoStatus.confirmado &&
         status != ProdutoSyncRemotoStatus.semMudancas) {
       final detalhe = ProdutosFirestoreService.ultimoErroSyncSanitizado ??
@@ -908,11 +985,13 @@ class SyncQueueService {
     final fornecedor = box.get(item.entityKey);
 
     if (fornecedor == null) {
-      logW('⚠️ [SYNC-QUEUE] Fornecedor key=${item.entityKey} não encontrado no Hive');
+      logW(
+          '⚠️ [SYNC-QUEUE] Fornecedor key=${item.entityKey} não encontrado no Hive');
       return true;
     }
 
-    await FornecedoresFirestoreService.syncFornecedor(fornecedor, lojaId: item.lojaId);
+    await FornecedoresFirestoreService.syncFornecedor(fornecedor,
+        lojaId: item.lojaId);
     return true;
   }
 
@@ -1206,7 +1285,8 @@ class SyncQueueService {
     for (final k in box.keys) {
       final id = k.toString();
       final raw = box.get(k);
-      final rawStr = raw is String ? raw : (raw == null ? null : jsonEncode(raw));
+      final rawStr =
+          raw is String ? raw : (raw == null ? null : jsonEncode(raw));
       final map = _instance._rawToMap(raw);
       if (map == null) continue;
       final item = SyncQueueItem.fromMap(map);
