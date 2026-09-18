@@ -4,6 +4,7 @@ import {FieldValue} from 'firebase-admin/firestore';
 import {documentId, storeRef, requireAuthenticated, authorizeStockCommand, authorizePublishCommand, SERVER_PAYMENT_AUTH, INACTIVE_PRODUCT_COMPAT_ALLOWED_KINDS} from './stockCatalogAccess.js';
 import {isMap, stockError, normalizeStock, projectCatalog, quantity, resolveKey, resolveExtraKey, validateEditorial, inferStockKind, resolveLegacyCompatStockKind} from './catalogStockProjection.js';
 import {ATOMIC_PDV_SALE_FLAG, parseAtomicPdvSale, buildCanonicalEstoqueVendaDoc} from './stockCatalogPdvSale.js';
+import {emitRestoreAppliedSaleRequiredLog} from './stockCatalogObservability.js';
 
 const MAX_PRODUCTS = 25;
 const ordered = value => Array.isArray(value) ? value.map(ordered) : isMap(value)
@@ -182,7 +183,18 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
     if (command.kind === 'restore') {
       sourceRef = base.collection('stock_catalog_operations').doc(command.sourceOperationId);
       source = await tx.get(sourceRef);
-      if (!source.exists || source.data().kind !== 'sale' || source.data().status !== 'applied') throw stockError('failed-precondition', 'Applied sale required');
+      if (!source.exists || source.data().kind !== 'sale' || source.data().status !== 'applied') {
+        const sourceData = source.exists ? source.data() : null;
+        emitRestoreAppliedSaleRequiredLog({
+          lojaId: command.lojaId,
+          operationId: command.operationId,
+          sourceOperationId: command.sourceOperationId,
+          sourceExists: source.exists,
+          sourceKind: sourceData?.kind ?? null,
+          sourceStatus: sourceData?.status ?? null,
+        });
+        throw stockError('failed-precondition', 'Applied sale required');
+      }
       if (source.data().restoredBy && source.data().restoredBy !== command.operationId) throw stockError('already-exists', 'Sale already restored');
       items = source.data().items;
     }

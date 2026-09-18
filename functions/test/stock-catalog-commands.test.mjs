@@ -88,6 +88,53 @@ test('restore references applied sale and cannot be repeated with another id', a
   await denied(executeStockCommand(db, {...restore, operationId: 'different'}, owner), 'already-exists');
   assert.equal((await state(base)).stock.quantidade, 1);
 });
+function captureInfo(run) {
+  const lines = [];
+  const orig = console.info;
+  console.info = (...args) => lines.push(args.map(String).join(' '));
+  return Promise.resolve().then(run).finally(() => { console.info = orig; }).then(result => ({result, lines}));
+}
+function restorePreconditionLogs(lines) {
+  return lines.map(line => { try { return JSON.parse(line); } catch { return null; } })
+    .filter(payload => payload && payload.event === 'stock_restore_precondition');
+}
+test('restore missing applied sale logs sanitized metadata and writes nothing', async () => {
+  const {base, lojaId} = await seed({quantidade: 4});
+  const opsBefore = (await base.collection('stock_catalog_operations').get()).size;
+  const {lines} = await captureInfo(async () => {
+    await denied(executeStockCommand(db, intent(lojaId, 'restore', 'r-missing', {}, {sourceOperationId: 'missing-sale'}), owner), 'failed-precondition');
+  });
+  assert.equal((await state(base)).stock.quantidade, 4);
+  assert.equal((await base.collection('stock_catalog_operations').get()).size, opsBefore);
+  const parsed = restorePreconditionLogs(lines);
+  assert.equal(parsed.length, 1);
+  assert.equal(parsed[0].reason, 'applied_sale_required');
+  assert.equal(parsed[0].operationType, 'restore');
+  assert.equal(parsed[0].lojaId, lojaId);
+  assert.equal(parsed[0].operationId, 'r-missing');
+  assert.equal(parsed[0].lookupKey, 'missing-sale');
+  assert.equal(parsed[0].sourceExists, false);
+  assert.equal('items' in parsed[0], false);
+  assert.equal('sale' in parsed[0], false);
+  assert.equal(JSON.stringify(parsed[0]).includes('Peça'), false);
+});
+test('applied restore success does not emit applied_sale_required log', async () => {
+  const {base, lojaId} = await seed();
+  await executeStockCommand(db, intent(lojaId, 'sale', 's-ok'), owner);
+  const {lines} = await captureInfo(async () => {
+    await executeStockCommand(db, intent(lojaId, 'restore', 'r-ok', {}, {sourceOperationId: 's-ok'}), owner);
+  });
+  assert.equal(restorePreconditionLogs(lines).length, 0);
+  assert.equal((await state(base)).stock.quantidade, 1);
+});
+test('restore of non-sale operation stays blocked with Applied sale required', async () => {
+  const {lojaId} = await seed();
+  await executeStockCommand(db, intent(lojaId, 'restock', 'rs', {quantity: 1}), owner);
+  await assert.rejects(
+    executeStockCommand(db, intent(lojaId, 'restore', 'r-wrong', {}, {sourceOperationId: 'rs'}), owner),
+    e => e.code === 'failed-precondition' && e.message === 'Applied sale required',
+  );
+});
 test('missing data/capability and client-supplied stock/revision are rejected', async () => {
   const {base, lojaId} = await seed();
   const cmd = intent(lojaId, 'sale', 's');
