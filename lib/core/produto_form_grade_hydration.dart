@@ -4,6 +4,7 @@
 import '../models/produto.dart';
 import '../utils/moeda_input_formatter.dart';
 import 'produto_variacao_extra.dart';
+import 'produto_variation_stock_consistency.dart';
 
 /// Origem das linhas exibidas na grade do formulário.
 enum ProdutoFormGradeHydrationSource {
@@ -20,10 +21,14 @@ class ProdutoFormGradeHydration {
   const ProdutoFormGradeHydration({
     required this.rows,
     required this.source,
+    this.consistency,
   });
 
   final List<ProdutoFormGradeRow> rows;
   final ProdutoFormGradeHydrationSource source;
+
+  /// Stock representation consistency (authority = variacoes).
+  final ProdutoVariationStockConsistency? consistency;
 }
 
 String produtoFormDisplayTamanhoGrade(String tamanho) {
@@ -327,7 +332,12 @@ bool _variacoesParcialRelativoAoEstoque(Produto p) {
 }
 
 /// Prioridade: variacoes → estoquePorTamanho → tamanhos (sem inventar quantidade).
+///
+/// Nunca repara `variation.quantity=0` a partir de `estoquePorTamanho`.
+/// Anexa [ProdutoVariationStockConsistency] para UI/save/PDV guards.
 ProdutoFormGradeHydration produtoFormHydrateGradeRows(Produto p) {
+  final consistency =
+      ProdutoVariationStockConsistencyEvaluator.evaluateProduto(p);
   final temVariacoes = p.variacoes != null && p.variacoes!.isNotEmpty;
 
   if (temVariacoes) {
@@ -345,6 +355,7 @@ ProdutoFormGradeHydration produtoFormHydrateGradeRows(Produto p) {
         tamanhosAlvo: tamanhosLista,
       );
     } else if (_variacoesParcialRelativoAoEstoque(p)) {
+      // Only add MISSING size rows — never overwrite existing qty=0 from ept.
       rows = _suplementarLinhasDeEstoqueAusentes(
         rows,
         p.estoquePorTamanho,
@@ -354,6 +365,7 @@ ProdutoFormGradeHydration produtoFormHydrateGradeRows(Produto p) {
     return ProdutoFormGradeHydration(
       rows: rows.isEmpty ? [produtoFormEmptyGradeRow()] : rows,
       source: ProdutoFormGradeHydrationSource.variacoes,
+      consistency: consistency,
     );
   }
 
@@ -363,6 +375,7 @@ ProdutoFormGradeHydration produtoFormHydrateGradeRows(Produto p) {
       return ProdutoFormGradeHydration(
         rows: rows,
         source: ProdutoFormGradeHydrationSource.estoquePorTamanho,
+        consistency: consistency,
       );
     }
   }
@@ -373,13 +386,15 @@ ProdutoFormGradeHydration produtoFormHydrateGradeRows(Produto p) {
       return ProdutoFormGradeHydration(
         rows: rows,
         source: ProdutoFormGradeHydrationSource.tamanhosSomente,
+        consistency: consistency,
       );
     }
   }
 
-  return const ProdutoFormGradeHydration(
-    rows: [],
+  return ProdutoFormGradeHydration(
+    rows: const [],
     source: ProdutoFormGradeHydrationSource.nenhuma,
+    consistency: consistency,
   );
 }
 

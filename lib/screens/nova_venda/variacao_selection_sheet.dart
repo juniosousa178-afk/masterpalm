@@ -8,6 +8,7 @@ import 'package:hive/hive.dart';
 import '../../core/catalog_color_from_name.dart';
 import '../../core/produto_grade_pdv_hydration.dart';
 import '../../core/produto_variacao_extra.dart';
+import '../../core/produto_variation_stock_consistency.dart';
 import '../../models/produto.dart';
 import '../../services/produto_grade_pdv_hydration_service.dart';
 import '../../widgets/variacao_extras_collapsible.dart';
@@ -153,6 +154,15 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
       );
 
   bool get _podeConfirmar {
+    final stockConsistency = ProdutoVariationStockConsistencyEvaluator.evaluateProduto(
+      _p,
+      hydrating: _hydrating,
+      offlinePartial: _readiness == GradePdvReadiness.offlinePartial &&
+          !gradePdvHasLocalVariationSignal(_p),
+    );
+    if (stockConsistency.blocksPdvSale) {
+      return false;
+    }
     final p = _p;
     if (_mostrarTamanho &&
         _tamanhosDisponiveis.isNotEmpty &&
@@ -176,6 +186,14 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
     }
     return _quantidade >= 1;
   }
+
+  ProdutoVariationStockConsistency get _stockConsistency =>
+      ProdutoVariationStockConsistencyEvaluator.evaluateProduto(
+        _p,
+        hydrating: _hydrating,
+        offlinePartial: _readiness == GradePdvReadiness.offlinePartial &&
+            !gradePdvHasLocalVariationSignal(_p),
+      );
 
   int get _estoqueDisponivel {
     final ex = _extraSelecionado.trim();
@@ -437,6 +455,35 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
                         ),
                       ],
                     ),
+                    if (_stockConsistency.isUnresolved) ...[
+                      const SizedBox(height: 12),
+                      Material(
+                        color: Colors.orange.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(Icons.warning_amber_rounded,
+                                  color: Colors.orange.shade800),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  _stockConsistency.message.isNotEmpty
+                                      ? _stockConsistency.message
+                                      : 'Estoque inconsistente — sincronização necessária',
+                                  style: TextStyle(
+                                    color: Colors.orange.shade900,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 20),
                     if (_mostrarTamanho) ...[
                       Text(
@@ -734,9 +781,11 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
                         onPressed: _podeConfirmar ? _confirmar : null,
                         icon: const Icon(Icons.check),
                         label: Text(
-                          _temVariacoes && !_podeConfirmar
-                              ? 'Selecione as opções'
-                              : 'Adicionar (R\$ ${_fmt2(_precoAtualUnitario * _quantidade)})',
+                          _stockConsistency.blocksPdvSale
+                              ? 'Estoque inconsistente'
+                              : _temVariacoes && !_podeConfirmar
+                                  ? 'Selecione as opções'
+                                  : 'Adicionar (R\$ ${_fmt2(_precoAtualUnitario * _quantidade)})',
                           style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,

@@ -14,6 +14,7 @@ import '../core/hive_box_names.dart';
 import '../core/produto_cadastro_gate.dart';
 import '../core/produto_form_grade_hydration.dart';
 import '../core/produto_variacao_extra.dart';
+import '../core/produto_variation_stock_consistency.dart';
 import '../models/compra_item_pipeline.dart';
 import '../models/produto.dart';
 import '../services/compra_item_pipeline_store.dart';
@@ -250,6 +251,9 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
   /// Grade reidratada na UI a partir de estoque/tamanhos (mesma base da lista).
   bool _gradeHidratadaDeLegado = false;
 
+  /// Consistency of variacoes vs estoquePorTamanho (authority = variacoes cells).
+  ProdutoVariationStockConsistency? _stockConsistency;
+
   /// Grade/variação capturada ao abrir o formulário (protege save acidental).
   ProdutoFormGradeBaseline? _gradeBaseline;
 
@@ -368,6 +372,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
 
   void _carregarGradeUiFromProduto(Produto p) {
     final hydration = produtoFormHydrateGradeRows(p);
+    _stockConsistency = hydration.consistency;
     _legadoEstoqueSemVariacoesCadastradas = false;
     _gradeHidratadaDeLegado = false;
     if (hydration.source == ProdutoFormGradeHydrationSource.variacoes) {
@@ -1868,6 +1873,34 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       );
       return;
     }
+    // Unresolved representation: block silent persistence of synthesized/default zeros.
+    final consistency = _stockConsistency ??
+        (widget.produto == null
+            ? null
+            : ProdutoVariationStockConsistencyEvaluator.evaluateProduto(
+                widget.produto!,
+              ));
+    if (consistency != null &&
+        consistency.blocksSilentZeroSave &&
+        consistency.isUnresolved) {
+      final edited = _variacaoControllers.any((c) {
+        final q = (c['qtd']?.text ?? '').trim();
+        return q.isNotEmpty && q != '0';
+      });
+      if (!edited) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              consistency.message.isNotEmpty
+                  ? consistency.message
+                  : 'Estoque inconsistente — sincronização necessária',
+            ),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+    }
     if (_temUploadFotoPendente) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -2479,6 +2512,37 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                                 'Já existe produto com este nome e categoria. Ao salvar, será pedido se deseja '
                                 'atualizar o existente ou criar outro registro.',
                                 style: TextStyle(color: Colors.orange.shade900, fontSize: 13),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  if (isEdit &&
+                      _stockConsistency != null &&
+                      _stockConsistency!.isUnresolved) ...[
+                    Material(
+                      color: Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(Icons.warning_amber_rounded,
+                                color: Colors.orange.shade800),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                _stockConsistency!.message.isNotEmpty
+                                    ? _stockConsistency!.message
+                                    : 'Estoque inconsistente — sincronização necessária',
+                                style: TextStyle(
+                                  color: Colors.orange.shade900,
+                                  fontSize: 13,
+                                ),
                               ),
                             ),
                           ],
