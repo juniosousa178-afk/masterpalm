@@ -64,6 +64,12 @@ export const STOCK_RECONCILIATION_GRANT = 'stockReconciliationGrant';
 export const RECONCILIATION_CONTROL_COLLECTION = 'stock_reconciliation_control';
 export const RECONCILIATION_OPERATORS_COLLECTION = 'stock_reconciliation_operators';
 
+/** Store+product capability: authorize kind=sale for a normal variation product only. */
+export const VARIATION_SALE_PRODUCT_GRANT = 'variationSaleProductGrant';
+export const VARIATION_SALE_PRODUCT_GRANTS_COLLECTION = 'variation_sale_product_grants';
+export const VARIATION_SALE_PRODUCT_NOT_AUTHORIZED = 'VARIATION_SALE_PRODUCT_NOT_AUTHORIZED';
+export const GRADE_SALE_NOT_AUTHORIZED = 'GRADE_SALE_NOT_AUTHORIZED';
+
 function isStrictEnabledFlag(value) {
   return value === true;
 }
@@ -97,6 +103,31 @@ export async function authorizeDedicatedReconciliation(tx, base, auth) {
     throw stockError('permission-denied', 'RECONCILIATION_OPERATOR_REQUIRED');
   }
   return uid;
+}
+
+export function isWildcardProductId(productId) {
+  return typeof productId !== 'string' || productId.includes('*');
+}
+
+/**
+ * Fail-closed product grant for variation sales.
+ * Missing / enabled!==true / malformed / wildcard → VARIATION_SALE_PRODUCT_NOT_AUTHORIZED.
+ * Does not write. Clients cannot enable this (Admin SDK / catch-all rules deny).
+ */
+export function variationSaleProductGrantEnabled(snap) {
+  const data = failClosedGrantData(snap);
+  return !!(data && isStrictEnabledFlag(data.enabled));
+}
+
+export async function authorizeVariationSaleProduct(tx, base, productId) {
+  if (isWildcardProductId(productId)) {
+    throw stockError('permission-denied', VARIATION_SALE_PRODUCT_NOT_AUTHORIZED);
+  }
+  const id = documentId(productId, 'productId');
+  const snap = await tx.get(base.collection(VARIATION_SALE_PRODUCT_GRANTS_COLLECTION).doc(id));
+  if (!variationSaleProductGrantEnabled(snap)) {
+    throw stockError('permission-denied', VARIATION_SALE_PRODUCT_NOT_AUTHORIZED);
+  }
 }
 
 /** ACTIVE protocol: control + migrationComplete + dedicated grant. Unchanged semantics. */

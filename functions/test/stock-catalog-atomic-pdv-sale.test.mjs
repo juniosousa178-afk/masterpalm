@@ -45,7 +45,8 @@ function salePayload(overrides = {}) {
 
 async function seedLegacy({
   product = {}, control = null, omitStockKind = false, withOwner = true,
-  withDraft = false, withDep = false, grant = false,
+  withDraft = false, withDep = false, grant = false, variationGrant = false,
+  productId = 'p',
 } = {}) {
   const lojaId = `atomic_${runId}_${++sequence}`;
   const base = db.collection('lojas').doc(lojaId);
@@ -54,15 +55,18 @@ async function seedLegacy({
   const stock = {quantidade: 1, stockRevision: 1, ...product};
   if (!omitStockKind && !('stockKind' in product)) stock.stockKind = 'simple';
   if (omitStockKind) delete stock.stockKind;
-  batch.set(base.collection('estoque_produtos').doc('p'), stock);
-  if (withDraft) batch.set(base.collection('draft_produtos').doc('p'), {nome: 'Peça', publicadoNoCatalogo: true});
-  if (withDep) batch.set(base.collection('stock_catalog_dependencies').doc('p'), {comboIds: []});
+  batch.set(base.collection('estoque_produtos').doc(productId), stock);
+  if (withDraft) batch.set(base.collection('draft_produtos').doc(productId), {nome: 'Peça', publicadoNoCatalogo: true});
+  if (withDep) batch.set(base.collection('stock_catalog_dependencies').doc(productId), {comboIds: []});
   if (control) batch.set(base.collection('stock_catalog_control').doc('state'), control);
   if (grant) {
     batch.set(base.collection('stock_catalog_access').doc('owner'), {
       enabled: true,
       permissions: {sale: true, restock: true, adjust: true, restore: true, editorial: true, publish: true, create: true, delete: true, undo: true},
     });
+  }
+  if (variationGrant) {
+    batch.set(base.collection('variation_sale_product_grants').doc(productId), {enabled: true});
   }
   await batch.commit();
   return {base, lojaId};
@@ -148,6 +152,7 @@ test('3 variation inactive atomic success size 37', async () => {
     omitStockKind: true,
     product: grade,
     control: {protocolVersion: 1, mode: 'inactive', migrationComplete: false},
+    variationGrant: true,
   });
   const sale = salePayload({
     itens: [{
@@ -367,6 +372,7 @@ test('ACTIVE valid atomic sale', async () => {
 test('variation lookup finds trimmed/case-normalized size when remote correct', async () => {
   const {base, lojaId} = await seedLegacy({
     omitStockKind: true,
+    variationGrant: true,
     product: {
       quantidade: 4,
       stockRevision: 1,
@@ -395,6 +401,7 @@ test('variation lookup finds trimmed/case-normalized size when remote correct', 
 test('unknown variation rejected without cross-match or stock change', async () => {
   const {base, lojaId} = await seedLegacy({
     omitStockKind: true,
+    variationGrant: true,
     product: {
       quantidade: 4,
       stockRevision: 1,
@@ -428,6 +435,7 @@ test('unknown variation rejected without cross-match or stock change', async () 
 test('variation cross-match: sell 15 never mutates 19', async () => {
   const {base, lojaId} = await seedLegacy({
     omitStockKind: true,
+    variationGrant: true,
     product: {
       quantidade: 4,
       stockRevision: 1,

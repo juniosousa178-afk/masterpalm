@@ -19,6 +19,7 @@ const owner = {uid: 'owner'};
 /** @param {{omitStockKind?: boolean}} opts — when true, fixture MUST NOT seed stockKind (P0 regression). */
 async function seedLegacy({
   control = null, product = {}, withOwner = true, withDraft = false, withDep = false, omitStockKind = false,
+  variationGrant = false,
 } = {}) {
   const lojaId = `inactive_${runId}_${++sequence}`;
   const base = db.collection('lojas').doc(lojaId);
@@ -31,6 +32,7 @@ async function seedLegacy({
   if (withDraft) batch.set(base.collection('draft_produtos').doc('p'), {nome: 'Peça', publicadoNoCatalogo: true});
   if (withDep) batch.set(base.collection('stock_catalog_dependencies').doc('p'), {comboIds: []});
   if (control) batch.set(base.collection('stock_catalog_control').doc('state'), control);
+  if (variationGrant) batch.set(base.collection('variation_sale_product_grants').doc('p'), {enabled: true});
   await batch.commit();
   if (omitStockKind) {
     assert.equal((await base.collection('estoque_produtos').doc('p').get()).data().stockKind, undefined);
@@ -128,7 +130,7 @@ test('CASE2 inactive SIMPLE missing stockKind sale SUCCESS', async () => {
 });
 
 test('CASE3 no-control GRADE missing stockKind sizes 34-39 selected 37', async () => {
-  const {base, lojaId} = await seedLegacy({omitStockKind: true, product: linaGradeMissingKind});
+  const {base, lojaId} = await seedLegacy({omitStockKind: true, product: linaGradeMissingKind, variationGrant: true});
   await executeStockCommand(db, intent(lojaId, 'sale', 'g37mk', {size: '37', color: 'amendoa'}), owner);
   const stock = (await base.collection('estoque_produtos').doc('p').get()).data();
   assert.equal(stock.stockKind, undefined);
@@ -146,6 +148,7 @@ test('CASE4 inactive GRADE missing stockKind SUCCESS', async () => {
     omitStockKind: true,
     product: linaGradeMissingKind,
     control: {protocolVersion: 1, mode: 'inactive', migrationComplete: false},
+    variationGrant: true,
   });
   await executeStockCommand(db, intent(lojaId, 'sale', 'g37in', {size: '37', color: 'amendoa'}), owner);
   const stock = (await base.collection('estoque_produtos').doc('p').get()).data();
@@ -233,7 +236,7 @@ test('empty tamanhos evidence prevents false SIMPLE (variation path)', async () 
     tamanhos: ['34', '35', '36'],
   };
   assert.equal(inferStockKind(partial), 'variation');
-  const {lojaId} = await seedLegacy({omitStockKind: true, product: partial});
+  const {lojaId} = await seedLegacy({omitStockKind: true, product: partial, variationGrant: true});
   // Selecting a size must not take the simple-product branch.
   await denied(
     executeStockCommand(db, intent(lojaId, 'sale', 'partial', {size: '34', color: 'x'}), owner),
@@ -300,7 +303,7 @@ test('grade sizes 34-39: sale size 37 decrements only 37', async () => {
     },
     tamanhos: ['34', '35', '36', '37', '38', '39'],
   };
-  const {base, lojaId} = await seedLegacy({product: grade});
+  const {base, lojaId} = await seedLegacy({product: grade, variationGrant: true});
   await executeStockCommand(db, intent(lojaId, 'sale', 'g37', {size: '37', color: 'amendoa'}), owner);
   const stock = (await base.collection('estoque_produtos').doc('p').get()).data();
   assert.equal(stock.variacoes['37'].amendoa, 1);
@@ -314,6 +317,7 @@ test('grade sizes 34-39: sale size 37 decrements only 37', async () => {
 
 test('missing selected size fails structured', async () => {
   const {lojaId} = await seedLegacy({
+    variationGrant: true,
     product: {
       stockKind: 'variation',
       quantidade: 2,

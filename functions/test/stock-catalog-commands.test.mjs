@@ -19,6 +19,9 @@ async function seed(product = {}) {
   batch.set(base.collection('estoque_produtos').doc('p'), stock);
   batch.set(base.collection('draft_produtos').doc('p'), {nome: 'Peça', publicadoNoCatalogo: true});
   batch.set(base.collection('stock_catalog_dependencies').doc('p'), {comboIds: []});
+  if (stock.stockKind === 'variation') {
+    batch.set(base.collection('variation_sale_product_grants').doc('p'), {enabled: true});
+  }
   await batch.commit();
   return {base, lojaId};
 }
@@ -333,13 +336,17 @@ for (const variant of [
   {name: 'size-only sem-cor', stock: {variacoes: {P: {'sem-cor': 1}}}, item: {size: 'P'}},
   {name: 'color-only sem-tamanho', stock: {variacoes: {'sem-tamanho': {Azul: 1}}}, item: {color: ' azul '}},
   {name: 'color-only root', stock: {estoquePorCor: {Azul: 1}}, item: {color: 'AZUL'}},
-  {name: 'named extra', stock: {variacoes: {P: {Azul: {A: 1}}}}, item: {size: 'P', color: 'Azul', extra: 'A'}},
 ]) test(`sale and restore preserve ${variant.name}`, async () => {
   const {base, lojaId} = await seed({stockKind: 'variation', ...variant.stock});
   await executeStockCommand(db, intent(lojaId, 'sale', 's', variant.item), owner);
   assert.equal((await state(base)).stock.quantidade, 0); assert.equal((await state(base)).live, null);
   await executeStockCommand(db, intent(lojaId, 'restore', 'r', {}, {sourceOperationId: 's'}), owner);
   assert.equal((await state(base)).stock.quantidade, 1); assert.equal((await state(base)).live.quantidade, 1);
+});
+test('named extra grade sale remains denied', async () => {
+  const {base, lojaId} = await seed({stockKind: 'variation', variacoes: {P: {Azul: {A: 1}}}});
+  await denied(executeStockCommand(db, intent(lojaId, 'sale', 's', {size: 'P', color: 'Azul', extra: 'A'}), owner), 'permission-denied');
+  assert.equal((await state(base)).stock.quantidade, 1);
 });
 test('write-count budget includes reverse indexes and operation marker', async () => {
   const {base, lojaId} = await seed(); const components = [];
