@@ -59,6 +59,46 @@ function rejectReservedServerIdentity(auth, uid) {
   }
 }
 
+/** Dedicated store-scoped capability: authorize operation=reconcile only. */
+export const STOCK_RECONCILIATION_GRANT = 'stockReconciliationGrant';
+export const RECONCILIATION_CONTROL_COLLECTION = 'stock_reconciliation_control';
+export const RECONCILIATION_OPERATORS_COLLECTION = 'stock_reconciliation_operators';
+
+function isStrictEnabledFlag(value) {
+  return value === true;
+}
+
+function failClosedGrantData(snap) {
+  if (!snap?.exists) return null;
+  const data = snap.data();
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+  return data;
+}
+
+/**
+ * Store-scoped reconciliation capability + technical operator.
+ * Independent from stock protocol ACTIVE, membership, and stock_catalog_access.
+ * Missing/false/malformed grant → RECONCILIATION_GRANT_REQUIRED (fail closed).
+ * Missing/false operator → RECONCILIATION_OPERATOR_REQUIRED.
+ */
+export async function authorizeDedicatedReconciliation(tx, base, auth) {
+  const uid = requireAuthenticated(auth);
+  rejectReservedServerIdentity(auth, uid);
+  const [grantSnap, operatorSnap] = await tx.getAll(
+    base.collection(RECONCILIATION_CONTROL_COLLECTION).doc('state'),
+    base.collection(RECONCILIATION_OPERATORS_COLLECTION).doc(uid),
+  );
+  const grant = failClosedGrantData(grantSnap);
+  if (!grant || !isStrictEnabledFlag(grant.reconciliationEnabled)) {
+    throw stockError('failed-precondition', 'RECONCILIATION_GRANT_REQUIRED');
+  }
+  const operator = failClosedGrantData(operatorSnap);
+  if (!operator || !isStrictEnabledFlag(operator.enabled)) {
+    throw stockError('permission-denied', 'RECONCILIATION_OPERATOR_REQUIRED');
+  }
+  return uid;
+}
+
 /** ACTIVE protocol: control + migrationComplete + dedicated grant. Unchanged semantics. */
 export async function authorizeStockTransaction(tx, base, auth, permission) {
   const uid = requireAuthenticated(auth);
@@ -175,9 +215,14 @@ export async function authorizeInactiveLegacyPublish(tx, db, base, auth) {
 
 /**
  * Resolve route + authorize stockCatalogCommand.
+ * reconcile → dedicated store grant + operator (never protocol ACTIVE / adjust / membership).
  * ACTIVE → grants; sale/restore → sale membership; product kinds → product membership.
  */
 export async function authorizeStockCommand(tx, db, base, auth, permission, kind) {
+  if (kind === 'reconcile') {
+    const uid = await authorizeDedicatedReconciliation(tx, base, auth);
+    return {uid, route: STOCK_RECONCILIATION_GRANT, legacyCompat: false};
+  }
   const control = await tx.get(base.collection('stock_catalog_control').doc('state'));
   const route = classifyStockControlState(control);
   if (route === 'ACTIVE') {

@@ -246,7 +246,7 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
   requireAuthenticated(auth);
   const command = parseCommand(raw), base = storeRef(db, command.lojaId);
   const hash = fingerprint(command);
-    const permission = command.kind === 'replace' || command.kind === 'reconcile' ? 'adjust'
+    const permission = command.kind === 'replace' ? 'adjust'
       : command.kind === 'tombstoneVariation' ? 'delete'
       : command.kind === 'clearVariationTombstone' ? 'undo'
       : command.kind;

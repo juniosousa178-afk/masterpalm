@@ -28,6 +28,8 @@ async function seed(product = {}) {
   const batch = db.batch();
   batch.set(base.collection('stock_catalog_control').doc('state'), {protocolVersion: 1, mode: 'active', migrationComplete: true});
   batch.set(base.collection('stock_catalog_access').doc('owner'), {enabled: true, permissions: {sale: true, restock: true, adjust: true, restore: true, editorial: true, publish: true, create: true, delete: true, undo: true}});
+  batch.set(base.collection('stock_reconciliation_control').doc('state'), {reconciliationEnabled: true, reference: 'emulator-reconcile-suite'});
+  batch.set(base.collection('stock_reconciliation_operators').doc('owner'), {enabled: true});
   batch.set(base.collection('estoque_produtos').doc('p'), stock);
   batch.set(base.collection('draft_produtos').doc('p'), {nome: 'Peca Tecnica', publicadoNoCatalogo: true});
   batch.set(base.collection('stock_catalog_dependencies').doc('p'), {comboIds: []});
@@ -126,7 +128,9 @@ test('9 wrong store blocked', async () => {
   const {lojaId} = await seed();
   const other = await seed();
   await other.base.collection('stock_catalog_access').doc('owner').delete();
-  await denied(executeStockCommand(db, reconcile(other.lojaId, 'rstore', {confirmedPhysicalQty: 1}), owner), 'permission-denied');
+  await other.base.collection('stock_reconciliation_control').doc('state').delete();
+  await other.base.collection('stock_reconciliation_operators').doc('owner').delete();
+  await denied(executeStockCommand(db, reconcile(other.lojaId, 'rstore', {confirmedPhysicalQty: 1}), owner), 'failed-precondition', 'RECONCILIATION_GRANT_REQUIRED');
   await executeStockCommand(db, reconcile(lojaId, 'rok', {confirmedPhysicalQty: 1}), owner);
 });
 
