@@ -1,4 +1,4 @@
-import {stockError} from './catalogStockProjection.js';
+import {stockError, isMap, inferStockKind, resolveKey, normKey, META_COST, NO_EXTRA} from './catalogStockProjection.js';
 export const STOCK_PROTOCOL_VERSION = 1;
 export const SERVER_PAYMENT_AUTH = Object.freeze({uid: 'stock-catalog-payment'});
 export const SERVER_PUBLISH_AUTH = Object.freeze({uid: 'stock-catalog-publisher'});
@@ -69,6 +69,11 @@ export const VARIATION_SALE_PRODUCT_GRANT = 'variationSaleProductGrant';
 export const VARIATION_SALE_PRODUCT_GRANTS_COLLECTION = 'variation_sale_product_grants';
 export const VARIATION_SALE_PRODUCT_NOT_AUTHORIZED = 'VARIATION_SALE_PRODUCT_NOT_AUTHORIZED';
 export const GRADE_SALE_NOT_AUTHORIZED = 'GRADE_SALE_NOT_AUTHORIZED';
+export const VARIATION_PRODUCT_STATE_UNSAFE = 'VARIATION_PRODUCT_STATE_UNSAFE';
+export const VARIATION_IDENTITY_NOT_RESOLVED = 'VARIATION_IDENTITY_NOT_RESOLVED';
+export const VARIATION_NOT_FOUND = 'VARIATION_NOT_FOUND';
+export const VARIATION_STOCK_INVALID = 'VARIATION_STOCK_INVALID';
+export const VARIATION_SALE_SAFETY_BLOCK_FIELDS = Object.freeze(['variationSaleBlocked', 'stockSafetyBlock']);
 
 function isStrictEnabledFlag(value) {
   return value === true;
@@ -128,6 +133,177 @@ export async function authorizeVariationSaleProduct(tx, base, productId) {
   if (!variationSaleProductGrantEnabled(snap)) {
     throw stockError('permission-denied', VARIATION_SALE_PRODUCT_NOT_AUTHORIZED);
   }
+}
+
+function hasDuplicateNormKeys(keys) {
+  const seen = new Set();
+  for (const key of keys) {
+    const normalized = normKey(key);
+    if (seen.has(normalized)) return true;
+    seen.add(normalized);
+  }
+  return false;
+}
+
+function isNoExtraKey(key) {
+  const trimmed = String(key ?? '').trim();
+  return !trimmed || trimmed === NO_EXTRA || trimmed === '__sem_extra__';
+}
+
+/** Extra-dimension stock (grade). `_sem_extra` + private cost is a normal 2D cell. */
+export function isGradeSaleCell(value) {
+  if (!isMap(value)) return false;
+  return Object.keys(value).some(key => key.trim() !== META_COST && !isNoExtraKey(key));
+}
+
+function ownOrResolved(map, wanted) {
+  if (!isMap(map) || typeof wanted !== 'string') return undefined;
+  if (Object.prototype.hasOwnProperty.call(map, wanted)) return wanted;
+  return resolveKey(map, wanted);
+}
+
+function colorKeys(colors) {
+  return Object.keys(colors).filter(key => key.trim() !== META_COST);
+}
+
+function cellQtyOrInvalid(value) {
+  if (isGradeSaleCell(value)) return {grade: true};
+  if (isMap(value)) {
+    const key = colorKeys(value).find(isNoExtraKey);
+    if (key === undefined) return {invalid: true};
+    return cellQtyOrInvalid(value[key]);
+  }
+  if (!Number.isSafeInteger(value) || value < 0) return {invalid: true};
+  return {qty: value};
+}
+
+function qtyMapEligible(map) {
+  if (!isMap(map) || !Object.keys(map).length) return VARIATION_PRODUCT_STATE_UNSAFE;
+  if (hasDuplicateNormKeys(Object.keys(map))) return VARIATION_IDENTITY_NOT_RESOLVED;
+  let aggregate = 0;
+  for (const value of Object.values(map)) {
+    if (isMap(value)) return VARIATION_PRODUCT_STATE_UNSAFE;
+    if (!Number.isSafeInteger(value) || value < 0) return VARIATION_STOCK_INVALID;
+    aggregate += value;
+  }
+  return {aggregate};
+}
+
+function resolveRequestedKey(map, wanted, fallback) {
+  if (wanted) {
+    const key = ownOrResolved(map, wanted);
+    return key === undefined ? VARIATION_NOT_FOUND : key;
+  }
+  const fallbackKey = ownOrResolved(map, fallback);
+  return fallbackKey === undefined ? VARIATION_IDENTITY_NOT_RESOLVED : fallbackKey;
+}
+
+/**
+ * Server-authoritative eligibility for a normal (non-grade) variation sale.
+ * Inspects the raw remote product only. Does not synthesize keys, trust Hive/EPT
+ * when canonical `variacoes` exists, or treat a manual product grant as a safety bypass.
+ * Returns null when safe; otherwise a stable deny reason.
+ */
+export function evaluateSafeVariationSaleEligibility(raw, item) {
+  if (isWildcardProductId(item?.productId)) return VARIATION_IDENTITY_NOT_RESOLVED;
+  if (item?.extra && String(item.extra).trim() !== META_COST) return GRADE_SALE_NOT_AUTHORIZED;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return VARIATION_PRODUCT_STATE_UNSAFE;
+  if (raw.pendingSoftDelete === true) return VARIATION_PRODUCT_STATE_UNSAFE;
+  for (const field of VARIATION_SALE_SAFETY_BLOCK_FIELDS) {
+    if (raw[field] === true) return VARIATION_PRODUCT_STATE_UNSAFE;
+  }
+
+  let kind = raw.stockKind;
+  if (kind !== undefined && kind !== null && kind !== '') {
+    if (!['simple', 'variation', 'combo'].includes(kind)) return VARIATION_PRODUCT_STATE_UNSAFE;
+  } else {
+    try { kind = inferStockKind(raw); }
+    catch { return VARIATION_PRODUCT_STATE_UNSAFE; }
+  }
+  if (kind !== 'variation') return VARIATION_PRODUCT_STATE_UNSAFE;
+  if (!Number.isSafeInteger(item.quantity) || item.quantity < 0) return VARIATION_STOCK_INVALID;
+
+  const sizeWanted = typeof item.size === 'string' ? item.size : '';
+  const colorWanted = typeof item.color === 'string' ? item.color : '';
+  const variacoes = raw.variacoes;
+  const hasVariacoes = isMap(variacoes) && Object.keys(variacoes).length;
+
+  if (hasVariacoes) {
+    if (hasDuplicateNormKeys(Object.keys(variacoes))) return VARIATION_IDENTITY_NOT_RESOLVED;
+    let aggregate = 0;
+    for (const colors of Object.values(variacoes)) {
+      if (!isMap(colors) || !colorKeys(colors).length) return VARIATION_PRODUCT_STATE_UNSAFE;
+      if (hasDuplicateNormKeys(colorKeys(colors))) return VARIATION_IDENTITY_NOT_RESOLVED;
+      for (const [color, value] of Object.entries(colors)) {
+        if (color.trim() === META_COST) continue;
+        const cell = cellQtyOrInvalid(value);
+        if (cell.grade) return GRADE_SALE_NOT_AUTHORIZED;
+        if (cell.invalid) return VARIATION_STOCK_INVALID;
+        aggregate += cell.qty;
+      }
+    }
+    if (raw.quantidade !== undefined && raw.quantidade !== null) {
+      if (!Number.isSafeInteger(raw.quantidade) || raw.quantidade < 0) return VARIATION_STOCK_INVALID;
+      if (raw.quantidade !== aggregate) return VARIATION_PRODUCT_STATE_UNSAFE;
+    }
+    if (isMap(raw.estoquePorTamanho) && Object.keys(raw.estoquePorTamanho).length) {
+      const ept = raw.estoquePorTamanho;
+      if (hasDuplicateNormKeys(Object.keys(ept))) return VARIATION_IDENTITY_NOT_RESOLVED;
+      for (const size of Object.keys(variacoes)) {
+        if (ownOrResolved(ept, size) === undefined) return VARIATION_PRODUCT_STATE_UNSAFE;
+      }
+      for (const [size, qty] of Object.entries(ept)) {
+        if (!Number.isSafeInteger(qty) || qty < 0) return VARIATION_STOCK_INVALID;
+        const matched = ownOrResolved(variacoes, size);
+        if (matched === undefined) return VARIATION_PRODUCT_STATE_UNSAFE;
+        const colors = variacoes[matched];
+        const derived = colorKeys(colors).reduce((sum, color) => {
+          const cell = cellQtyOrInvalid(colors[color]);
+          return cell.qty == null ? sum : sum + cell.qty;
+        }, 0);
+        if (qty !== derived) return VARIATION_PRODUCT_STATE_UNSAFE;
+      }
+    }
+    if (isMap(raw.estoquePorCor) && Object.keys(raw.estoquePorCor).length) {
+      return VARIATION_PRODUCT_STATE_UNSAFE;
+    }
+    const sizeKey = resolveRequestedKey(variacoes, sizeWanted, 'sem-tamanho');
+    if (sizeKey === VARIATION_NOT_FOUND || sizeKey === VARIATION_IDENTITY_NOT_RESOLVED) return sizeKey;
+    const colors = variacoes[sizeKey];
+    const colorKey = resolveRequestedKey(colors, colorWanted, 'sem-cor');
+    if (colorKey === VARIATION_NOT_FOUND || colorKey === VARIATION_IDENTITY_NOT_RESOLVED) return colorKey;
+    if (colorKey.trim() === META_COST) return VARIATION_IDENTITY_NOT_RESOLVED;
+    const requested = cellQtyOrInvalid(colors[colorKey]);
+    if (requested.grade) return GRADE_SALE_NOT_AUTHORIZED;
+    if (requested.invalid) return VARIATION_STOCK_INVALID;
+    return null;
+  }
+
+  if (isMap(raw.estoquePorCor) && Object.keys(raw.estoquePorCor).length && !sizeWanted) {
+    const check = qtyMapEligible(raw.estoquePorCor);
+    if (typeof check === 'string') return check;
+    if (raw.quantidade !== undefined && raw.quantidade !== null && raw.quantidade !== check.aggregate) {
+      return VARIATION_PRODUCT_STATE_UNSAFE;
+    }
+    const colorKey = resolveRequestedKey(raw.estoquePorCor, colorWanted, '');
+    if (colorKey === VARIATION_NOT_FOUND || colorKey === VARIATION_IDENTITY_NOT_RESOLVED) {
+      return colorWanted ? VARIATION_NOT_FOUND : VARIATION_IDENTITY_NOT_RESOLVED;
+    }
+    return null;
+  }
+
+  if (isMap(raw.estoquePorTamanho) && Object.keys(raw.estoquePorTamanho).length && sizeWanted && !colorWanted) {
+    const check = qtyMapEligible(raw.estoquePorTamanho);
+    if (typeof check === 'string') return check;
+    if (raw.quantidade !== undefined && raw.quantidade !== null && raw.quantidade !== check.aggregate) {
+      return VARIATION_PRODUCT_STATE_UNSAFE;
+    }
+    const sizeKey = resolveRequestedKey(raw.estoquePorTamanho, sizeWanted, '');
+    if (sizeKey === VARIATION_NOT_FOUND || sizeKey === VARIATION_IDENTITY_NOT_RESOLVED) return VARIATION_NOT_FOUND;
+    return null;
+  }
+
+  return VARIATION_PRODUCT_STATE_UNSAFE;
 }
 
 /** ACTIVE protocol: control + migrationComplete + dedicated grant. Unchanged semantics. */

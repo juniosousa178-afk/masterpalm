@@ -240,7 +240,8 @@ test('empty tamanhos evidence prevents false SIMPLE (variation path)', async () 
   // Selecting a size must not take the simple-product branch.
   await denied(
     executeStockCommand(db, intent(lojaId, 'sale', 'partial', {size: '34', color: 'x'}), owner),
-    'failed-precondition',
+    'permission-denied',
+    'VARIATION_PRODUCT_STATE_UNSAFE',
   );
 });
 

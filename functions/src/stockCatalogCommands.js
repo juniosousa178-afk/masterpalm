@@ -1,7 +1,7 @@
 import {recipe, componentIntents, comboOrder, recalculateFixedCombos} from './stockCatalogCombo.js';
 import {createHash} from 'node:crypto';
 import {FieldValue} from 'firebase-admin/firestore';
-import {documentId, storeRef, requireAuthenticated, authorizeStockCommand, authorizePublishCommand, SERVER_PAYMENT_AUTH, INACTIVE_PRODUCT_COMPAT_ALLOWED_KINDS, VARIATION_SALE_PRODUCT_GRANTS_COLLECTION, VARIATION_SALE_PRODUCT_NOT_AUTHORIZED, GRADE_SALE_NOT_AUTHORIZED, isWildcardProductId, variationSaleProductGrantEnabled} from './stockCatalogAccess.js';
+import {documentId, storeRef, requireAuthenticated, authorizeStockCommand, authorizePublishCommand, SERVER_PAYMENT_AUTH, INACTIVE_PRODUCT_COMPAT_ALLOWED_KINDS, GRADE_SALE_NOT_AUTHORIZED, isWildcardProductId, evaluateSafeVariationSaleEligibility, isGradeSaleCell, VARIATION_IDENTITY_NOT_RESOLVED, VARIATION_NOT_FOUND} from './stockCatalogAccess.js';
 import {isMap, stockError, normalizeStock, projectCatalog, quantity, resolveKey, resolveExtraKey, validateEditorial, inferStockKind, resolveLegacyCompatStockKind, normKey, META_COST, NO_EXTRA} from './catalogStockProjection.js';
 import {ATOMIC_PDV_SALE_FLAG, parseAtomicPdvSale, buildCanonicalEstoqueVendaDoc} from './stockCatalogPdvSale.js';
 import {emitRestoreAppliedSaleRequiredLog} from './stockCatalogObservability.js';
@@ -225,42 +225,37 @@ function isSimpleLikeSale(stock) {
     && !Object.keys(stock.estoquePorTamanho).length && !Object.keys(stock.estoquePorCor).length);
 }
 
-/** simple/combo skip the product grant; extra-dimension sales are always grade-denied; else variation. */
+/** simple/combo skip variation eligibility; extra-dimension sales are always grade-denied; else variation. */
 function classifySaleAuthorization(stock, item) {
   if (isSimpleLikeSale(stock)) return 'simple';
   if (stock.stockKind === 'combo') return 'combo';
-  if (item.extra) return 'grade';
+  if (item.extra && String(item.extra).trim() !== META_COST) return 'grade';
   if (isMap(stock.variacoes) && Object.keys(stock.variacoes).length) {
     const size = resolveKey(stock.variacoes, item.size) ?? (!item.size ? resolveKey(stock.variacoes, 'sem-tamanho') : undefined);
     if (size !== undefined) {
       const colors = stock.variacoes[size];
       const color = resolveKey(colors, item.color) ?? (!item.color ? resolveKey(colors, 'sem-cor') : undefined);
-      if (color !== undefined && isMap(colors[color])) return 'grade';
+      if (color !== undefined && isGradeSaleCell(colors[color])) return 'grade';
     }
   }
   return 'variation';
 }
 
+/** Safe-runtime gate: healthy variation products sell without a manual grant. Grant is not a safety bypass. */
 async function authorizeVariationSaleItems(tx, base, items, records) {
-  const needGrant = [];
   for (const item of items) {
     const row = records.get(item.productId);
     if (!row) continue;
     const cls = classifySaleAuthorization(row.data, item);
+    if (cls === 'simple' || cls === 'combo') continue;
     if (cls === 'grade') throw stockError('permission-denied', GRADE_SALE_NOT_AUTHORIZED);
-    if (cls === 'variation') needGrant.push(item.productId);
-  }
-  if (!needGrant.length) return;
-  const unique = [...new Set(needGrant)];
-  if (unique.some(isWildcardProductId)) {
-    throw stockError('permission-denied', VARIATION_SALE_PRODUCT_NOT_AUTHORIZED);
-  }
-  const refs = unique.map(id => base.collection(VARIATION_SALE_PRODUCT_GRANTS_COLLECTION).doc(documentId(id, 'productId')));
-  const snaps = await tx.getAll(...refs);
-  for (const snap of snaps) {
-    if (!variationSaleProductGrantEnabled(snap)) {
-      throw stockError('permission-denied', VARIATION_SALE_PRODUCT_NOT_AUTHORIZED);
+    if (isWildcardProductId(item.productId)) {
+      throw stockError('permission-denied', VARIATION_IDENTITY_NOT_RESOLVED);
     }
+    const reason = evaluateSafeVariationSaleEligibility(row.rawStock ?? row.data, item);
+    if (!reason) continue;
+    if (reason === VARIATION_NOT_FOUND) throw stockError('failed-precondition', 'Variation not found');
+    throw stockError('permission-denied', reason);
   }
 }
 
@@ -433,6 +428,7 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
       records.set(id, {
         stockRef, draftRef, dependency: {exists: dependency.exists, data: () => dependencyData},
         draftExists: draft.exists, creating, productCompatKind, originalRecipe: recipe(data), data,
+        rawStock,
         beforeHash: fingerprint(stockEffect(data)), originalRevision: data.stockRevision, editorial,
         omitInferredStockKind,
         stockUpdatedAt: creating ? null : (stock.data()?.stockUpdatedAt ?? null),

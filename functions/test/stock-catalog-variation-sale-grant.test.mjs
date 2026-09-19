@@ -8,6 +8,8 @@ import {
   VARIATION_SALE_PRODUCT_GRANTS_COLLECTION,
   VARIATION_SALE_PRODUCT_NOT_AUTHORIZED,
   GRADE_SALE_NOT_AUTHORIZED,
+  VARIATION_PRODUCT_STATE_UNSAFE,
+  VARIATION_IDENTITY_NOT_RESOLVED,
   isWildcardProductId,
 } from '../src/stockCatalogAccess.js';
 
@@ -62,6 +64,7 @@ async function seed(opts = {}) {
     batch.set(base.collection('estoque_produtos').doc(opts.blockedProductId), {
       quantidade: 2, stockKind: 'variation', stockRevision: 1,
       variacoes: {M: {'sem-cor': 2}}, estoquePorTamanho: {M: 2},
+      variationSaleBlocked: true,
     });
     batch.set(base.collection('draft_produtos').doc(opts.blockedProductId), {nome: 'Bloqueado'});
     batch.set(base.collection('stock_catalog_dependencies').doc(opts.blockedProductId), {comboIds: []});
@@ -134,15 +137,15 @@ test('1 allowed store + allowed product variation sale authorization passes', as
 test('2 allowed store + blocked product denied', async () => {
   const {base, lojaId} = await seed({grant: true, blockedProductId: 'blocked'});
   await denied(executeStockCommand(db, sale(lojaId, 'blk', {productId: 'blocked', size: 'M'}), owner),
-    'permission-denied', VARIATION_SALE_PRODUCT_NOT_AUTHORIZED);
+    'permission-denied', VARIATION_PRODUCT_STATE_UNSAFE);
   assert.equal((await base.collection('estoque_produtos').doc('blocked').get()).data().variacoes.M['sem-cor'], 2);
 });
 
 test('3 wrong store denied', async () => {
   const a = await seed({grant: true, lojaId: `vsg_${runId}_storeA`});
-  const b = await seed({grant: false, lojaId: `vsg_${runId}_storeB`, productId: 'safe'});
+  const b = await seed({grant: false, lojaId: `vsg_${runId}_storeB`, productId: 'safe', ownerUid: 'other-owner'});
   await denied(executeStockCommand(db, sale(b.lojaId, 'ws'), owner),
-    'permission-denied', VARIATION_SALE_PRODUCT_NOT_AUTHORIZED);
+    'permission-denied', 'Stock operation not authorized for this store');
   assert.equal((await b.base.collection('estoque_produtos').doc('safe').get()).data().quantidade, 2);
   assert.equal((await a.base.collection(VARIATION_SALE_PRODUCT_GRANTS_COLLECTION).doc('safe').get()).data().enabled, true);
 });
@@ -153,18 +156,16 @@ test('4 unknown product denied', async () => {
     'failed-precondition');
 });
 
-test('5 grant missing denied', async () => {
+test('5 grant missing healthy product allowed', async () => {
   const {base, lojaId} = await seed({grant: false});
-  await denied(executeStockCommand(db, sale(lojaId, 'miss'), owner),
-    'permission-denied', VARIATION_SALE_PRODUCT_NOT_AUTHORIZED);
-  assert.equal((await base.collection('estoque_produtos').doc('safe').get()).data().quantidade, 2);
+  await executeStockCommand(db, sale(lojaId, 'miss'), owner);
+  assert.equal((await base.collection('estoque_produtos').doc('safe').get()).data().quantidade, 1);
 });
 
-test('6 grant false denied', async () => {
+test('6 grant false healthy product allowed', async () => {
   const {base, lojaId} = await seed({grant: {enabled: false}});
-  await denied(executeStockCommand(db, sale(lojaId, 'falsy'), owner),
-    'permission-denied', VARIATION_SALE_PRODUCT_NOT_AUTHORIZED);
-  assert.equal((await base.collection('estoque_produtos').doc('safe').get()).data().quantidade, 2);
+  await executeStockCommand(db, sale(lojaId, 'falsy'), owner);
+  assert.equal((await base.collection('estoque_produtos').doc('safe').get()).data().quantidade, 1);
 });
 
 test('7 customer cannot self-grant', () => {
@@ -192,18 +193,25 @@ test('8 grade sale remains denied', async () => {
 });
 
 test('9 no wildcard fallback', async () => {
-  const {base, lojaId, productId} = await seed({grant: false});
+  const {base, lojaId, productId} = await seed({
+    grant: false,
+    stock: {variationSaleBlocked: true, quantidade: 2, variacoes: {P: {'sem-cor': 2}}, estoquePorTamanho: {P: 2}},
+  });
   await base.collection(VARIATION_SALE_PRODUCT_GRANTS_COLLECTION).doc('*').set({enabled: true});
   await denied(executeStockCommand(db, sale(lojaId, 'wild'), owner),
-    'permission-denied', VARIATION_SALE_PRODUCT_NOT_AUTHORIZED);
+    'permission-denied', VARIATION_PRODUCT_STATE_UNSAFE);
   assert.equal(isWildcardProductId('*'), true);
   assert.equal((await base.collection('estoque_produtos').doc(productId).get()).data().quantidade, 2);
 });
 
 test('10 no cross-store leak', async () => {
-  const {base, lojaId} = await seed({grant: false, otherStoreGrant: `vsg_${runId}_leak`});
+  const {base, lojaId} = await seed({
+    grant: false,
+    otherStoreGrant: `vsg_${runId}_leak`,
+    stock: {variationSaleBlocked: true, quantidade: 2, variacoes: {P: {'sem-cor': 2}}, estoquePorTamanho: {P: 2}},
+  });
   await denied(executeStockCommand(db, sale(lojaId, 'leak'), owner),
-    'permission-denied', VARIATION_SALE_PRODUCT_NOT_AUTHORIZED);
+    'permission-denied', VARIATION_PRODUCT_STATE_UNSAFE);
   assert.equal((await base.collection('estoque_produtos').doc('safe').get()).data().quantidade, 2);
 });
 
@@ -286,11 +294,10 @@ test('20 historical blocked product ids denied', async () => {
   }
 });
 
-test('empty allowlist denies all variation on NO_CONTROL', async () => {
+test('empty allowlist allows healthy variation on NO_CONTROL', async () => {
   const {base, lojaId} = await seed({grant: false});
-  await denied(executeStockCommand(db, sale(lojaId, 'empty'), owner),
-    'permission-denied', VARIATION_SALE_PRODUCT_NOT_AUTHORIZED);
-  assert.equal((await base.collection('estoque_produtos').doc('safe').get()).data().stockRevision, 1);
+  await executeStockCommand(db, sale(lojaId, 'empty'), owner);
+  assert.equal((await base.collection('estoque_produtos').doc('safe').get()).data().stockRevision, 2);
 });
 
 test('grant does not authorize replace of ungranted store variation', async () => {
