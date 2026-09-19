@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../services/stock_catalog_affected_products.dart';
 import '../services/vendas_service.dart' show VendaPersistenciaInconsistenciaCritica;
+import 'nova_venda_payment_guard.dart';
 
 /// Erro real após percorrer [error] / [cause] / encadeamento de "converted Future".
 Object unwrapDartInteropError(Object e, {int maxDepth = 6}) {
@@ -87,6 +88,9 @@ String formatSalvarVendaErrorForUser(Object e) {
     return StockCatalogAffectedProducts.userMessageForError(root);
   }
 
+  final known = _mapSalvarVendaKnownFailure(root, e);
+  if (known != null) return known;
+
   final detalhe = formatDartErrorForUser(e);
   final lower = detalhe.toLowerCase();
 
@@ -100,41 +104,120 @@ String formatSalvarVendaErrorForUser(Object e) {
     return _mensagemInconsistenciaCriticaVenda();
   }
 
-  if (lower.contains('estoque insuficiente') ||
-      (lower.contains('insuficiente') && lower.contains('estoque')) ||
-      lower.contains('disponível:') && lower.contains('solicitado:')) {
-    return detalhe.startsWith('Estoque')
-        ? detalhe
-        : 'Estoque insuficiente. $detalhe';
-  }
-  if (lower.contains('produto não encontrado') ||
-      lower.contains('nao encontrado no estoque') ||
-      lower.contains('não encontrado no estoque') ||
-      lower.contains('not-found')) {
-    return detalhe.contains('estoque') || detalhe.contains('nuvem')
-        ? detalhe
-        : 'Produto não encontrado no estoque. $detalhe';
-  }
-  if (lower.contains('variação') ||
-      lower.contains('variacao') ||
-      lower.contains('tamanho') && lower.contains('obrigat')) {
-    return detalhe;
-  }
-  if (lower.contains('permission') ||
-      lower.contains('permission-denied') ||
-      lower.contains('permiss')) {
-    return 'Sem permissão para concluir a venda. Verifique login e acesso à loja.';
-  }
-  if (lower.contains('network') ||
-      lower.contains('unavailable') ||
-      lower.contains('conex') ||
-      lower.contains('offline')) {
-    return 'Falha de conexão ao salvar a venda. Verifique a internet e tente novamente.';
-  }
   if (lower.contains('sincroniz') || lower.contains('nuvem')) {
     return detalhe;
   }
   return detalhe;
+}
+
+({String code, String message, String blob}) _salvarVendaErrorParts(Object root) {
+  var code = '';
+  var message = '';
+  if (root is FirebaseException) {
+    code = root.code.trim();
+    message = (root.message ?? '').trim();
+  } else {
+    try {
+      final dyn = root as dynamic;
+      code = (dyn.code?.toString() ?? '').trim();
+      message = (dyn.message?.toString() ?? '').trim();
+    } catch (_) {}
+  }
+  var normalized = code.toLowerCase();
+  const prefixes = ['functions/', 'cloud_functions/', 'firebase_functions/'];
+  for (final prefix in prefixes) {
+    if (normalized.startsWith(prefix)) {
+      normalized = normalized.substring(prefix.length);
+      break;
+    }
+  }
+  final blob = '$normalized $message ${root.toString()}'.toLowerCase();
+  return (code: normalized, message: message, blob: blob);
+}
+
+bool _salvarVendaIsRealTransportFailure(String code, String blob) {
+  if (code == 'unavailable' ||
+      code == 'deadline-exceeded' ||
+      code == 'network-request-failed') {
+    return true;
+  }
+  return blob.contains('socketexception') ||
+      blob.contains('clientexception') ||
+      blob.contains('xmlhttprequest') ||
+      blob.contains('failed to fetch') ||
+      blob.contains('network-request-failed') ||
+      blob.contains('network_error') ||
+      (blob.contains('offline') &&
+          !blob.contains('permission') &&
+          !blob.contains('failed-precondition'));
+}
+
+String? _mapSalvarVendaKnownFailure(Object root, Object original) {
+  final parts = _salvarVendaErrorParts(root);
+  final originalBlob = original.toString().toLowerCase();
+  final blob = '${parts.blob} $originalBlob';
+  final code = parts.code;
+  final message = parts.message.toLowerCase();
+
+  if (blob.contains('falha ao persistir venda local') &&
+      blob.contains('restaurar estoque')) {
+    return _mensagemInconsistenciaCriticaVenda();
+  }
+
+  if (blob.contains('variation_sale_product_not_authorized') ||
+      blob.contains('product variation not authorized')) {
+    return 'Este produto não está autorizado para venda com variação.';
+  }
+  if (blob.contains('grade_sale_not_authorized') ||
+      blob.contains('unsafe variation') ||
+      blob.contains('unexpected extra dimension')) {
+    return 'Venda com grade extra não está autorizada para este produto.';
+  }
+  if (blob.contains('variation not found') ||
+      blob.contains('extra variation not found') ||
+      blob.contains('variação não encontrada') ||
+      blob.contains('variacao nao encontrada')) {
+    return 'Variação não encontrada para este produto.';
+  }
+  if (blob.contains('invalid canonical stock quantity') ||
+      blob.contains('estoque insuficiente') ||
+      (blob.contains('insuficiente') && blob.contains('estoque')) ||
+      (blob.contains('disponível:') && blob.contains('solicitado:')) ||
+      blob.contains('sem estoque disponível')) {
+    if (parts.message.trim().startsWith('Estoque')) return parts.message.trim();
+    return 'Sem estoque disponível para esta variação.';
+  }
+  if (blob.contains('dependency migration required') ||
+      blob.contains('product tombstone requires reconciliation') ||
+      blob.contains('canonical product and editorial draft required')) {
+    return 'Este produto precisa de conferência de estoque antes da venda.';
+  }
+  if (code == 'aborted' ||
+      blob.contains('stock revision conflict') ||
+      blob.contains('operation identity conflict') ||
+      blob.contains('reconciliation_stale_remote_conflict')) {
+    return 'O estoque foi atualizado por outra operação. Recarregue o produto e tente novamente.';
+  }
+  if (blob.contains('pagamento incompleto') ||
+      blob.contains('payment incomplete') ||
+      blob.contains('não bate com o total')) {
+    return kNovaVendaPagamentoIncompletoMensagem;
+  }
+  if (code == 'internal' || code == 'unknown' || code == 'data-loss') {
+    return 'Erro no servidor ao salvar a venda. Tente novamente. Se persistir, contate o suporte.';
+  }
+  if (code == 'failed-precondition' || code == 'invalid-argument') {
+    return 'Não foi possível salvar a venda. O servidor recusou a operação.';
+  }
+  if (code == 'permission-denied' ||
+      blob.contains('permission-denied') ||
+      message.contains('permission-denied')) {
+    return 'Sem permissão para concluir a venda. Verifique login e acesso à loja.';
+  }
+  if (_salvarVendaIsRealTransportFailure(code, blob)) {
+    return 'Falha de conexão ao salvar a venda. Verifique a internet e tente novamente.';
+  }
+  return null;
 }
 
 String _mensagemInconsistenciaCriticaVenda() =>

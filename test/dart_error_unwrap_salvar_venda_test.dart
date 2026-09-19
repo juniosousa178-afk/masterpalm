@@ -1,8 +1,10 @@
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:master_palm/core/dart_error_unwrap.dart';
+import 'package:master_palm/core/nova_venda_payment_guard.dart';
 class _FakeConvertedFutureError implements Exception {
   _FakeConvertedFutureError(this.error);
   final Object error;
@@ -36,8 +38,82 @@ void main() {
       final msg = formatSalvarVendaErrorForUser(
         Exception('Estoque insuficiente para "Pingente". Disponível: 1, solicitado: 3.'),
       );
-      expect(msg.toLowerCase(), contains('estoque insuficiente'));
+      expect(msg.toLowerCase(), contains('estoque'));
+      expect(msg.toLowerCase(), isNot(contains('conexão')));
       expect(msg, isNot(contains('converted Future')));
+    });
+
+    FirebaseFunctionsException fn(String code, String message) =>
+        FirebaseFunctionsException(code: code, message: message);
+
+    test('estoque zero não vira falha de conexão', () {
+      final msg = formatSalvarVendaErrorForUser(
+        fn('failed-precondition', 'Invalid canonical stock quantity'),
+      );
+      expect(msg, 'Sem estoque disponível para esta variação.');
+      expect(msg.toLowerCase(), isNot(contains('conexão')));
+    });
+
+    test('variation not found não vira falha de conexão', () {
+      final msg = formatSalvarVendaErrorForUser(
+        fn('failed-precondition', 'Variation not found'),
+      );
+      expect(msg, 'Variação não encontrada para este produto.');
+      expect(msg.toLowerCase(), isNot(contains('conexão')));
+    });
+
+    test('produto sem grant não vira falha de conexão', () {
+      final msg = formatSalvarVendaErrorForUser(
+        fn('permission-denied', 'VARIATION_SALE_PRODUCT_NOT_AUTHORIZED'),
+      );
+      expect(msg, 'Este produto não está autorizado para venda com variação.');
+      expect(msg.toLowerCase(), isNot(contains('conexão')));
+    });
+
+    test('produto unsafe/grade não vira falha de conexão', () {
+      final msg = formatSalvarVendaErrorForUser(
+        fn('permission-denied', 'GRADE_SALE_NOT_AUTHORIZED'),
+      );
+      expect(msg, contains('grade extra'));
+      expect(msg.toLowerCase(), isNot(contains('conexão')));
+    });
+
+    test('CAS/revision conflict não vira falha de conexão', () {
+      final msg = formatSalvarVendaErrorForUser(
+        fn('aborted', 'Stock revision conflict'),
+      );
+      expect(msg.toLowerCase(), contains('estoque foi atualizado'));
+      expect(msg.toLowerCase(), isNot(contains('conexão')));
+    });
+
+    test('rede realmente offline continua falha de conexão', () {
+      final msg = formatSalvarVendaErrorForUser(
+        fn('unavailable', 'UNAVAILABLE'),
+      );
+      expect(msg, contains('Falha de conexão ao salvar a venda'));
+    });
+
+    test('backend 500 não vira falha de conexão', () {
+      final msg = formatSalvarVendaErrorForUser(
+        fn('internal', 'INTERNAL'),
+      );
+      expect(msg.toLowerCase(), contains('servidor'));
+      expect(msg.toLowerCase(), isNot(contains('conexão')));
+    });
+
+    test('dependency migration / conferência não vira falha de conexão', () {
+      final msg = formatSalvarVendaErrorForUser(
+        fn('failed-precondition', 'Dependency migration required'),
+      );
+      expect(msg, 'Este produto precisa de conferência de estoque antes da venda.');
+      expect(msg.toLowerCase(), isNot(contains('conexão')));
+    });
+
+    test('pagamento incompleto tem mensagem específica', () {
+      final msg = formatSalvarVendaErrorForUser(
+        Exception('O valor pago (R\$ 0.00) não bate com o total (R\$ 10.00).'),
+      );
+      expect(msg, kNovaVendaPagamentoIncompletoMensagem);
     });
 
     test('classifica Firebase permission-denied sem expor code/plugin', () {
@@ -113,6 +189,40 @@ void main() {
       final helper = File('lib/core/dart_error_unwrap.dart').readAsStringSync();
       expect(helper.contains('VendaPersistenciaInconsistenciaCritica'), isTrue);
       expect(helper.contains('_mensagemInconsistenciaCriticaVenda'), isTrue);
+    });
+
+    test('pagamento incompleto bloqueia antes de _salvarVendaEmBackground', () {
+      final execStart = src.indexOf('Future<void> _executarFinalizacaoVenda()');
+      final saveCall = src.indexOf('_salvarVendaEmBackground(');
+      final guard = src.indexOf('novaVendaPagamentoImpedeSalvar');
+      expect(execStart, greaterThan(-1));
+      expect(guard, greaterThan(execStart));
+      expect(guard, lessThan(saveCall));
+      expect(src.contains('kNovaVendaPagamentoIncompletoMensagem'), isTrue);
+    });
+
+    test('correção de UX é global e não hardcodeia loja/produto', () {
+      for (final path in [
+        'lib/core/dart_error_unwrap.dart',
+        'lib/core/nova_venda_payment_guard.dart',
+        'lib/screens/nova_venda_modal.dart',
+      ]) {
+        final text = File(path).readAsStringSync().toLowerCase();
+        expect(text.contains('mirjoias'), isFalse, reason: path);
+        expect(text.contains('brinco-cora'), isFalse, reason: path);
+      }
+    });
+
+    test('gate de variação/grade permanece fail-closed no backend', () {
+      final commands =
+          File('functions/src/stockCatalogCommands.js').readAsStringSync();
+      expect(commands.contains('authorizeVariationSaleItems'), isTrue);
+      expect(commands.contains('GRADE_SALE_NOT_AUTHORIZED'), isTrue);
+      expect(commands.contains('VARIATION_SALE_PRODUCT_NOT_AUTHORIZED'), isTrue);
+      expect(
+        commands.contains("if (command.kind === 'sale') await authorizeVariationSaleItems"),
+        isTrue,
+      );
     });
   });
 }

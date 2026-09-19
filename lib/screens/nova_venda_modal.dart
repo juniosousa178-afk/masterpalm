@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import '../core/combo_configuravel_resumo.dart';
 import '../core/dart_error_unwrap.dart';
+import '../core/nova_venda_payment_guard.dart';
 import '../core/nova_venda_pos_save_ui_policy.dart';
 import '../core/logger.dart';
 import '../core/nova_venda_line_identity.dart';
@@ -1959,11 +1960,17 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       }
     }
 
-    // 2) Validação do valor pago (dispensada quando venda fiada)
-    if (!_pendenteFiado && (totalPago - total).abs() > 0.01) {
+    // 2) Validação do valor pago (dispensada quando venda fiada).
+    // Não chama backend enquanto o pagamento alocado for menor que o total.
+    if (novaVendaPagamentoImpedeSalvar(
+      total: total,
+      allocated: totalPago,
+      isFiado: _pendenteFiado,
+    )) {
       await _mostrarErro(
-        'O valor pago (R\$ ${totalPago.toStringAsFixed(2)}) '
-        'não bate com o total (R\$ ${total.toStringAsFixed(2)}).',
+        _pendenteFiado
+            ? 'Pagamento informado maior que o total da venda.'
+            : kNovaVendaPagamentoIncompletoMensagem,
       );
       return;
     }
