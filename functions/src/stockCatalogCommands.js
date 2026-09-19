@@ -2,7 +2,7 @@ import {recipe, componentIntents, comboOrder, recalculateFixedCombos} from './st
 import {createHash} from 'node:crypto';
 import {FieldValue} from 'firebase-admin/firestore';
 import {documentId, storeRef, requireAuthenticated, authorizeStockCommand, authorizePublishCommand, SERVER_PAYMENT_AUTH, INACTIVE_PRODUCT_COMPAT_ALLOWED_KINDS} from './stockCatalogAccess.js';
-import {isMap, stockError, normalizeStock, projectCatalog, quantity, resolveKey, resolveExtraKey, validateEditorial, inferStockKind, resolveLegacyCompatStockKind} from './catalogStockProjection.js';
+import {isMap, stockError, normalizeStock, projectCatalog, quantity, resolveKey, resolveExtraKey, validateEditorial, inferStockKind, resolveLegacyCompatStockKind, normKey, META_COST, NO_EXTRA} from './catalogStockProjection.js';
 import {ATOMIC_PDV_SALE_FLAG, parseAtomicPdvSale, buildCanonicalEstoqueVendaDoc} from './stockCatalogPdvSale.js';
 import {emitRestoreAppliedSaleRequiredLog} from './stockCatalogObservability.js';
 
@@ -16,23 +16,123 @@ const stockEffect = p => Object.fromEntries(['quantidade','variacoes','estoquePo
 function keysOnly(data, allowed) {
   if (!isMap(data) || Object.keys(data).some(k => !allowed.includes(k))) throw stockError('invalid-argument', 'Unknown or protected command field');
 }
+const COUNTED_AT_FUTURE_SKEW_MS = 5 * 60 * 1000;
+const RECONCILE_DISPLAY_ONLY = new Set(['p', 'm', 'g', 'azul', 'rosa']);
+function parseCountedAt(raw) {
+  if (raw == null || raw === '') throw stockError('invalid-argument', 'countedAt required');
+  let ms;
+  if (typeof raw === 'number') {
+    if (!Number.isFinite(raw) || !Number.isInteger(raw)) throw stockError('invalid-argument', 'Invalid countedAt');
+    ms = raw;
+  } else if (typeof raw === 'string') {
+    if (!raw.trim()) throw stockError('invalid-argument', 'countedAt required');
+    ms = Date.parse(raw);
+  } else {
+    throw stockError('invalid-argument', 'Invalid countedAt');
+  }
+  if (!Number.isFinite(ms)) throw stockError('invalid-argument', 'Invalid countedAt');
+  if (ms > Date.now() + COUNTED_AT_FUTURE_SKEW_MS) {
+    throw stockError('invalid-argument', 'countedAt is unreasonably in the future');
+  }
+  return new Date(ms).toISOString();
+}
+function parseConfirmedQty(value) {
+  if (value === undefined || value === null || value === '') {
+    throw stockError('invalid-argument', 'confirmedPhysicalQty required');
+  }
+  if (typeof value === 'string' || typeof value !== 'number' || !Number.isFinite(value) || !Number.isInteger(value) || !Number.isSafeInteger(value)) {
+    throw stockError('invalid-argument', 'confirmedPhysicalQty must be an integer');
+  }
+  if (value < 0) throw stockError('invalid-argument', 'confirmedPhysicalQty must be >= 0');
+  return value;
+}
+function exactOwnKey(map, wanted) {
+  return isMap(map) && typeof wanted === 'string' && Object.prototype.hasOwnProperty.call(map, wanted) ? wanted : undefined;
+}
+function applyReconcileCell(stock, item) {
+  const next = normalizeStock(stock);
+  if (next.pendingSoftDelete) throw stockError('failed-precondition', 'Product deleted');
+  const confirmedQty = quantity(item.quantity);
+  const isSimple = next.stockKind === 'simple' || (next.stockKind === 'combo' && !Object.keys(next.variacoes ?? {}).length
+    && !Object.keys(next.estoquePorTamanho).length && !Object.keys(next.estoquePorCor).length);
+  if (isSimple) {
+    if (item.size || item.color || item.extra) throw stockError('failed-precondition', 'RECONCILIATION_VARIATION_IDENTITY');
+    const previousQty = quantity(next.quantidade);
+    next.quantidade = confirmedQty;
+    const normalized = normalizeStock(next);
+    return {stock: normalized, previousQty, confirmedQty, delta: confirmedQty - previousQty, variationKey: ''};
+  }
+  if (!isMap(next.variacoes) || !Object.keys(next.variacoes).length) {
+    throw stockError('failed-precondition', 'RECONCILIATION_VARIATION_IDENTITY');
+  }
+  if (!item.size || (RECONCILE_DISPLAY_ONLY.has(normKey(item.size)) && !exactOwnKey(next.variacoes, item.size))) {
+    throw stockError('failed-precondition', 'RECONCILIATION_VARIATION_IDENTITY');
+  }
+  const sizeKey = exactOwnKey(next.variacoes, item.size);
+  if (!sizeKey) throw stockError('failed-precondition', 'RECONCILIATION_VARIATION_IDENTITY');
+  const colors = next.variacoes[sizeKey];
+  if (!isMap(colors)) throw stockError('failed-precondition', 'RECONCILIATION_VARIATION_IDENTITY');
+  const colorWanted = item.color || (exactOwnKey(colors, 'sem-cor') ? 'sem-cor' : '');
+  if (!colorWanted || (item.color && RECONCILE_DISPLAY_ONLY.has(normKey(item.color)) && !exactOwnKey(colors, item.color))) {
+    throw stockError('failed-precondition', 'RECONCILIATION_VARIATION_IDENTITY');
+  }
+  const colorKey = exactOwnKey(colors, colorWanted);
+  if (!colorKey || colorKey.trim() === META_COST) throw stockError('failed-precondition', 'RECONCILIATION_VARIATION_IDENTITY');
+  const cell = colors[colorKey];
+  let previousQty, variationKey;
+  if (isMap(cell)) {
+    const extraKey = !item.extra || item.extra === '__sem_extra__' ? NO_EXTRA : item.extra;
+    if (!exactOwnKey(cell, extraKey) || extraKey.trim() === META_COST) {
+      throw stockError('failed-precondition', 'RECONCILIATION_VARIATION_IDENTITY');
+    }
+    previousQty = quantity(cell[extraKey]);
+    cell[extraKey] = confirmedQty;
+    colors[colorKey] = cell;
+    variationKey = `${sizeKey}/${colorKey}/${extraKey}`;
+  } else {
+    if (item.extra) throw stockError('failed-precondition', 'RECONCILIATION_VARIATION_IDENTITY');
+    previousQty = quantity(cell);
+    colors[colorKey] = confirmedQty;
+    variationKey = `${sizeKey}/${colorKey}`;
+  }
+  next.variacoes[sizeKey] = colors;
+  const normalized = normalizeStock(next);
+  return {stock: normalized, previousQty, confirmedQty, delta: confirmedQty - previousQty, variationKey};
+}
+function timestampMillis(value) {
+  if (value == null) return null;
+  if (typeof value.toMillis === 'function') return value.toMillis();
+  if (typeof value.toDate === 'function') return value.toDate().getTime();
+  if (typeof value === 'string' || typeof value === 'number') {
+    const ms = typeof value === 'number' ? value : Date.parse(value);
+    return Number.isFinite(ms) ? ms : null;
+  }
+  return null;
+}
 function parseCommand(raw) {
-  keysOnly(raw, ['protocolVersion','lojaId','operationId','kind','items','sourceOperationId','editorial','definition','tombstoneKeys', ATOMIC_PDV_SALE_FLAG, 'sale']);
+  keysOnly(raw, ['protocolVersion','lojaId','operationId','kind','items','sourceOperationId','editorial','definition','tombstoneKeys', ATOMIC_PDV_SALE_FLAG, 'sale',
+    ...(raw?.kind === 'reconcile' ? ['countedAt','reconciliationId'] : [])]);
   if (raw.protocolVersion !== 1) throw stockError('failed-precondition', 'Unsupported stock protocol');
   documentId(raw.lojaId, 'lojaId'); documentId(raw.operationId, 'operationId');
-  if (!['sale','restock','adjust','restore','editorial','create','replace','delete','undo','tombstoneVariation','clearVariationTombstone'].includes(raw.kind)) {
+  if (!['sale','restock','adjust','restore','editorial','create','replace','delete','undo','tombstoneVariation','clearVariationTombstone','reconcile'].includes(raw.kind)) {
     throw stockError('invalid-argument', 'Unsupported command');
   }
   if (!Array.isArray(raw.items) || raw.items.length === 0 || raw.items.length > 100) throw stockError('invalid-argument', 'Invalid items');
   const items = raw.items.map(item => {
-    keysOnly(item, ['productId','quantity','size','color','extra','expectedRevision','selection']);
+    keysOnly(item, raw.kind === 'reconcile'
+      ? ['productId','size','color','extra','expectedRevision','confirmedPhysicalQty']
+      : ['productId','quantity','size','color','extra','expectedRevision','selection']);
     documentId(item.productId, 'productId');
     for (const key of ['size','color','extra']) if (key in item && typeof item[key] !== 'string') throw stockError('invalid-argument', 'Invalid variation selector');
+    if (raw.kind === 'reconcile') {
+      if ('selection' in item) throw stockError('invalid-argument', 'Selection not allowed for reconcile');
+      item = {...item, quantity: parseConfirmedQty(item.confirmedPhysicalQty)};
+    }
     if (['sale','restock','adjust'].includes(raw.kind)) {
       quantity(item.quantity);
       if (raw.kind !== 'adjust' && item.quantity === 0) throw stockError('invalid-argument', 'Quantity must be positive');
     }
-    if (['adjust','replace','delete','undo','tombstoneVariation','clearVariationTombstone'].includes(raw.kind)) quantity(item.expectedRevision);
+    if (['adjust','replace','delete','undo','tombstoneVariation','clearVariationTombstone','reconcile'].includes(raw.kind)) quantity(item.expectedRevision);
     return {...item, size: item.size ?? '', color: item.color ?? '', extra: item.extra ?? ''};
   });
   if (new Set(items.map(i => i.productId)).size > MAX_PRODUCTS) throw stockError('resource-exhausted', 'Too many affected products');
@@ -74,6 +174,15 @@ function parseCommand(raw) {
       throw stockError('invalid-argument', 'atomicPdvSale must be true when set');
     }
     if ('sale' in raw) throw stockError('invalid-argument', 'sale requires atomicPdvSale=true');
+  }
+  if (raw.kind === 'reconcile') {
+    if (items.length !== 1) throw stockError('invalid-argument', 'Reconciliation requires one product');
+    if ('sourceOperationId' in raw) throw stockError('invalid-argument', 'sourceOperationId not allowed for reconcile');
+    documentId(raw.reconciliationId, 'reconciliationId');
+    if (raw.reconciliationId !== raw.operationId) {
+      throw stockError('invalid-argument', 'reconciliationId must equal operationId');
+    }
+    raw = {...raw, countedAt: parseCountedAt(raw.countedAt)};
   }
   if (Buffer.byteLength(JSON.stringify(raw)) > 100000) throw stockError('resource-exhausted', 'Command too large');
   return {...raw, items, tombstoneKeys, atomicPdvSale, atomicSale};
@@ -137,7 +246,7 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
   requireAuthenticated(auth);
   const command = parseCommand(raw), base = storeRef(db, command.lojaId);
   const hash = fingerprint(command);
-    const permission = command.kind === 'replace' ? 'adjust'
+    const permission = command.kind === 'replace' || command.kind === 'reconcile' ? 'adjust'
       : command.kind === 'tombstoneVariation' ? 'delete'
       : command.kind === 'clearVariationTombstone' ? 'undo'
       : command.kind;
@@ -168,6 +277,17 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
         }
       }
       const replay = {alreadyApplied: true, operationId: command.operationId, products};
+      if (command.kind === 'reconcile') {
+        const stored = op.data().result ?? {};
+        replay.alreadyReconciled = stored.alreadyReconciled === true || stored.delta === 0;
+        replay.previousQty = stored.previousQty;
+        replay.confirmedQty = stored.confirmedQty;
+        replay.delta = stored.delta;
+        replay.reconciliationId = op.data().reconciliationId ?? command.reconciliationId;
+        replay.countedAt = op.data().countedAt ?? command.countedAt;
+        replay.expectedRevision = stored.expectedRevision;
+        replay.resultingRevision = stored.resultingRevision;
+      }
       if (command.atomicPdvSale) {
         replay.saleCommitted = true;
         replay.saleId = command.operationId;
@@ -271,6 +391,7 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
         draftExists: draft.exists, creating, productCompatKind, originalRecipe: recipe(data), data,
         beforeHash: fingerprint(stockEffect(data)), originalRevision: data.stockRevision, editorial,
         omitInferredStockKind,
+        stockUpdatedAt: creating ? null : (stock.data()?.stockUpdatedAt ?? null),
       });
     }
     comboOrder(records);
@@ -280,6 +401,26 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
       if (command.kind === 'editorial') {
         const patch = validateEditorial(command.editorial);
         r.editorial = {...r.editorial, ...patch}; r.data = {...r.data, ...patch}; return;
+      }
+      if (command.kind === 'reconcile') {
+        const countedAtMs = Date.parse(command.countedAt);
+        const updatedMs = timestampMillis(r.stockUpdatedAt);
+        if (updatedMs != null && Number.isFinite(countedAtMs) && updatedMs > countedAtMs) {
+          throw stockError('failed-precondition', 'RECONCILIATION_POST_COUNT_MOVEMENT');
+        }
+        if (item.expectedRevision !== r.originalRevision) {
+          throw stockError('aborted', 'RECONCILIATION_STALE_REMOTE_CONFLICT');
+        }
+        const applied = applyReconcileCell(r.data, item);
+        r.data = applied.stock;
+        r.reconcileAudit = {
+          previousQty: applied.previousQty,
+          confirmedQty: applied.confirmedQty,
+          delta: applied.delta,
+          variationKey: applied.variationKey,
+        };
+        appliedItems.push(item);
+        return;
       }
       if (['adjust','replace','delete','undo','tombstoneVariation','clearVariationTombstone'].includes(command.kind) && item.expectedRevision !== r.originalRevision) {
         throw stockError('aborted', 'Stock revision conflict');
@@ -306,7 +447,7 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
     }
     for (const item of items) applyItem(item, command.kind === 'sale');
     comboOrder(records); // Validate the new recipe, including newly introduced cycles.
-    if (command.kind !== 'editorial' && command.kind !== 'tombstoneVariation' && command.kind !== 'clearVariationTombstone') {
+    if (command.kind !== 'editorial' && command.kind !== 'tombstoneVariation' && command.kind !== 'clearVariationTombstone' && command.kind !== 'reconcile') {
       recalculateFixedCombos(records,
         ['restock','restore','undo'].includes(command.kind) ? 1 : -1);
     }
@@ -342,10 +483,13 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
       row.vendasCatalogoTotal = quantity(Math.max(0, quantity(row.vendasCatalogoTotal ?? 0) + delta));
     }
     for (const [id, r] of records) {
-      r.data.stockRevision = quantity(r.originalRevision + (fingerprint(stockEffect(r.data)) === r.beforeHash ? 0 : 1));
-      r.data.stockOperationId = command.operationId;
+      const effectUnchanged = fingerprint(stockEffect(r.data)) === r.beforeHash;
+      r.data.stockRevision = quantity(r.originalRevision + (effectUnchanged ? 0 : 1));
+      const skipProductWrite = command.kind === 'reconcile' && effectUnchanged;
+      if (!skipProductWrite) r.data.stockOperationId = command.operationId;
       const p = projectCatalog(r.data, r.editorial, id);
       products.push({productId: id, ...p.stock});
+      if (skipProductWrite) continue;
       if (targetIds.has(id) && command.kind === 'delete') set(base.collection('exclusao_produto').doc(id),
         {p: true, productId: id, operationId: command.operationId, at: FieldValue.serverTimestamp(), deletedAt: FieldValue.serverTimestamp()});
       if (targetIds.has(id) && command.kind === 'undo') remove(base.collection('exclusao_produto').doc(id));
@@ -389,10 +533,41 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
         } else remove(live);
       }
     }
+    const reconcileTarget = command.kind === 'reconcile' ? records.get(command.items[0].productId) : null;
+    const reconcileAudit = reconcileTarget?.reconcileAudit;
     writes.push(() => tx.create(opRef, {
       actorUid: uid, kind: command.kind, requestHash: hash, items: appliedItems, catalogCountDeltas, status: 'applied',
-      result: {productIds: ids}, sourceOperationId: command.sourceOperationId ?? null,
+      result: {
+        productIds: ids,
+        ...(command.kind === 'reconcile' && reconcileAudit ? {
+          previousQty: reconcileAudit.previousQty,
+          confirmedQty: reconcileAudit.confirmedQty,
+          delta: reconcileAudit.delta,
+          alreadyReconciled: reconcileAudit.delta === 0,
+          expectedRevision: command.items[0].expectedRevision,
+          resultingRevision: reconcileTarget.data.stockRevision,
+          variationKey: reconcileAudit.variationKey,
+        } : {}),
+      },
+      sourceOperationId: command.sourceOperationId ?? null,
       legacyCompat: legacyCompat === true,
+      ...(command.kind === 'reconcile' && reconcileAudit ? {
+        operationType: 'physical_stock_reconciliation',
+        reconciliationId: command.reconciliationId,
+        countedAt: command.countedAt,
+        productId: command.items[0].productId,
+        canonicalVariation: {
+          size: command.items[0].size,
+          color: command.items[0].color,
+          extra: command.items[0].extra,
+        },
+        previousQty: reconcileAudit.previousQty,
+        confirmedQty: reconcileAudit.confirmedQty,
+        delta: reconcileAudit.delta,
+        expectedRevision: command.items[0].expectedRevision,
+        resultingRevision: reconcileTarget.data.stockRevision,
+        appliedAt: FieldValue.serverTimestamp(),
+      } : {}),
       ...(command.atomicPdvSale ? {atomicPdvSale: true, saleId: command.operationId} : {}),
       createdAt: FieldValue.serverTimestamp(),
     }));
@@ -409,6 +584,16 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
     if (writes.length + reservedWrites > 100) throw stockError('resource-exhausted', 'Stock transaction write budget exceeded');
     for (const write of writes) write();
     const result = {alreadyApplied: false, operationId: command.operationId, products};
+    if (command.kind === 'reconcile' && reconcileAudit) {
+      result.alreadyReconciled = reconcileAudit.delta === 0;
+      result.previousQty = reconcileAudit.previousQty;
+      result.confirmedQty = reconcileAudit.confirmedQty;
+      result.delta = reconcileAudit.delta;
+      result.expectedRevision = command.items[0].expectedRevision;
+      result.resultingRevision = reconcileTarget.data.stockRevision;
+      result.reconciliationId = command.reconciliationId;
+      result.countedAt = command.countedAt;
+    }
     if (command.atomicPdvSale) {
       result.saleCommitted = true;
       result.saleId = command.operationId;
