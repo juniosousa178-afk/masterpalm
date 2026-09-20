@@ -5,7 +5,7 @@ import {recipe, comboOrder, recalculateFixedCombos} from './stockCatalogCombo.js
 import {documentId} from './stockCatalogAccess.js';
 import {
   isMap, stockError, normalizeStock, projectCatalog, quantity, resolveKey, resolveExtraKey,
-  inferStockKind, META_COST,
+  META_COST,
 } from './catalogStockProjection.js';
 import {consignmentError, CODES} from './consignmentProtocol.js';
 
@@ -26,9 +26,10 @@ function technicalKey(value) {
 
 /** Grade = size×color matrix or extra dimension. Normal variation is single-axis canonical variacoes. */
 export function classifyConsignmentProduct(raw) {
-  let data;
-  try { data = {...raw, stockKind: raw.stockKind || inferStockKind(raw)}; }
-  catch (error) { throw wrapUnsafe(error); }
+  if (!raw || !['simple', 'variation', 'combo'].includes(raw.stockKind)) {
+    throw consignmentError(CODES.PRODUCT_STATE_UNSAFE, 'Stock identity is ambiguous');
+  }
+  const data = {...raw};
   if (data.pendingSoftDelete) throw consignmentError(CODES.PRODUCT_STATE_UNSAFE, 'Product deleted');
   if (data.stockKind === 'combo' || data.tipoProduto === 'combo' || (Array.isArray(data.itensCombo) && data.itensCombo.length)) {
     throw consignmentError(CODES.PRODUCT_STATE_UNSAFE, 'Combo products are not supported in consignment MVP');
@@ -153,6 +154,18 @@ export async function loadConsignmentStockRecords(tx, base, productIds) {
       base.collection('exclusao_produto').doc(id),
     );
     if (!stock.exists || !draft.exists) throw consignmentError(CODES.PRODUCT_NOT_FOUND, 'Canonical product and editorial draft required');
+    const raw = stock.data() || {};
+    const editorial = draft.data() || {};
+    const claimedStore = String(raw.lojaId || raw.storeId || editorial.lojaId || editorial.storeId || '').trim();
+    if (claimedStore && claimedStore !== base.id) {
+      throw consignmentError(CODES.AUTH, 'Cross-store product access denied');
+    }
+    if (raw.ativo === false || editorial.ativo === false || editorial.ativoNoRascunho === false) {
+      throw consignmentError(CODES.PRODUCT_STATE_UNSAFE, 'Product is inactive');
+    }
+    if (!['simple', 'variation', 'combo'].includes(raw.stockKind)) {
+      throw consignmentError(CODES.PRODUCT_STATE_UNSAFE, 'Stock identity is ambiguous');
+    }
     if (tombstone.exists && tombstone.data()?.p === true) {
       throw consignmentError(CODES.PRODUCT_STATE_UNSAFE, 'Product tombstone requires reconciliation');
     }
@@ -170,7 +183,7 @@ export async function loadConsignmentStockRecords(tx, base, productIds) {
     for (const component of recipe(data)) if (!ids.includes(component.productId)) ids.push(component.productId);
     records.set(id, {
       stockRef, draftRef, dependency,
-      data, editorial: draft.data() ?? {},
+      data, editorial,
       beforeHash: fingerprint(stockEffect(data)),
       originalRevision: data.stockRevision,
       beforeStock: structuredClone(stockEffect(data)),

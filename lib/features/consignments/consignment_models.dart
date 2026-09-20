@@ -5,12 +5,16 @@ class ConsignmentReseller {
     required this.displayName,
     this.active = true,
     this.notes = '',
+    this.phone = '',
+    this.storeId = '',
   });
 
   final String resellerId;
   final String displayName;
   final bool active;
   final String notes;
+  final String phone;
+  final String storeId;
 
   factory ConsignmentReseller.fromMap(String id, Map<String, dynamic> data) {
     return ConsignmentReseller(
@@ -18,6 +22,8 @@ class ConsignmentReseller {
       displayName: (data['displayName'] ?? id).toString(),
       active: data['active'] == true,
       notes: (data['notes'] ?? '').toString(),
+      phone: (data['phone'] ?? '').toString(),
+      storeId: (data['storeId'] ?? '').toString(),
     );
   }
 }

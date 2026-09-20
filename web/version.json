@@ -1,7 +1,9 @@
 {
-  "buildId": "stable-20260429-VARIACOES-SYNC-33137cf",
+  "buildId": "consignment-dedicated-stock-gate-1.0.82",
   "hostingTarget": "masterpalm-58c46",
   "siteId": "masterpalm-58c46",
   "expectedDomain": "app.mastepalm.com.br",
-  "gitCommit": "33137cf"
+  "webVersion": "1.0.82+98",
+  "featureFlagDefault": false,
+  "globalRollout": false
 }

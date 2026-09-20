@@ -1,7 +1,7 @@
 /** Server-authoritative consignment commands. Isolated from stockCatalogCommand and PDV sales. */
 import {FieldValue} from 'firebase-admin/firestore';
 import {
-  documentId, storeRef, requireAuthenticated, authorizeStockTransaction,
+  documentId, storeRef, requireAuthenticated,
 } from './stockCatalogAccess.js';
 import {
   CONSIGNMENT_SCHEMA_VERSION, STATUS, COMMISSION, CODES, consignmentError, requestFingerprint,
@@ -25,10 +25,34 @@ async function requireModuleEnabled(tx, base) {
   }
 }
 
-async function authorize(tx, base, auth) {
-  requireAuthenticated(auth);
+const RESELLER_OPERATIONS = new Set(['createReseller', 'updateReseller']);
+
+async function authorizeStoreMember(tx, db, base, auth, operation) {
+  const uid = requireAuthenticated(auth);
   await requireModuleEnabled(tx, base);
-  return authorizeStockTransaction(tx, base, auth, 'sale');
+  const loja = await tx.get(base);
+  const lojaData = loja.data() || {};
+  if (loja.exists && lojaData.ownerUid === uid) return uid;
+  const member = await tx.get(base.collection('members').doc(uid));
+  if (member.exists) {
+    const role = String(member.data()?.role ?? '').trim();
+    if (!role || ['owner', 'admin', 'vendedor'].includes(role)) return uid;
+  }
+  const seller = await tx.get(base.collection('vendedores').doc(uid));
+  if (seller.exists && seller.data()?.ativo === true) return uid;
+  const userSnap = await tx.get(db.collection('users').doc(uid));
+  if (userSnap.exists) {
+    const resolved = String(userSnap.data()?.store_id || userSnap.data()?.storeId || '').trim();
+    if (resolved === base.id && (!lojaData.ownerUid || lojaData.ownerUid === uid)) return uid;
+  }
+  throw consignmentError(
+    RESELLER_OPERATIONS.has(operation) ? CODES.RESELLER_PERMISSION : CODES.AUTH,
+    'Store membership required',
+  );
+}
+
+async function authorize(tx, db, base, auth, operation) {
+  return authorizeStoreMember(tx, db, base, auth, operation);
 }
 
 function parseLineInput(raw, index) {
@@ -126,7 +150,7 @@ export async function executeConsignmentCommand(db, raw, auth) {
 export async function executeConsignmentInTransaction(tx, db, raw, auth) {
   const command = parseCommand(raw);
   const base = storeRef(db, command.lojaId);
-  const uid = await authorize(tx, base, auth);
+  const uid = await authorize(tx, db, base, auth, command.operation);
   const hash = requestFingerprint({
     protocolVersion: command.protocolVersion,
     lojaId: command.lojaId,
@@ -178,8 +202,8 @@ async function readReseller(tx, base, resellerId, lojaId) {
 
 function parseResellerPayload(payload, creating) {
   keysOnly(payload, creating
-    ? ['resellerId','displayName','notes']
-    : ['resellerId','displayName','notes','active']);
+    ? ['resellerId','displayName','notes','phone']
+    : ['resellerId','displayName','notes','phone','active']);
   const resellerId = documentId(payload.resellerId, 'resellerId');
   const displayName = optionalString(payload.displayName, 'displayName', 120).trim();
   if (creating && !displayName) throw consignmentError(CODES.INVALID_ARGUMENT, 'Reseller name required');
@@ -187,6 +211,7 @@ function parseResellerPayload(payload, creating) {
     resellerId,
     displayName,
     notes: optionalString(payload.notes, 'notes', 2000),
+    phone: optionalString(payload.phone, 'phone', 40).trim(),
     active: payload.active === undefined ? true : payload.active === true,
   };
 }
@@ -202,12 +227,13 @@ async function createReseller(tx, base, command, uid) {
     displayName: parsed.displayName,
     active: true,
     notes: parsed.notes,
+    phone: parsed.phone,
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
     createdBy: uid,
     schemaVersion: CONSIGNMENT_SCHEMA_VERSION,
   });
-  return {resellerId: parsed.resellerId};
+  return {resellerId: parsed.resellerId, displayName: parsed.displayName};
 }
 
 async function updateReseller(tx, base, command, uid) {
@@ -222,6 +248,7 @@ async function updateReseller(tx, base, command, uid) {
     patch.displayName = parsed.displayName;
   }
   if (command.payload.notes !== undefined) patch.notes = parsed.notes;
+  if (command.payload.phone !== undefined) patch.phone = parsed.phone;
   if (command.payload.active !== undefined) patch.active = parsed.active;
   tx.update(ref, patch);
   return {resellerId: parsed.resellerId};

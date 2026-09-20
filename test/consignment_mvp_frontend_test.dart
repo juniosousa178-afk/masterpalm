@@ -149,6 +149,47 @@ void main() {
       );
     });
 
+    test('reseller empty name blocked locally', () {
+      expect(consignmentResellerNameError(''), 'Informe o nome do revendedor.');
+      expect(consignmentResellerNameError('   '), 'Informe o nome do revendedor.');
+      expect(consignmentResellerNameError('Maria'), isNull);
+    });
+
+    test('reseller selector merges selected and excludes inactive/cross-store', () {
+      final listed = consignmentActiveResellersForStore(
+        lojaId: 'master',
+        items: const [
+          ConsignmentReseller(resellerId: 'b', displayName: 'Beta', storeId: 'master'),
+          ConsignmentReseller(resellerId: 'a', displayName: 'Alfa', storeId: 'master'),
+          ConsignmentReseller(resellerId: 'x', displayName: 'Inativo', active: false, storeId: 'master'),
+          ConsignmentReseller(resellerId: 'z', displayName: 'Outra', storeId: 'other'),
+        ],
+      );
+      expect(listed.map((e) => e.resellerId).toList(), ['a', 'b']);
+      const created = ConsignmentReseller(resellerId: 'n', displayName: 'Novo', storeId: 'master');
+      final items = consignmentResellerSelectorItems(listed: listed, selected: created);
+      expect(items.map((e) => e.displayName).toList(), ['Alfa', 'Beta', 'Novo']);
+    });
+
+    test('reseller error mapping never shows stock protocol', () {
+      expect(
+        ConsignmentException.userMessage('RESELLER_PERMISSION'),
+        'Você não tem permissão para cadastrar revendedores nesta loja.',
+      );
+      expect(
+        ConsignmentException.resellerUserMessage(
+          const ConsignmentException('NETWORK', 'x'),
+        ),
+        'Não foi possível conectar. Verifique sua internet.',
+      );
+      expect(
+        ConsignmentException.resellerUserMessage(
+          const ConsignmentException('FAILED_PRECONDITION', 'Stock protocol unavailable or migration incomplete'),
+        ),
+        'Você não tem permissão para cadastrar revendedores nesta loja.',
+      );
+    });
+
     test('grade helper', () {
       expect(
         consignmentProductIsGrade(_FakeProduct(grade: true)),

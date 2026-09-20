@@ -97,6 +97,36 @@ bool consignmentProductIsGrade(dynamic produto) {
   return false;
 }
 
+String? consignmentResellerNameError(String? name) {
+  if (name == null || name.trim().isEmpty) {
+    return 'Informe o nome do revendedor.';
+  }
+  return null;
+}
+
+List<ConsignmentReseller> consignmentResellerSelectorItems({
+  required List<ConsignmentReseller> listed,
+  ConsignmentReseller? selected,
+}) {
+  if (selected == null) return listed;
+  final index = listed.indexWhere((e) => e.resellerId == selected.resellerId);
+  if (index < 0) return [...listed, selected];
+  final copy = [...listed];
+  copy[index] = selected;
+  return copy;
+}
+
+List<ConsignmentReseller> consignmentActiveResellersForStore({
+  required String lojaId,
+  required List<ConsignmentReseller> items,
+}) {
+  final filtered = items
+      .where((r) => r.active && (r.storeId.isEmpty || r.storeId == lojaId))
+      .toList();
+  filtered.sort((a, b) => a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase()));
+  return filtered;
+}
+
 bool consignmentProductIsCombo(dynamic produto) {
   try {
     if (produto.ehCombo == true) return true;

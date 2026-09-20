@@ -52,6 +52,8 @@ class ConsignmentException implements Exception {
       case 'permission-denied':
       case 'AUTH':
         return 'Você não tem permissão para esta operação nesta loja.';
+      case 'RESELLER_PERMISSION':
+        return 'Você não tem permissão para cadastrar revendedores nesta loja.';
       case 'MODULE_DISABLED':
         return 'O módulo de consignados não está habilitado nesta loja.';
       case 'NETWORK':
@@ -64,5 +66,29 @@ class ConsignmentException implements Exception {
             ? 'Não foi possível concluir: ${fallback!.trim()}'
             : 'Falha no servidor ao processar o consignado.';
     }
+  }
+
+  static String resellerUserMessage(Object e) {
+    if (e is ConsignmentException) {
+      if (e.code == 'NETWORK' ||
+          e.code == 'unavailable' ||
+          e.code == 'deadline-exceeded') {
+        return 'Não foi possível conectar. Verifique sua internet.';
+      }
+      if (e.code == 'INVALID_ARGUMENT') {
+        return 'Informe o nome do revendedor.';
+      }
+      if (e.code == 'RESELLER_PERMISSION' ||
+          e.code == 'AUTH' ||
+          e.code == 'permission-denied' ||
+          e.code == 'unauthenticated') {
+        return 'Você não tem permissão para cadastrar revendedores nesta loja.';
+      }
+      if (e.message.contains('Stock protocol')) {
+        return 'Você não tem permissão para cadastrar revendedores nesta loja.';
+      }
+      return e.message;
+    }
+    return userMessage('SERVER', e.toString());
   }
 }

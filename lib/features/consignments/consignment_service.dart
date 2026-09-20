@@ -6,8 +6,10 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
+import 'consignment_eligibility.dart';
 import 'consignment_errors.dart';
 import 'consignment_models.dart';
+import 'consignment_validation.dart';
 
 class ConsignmentService {
   ConsignmentService._();
@@ -21,6 +23,9 @@ class ConsignmentService {
 
   @visibleForTesting
   static FirebaseFirestore? debugFirestore;
+
+  @visibleForTesting
+  static List<ConsignmentPickerItem>? debugPickerItems;
 
   static bool _issueInFlight = false;
   static bool _settleInFlight = false;
@@ -88,13 +93,24 @@ class ConsignmentService {
     required String lojaId,
     required String displayName,
     String notes = '',
+    String phone = '',
   }) {
+    final trimmed = displayName.trim();
+    if (trimmed.isEmpty) {
+      throw const ConsignmentException(
+          'INVALID_ARGUMENT', 'Informe o nome do revendedor.');
+    }
     final id = newId();
     return command(
       lojaId: lojaId,
       operation: 'createReseller',
       operationId: 'reseller_$id',
-      payload: {'resellerId': id, 'displayName': displayName, 'notes': notes},
+      payload: {
+        'resellerId': id,
+        'displayName': trimmed,
+        'notes': notes.trim(),
+        if (phone.trim().isNotEmpty) 'phone': phone.trim(),
+      },
     );
   }
 
@@ -229,16 +245,45 @@ class ConsignmentService {
     return ConsignmentDoc.fromMap(snap.id, snap.data() ?? {});
   }
 
+  static Future<List<ConsignmentPickerItem>> loadPickerProducts(String lojaId) async {
+    if (debugPickerItems != null) return List.of(debugPickerItems!);
+    final base = _db.collection('lojas').doc(lojaId);
+    final stockSnap = await base.collection('estoque_produtos').get();
+    final drafts = {
+      for (final d in (await base.collection('draft_produtos').get()).docs) d.id: d.data(),
+    };
+    final deps = {
+      for (final d in (await base.collection('stock_catalog_dependencies').get()).docs)
+        d.id: d.data(),
+    };
+    final tombs = {
+      for (final d in (await base.collection('exclusao_produto').get()).docs) d.id: d.data(),
+    };
+    final items = stockSnap.docs
+        .map((doc) => evaluateConsignmentPickerItem(
+              productId: doc.id,
+              lojaId: lojaId,
+              stock: doc.data(),
+              draft: drafts[doc.id],
+              dependency: deps[doc.id],
+              tombstone: tombs[doc.id],
+            ))
+        .toList();
+    items.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    return items;
+  }
+
   static Stream<List<ConsignmentReseller>> watchResellers(String lojaId) {
     return _db
         .collection('lojas')
         .doc(lojaId)
         .collection('consignment_resellers')
         .snapshots()
-        .map((snap) => snap.docs
-            .map((d) => ConsignmentReseller.fromMap(d.id, d.data()))
-            .where((r) => r.active)
-            .toList()
-          ..sort((a, b) => a.displayName.compareTo(b.displayName)));
+        .map((snap) => consignmentActiveResellersForStore(
+              lojaId: lojaId,
+              items: snap.docs
+                  .map((d) => ConsignmentReseller.fromMap(d.id, d.data()))
+                  .toList(),
+            ));
   }
 }
