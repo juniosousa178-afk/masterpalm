@@ -178,7 +178,9 @@ async function snapshotLines(tx, base, lines) {
     const record = records.get(line.productId);
     const loadError = loadErrors.get(line.productId);
     const editorial = record?.editorial || {};
-    const name = typeof editorial.nome === 'string' && editorial.nome.trim() ? editorial.nome.trim() : line.productId;
+    const stockName = typeof record?.data?.nome === 'string' ? record.data.nome.trim() : '';
+    const editorialName = typeof editorial.nome === 'string' ? editorial.nome.trim() : '';
+    const name = editorialName || stockName || line.productId;
     const selectionLabel = gradeKeyLabel(line.variationKey);
     const idx = line._index ?? 0;
     if (!record) {

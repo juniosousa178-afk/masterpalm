@@ -172,9 +172,10 @@ export async function loadConsignmentStockRecords(tx, base, productIds) {
       stockRef, draftRef, base.collection('stock_catalog_dependencies').doc(id),
       base.collection('exclusao_produto').doc(id),
     );
-    if (!stock.exists || !draft.exists) throw consignmentError(CODES.PRODUCT_NOT_FOUND, 'Canonical product and editorial draft required');
+    if (!stock.exists) throw consignmentError(CODES.PRODUCT_NOT_FOUND, 'Canonical product required');
     const raw = stock.data() || {};
-    const editorial = draft.data() || {};
+    // Editorial draft is optional for internal consignment. Stock authority is estoque_produtos.
+    const editorial = draft.exists ? (draft.data() || {}) : {};
     const claimedStore = String(raw.lojaId || raw.storeId || editorial.lojaId || editorial.storeId || '').trim();
     if (claimedStore && claimedStore !== base.id) {
       throw consignmentError(CODES.AUTH, 'Cross-store product access denied');
@@ -203,6 +204,7 @@ export async function loadConsignmentStockRecords(tx, base, productIds) {
     records.set(id, {
       stockRef, draftRef, dependency,
       data, editorial,
+      draftExisted: draft.exists === true,
       beforeHash: fingerprint(stockEffect(data)),
       originalRevision: data.stockRevision,
       beforeStock: structuredClone(stockEffect(data)),
@@ -236,10 +238,13 @@ export function persistConsignmentStock(tx, base, records, operationId, directio
       });
     }
     set(r.stockRef, {...projected.stock, stockUpdatedAt: FieldValue.serverTimestamp()});
-    set(r.draftRef, {...projected.draft, updatedAt: FieldValue.serverTimestamp()});
-    const live = base.collection('produtos').doc(id);
-    if (projected.live) set(live, {...projected.live, updatedAt: FieldValue.serverTimestamp()});
-    else remove(live);
+    // Do not recreate editorial drafts during consignment stock writes.
+    if (r.draftExisted) {
+      set(r.draftRef, {...projected.draft, updatedAt: FieldValue.serverTimestamp()});
+      const live = base.collection('produtos').doc(id);
+      if (projected.live) set(live, {...projected.live, updatedAt: FieldValue.serverTimestamp()});
+      else remove(live);
+    }
   }
   return {products, writes, affected};
 }
@@ -250,23 +255,26 @@ function moneyValue(raw) {
   return Math.round(n * 100) / 100;
 }
 
-/** Same issue eligibility contract, plus picker UX qty > 0. Catalog publish is ignored. */
+/** Same issue eligibility contract, plus picker UX qty > 0. Catalog publish is ignored.
+ * Editorial draft is optional — authoritative stock is estoque_produtos.
+ */
 export function evaluateConsignmentPickerEligibility({
   productId, lojaId, stock, draft, dependency, tombstone,
 } = {}) {
   const deny = (reason = 'PRODUCT_STATE_UNSAFE') => ({
     eligible: false, productId, reason,
     name: String(draft?.nome || stock?.nome || productId || ''),
-    price: moneyValue(draft?.preco ?? draft?.precoVenda ?? stock?.preco),
+    price: moneyValue(draft?.preco ?? draft?.precoVenda ?? stock?.preco ?? stock?.precoVenda),
     availableQty: Number.isFinite(Number(stock?.quantidade)) ? Math.max(0, Math.trunc(Number(stock.quantidade))) : 0,
     stockKind: String(stock?.stockKind || ''),
     variacoes: isMap(stock?.variacoes) ? stock.variacoes : {},
   });
   try {
-    if (!stock || !draft) return deny('PRODUCT_NOT_FOUND');
-    const claimed = String(stock.lojaId || stock.storeId || draft.lojaId || draft.storeId || '').trim();
+    if (!stock) return deny('PRODUCT_NOT_FOUND');
+    const claimed = String(stock.lojaId || stock.storeId || draft?.lojaId || draft?.storeId || '').trim();
     if (claimed && claimed !== lojaId) return deny('CROSS_STORE_PRODUCT');
     if (stock.ativo === false) return deny('PRODUCT_INACTIVE');
+    // draft.ativo / catalog flags are editorial — do not block internal consignments
     if (tombstone?.p === true || stock.pendingSoftDelete) return deny('INVALID_STOCK_STATE');
     if (!dependency || !Array.isArray(dependency.comboIds)) return deny('MISSING_DEPENDENCY');
     if (!['simple', 'variation', 'combo'].includes(stock.stockKind)) return deny('MISSING_STOCK_METADATA');
@@ -281,8 +289,8 @@ export function evaluateConsignmentPickerEligibility({
     return {
       eligible: true,
       productId,
-      name: String(draft.nome || stock.nome || productId).trim() || productId,
-      price: moneyValue(draft.preco ?? draft.precoVenda ?? stock.preco),
+      name: String(draft?.nome || stock.nome || productId).trim() || productId,
+      price: moneyValue(draft?.preco ?? draft?.precoVenda ?? stock.preco ?? stock.precoVenda),
       availableQty: qty,
       stockKind: classified.kind,
       variacoes: (classified.kind === 'variation' || classified.kind === 'grade')
