@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../../design_system/mp_tokens.dart';
-import '../../services/loja_id_service.dart';
-import '../../widgets/app_help_icon_button.dart';
+import '../../../design_system/mp_tokens.dart';
+import '../../../services/loja_id_service.dart';
+import '../../../widgets/app_help_icon_button.dart';
 import '../consignment_errors.dart';
 import '../consignment_feature_flag.dart';
 import '../consignment_models.dart';

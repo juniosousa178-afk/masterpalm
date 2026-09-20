@@ -5496,7 +5496,13 @@ function consignmentCallableError(error) {
   const mapped = mapConsignmentHttp(error);
   return new HttpsError(mapped.http, mapped.message, mapped.details);
 }
-export const consignmentCommand = onCall(async request => {
-  try { return await executeConsignmentCommand(db, request.data, request.auth); }
-  catch (error) { throw consignmentCallableError(error); }
-});
+export const consignmentCommand = onCall(
+  { cors: true, timeoutSeconds: 60, memory: "256MiB" },
+  async (request) => {
+    try {
+      return await executeConsignmentCommand(db, request.data, request.auth);
+    } catch (error) {
+      throw consignmentCallableError(error);
+    }
+  },
+);

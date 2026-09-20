@@ -153,7 +153,7 @@ class _ConsignmentFormScreenState extends State<ConsignmentFormScreen> {
     if (consignmentProductIsGrade(selected)) {
       _toast(const ConsignmentException(
           'CONSIGNMENT_GRADE_NOT_SUPPORTED',
-          ConsignmentException.userMessage('CONSIGNMENT_GRADE_NOT_SUPPORTED')));
+          'Produtos de grade não são suportados no consignado.'));
       return;
     }
     final productId = selected.idFirebase.trim().isNotEmpty

@@ -1,0 +1,13 @@
+{
+  "timestamp": "2026-09-20T14:05:00Z",
+  "routeLoads": true,
+  "route": "https://app.mastepalm.com.br/consignados",
+  "functionHealthy": true,
+  "functionRevision": "consignmentcommand-00001-jof",
+  "authWorks": true,
+  "featureFlagDefault": false,
+  "featureFlagEnabledStores": [],
+  "customerConsignmentCreated": false,
+  "globalRollout": false,
+  "nextTrack": "ENABLE_CANARY_STORE_THEN_OPERATOR_SMALL_CONSIGNMENT"
+}

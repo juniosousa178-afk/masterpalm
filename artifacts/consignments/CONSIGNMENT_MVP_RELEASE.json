@@ -1,12 +1,23 @@
 {
   "DECISION": "A",
   "BRANCH": "feature/consignments-mvp",
+  "IMPLEMENTATION_COMMIT": "35998c53bcc7f77e22c238d0eaeb4625995a3a23",
   "NEW_WEB_VERSION": "1.0.80+96",
+  "NEW_WEB_BUILD_ID": "consignments-mvp-1.0.80",
+  "NEW_CONSIGNMENT_FUNCTION_REVISION": "consignmentcommand-00001-jof",
   "FUNCTION_DEPLOYS": 1,
-  "HOSTING_DEPLOYS": 1,
+  "HOSTING_DEPLOYS": 2,
   "RULES_DEPLOYS": 1,
+  "STOCK_CATALOG_COMMAND_REDEPLOYED": false,
   "FEATURE_FLAG_DEFAULT": false,
   "FEATURE_FLAG_ENABLED_STORES": [],
   "GLOBAL_ROLLOUT": false,
-  "STOCK_CATALOG_COMMAND_REDEPLOYED": false
+  "CANARY": {
+    "routeLoads": true,
+    "functionHealthy": true,
+    "authGate": true,
+    "featureFlagDefaultFalse": true,
+    "customerConsignmentCreated": false
+  },
+  "CUSTOMER_VERSION_URL": "https://app.mastepalm.com.br/version.json"
 }
