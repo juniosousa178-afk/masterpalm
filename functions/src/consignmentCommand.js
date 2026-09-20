@@ -12,6 +12,10 @@ import {
   applyExactConsignmentDelta, loadConsignmentStockRecords, persistConsignmentStock,
   evaluateConsignmentPickerEligibility,
 } from './consignmentStock.js';
+import {
+  REASON, makeIssue, productValidationError, gradeKey, gradeKeyLabel,
+} from './productValidationErrors.js';
+import {quantity} from './catalogStockProjection.js';
 
 const MAX_LINES = 50;
 
@@ -85,7 +89,10 @@ async function listEligibleProducts(db, command, auth) {
       dependency: deps.get(doc.id),
       tombstone: tombs.get(doc.id),
     });
-    if (!item.eligible) continue;
+    // Surface selectable + zero-stock disabled rows; hide hard-unsupported noise.
+    if (!item.eligible && !['ZERO_STOCK', 'INSUFFICIENT_STOCK', 'COMBO_NOT_SUPPORTED'].includes(item.reason)) {
+      continue;
+    }
     products.push({
       productId: item.productId,
       name: item.name,
@@ -93,9 +100,21 @@ async function listEligibleProducts(db, command, auth) {
       availableQty: item.availableQty,
       stockKind: item.stockKind,
       variacoes: item.variacoes,
+      eligible: item.eligible === true,
+      reason: item.reason || '',
+      unavailableReason: item.eligible
+        ? ''
+        : (item.reason === 'ZERO_STOCK' || item.reason === 'INSUFFICIENT_STOCK'
+          ? 'Sem estoque'
+          : (item.reason === 'COMBO_NOT_SUPPORTED'
+            ? 'Produtos do tipo combo ainda não são suportados nesta operação.'
+            : 'Produto ainda não disponível para consignação.')),
     });
   }
-  products.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  products.sort((a, b) => {
+    if (a.eligible !== b.eligible) return a.eligible ? -1 : 1;
+    return a.name.localeCompare(b.name, 'pt-BR');
+  });
   return {products, alreadyApplied: false, writes: 0};
 }
 
@@ -142,28 +161,122 @@ function uniqueLines(lines) {
 
 async function snapshotLines(tx, base, lines) {
   const productIds = [...new Set(lines.map(l => l.productId))];
-  const records = await loadConsignmentStockRecords(tx, base, productIds);
+  const records = new Map();
+  const loadErrors = new Map();
+  for (const id of productIds) {
+    try {
+      const one = await loadConsignmentStockRecords(tx, base, [id]);
+      records.set(id, one.get(id));
+    } catch (error) {
+      records.set(id, null);
+      loadErrors.set(id, error);
+    }
+  }
   const out = [];
+  const issues = [];
   for (const line of lines) {
     const record = records.get(line.productId);
-    const classified = classifyConsignmentProduct(record.data);
-    const editorial = record.editorial || {};
+    const loadError = loadErrors.get(line.productId);
+    const editorial = record?.editorial || {};
     const name = typeof editorial.nome === 'string' && editorial.nome.trim() ? editorial.nome.trim() : line.productId;
+    const selectionLabel = gradeKeyLabel(line.variationKey);
+    const idx = line._index ?? 0;
+    if (!record) {
+      const msg = String(loadError?.message || '');
+      const code = loadError?.consignmentCode;
+      let reason = REASON.PRODUCT_NOT_FOUND;
+      if (code === CODES.AUTH || /Cross-store/i.test(msg)) reason = REASON.CROSS_STORE_PRODUCT;
+      else if (/Dependency migration/i.test(msg)) reason = REASON.MISSING_DEPENDENCY;
+      else if (/inactive|tombstone|deleted/i.test(msg)) reason = REASON.PRODUCT_INACTIVE;
+      else if (/ambiguous|Invalid canonical|stockRevision/i.test(msg) || code === CODES.PRODUCT_STATE_UNSAFE) {
+        reason = REASON.INVALID_STOCK_STATE;
+      } else if (/combo/i.test(msg)) reason = REASON.COMBO_NOT_SUPPORTED;
+      issues.push(makeIssue({
+        productId: line.productId, productName: name, lineIndex: idx,
+        selectionLabel, reasonCode: reason, requestedQty: line.qtySent,
+      }));
+      continue;
+    }
+    let classified;
+    try {
+      classified = classifyConsignmentProduct(record.data);
+    } catch (error) {
+      const msg = error?.message || '';
+      let reason = REASON.INVALID_STOCK_STATE;
+      if (/combo/i.test(msg)) reason = REASON.COMBO_NOT_SUPPORTED;
+      else if (error?.consignmentCode === CODES.PRODUCT_NOT_FOUND) reason = REASON.PRODUCT_NOT_FOUND;
+      else if (/Cross-store|AUTH/i.test(msg)) reason = REASON.CROSS_STORE_PRODUCT;
+      issues.push(makeIssue({
+        productId: line.productId, productName: name, lineIndex: idx,
+        selectionLabel, reasonCode: reason, requestedQty: line.qtySent,
+      }));
+      continue;
+    }
     if (classified.kind === 'simple') {
       if (line.variationKey.size || line.variationKey.color || line.variationKey.extra) {
-        throw consignmentError(CODES.INVALID_ARGUMENT, 'Simple product cannot select a variation');
+        issues.push(makeIssue({
+          productId: line.productId, productName: name, lineIndex: idx,
+          selectionLabel, reasonCode: REASON.VARIATION_NOT_FOUND, requestedQty: line.qtySent,
+        }));
+        continue;
+      }
+    } else if (classified.kind === 'grade') {
+      if (!line.variationKey.size || !line.variationKey.color) {
+        issues.push(makeIssue({
+          productId: line.productId, productName: name, lineIndex: idx,
+          selectionLabel, reasonCode: REASON.GRADE_SELECTION_REQUIRED, requestedQty: line.qtySent,
+        }));
+        continue;
       }
     } else if (!line.variationKey.size || !line.variationKey.color) {
-      throw consignmentError(CODES.VARIATION_NOT_FOUND, 'Exact variationKey required');
+      issues.push(makeIssue({
+        productId: line.productId, productName: name, lineIndex: idx,
+        selectionLabel, reasonCode: REASON.VARIATION_REQUIRED, requestedQty: line.qtySent,
+      }));
+      continue;
     }
+    if (classified.kind !== 'simple') {
+      try {
+        applyExactConsignmentDelta(
+          JSON.parse(JSON.stringify(classified.stock)),
+          classified.kind,
+          line.variationKey,
+          -line.qtySent,
+        );
+      } catch (error) {
+        const code = error?.consignmentCode;
+        let reason = classified.kind === 'grade' ? REASON.GRADE_CELL_NOT_FOUND : REASON.VARIATION_NOT_FOUND;
+        if (code === CODES.INSUFFICIENT_STOCK) reason = REASON.INSUFFICIENT_STOCK;
+        issues.push(makeIssue({
+          productId: line.productId, productName: name, lineIndex: idx,
+          selectionLabel, reasonCode: reason, requestedQty: line.qtySent,
+        }));
+        continue;
+      }
+    } else {
+      const avail = quantity(classified.stock.quantidade);
+      if (avail < line.qtySent) {
+        issues.push(makeIssue({
+          productId: line.productId, productName: name, lineIndex: idx,
+          selectionLabel,
+          reasonCode: avail === 0 ? REASON.ZERO_STOCK : REASON.INSUFFICIENT_STOCK,
+          requestedQty: line.qtySent, availableQty: avail,
+        }));
+        continue;
+      }
+    }
+    const gKey = classified.kind === 'simple' ? '' : gradeKey(line.variationKey);
     out.push({
       ...line,
       productNameSnapshot: name,
       productType: classified.kind,
       variationSnapshot: classified.kind === 'simple' ? null : {...line.variationKey},
+      gradeKey: gKey || null,
+      gradeDimensions: classified.kind === 'simple' ? null : {...line.variationKey},
     });
     delete out[out.length - 1]._index;
   }
+  if (issues.length) throw productValidationError(issues);
   return {lines: out, records};
 }
 

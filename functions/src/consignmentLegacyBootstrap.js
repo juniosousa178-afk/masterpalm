@@ -205,6 +205,8 @@ export function classifyLegacyConsignmentProduct({
     if (qty !== normalized.quantidade) {
       return {...base, classification: CLASSES.UNSAFE_AMBIGUOUS, reason: 'VARIATION_AGGREGATE_MISMATCH'};
     }
+  } else if (classified.kind === 'grade') {
+    return {...base, classification: CLASSES.GRADE, reason: 'GRADE', kind: 'grade', bootstrappable: false};
   } else {
     return {...base, classification: CLASSES.OTHER_UNSUPPORTED, reason: 'UNSUPPORTED_KIND'};
   }

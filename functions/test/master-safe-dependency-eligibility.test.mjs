@@ -8,7 +8,7 @@ function eligible(stock, dep) {
   if (!dep || !Array.isArray(dep.comboIds)) return false;
   const classified = classifyConsignmentProduct(stock);
   quantity(classified.stock.stockRevision ?? stock.stockRevision);
-  return classified.kind === 'simple' || classified.kind === 'variation';
+  return classified.kind === 'simple' || classified.kind === 'variation' || classified.kind === 'grade';
 }
 
 test('1 safe simple with revision and comboIds is eligible', () => {
@@ -38,12 +38,14 @@ test('4 missing stockRevision is not eligible even with dependency', () => {
   assert.throws(() => eligible(stock, {comboIds: []}));
 });
 
-test('5 grade denied', () => {
-  assert.throws(() => classifyConsignmentProduct({
+test('5 grade eligible with dependency', () => {
+  const stock = {
     stockKind: 'variation',
     variacoes: {P: {Azul: 1, Vermelho: 2}},
     tamanhos: ['P'], cores: ['Azul', 'Vermelho'], quantidade: 3, stockRevision: 0,
-  }), e => e.consignmentCode === CODES.CONSIGNMENT_GRADE_NOT_SUPPORTED);
+  };
+  assert.equal(classifyConsignmentProduct(stock).kind, 'grade');
+  assert.equal(eligible(stock, {comboIds: []}), true);
 });
 
 test('6 combo denied', () => {

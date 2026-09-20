@@ -109,14 +109,14 @@ function financeExists(db, base, consignmentId) {
   return db.exists(base.collection('lancamentos_financeiros').doc(`csgn_fin_${consignmentId}`));
 }
 
-test('classify: simple / size-only variation / grade denied', () => {
+test('classify: simple / size-only variation / true grade', () => {
   assert.equal(classifyConsignmentProduct({stockKind: 'simple', quantidade: 3, variacoes: {}}).kind, 'simple');
   assert.equal(classifyConsignmentProduct({
     stockKind: 'variation', variacoes: {P: {'sem-cor': 4}, M: {'sem-cor': 1}}, quantidade: 5,
   }).kind, 'variation');
-  assert.throws(() => classifyConsignmentProduct({
+  assert.equal(classifyConsignmentProduct({
     stockKind: 'variation', variacoes: {P: {Azul: 1, Vermelho: 2}}, tamanhos: ['P'], cores: ['Azul', 'Vermelho'], quantidade: 3,
-  }), e => e.consignmentCode === CODES.CONSIGNMENT_GRADE_NOT_SUPPORTED);
+  }).kind, 'grade');
   assert.throws(() => classifyConsignmentProduct({
     stockKind: 'combo', tipoProduto: 'combo', itensCombo: [{productId: 'x', quantidade: 1}], quantidade: 1,
   }), e => e.consignmentCode === CODES.PRODUCT_STATE_UNSAFE);
@@ -157,23 +157,20 @@ test('2 variation issue success uses canonical variacoes and regenerates EPT', a
 
 test('3 insufficient stock -> zero writes', async () => {
   const {db, base, lojaId} = await seed({simpleQty: 1});
-  const id = await draftAnd(db, lojaId, [simpleLine(2)]);
   const before = db.snapshot();
-  await denied(executeConsignmentCommand(db, cmd(lojaId, 'issue', `issue_${id}`, {}, id), owner), CODES.INSUFFICIENT_STOCK);
+  await denied(draftAnd(db, lojaId, [simpleLine(2)]), CODES.PRODUCT_VALIDATION_FAILED);
   assert.deepEqual(db.snapshot(), before);
-  assert.equal(consignment(db, base, id).status, 'DRAFT');
 });
 
 test('4 variation missing -> zero writes', async () => {
   const {db, base, lojaId} = await seed({
     variation: {variacoes: {P: {'sem-cor': 5}}},
   });
-  const id = await draftAnd(db, lojaId, [{
+  const before = db.snapshot();
+  await denied(draftAnd(db, lojaId, [{
     productId: 'varp', qtySent: 1, unitSalePrice: 10, commissionType: 'SEM_COMISSAO', commissionValue: 0,
     variationKey: {size: 'G', color: 'sem-cor', extra: ''},
-  }]);
-  const before = db.snapshot();
-  await denied(executeConsignmentCommand(db, cmd(lojaId, 'issue', `issue_${id}`, {}, id), owner), CODES.VARIATION_NOT_FOUND);
+  }]), CODES.PRODUCT_VALIDATION_FAILED);
   assert.deepEqual(db.snapshot(), before);
 });
 
@@ -186,7 +183,7 @@ test('5 unsafe product -> zero writes', async () => {
   assert.deepEqual(db.snapshot(), before);
 });
 
-test('6 grade -> denied', async () => {
+test('6 grade -> issue decrements exact cell', async () => {
   const {db, base, lojaId} = await seed({
     extraProducts: [{
       id: 'grade',
@@ -196,11 +193,17 @@ test('6 grade -> denied', async () => {
       },
     }],
   });
-  await denied(draftAnd(db, lojaId, [{
+  const id = await draftAnd(db, lojaId, [{
     productId: 'grade', qtySent: 1, unitSalePrice: 10, commissionType: 'SEM_COMISSAO', commissionValue: 0,
     variationKey: {size: 'P', color: 'Azul', extra: ''},
-  }]), CODES.CONSIGNMENT_GRADE_NOT_SUPPORTED);
-  assert.equal(stockQty(db, base, 'grade'), 3);
+  }]);
+  await executeConsignmentCommand(db, cmd(lojaId, 'issue', `issue_${id}`, {}, id), owner);
+  const stock = db.getData(base.collection('estoque_produtos').doc('grade'));
+  assert.equal(stock.variacoes.P.Azul, 0);
+  assert.equal(stock.variacoes.P.Vermelho, 2);
+  assert.equal(stock.quantidade, 2);
+  assert.equal(saleExists(db, base, id), false);
+  assert.equal(financeExists(db, base, id), false);
 });
 
 test('7 multiple product issue atomic', async () => {
@@ -219,23 +222,18 @@ test('7 multiple product issue atomic', async () => {
   assert.equal(db.getData(base.collection('estoque_produtos').doc('varp')).variacoes.P['sem-cor'], 3);
 });
 
-test('8 one invalid line -> whole issue rollback', async () => {
+test('8 one invalid line -> whole draft denied zero writes', async () => {
   const {db, base, lojaId} = await seed({simpleQty: 5, variation: {variacoes: {P: {'sem-cor': 1}}}});
-  const id = await draftAnd(db, lojaId, [
+  const before = db.snapshot();
+  await denied(draftAnd(db, lojaId, [
     simpleLine(2),
     {
       productId: 'varp', qtySent: 5, unitSalePrice: 20, commissionType: 'SEM_COMISSAO', commissionValue: 0,
       variationKey: {size: 'P', color: 'sem-cor', extra: ''},
     },
-  ]);
-  const before = db.snapshot();
-  await denied(executeConsignmentCommand(db, cmd(lojaId, 'issue', `issue_${id}`, {}, id), owner), CODES.INSUFFICIENT_STOCK);
+  ]), CODES.PRODUCT_VALIDATION_FAILED);
   assert.equal(stockQty(db, base, 'simple'), 5);
-  assert.equal(consignment(db, base, id).status, 'DRAFT');
-  assert.deepEqual(
-    db.getData(base.collection('estoque_produtos').doc('simple')),
-    before.get(base.collection('estoque_produtos').doc('simple').path),
-  );
+  assert.deepEqual(db.snapshot(), before);
 });
 
 test('9-12 stockRevision advances, EPT regenerate, no sale, no finance on issue', async () => {
@@ -459,7 +457,7 @@ test('39 no queue replay documents', async () => {
   assert.equal(queue.length, 0);
 });
 
-test('40 grade restriction unchanged: stock sale of size×color still uses catalog command, consignment denies', async () => {
+test('40 grade sale + consignment both decrement exact cell', async () => {
   const {db, base, lojaId} = await seed({
     extraProducts: [{
       id: 'grade',
@@ -474,10 +472,12 @@ test('40 grade restriction unchanged: stock sale of size×color still uses catal
     items: [{productId: 'grade', quantity: 1, size: 'P', color: 'Azul'}],
   }, owner);
   assert.equal(db.getData(base.collection('estoque_produtos').doc('grade')).variacoes.P.Azul, 1);
-  await denied(draftAnd(db, lojaId, [{
+  const id = await draftAnd(db, lojaId, [{
     productId: 'grade', qtySent: 1, unitSalePrice: 10, commissionType: 'SEM_COMISSAO', commissionValue: 0,
     variationKey: {size: 'P', color: 'Azul', extra: ''},
-  }]), CODES.CONSIGNMENT_GRADE_NOT_SUPPORTED);
+  }]);
+  await executeConsignmentCommand(db, cmd(lojaId, 'issue', `issue_${id}`, {}, id), owner);
+  assert.equal(db.getData(base.collection('estoque_produtos').doc('grade')).variacoes.P.Azul, 0);
 });
 
 test('draft cancel has no stock effect; issued cannot cancel', async () => {
@@ -593,7 +593,7 @@ test('dedicated gate 4 dependency missing -> denied', async () => {
   const before = db.snapshot();
   await denied(draftAnd(db, lojaId, [{
     productId: 'nodep', qtySent: 1, unitSalePrice: 10, commissionType: 'SEM_COMISSAO', commissionValue: 0,
-  }]), CODES.PRODUCT_STATE_UNSAFE);
+  }]), CODES.PRODUCT_VALIDATION_FAILED);
   assert.deepEqual(db.snapshot(), before);
 });
 
@@ -608,7 +608,7 @@ test('dedicated gate 5 dependency unsafe -> denied', async () => {
   });
   await denied(draftAnd(db, lojaId, [{
     productId: 'unsafedep', qtySent: 1, unitSalePrice: 10, commissionType: 'SEM_COMISSAO', commissionValue: 0,
-  }]), CODES.PRODUCT_STATE_UNSAFE);
+  }]), CODES.PRODUCT_VALIDATION_FAILED);
 });
 
 test('dedicated gate 6 invalid stockRevision -> denied', async () => {
@@ -621,7 +621,7 @@ test('dedicated gate 6 invalid stockRevision -> denied', async () => {
   });
   await denied(draftAnd(db, lojaId, [{
     productId: 'badrev', qtySent: 1, unitSalePrice: 10, commissionType: 'SEM_COMISSAO', commissionValue: 0,
-  }]), CODES.PRODUCT_STATE_UNSAFE);
+  }]), CODES.PRODUCT_VALIDATION_FAILED);
 });
 
 test('dedicated gate 7 ambiguous stock -> denied', async () => {
@@ -634,14 +634,13 @@ test('dedicated gate 7 ambiguous stock -> denied', async () => {
   });
   await denied(draftAnd(db, lojaId, [{
     productId: 'ambig', qtySent: 1, unitSalePrice: 10, commissionType: 'SEM_COMISSAO', commissionValue: 0,
-  }]), CODES.PRODUCT_STATE_UNSAFE);
+  }]), CODES.PRODUCT_VALIDATION_FAILED);
 });
 
 test('dedicated gate 8 insufficient stock -> denied', async () => {
   const {db, base, lojaId} = await seed({protocol: false, grant: false, simpleQty: 1});
-  const id = await draftAnd(db, lojaId, [simpleLine(2)]);
   const before = db.snapshot();
-  await denied(executeConsignmentCommand(db, cmd(lojaId, 'issue', `issue_${id}`, {}, id), owner), CODES.INSUFFICIENT_STOCK);
+  await denied(draftAnd(db, lojaId, [simpleLine(2)]), CODES.PRODUCT_VALIDATION_FAILED);
   assert.deepEqual(db.snapshot(), before);
 });
 
@@ -684,12 +683,11 @@ test('dedicated gate 12 cross-store product -> denied', async () => {
   });
   await denied(draftAnd(db, lojaId, [{
     productId: 'foreign', qtySent: 1, unitSalePrice: 10, commissionType: 'SEM_COMISSAO', commissionValue: 0,
-  }]), CODES.AUTH);
+  }]), CODES.PRODUCT_VALIDATION_FAILED);
 });
 
-test('dedicated gate 13 grade -> denied', async () => {
-  const {db, lojaId} = await seed({
-    protocol: false, grant: false,
+test('dedicated gate 13 grade -> allowed when module+protocol ready', async () => {
+  const {db, base, lojaId} = await seed({
     extraProducts: [{
       id: 'grade2',
       stock: {
@@ -698,10 +696,12 @@ test('dedicated gate 13 grade -> denied', async () => {
       },
     }],
   });
-  await denied(draftAnd(db, lojaId, [{
+  const id = await draftAnd(db, lojaId, [{
     productId: 'grade2', qtySent: 1, unitSalePrice: 10, commissionType: 'SEM_COMISSAO', commissionValue: 0,
     variationKey: {size: 'P', color: 'Azul', extra: ''},
-  }]), CODES.CONSIGNMENT_GRADE_NOT_SUPPORTED);
+  }]);
+  await executeConsignmentCommand(db, cmd(lojaId, 'issue', `issue_${id}`, {}, id), owner);
+  assert.equal(db.getData(base.collection('estoque_produtos').doc('grade2')).variacoes.P.Azul, 0);
 });
 
 test('dedicated gate 14 combo -> denied', async () => {
@@ -717,7 +717,7 @@ test('dedicated gate 14 combo -> denied', async () => {
   });
   await denied(draftAnd(db, lojaId, [{
     productId: 'combo', qtySent: 1, unitSalePrice: 10, commissionType: 'SEM_COMISSAO', commissionValue: 0,
-  }]), CODES.PRODUCT_STATE_UNSAFE);
+  }]), CODES.PRODUCT_VALIDATION_FAILED);
 });
 
 test('dedicated gate 15 safe simple issue decrements exactly once', async () => {
@@ -740,7 +740,7 @@ test('dedicated gate 16 multi-line issue with one unsafe line -> zero writes', a
   await denied(draftAnd(db, lojaId, [
     simpleLine(1),
     {productId: 'legacy', qtySent: 1, unitSalePrice: 10, commissionType: 'SEM_COMISSAO', commissionValue: 0},
-  ]), CODES.PRODUCT_STATE_UNSAFE);
+  ]), CODES.PRODUCT_VALIDATION_FAILED);
   assert.deepEqual(db.snapshot(), before);
   assert.equal(stockQty(db, base), 5);
   assert.equal(stockQty(db, base, 'legacy'), 9);
@@ -828,7 +828,7 @@ test('picker list 1-4 safe internal non-public simple and variation selectable',
   assert.equal(canary.stockKind, 'simple');
 });
 
-test('picker list 5-10 qty0/unsafe/invalid/grade/combo/wrong-store excluded', async () => {
+test('picker list 5-10 qty0 disabled; unsafe hidden; grade selectable; combo disabled', async () => {
   const {db, lojaId} = await seed({
     protocol: false, grant: false, simpleQty: 0,
     extraProducts: [
@@ -846,13 +846,15 @@ test('picker list 5-10 qty0/unsafe/invalid/grade/combo/wrong-store excluded', as
     ],
   });
   const res = await executeConsignmentCommand(db, cmd(lojaId, 'listEligibleProducts', 'op_list_2', {}), owner);
-  const ids = listIds(res);
-  assert.equal(ids.includes('simple'), false);
-  assert.equal(ids.includes('nodep'), false);
-  assert.equal(ids.includes('badrev'), false);
-  assert.equal(ids.includes('grade2'), false);
-  assert.equal(ids.includes('combo'), false);
-  assert.equal(ids.includes('foreign'), false);
+  const byId = Object.fromEntries(res.products.map(p => [p.productId, p]));
+  assert.equal(byId.simple?.eligible, false);
+  assert.equal(byId.simple?.unavailableReason, 'Sem estoque');
+  assert.equal(byId.nodep, undefined);
+  assert.equal(byId.badrev, undefined);
+  assert.equal(byId.grade2?.eligible, true);
+  assert.equal(byId.grade2?.stockKind, 'grade');
+  assert.equal(byId.combo?.eligible, false);
+  assert.equal(byId.foreign, undefined);
   assert.equal(res.writes, 0);
 });
 

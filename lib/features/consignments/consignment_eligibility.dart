@@ -82,6 +82,16 @@ bool _hasBothSizeAndColorLists(Map<String, dynamic> stock) {
   return nonempty(stock['tamanhos']) && nonempty(stock['cores']);
 }
 
+bool _isTrueGrade(Map<String, dynamic> stock, Map<String, dynamic> variacoes) {
+  final hasExtra = _nonemptyMap(stock['variacoesExtraTipo']);
+  if (_isGradeMatrix(variacoes) || _hasBothSizeAndColorLists(stock)) return true;
+  final outer = variacoes.keys
+      .map((e) => e.toString())
+      .where((s) => !_technicalKey(s))
+      .toList();
+  return hasExtra && outer.isNotEmpty;
+}
+
 double _price(Map<String, dynamic>? draft, Map<String, dynamic> stock) {
   for (final src in [draft, stock]) {
     if (src == null) continue;
@@ -128,7 +138,16 @@ ConsignmentPickerItem evaluateConsignmentPickerItem({
   if (kind == 'combo' ||
       (stock['tipoProduto'] ?? '').toString() == 'combo' ||
       (stock['itensCombo'] is List && (stock['itensCombo'] as List).isNotEmpty)) {
-    return deny();
+    return ConsignmentPickerItem(
+      productId: productId,
+      name: name,
+      price: _price(draft, stock),
+      availableQty: _intQty(stock['quantidade']) ?? 0,
+      stockKind: 'combo',
+      variacoes: const {},
+      eligible: false,
+      unavailableReason: 'Produtos do tipo combo ainda não são suportados nesta operação.',
+    );
   }
   final variacoes = stock['variacoes'] is Map
       ? Map<String, dynamic>.from(stock['variacoes'] as Map)
@@ -137,20 +156,28 @@ ConsignmentPickerItem evaluateConsignmentPickerItem({
     if (_nonemptyMap(variacoes) || _hasGradeAttrs(stock)) return deny();
   } else {
     if (!_nonemptyMap(variacoes)) return deny();
-    if (_nonemptyMap(stock['variacoesExtraTipo']) ||
-        _isGradeMatrix(variacoes) ||
-        _hasBothSizeAndColorLists(stock)) {
-      return deny();
-    }
   }
   final qty = _intQty(stock['quantidade']);
-  if (qty == null || qty < 1) return deny();
+  if (qty == null) return deny();
+  if (qty < 1) {
+    return ConsignmentPickerItem(
+      productId: productId,
+      name: name,
+      price: _price(draft, stock),
+      availableQty: 0,
+      stockKind: kind as String,
+      variacoes: variacoes,
+      eligible: false,
+      unavailableReason: 'Sem estoque',
+    );
+  }
+  final isGrade = kind == 'variation' && _isTrueGrade(stock, variacoes);
   return ConsignmentPickerItem(
     productId: productId,
     name: name,
     price: _price(draft, stock),
     availableQty: qty,
-    stockKind: kind as String,
+    stockKind: isGrade ? 'grade' : (kind as String),
     variacoes: variacoes,
     eligible: true,
     unavailableReason: '',
@@ -163,9 +190,15 @@ List<ConsignmentPickerItem> consignmentPickerVisibleItems(
 }) {
   final q = query.trim().toLowerCase();
   final matches = q.isEmpty
-      ? all.where((e) => e.eligible)
+      ? all
       : all.where((e) =>
           e.name.toLowerCase().contains(q) ||
           e.productId.toLowerCase().contains(q));
-  return matches.take(80).toList();
+  // Prefer eligible first, then disabled (zero stock / unsupported) for visibility.
+  final list = matches.toList()
+    ..sort((a, b) {
+      if (a.eligible == b.eligible) return a.name.compareTo(b.name);
+      return a.eligible ? -1 : 1;
+    });
+  return list.take(80).toList();
 }

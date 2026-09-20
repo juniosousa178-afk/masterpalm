@@ -260,6 +260,7 @@ class ConsignmentService {
       final variacoes = data['variacoes'] is Map
           ? Map<String, dynamic>.from(data['variacoes'] as Map)
           : <String, dynamic>{};
+      final eligible = data['eligible'] != false;
       return ConsignmentPickerItem(
         productId: (data['productId'] ?? '').toString(),
         name: (data['name'] ?? data['productId'] ?? '').toString(),
@@ -267,8 +268,10 @@ class ConsignmentService {
         availableQty: data['availableQty'] is num ? (data['availableQty'] as num).toInt() : 0,
         stockKind: (data['stockKind'] ?? 'simple').toString(),
         variacoes: variacoes,
-        eligible: true,
-        unavailableReason: '',
+        eligible: eligible,
+        unavailableReason: eligible
+            ? ''
+            : (data['unavailableReason'] ?? 'Produto ainda não disponível para consignação.').toString(),
       );
     }).where((e) => e.productId.isNotEmpty).toList();
   }

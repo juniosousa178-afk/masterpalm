@@ -177,10 +177,15 @@ class _ConsignmentFormScreenState extends State<ConsignmentFormScreen> {
       },
     );
     if (selected == null || !selected.eligible) return;
-    var type = selected.stockKind == 'variation' ? 'variation' : 'simple';
+    var type = selected.stockKind == 'variation' || selected.stockKind == 'grade'
+        ? selected.stockKind
+        : 'simple';
     var variation = const ConsignmentVariationKey();
-    if (type == 'variation') {
-      final picked = await _pickVariation(selected.variacoes);
+    if (type == 'variation' || type == 'grade') {
+      final picked = await _pickVariation(
+        selected.variacoes,
+        title: type == 'grade' ? 'Grade' : 'Variação',
+      );
       if (picked == null) return;
       variation = picked;
     }
@@ -197,7 +202,10 @@ class _ConsignmentFormScreenState extends State<ConsignmentFormScreen> {
     });
   }
 
-  Future<ConsignmentVariationKey?> _pickVariation(Map<String, dynamic> variacoes) async {
+  Future<ConsignmentVariationKey?> _pickVariation(
+    Map<String, dynamic> variacoes, {
+    String title = 'Variação',
+  }) async {
     final sizes = variacoes.keys.map((e) => e.toString()).toList();
     if (sizes.isEmpty) return null;
     String? size = sizes.length == 1 ? sizes.first : null;
@@ -206,7 +214,7 @@ class _ConsignmentFormScreenState extends State<ConsignmentFormScreen> {
       if (s == null) return const [];
       final cells = variacoes[s];
       if (cells is! Map) return const [];
-      return cells.keys.map((e) => e.toString()).where((k) => k != 'custo').toList();
+      return cells.keys.map((e) => e.toString()).where((k) => k != 'custo' && k != '__custoUnitario').toList();
     }
     if (size != null) {
       final colors = colorsOf(size);
@@ -216,7 +224,7 @@ class _ConsignmentFormScreenState extends State<ConsignmentFormScreen> {
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          title: const Text('Variação'),
+          title: Text(title),
           content: StatefulBuilder(
             builder: (ctx, setLocal) {
               final colorKeys = colorsOf(size);
@@ -237,7 +245,9 @@ class _ConsignmentFormScreenState extends State<ConsignmentFormScreen> {
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
                     value: colorKeys.contains(color) ? color : null,
-                    decoration: const InputDecoration(labelText: 'Cor'),
+                    decoration: InputDecoration(
+                      labelText: title == 'Grade' ? 'Cor / opção' : 'Cor',
+                    ),
                     items: colorKeys
                         .map((s) => DropdownMenuItem(value: s, child: Text(s)))
                         .toList(),
@@ -317,7 +327,22 @@ class _ConsignmentFormScreenState extends State<ConsignmentFormScreen> {
   }
 
   void _toast(Object e) {
-    final msg = e is ConsignmentException ? e.message : ConsignmentException.userMessage('SERVER', e.toString());
+    final msg = e is ConsignmentException
+        ? e.message
+        : ConsignmentException.userMessage('SERVER', e.toString());
+    if (e is ConsignmentException && e.issues.length > 1) {
+      showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Não foi possível concluir'),
+          content: SingleChildScrollView(child: Text(msg)),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
+          ],
+        ),
+      );
+      return;
+    }
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 

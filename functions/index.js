@@ -5506,3 +5506,29 @@ export const consignmentCommand = onCall(
     }
   },
 );
+
+function stockCatalogCallableError(error) {
+  if (error?.stockCode === "PRODUCT_VALIDATION_FAILED" || error?.consignmentCode === "PRODUCT_VALIDATION_FAILED") {
+    return new HttpsError("failed-precondition", "PRODUCT_VALIDATION_FAILED", {
+      code: "PRODUCT_VALIDATION_FAILED",
+      issues: Array.isArray(error.issues) ? error.issues : (error.details?.issues || []),
+    });
+  }
+  const code = error?.code || "internal";
+  const allowed = new Set([
+    "unauthenticated", "permission-denied", "invalid-argument",
+    "failed-precondition", "aborted", "already-exists", "resource-exhausted", "not-found",
+  ]);
+  return new HttpsError(allowed.has(code) ? code : "internal", error?.message || "SERVER");
+}
+export const stockCatalogCommand = onCall(
+  { cors: true, timeoutSeconds: 60, memory: "256MiB" },
+  async (request) => {
+    try {
+      const { executeStockCommand } = await import("./src/stockCatalogCommands.js");
+      return await executeStockCommand(db, request.data, request.auth);
+    } catch (error) {
+      throw stockCatalogCallableError(error);
+    }
+  },
+);

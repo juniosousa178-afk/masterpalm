@@ -3,6 +3,7 @@ import {createHash} from 'node:crypto';
 import {FieldValue} from 'firebase-admin/firestore';
 import {documentId, storeRef, requireAuthenticated, authorizeStockTransaction, SERVER_PAYMENT_AUTH} from './stockCatalogAccess.js';
 import {isMap, stockError, normalizeStock, projectCatalog, quantity, resolveKey, resolveExtraKey, validateEditorial, inferStockKind} from './catalogStockProjection.js';
+import {PRODUCT_VALIDATION_FAILED, REASON, makeIssue, productValidationError, gradeKeyLabel} from './productValidationErrors.js';
 
 const MAX_PRODUCTS = 25;
 const ordered = value => Array.isArray(value) ? value.map(ordered) : isMap(value)
@@ -62,6 +63,11 @@ function parseCommand(raw) {
   if (Buffer.byteLength(JSON.stringify(raw)) > 100000) throw stockError('resource-exhausted', 'Command too large');
   return {...raw, items, tombstoneKeys};
 }
+function technicalSimpleColor(value) {
+  const n = String(value ?? '').trim().toLowerCase().replace(/\s+/gu, '');
+  return !n || n === 'sem-cor' || n === 'semcor' || n === 'unico' || n === 'unique' || n === 'u';
+}
+
 function applyCell(stock, item, delta, absolute) {
   const next = normalizeStock(stock);
   if (next.pendingSoftDelete) throw stockError('failed-precondition', 'Product deleted');
@@ -150,6 +156,7 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
     const ids = [...new Set(items.map(i => i.productId))];
     if (ids.length > MAX_PRODUCTS) throw stockError('resource-exhausted', 'Too many products');
     const records = new Map(), targetIds = new Set(items.map(i => i.productId));
+    const softSale = command.kind === 'sale' || command.kind === 'restock';
     const newDefinition = ['create','replace'].includes(command.kind) ? normalizeStock({
       variacoes: null, estoquePorTamanho: {}, estoquePorCor: {}, tamanhos: [], cores: [],
       itensCombo: [], comboConfig: null, ...command.definition,
@@ -165,24 +172,54 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
         base.collection('exclusao_produto').doc(id),
       );
       const creating = command.kind === 'create' && targetIds.has(id);
-      if ((!stock.exists || !draft.exists) && !creating) throw stockError('failed-precondition', 'Canonical product and editorial draft required');
+      if ((!stock.exists || !draft.exists) && !creating) {
+        if (softSale && targetIds.has(id)) {
+          records.set(id, null);
+          continue;
+        }
+        throw stockError('failed-precondition', 'Canonical product and editorial draft required');
+      }
       if (creating && stock.exists) throw stockError('already-exists', 'Product already exists');
       // Full-product tombstones (p:true) block stock commands until undo/reconcile.
       // Partial variation markers (p:false + v.*) must not freeze the whole product.
       const fullProductTombstone = tombstone.exists && tombstone.data()?.p === true;
       if (fullProductTombstone && !(command.kind === 'undo' && targetIds.has(id)) && !stock.data()?.pendingSoftDelete) {
+        if (softSale && targetIds.has(id)) {
+          records.set(id, {softFail: REASON.PRODUCT_INACTIVE, stockRef, draftRef, editorial: draft.exists ? draft.data() : {}});
+          continue;
+        }
         throw stockError('failed-precondition', 'Product tombstone requires reconciliation');
       }
-      if ((!dependency.exists || !Array.isArray(dependency.data().comboIds)) && !creating) throw stockError('failed-precondition', 'Dependency migration required');
+      if ((!dependency.exists || !Array.isArray(dependency.data().comboIds)) && !creating) {
+        if (softSale && targetIds.has(id)) {
+          records.set(id, {softFail: REASON.MISSING_DEPENDENCY, stockRef, draftRef, editorial: draft.data() || {}});
+          continue;
+        }
+        throw stockError('failed-precondition', 'Dependency migration required');
+      }
       for (const related of (dependency.data()?.comboIds ?? [])) if (!ids.includes(documentId(related))) ids.push(related);
-      const data = normalizeStock(creating ? newDefinition : stock.data()); quantity(data.stockRevision);
+      let data;
+      try {
+        data = normalizeStock(creating ? newDefinition : stock.data()); quantity(data.stockRevision);
+      } catch (error) {
+        if (softSale && targetIds.has(id)) {
+          records.set(id, {softFail: REASON.INVALID_STOCK_STATE, stockRef, draftRef, editorial: draft.data() || {}});
+          continue;
+        }
+        throw error;
+      }
       for (const component of recipe(data)) if (!ids.includes(component.productId)) ids.push(component.productId);
       records.set(id, {stockRef, draftRef, dependency, creating, originalRecipe: recipe(data), data, beforeHash: fingerprint(stockEffect(data)), originalRevision: data.stockRevision, editorial: draft.data() ?? validateEditorial(command.editorial)});
     }
-    comboOrder(records);
+    if (!softSale) comboOrder(records);
+    else {
+      const ok = new Map([...records.entries()].filter(([, r]) => r && r.data));
+      if (ok.size) comboOrder(ok);
+    }
     const appliedItems = [];
     function applyItem(item, expand) {
       const r = records.get(item.productId);
+      if (!r || r.softFail || !r.data) throw stockError('failed-precondition', 'Product unavailable');
       if (command.kind === 'editorial') {
         const patch = validateEditorial(command.editorial);
         r.editorial = {...r.editorial, ...patch}; r.data = {...r.data, ...patch}; return;
@@ -210,10 +247,71 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
       appliedItems.push(item);
       if (expand) for (const child of componentIntents(r.data, item)) applyItem(child, true);
     }
+    // Prevalidate ALL sale/restock lines before any mutation (multi-product actionable errors).
+    if (command.kind === 'sale' || command.kind === 'restock') {
+      const issues = [];
+      const scratch = new Map([...records.entries()].map(([id, r]) => {
+        if (!r || r.softFail || !r.data) return [id, r];
+        return [id, {...r, data: JSON.parse(JSON.stringify(r.data))}];
+      }));
+      items.forEach((item, lineIndex) => {
+        const r = scratch.get(item.productId);
+        const name = String(r?.editorial?.nome || item.productId);
+        const selectionLabel = gradeKeyLabel({size: item.size, color: item.color, extra: item.extra});
+        if (!r) {
+          issues.push(makeIssue({
+            productId: item.productId, productName: name, lineIndex,
+            selectionLabel, reasonCode: REASON.PRODUCT_NOT_FOUND, requestedQty: item.quantity,
+          }));
+          return;
+        }
+        if (r.softFail) {
+          issues.push(makeIssue({
+            productId: item.productId, productName: name, lineIndex,
+            selectionLabel, reasonCode: r.softFail, requestedQty: item.quantity,
+          }));
+          return;
+        }
+        try {
+          if (r.data.ativo === false) {
+            issues.push(makeIssue({
+              productId: item.productId, productName: name, lineIndex,
+              selectionLabel, reasonCode: REASON.PRODUCT_INACTIVE, requestedQty: item.quantity,
+            }));
+            return;
+          }
+          r.data = applyCell(r.data, item, command.kind === 'sale' ? -item.quantity : item.quantity, false);
+        } catch (error) {
+          const msg = String(error?.message || '');
+          let reason = REASON.OTHER_PRODUCT_BLOCK;
+          if (!item.size || !item.color) {
+            reason = REASON.GRADE_SELECTION_REQUIRED;
+          } else if (/Variation not found|Extra variation/i.test(msg)) {
+            reason = !technicalSimpleColor(item.color)
+              ? REASON.GRADE_CELL_NOT_FOUND
+              : REASON.VARIATION_NOT_FOUND;
+          } else if (/Extra dimension required/i.test(msg)) {
+            reason = REASON.GRADE_SELECTION_REQUIRED;
+          } else if (/Invalid canonical|quantity/i.test(msg)) {
+            reason = REASON.INSUFFICIENT_STOCK;
+          } else if (/Simple product cannot/i.test(msg)) {
+            reason = REASON.VARIATION_NOT_FOUND;
+          } else if (/Product deleted/i.test(msg)) {
+            reason = REASON.PRODUCT_INACTIVE;
+          }
+          issues.push(makeIssue({
+            productId: item.productId, productName: name, lineIndex,
+            selectionLabel, reasonCode: reason, requestedQty: item.quantity,
+          }));
+        }
+      });
+      if (issues.length) throw productValidationError(issues);
+    }
     for (const item of items) applyItem(item, command.kind === 'sale');
-    comboOrder(records); // Validate the new recipe, including newly introduced cycles.
+    const liveRecords = new Map([...records.entries()].filter(([, r]) => r && r.data && !r.softFail));
+    comboOrder(liveRecords); // Validate the new recipe, including newly introduced cycles.
     if (command.kind !== 'editorial' && command.kind !== 'tombstoneVariation' && command.kind !== 'clearVariationTombstone') {
-      recalculateFixedCombos(records,
+      recalculateFixedCombos(liveRecords,
         ['restock','restore','undo'].includes(command.kind) ? 1 : -1);
     }
     const products = [], writes = [];
@@ -222,10 +320,10 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
     const remove = ref => writes.push(() => tx.delete(ref));
     if (newDefinition) {
       const rootId = items[0].productId;
-      const oldIds = new Set(command.kind === 'create' ? [] : records.get(rootId).originalRecipe.map(i => i.productId));
-      const newIds = new Set(recipe(records.get(rootId).data).map(i => i.productId));
+      const oldIds = new Set(command.kind === 'create' ? [] : liveRecords.get(rootId).originalRecipe.map(i => i.productId));
+      const newIds = new Set(recipe(liveRecords.get(rootId).data).map(i => i.productId));
       for (const id of new Set([...oldIds, ...newIds, ...(command.kind === 'create' ? [rootId] : [])])) {
-        const related = new Set(records.get(id).dependency.data()?.comboIds ?? []);
+        const related = new Set(liveRecords.get(id).dependency.data()?.comboIds ?? []);
         if (oldIds.has(id)) related.delete(rootId);
         if (newIds.has(id)) related.add(rootId);
         set(base.collection('stock_catalog_dependencies').doc(id), {comboIds: [...related].sort()});
@@ -239,15 +337,15 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
         quantity((catalogCountDeltas[item.productId] ?? 0) + item.quantity);
     } else if (command.kind === 'restore') {
       for (const [id, count] of Object.entries(source.data().catalogCountDeltas ?? {})) {
-        if (!records.has(id)) throw stockError('failed-precondition', 'Missing recorded catalog root');
+        if (!liveRecords.has(id)) throw stockError('failed-precondition', 'Missing recorded catalog root');
         catalogCountDeltas[id] = -quantity(count);
       }
     }
     for (const [id, delta] of Object.entries(catalogCountDeltas)) {
-      const row = records.get(id).data;
+      const row = liveRecords.get(id).data;
       row.vendasCatalogoTotal = quantity(Math.max(0, quantity(row.vendasCatalogoTotal ?? 0) + delta));
     }
-    for (const [id, r] of records) {
+    for (const [id, r] of liveRecords) {
       r.data.stockRevision = quantity(r.originalRevision + (fingerprint(stockEffect(r.data)) === r.beforeHash ? 0 : 1));
       r.data.stockOperationId = command.operationId;
       const p = projectCatalog(r.data, r.editorial, id);

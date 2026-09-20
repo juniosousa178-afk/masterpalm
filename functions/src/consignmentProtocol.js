@@ -26,6 +26,7 @@ export const CODES = Object.freeze({
   VARIATION_NOT_FOUND: 'VARIATION_NOT_FOUND',
   PRODUCT_STATE_UNSAFE: 'PRODUCT_STATE_UNSAFE',
   CONSIGNMENT_GRADE_NOT_SUPPORTED: 'CONSIGNMENT_GRADE_NOT_SUPPORTED',
+  PRODUCT_VALIDATION_FAILED: 'PRODUCT_VALIDATION_FAILED',
   CONSIGNMENT_ALREADY_ISSUED: 'CONSIGNMENT_ALREADY_ISSUED',
   CONSIGNMENT_ALREADY_SETTLED: 'CONSIGNMENT_ALREADY_SETTLED',
   INVALID_SETTLEMENT_TOTAL: 'INVALID_SETTLEMENT_TOTAL',
@@ -46,6 +47,7 @@ const HTTP_BY_CODE = Object.freeze({
   [CODES.VARIATION_NOT_FOUND]: 'failed-precondition',
   [CODES.PRODUCT_STATE_UNSAFE]: 'failed-precondition',
   [CODES.CONSIGNMENT_GRADE_NOT_SUPPORTED]: 'failed-precondition',
+  [CODES.PRODUCT_VALIDATION_FAILED]: 'failed-precondition',
   [CODES.CONSIGNMENT_ALREADY_ISSUED]: 'failed-precondition',
   [CODES.CONSIGNMENT_ALREADY_SETTLED]: 'failed-precondition',
   [CODES.INVALID_SETTLEMENT_TOTAL]: 'failed-precondition',
@@ -70,6 +72,17 @@ export function consignmentError(code, message) {
 }
 
 export function mapConsignmentHttp(error) {
+  if (error?.consignmentCode === CODES.PRODUCT_VALIDATION_FAILED || error?.stockCode === CODES.PRODUCT_VALIDATION_FAILED) {
+    return {
+      http: 'failed-precondition',
+      message: CODES.PRODUCT_VALIDATION_FAILED,
+      details: {
+        consignmentCode: CODES.PRODUCT_VALIDATION_FAILED,
+        code: CODES.PRODUCT_VALIDATION_FAILED,
+        issues: Array.isArray(error.issues) ? error.issues : (error.details?.issues || []),
+      },
+    };
+  }
   if (error?.consignmentCode) {
     return {
       http: HTTP_BY_CODE[error.consignmentCode] || error.code || 'internal',

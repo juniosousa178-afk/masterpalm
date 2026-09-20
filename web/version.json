@@ -1,9 +1,9 @@
 {
-  "buildId": "consignment-picker-mismatch-1.0.83",
+  "buildId": "grade-multi-error-1.0.84",
   "hostingTarget": "masterpalm-58c46",
   "siteId": "masterpalm-58c46",
   "expectedDomain": "app.mastepalm.com.br",
-  "webVersion": "1.0.83+99",
+  "webVersion": "1.0.84+100",
   "featureFlagDefault": false,
-  "globalRollout": false
+  "globalRollout": true
 }

@@ -24,7 +24,9 @@ function technicalKey(value) {
     || n === 'unico' || n === 'unique' || n === 'u';
 }
 
-/** Grade = size×color matrix or extra dimension. Normal variation is single-axis canonical variacoes. */
+/** TRUE GRADE = 2+ independent stock dimensions (size×color, size+extra, etc.).
+ * NORMAL VARIATION = one dimension (size-only with technical color, color-only, etc.).
+ */
 export function classifyConsignmentProduct(raw) {
   if (!raw || !['simple', 'variation', 'combo'].includes(raw.stockKind)) {
     throw consignmentError(CODES.PRODUCT_STATE_UNSAFE, 'Stock identity is ambiguous');
@@ -43,15 +45,12 @@ export function classifyConsignmentProduct(raw) {
   if (data.stockKind !== 'variation') {
     throw consignmentError(CODES.PRODUCT_STATE_UNSAFE, 'Unsupported stock kind');
   }
-  if (nonempty(data.variacoesExtraTipo)) {
-    throw consignmentError(CODES.CONSIGNMENT_GRADE_NOT_SUPPORTED, 'Grade extra dimension is not supported');
-  }
   const stock = safeNormalize(data);
   if (!nonempty(stock.variacoes)) {
     throw consignmentError(CODES.PRODUCT_STATE_UNSAFE, 'Canonical variacoes required for variation products');
   }
-  if (isGradeMatrix(stock) || hasBothSizeAndColorLists(data)) {
-    throw consignmentError(CODES.CONSIGNMENT_GRADE_NOT_SUPPORTED, 'Grade products are not supported');
+  if (isTrueGrade(stock, data)) {
+    return {kind: 'grade', stock};
   }
   return {kind: 'variation', stock};
 }
@@ -77,6 +76,21 @@ function isGradeMatrix(stock) {
   }
   return sizes.length > 0 && colors.size > 0;
 }
+
+/** Multi-dimensional only. Stone/extra-only alone is NOT true grade. */
+export function isTrueGrade(stock, raw = stock) {
+  const hasExtra = nonempty(raw.variacoesExtraTipo) || nonempty(stock.variacoesExtraTipo);
+  const matrix = isGradeMatrix(stock);
+  const bothLists = hasBothSizeAndColorLists(raw);
+  if (matrix || bothLists) return true;
+  // size (non-tech outer) + extra dimension = true grade
+  const outer = Object.keys(stock.variacoes || {}).filter((s) => !technicalKey(s));
+  if (hasExtra && outer.length > 0) return true;
+  // nested extra cells under size×color already covered by matrix; lone extra-only = normal/unsupported separately
+  return false;
+}
+
+export {isGradeMatrix, hasBothSizeAndColorLists, technicalKey};
 function wrapUnsafe(error) {
   if (error?.consignmentCode) return error;
   return consignmentError(CODES.PRODUCT_STATE_UNSAFE, error?.message || 'Unsafe product state');
@@ -112,9 +126,14 @@ export function applyExactConsignmentDelta(stock, kind, selector, delta) {
     next.quantidade = quantity(qty + delta);
     return next;
   }
+  // variation + grade share exact size/color[/extra] cell authority
   const next = safeNormalize(stock);
   if (!nonempty(next.variacoes)) throw consignmentError(CODES.VARIATION_NOT_FOUND, 'Canonical variation map missing');
-  if (!selector.size || !selector.color) {
+  if (kind === 'grade') {
+    if (!selector.size || !selector.color) {
+      throw consignmentError(CODES.VARIATION_NOT_FOUND, 'Exact gradeKey required');
+    }
+  } else if (!selector.size || !selector.color) {
     throw consignmentError(CODES.VARIATION_NOT_FOUND, 'Exact variationKey required');
   }
   const sizeKey = resolveKey(next.variacoes, selector.size);
@@ -239,20 +258,26 @@ export function evaluateConsignmentPickerEligibility({
     eligible: false, productId, reason,
     name: String(draft?.nome || stock?.nome || productId || ''),
     price: moneyValue(draft?.preco ?? draft?.precoVenda ?? stock?.preco),
-    availableQty: 0, stockKind: String(stock?.stockKind || ''), variacoes: {},
+    availableQty: Number.isFinite(Number(stock?.quantidade)) ? Math.max(0, Math.trunc(Number(stock.quantidade))) : 0,
+    stockKind: String(stock?.stockKind || ''),
+    variacoes: isMap(stock?.variacoes) ? stock.variacoes : {},
   });
   try {
     if (!stock || !draft) return deny('PRODUCT_NOT_FOUND');
     const claimed = String(stock.lojaId || stock.storeId || draft.lojaId || draft.storeId || '').trim();
-    if (claimed && claimed !== lojaId) return deny('AUTH');
-    if (stock.ativo === false) return deny('PRODUCT_STATE_UNSAFE');
-    if (tombstone?.p === true || stock.pendingSoftDelete) return deny('PRODUCT_STATE_UNSAFE');
-    if (!dependency || !Array.isArray(dependency.comboIds)) return deny('PRODUCT_STATE_UNSAFE');
-    if (!['simple', 'variation', 'combo'].includes(stock.stockKind)) return deny('PRODUCT_STATE_UNSAFE');
+    if (claimed && claimed !== lojaId) return deny('CROSS_STORE_PRODUCT');
+    if (stock.ativo === false) return deny('PRODUCT_INACTIVE');
+    if (tombstone?.p === true || stock.pendingSoftDelete) return deny('INVALID_STOCK_STATE');
+    if (!dependency || !Array.isArray(dependency.comboIds)) return deny('MISSING_DEPENDENCY');
+    if (!['simple', 'variation', 'combo'].includes(stock.stockKind)) return deny('MISSING_STOCK_METADATA');
+    if (stock.stockKind === 'combo' || stock.tipoProduto === 'combo'
+        || (Array.isArray(stock.itensCombo) && stock.itensCombo.length)) {
+      return deny('COMBO_NOT_SUPPORTED');
+    }
     const classified = classifyConsignmentProduct(stock);
     quantity(classified.stock.stockRevision ?? stock.stockRevision);
     const qty = quantity(classified.stock.quantidade ?? stock.quantidade);
-    if (qty < 1) return deny('INSUFFICIENT_STOCK');
+    if (qty < 1) return deny('ZERO_STOCK');
     return {
       eligible: true,
       productId,
@@ -260,11 +285,19 @@ export function evaluateConsignmentPickerEligibility({
       price: moneyValue(draft.preco ?? draft.precoVenda ?? stock.preco),
       availableQty: qty,
       stockKind: classified.kind,
-      variacoes: classified.kind === 'variation' ? (classified.stock.variacoes || {}) : {},
+      variacoes: (classified.kind === 'variation' || classified.kind === 'grade')
+        ? (classified.stock.variacoes || {})
+        : {},
       reason: '',
     };
   } catch (error) {
-    return deny(error?.consignmentCode || 'PRODUCT_STATE_UNSAFE');
+    const code = error?.consignmentCode || 'PRODUCT_STATE_UNSAFE';
+    if (code === CODES.CONSIGNMENT_GRADE_NOT_SUPPORTED) return deny('GRADE_CELL_AMBIGUOUS');
+    if (/combo/i.test(error?.message || '')) return deny('COMBO_NOT_SUPPORTED');
+    if (/ambiguous|migration required|Invalid canonical/i.test(error?.message || '')) {
+      return deny('INVALID_STOCK_STATE');
+    }
+    return deny(code);
   }
 }
 
