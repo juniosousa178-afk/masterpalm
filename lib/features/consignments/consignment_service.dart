@@ -247,30 +247,30 @@ class ConsignmentService {
 
   static Future<List<ConsignmentPickerItem>> loadPickerProducts(String lojaId) async {
     if (debugPickerItems != null) return List.of(debugPickerItems!);
-    final base = _db.collection('lojas').doc(lojaId);
-    final stockSnap = await base.collection('estoque_produtos').get();
-    final drafts = {
-      for (final d in (await base.collection('draft_produtos').get()).docs) d.id: d.data(),
-    };
-    final deps = {
-      for (final d in (await base.collection('stock_catalog_dependencies').get()).docs)
-        d.id: d.data(),
-    };
-    final tombs = {
-      for (final d in (await base.collection('exclusao_produto').get()).docs) d.id: d.data(),
-    };
-    final items = stockSnap.docs
-        .map((doc) => evaluateConsignmentPickerItem(
-              productId: doc.id,
-              lojaId: lojaId,
-              stock: doc.data(),
-              draft: drafts[doc.id],
-              dependency: deps[doc.id],
-              tombstone: tombs[doc.id],
-            ))
-        .toList();
-    items.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-    return items;
+    final res = await command(
+      lojaId: lojaId,
+      operation: 'listEligibleProducts',
+      operationId: 'picker_${newId()}',
+      requireOnline: true,
+    );
+    final raw = res['products'];
+    if (raw is! List) return const [];
+    return raw.whereType<Map>().map((row) {
+      final data = Map<String, dynamic>.from(row);
+      final variacoes = data['variacoes'] is Map
+          ? Map<String, dynamic>.from(data['variacoes'] as Map)
+          : <String, dynamic>{};
+      return ConsignmentPickerItem(
+        productId: (data['productId'] ?? '').toString(),
+        name: (data['name'] ?? data['productId'] ?? '').toString(),
+        price: (data['price'] is num) ? (data['price'] as num).toDouble() : 0,
+        availableQty: data['availableQty'] is num ? (data['availableQty'] as num).toInt() : 0,
+        stockKind: (data['stockKind'] ?? 'simple').toString(),
+        variacoes: variacoes,
+        eligible: true,
+        unavailableReason: '',
+      );
+    }).where((e) => e.productId.isNotEmpty).toList();
   }
 
   static Stream<List<ConsignmentReseller>> watchResellers(String lojaId) {

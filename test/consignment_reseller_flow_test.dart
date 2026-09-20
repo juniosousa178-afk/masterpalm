@@ -1,3 +1,4 @@
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -20,6 +21,9 @@ void main() {
     ConsignmentService.debugFirestore = fake;
     ConsignmentService.debugTransport = (name, data) async {
       calls.add({'name': name, ...Map<String, dynamic>.from(data)});
+      if (data['operation'] == 'listEligibleProducts') {
+        return {'products': <Map<String, dynamic>>[]};
+      }
       final payload = Map<String, dynamic>.from(data['payload'] as Map);
       final id = payload['resellerId'].toString();
       await fake
@@ -46,6 +50,7 @@ void main() {
     ConsignmentService.debugFirestore = null;
     ConsignmentService.debugTransport = null;
     ConsignmentService.debugPickerItems = null;
+    ConsignmentService.debugConnectivity = null;
   });
 
   Future<void> pumpForm(
@@ -267,8 +272,8 @@ void main() {
   List<ConsignmentPickerItem> pickerCatalog() => const [
         ConsignmentPickerItem(
           productId: 'master-consignment-canary-simple-20260920',
-          name: 'Canary Simple',
-          price: 25,
+          name: 'Produto Teste Consignado Canary',
+          price: 10,
           availableQty: 2,
           stockKind: 'simple',
           variacoes: {},
@@ -286,45 +291,171 @@ void main() {
         ),
       ];
 
-  test('27-28 eligibility helper excludes unsafe and keeps canary', () {
-    final canary = evaluateConsignmentPickerItem(
-      productId: 'master-consignment-canary-simple-20260920',
-      lojaId: 'master',
+  test('1-13 picker eligibility contract matches backend', () {
+    ConsignmentPickerItem eval({
+      required String id,
+      required Map<String, dynamic> stock,
+      Map<String, dynamic>? draft,
+      Map<String, dynamic>? dependency,
+      String lojaId = 'master',
+    }) =>
+        evaluateConsignmentPickerItem(
+          productId: id,
+          lojaId: lojaId,
+          stock: stock,
+          draft: draft ?? {'nome': id, 'preco': 10, 'publicadoNoCatalogo': false, 'ativo': false},
+          dependency: dependency,
+        );
+
+    final canary = eval(
+      id: 'master-consignment-canary-simple-20260920',
       stock: {
         'stockKind': 'simple',
         'stockRevision': 0,
         'quantidade': 2,
         'variacoes': {},
       },
-      draft: {'nome': 'Canary Simple', 'preco': 25},
+      draft: {
+        'nome': 'Produto Teste Consignado Canary',
+        'preco': 10,
+        'publicadoNoCatalogo': false,
+        'ativo': false,
+      },
       dependency: {'comboIds': []},
     );
-    final unsafe = evaluateConsignmentPickerItem(
-      productId: 'master-anel-2-folhas-t-18-prata-925',
-      lojaId: 'master',
-      stock: {'tipoProduto': 'simples', 'quantidade': 1},
-      draft: {'nome': 'Anel 2 Folhas', 'preco': 80},
-    );
     expect(canary.eligible, isTrue);
-    expect(unsafe.eligible, isFalse);
-    final visible = consignmentPickerVisibleItems([canary, unsafe]);
-    expect(visible.map((e) => e.productId), ['master-consignment-canary-simple-20260920']);
-    final searched = consignmentPickerVisibleItems([canary, unsafe], query: 'Anel');
-    expect(searched.single.eligible, isFalse);
-    expect(searched.single.unavailableReason, consignmentProductUnavailableReason);
+    expect(canary.name, 'Produto Teste Consignado Canary');
+
+    final variation = eval(
+      id: 'varp',
+      stock: {
+        'stockKind': 'variation',
+        'stockRevision': 0,
+        'quantidade': 4,
+        'variacoes': {
+          'P': {'sem-cor': 4},
+        },
+      },
+      dependency: {'comboIds': []},
+    );
+    expect(variation.eligible, isTrue);
+
+    expect(
+      eval(
+        id: 'zero',
+        stock: {'stockKind': 'simple', 'stockRevision': 0, 'quantidade': 0, 'variacoes': {}},
+        dependency: {'comboIds': []},
+      ).eligible,
+      isFalse,
+    );
+    expect(
+      eval(
+        id: 'nodep',
+        stock: {'stockKind': 'simple', 'stockRevision': 0, 'quantidade': 3, 'variacoes': {}},
+      ).eligible,
+      isFalse,
+    );
+    expect(
+      eval(
+        id: 'bad',
+        stock: {'tipoProduto': 'simples', 'quantidade': 3},
+        dependency: {'comboIds': []},
+      ).eligible,
+      isFalse,
+    );
+    expect(
+      eval(
+        id: 'grade',
+        stock: {
+          'stockKind': 'variation',
+          'stockRevision': 0,
+          'quantidade': 3,
+          'variacoes': {
+            'P': {'Azul': 1, 'Vermelho': 2},
+          },
+          'tamanhos': ['P'],
+          'cores': ['Azul', 'Vermelho'],
+        },
+        dependency: {'comboIds': []},
+      ).eligible,
+      isFalse,
+    );
+    expect(
+      eval(
+        id: 'combo',
+        stock: {
+          'stockKind': 'combo',
+          'tipoProduto': 'combo',
+          'stockRevision': 0,
+          'quantidade': 1,
+          'itensCombo': [
+            {'productId': 'x', 'quantidade': 1},
+          ],
+        },
+        dependency: {'comboIds': []},
+      ).eligible,
+      isFalse,
+    );
+    expect(
+      eval(
+        id: 'foreign',
+        stock: {
+          'stockKind': 'simple',
+          'stockRevision': 0,
+          'quantidade': 4,
+          'variacoes': {},
+          'lojaId': 'other',
+        },
+        dependency: {'comboIds': []},
+      ).eligible,
+      isFalse,
+    );
+    expect(
+      consignmentPickerVisibleItems([canary]).map((e) => e.productId),
+      ['master-consignment-canary-simple-20260920'],
+    );
   });
 
-  testWidgets('28-29 safe canary visible and addable', (tester) async {
+  test('loadPickerProducts uses consignmentCommand listEligibleProducts', () async {
+    ConsignmentService.debugConnectivity = () async => [ConnectivityResult.wifi];
+    ConsignmentService.debugPickerItems = null;
+    ConsignmentService.debugTransport = (name, data) async {
+      calls.add({'name': name, ...Map<String, dynamic>.from(data)});
+      expect(data['operation'], 'listEligibleProducts');
+      return {
+        'products': [
+          {
+            'productId': 'master-consignment-canary-simple-20260920',
+            'name': 'Produto Teste Consignado Canary',
+            'price': 10,
+            'availableQty': 2,
+            'stockKind': 'simple',
+            'variacoes': {},
+          },
+        ],
+      };
+    };
+    final items = await ConsignmentService.loadPickerProducts('master');
+    expect(items, hasLength(1));
+    expect(items.single.name, 'Produto Teste Consignado Canary');
+    expect(items.single.availableQty, 2);
+    expect(calls.single['operation'], 'listEligibleProducts');
+    expect(calls.any((c) => c['name'] == 'stockCatalogCommand'), isFalse);
+  });
+
+  testWidgets('11-12 14-16 canary visible selectable no stock mutation', (tester) async {
     ConsignmentService.debugPickerItems = pickerCatalog();
     await pumpForm(tester);
     await tester.tap(find.text('Adicionar'));
     await tester.pumpAndSettle();
     expect(find.text('Disponíveis para consignação'), findsOneWidget);
-    expect(find.text('Canary Simple'), findsOneWidget);
+    expect(find.text('Produto Teste Consignado Canary'), findsOneWidget);
+    expect(find.textContaining('2 disponíveis'), findsOneWidget);
     expect(find.text('Anel 2 Folhas'), findsNothing);
-    await tester.tap(find.text('Canary Simple'));
+    await tester.tap(find.text('Produto Teste Consignado Canary'));
     await tester.pumpAndSettle();
-    expect(find.text('Canary Simple'), findsOneWidget);
+    expect(find.text('Produto Teste Consignado Canary'), findsOneWidget);
+    expect(calls, isEmpty);
   });
 
   testWidgets('27 30 unsafe product excluded then disabled on search', (tester) async {
@@ -371,13 +502,13 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Adicionar'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Canary Simple'));
+    await tester.tap(find.text('Produto Teste Consignado Canary'));
     await tester.pumpAndSettle();
     expect(find.text('Maria'), findsWidgets);
     await reveal(tester, 'Produto A');
     await reveal(tester, 'Produto B');
     await reveal(tester, 'Produto C');
-    await reveal(tester, 'Canary Simple');
+    await reveal(tester, 'Produto Teste Consignado Canary');
   });
 
   testWidgets('33 empty item submit still blocked', (tester) async {

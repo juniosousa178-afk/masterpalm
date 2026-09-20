@@ -160,7 +160,7 @@ export async function loadConsignmentStockRecords(tx, base, productIds) {
     if (claimedStore && claimedStore !== base.id) {
       throw consignmentError(CODES.AUTH, 'Cross-store product access denied');
     }
-    if (raw.ativo === false || editorial.ativo === false || editorial.ativoNoRascunho === false) {
+    if (raw.ativo === false) {
       throw consignmentError(CODES.PRODUCT_STATE_UNSAFE, 'Product is inactive');
     }
     if (!['simple', 'variation', 'combo'].includes(raw.stockKind)) {
@@ -223,6 +223,49 @@ export function persistConsignmentStock(tx, base, records, operationId, directio
     else remove(live);
   }
   return {products, writes, affected};
+}
+
+function moneyValue(raw) {
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.round(n * 100) / 100;
+}
+
+/** Same issue eligibility contract, plus picker UX qty > 0. Catalog publish is ignored. */
+export function evaluateConsignmentPickerEligibility({
+  productId, lojaId, stock, draft, dependency, tombstone,
+} = {}) {
+  const deny = (reason = 'PRODUCT_STATE_UNSAFE') => ({
+    eligible: false, productId, reason,
+    name: String(draft?.nome || stock?.nome || productId || ''),
+    price: moneyValue(draft?.preco ?? draft?.precoVenda ?? stock?.preco),
+    availableQty: 0, stockKind: String(stock?.stockKind || ''), variacoes: {},
+  });
+  try {
+    if (!stock || !draft) return deny('PRODUCT_NOT_FOUND');
+    const claimed = String(stock.lojaId || stock.storeId || draft.lojaId || draft.storeId || '').trim();
+    if (claimed && claimed !== lojaId) return deny('AUTH');
+    if (stock.ativo === false) return deny('PRODUCT_STATE_UNSAFE');
+    if (tombstone?.p === true || stock.pendingSoftDelete) return deny('PRODUCT_STATE_UNSAFE');
+    if (!dependency || !Array.isArray(dependency.comboIds)) return deny('PRODUCT_STATE_UNSAFE');
+    if (!['simple', 'variation', 'combo'].includes(stock.stockKind)) return deny('PRODUCT_STATE_UNSAFE');
+    const classified = classifyConsignmentProduct(stock);
+    quantity(classified.stock.stockRevision ?? stock.stockRevision);
+    const qty = quantity(classified.stock.quantidade ?? stock.quantidade);
+    if (qty < 1) return deny('INSUFFICIENT_STOCK');
+    return {
+      eligible: true,
+      productId,
+      name: String(draft.nome || stock.nome || productId).trim() || productId,
+      price: moneyValue(draft.preco ?? draft.precoVenda ?? stock.preco),
+      availableQty: qty,
+      stockKind: classified.kind,
+      variacoes: classified.kind === 'variation' ? (classified.stock.variacoes || {}) : {},
+      reason: '',
+    };
+  } catch (error) {
+    return deny(error?.consignmentCode || 'PRODUCT_STATE_UNSAFE');
+  }
 }
 
 export {stockError};

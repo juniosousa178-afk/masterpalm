@@ -802,3 +802,66 @@ test('dedicated gate 21-26 settlement without broad protocol', async () => {
   }, mixId), owner);
   assert.equal(stockQty(db, base), beforeMixSettle + 3);
 });
+
+function listIds(res) {
+  return (res.products || []).map(p => p.productId);
+}
+
+test('picker list 1-4 safe internal non-public simple and variation selectable', async () => {
+  const {db, base, lojaId} = await seed({
+    protocol: false, grant: false,
+    variation: {variacoes: {P: {'sem-cor': 4}}},
+  });
+  db.seed(base.collection('draft_produtos').doc('simple'), {
+    nome: 'Produto Teste Consignado Canary', preco: 10, publicadoNoCatalogo: false, ativo: false,
+  });
+  const before = db.snapshot();
+  const res = await executeConsignmentCommand(db, cmd(lojaId, 'listEligibleProducts', 'op_list_1', {}), owner);
+  assert.equal(res.writes, 0);
+  assert.deepEqual(db.snapshot(), before);
+  assert.equal([...db._store.keys()].filter(k => k.includes('/consignment_operations/')).length, 0);
+  assert.ok(listIds(res).includes('simple'));
+  assert.ok(listIds(res).includes('varp'));
+  const canary = res.products.find(p => p.productId === 'simple');
+  assert.equal(canary.name, 'Produto Teste Consignado Canary');
+  assert.equal(canary.availableQty, 5);
+  assert.equal(canary.stockKind, 'simple');
+});
+
+test('picker list 5-10 qty0/unsafe/invalid/grade/combo/wrong-store excluded', async () => {
+  const {db, lojaId} = await seed({
+    protocol: false, grant: false, simpleQty: 0,
+    extraProducts: [
+      {id: 'nodep', stock: {quantidade: 3, stockKind: 'simple', stockRevision: 0, variacoes: {}}, dependency: false},
+      {id: 'badrev', stock: {quantidade: 3, stockKind: 'simple', variacoes: {}}},
+      {id: 'grade2', stock: {
+        stockKind: 'variation', stockRevision: 0, quantidade: 3,
+        variacoes: {P: {Azul: 1, Vermelho: 2}}, tamanhos: ['P'], cores: ['Azul', 'Vermelho'],
+      }},
+      {id: 'combo', stock: {
+        stockKind: 'combo', tipoProduto: 'combo', stockRevision: 0, quantidade: 1,
+        itensCombo: [{productId: 'simple', quantidade: 1}],
+      }},
+      {id: 'foreign', stock: {quantidade: 4, stockKind: 'simple', stockRevision: 0, variacoes: {}, lojaId: 'other'}},
+    ],
+  });
+  const res = await executeConsignmentCommand(db, cmd(lojaId, 'listEligibleProducts', 'op_list_2', {}), owner);
+  const ids = listIds(res);
+  assert.equal(ids.includes('simple'), false);
+  assert.equal(ids.includes('nodep'), false);
+  assert.equal(ids.includes('badrev'), false);
+  assert.equal(ids.includes('grade2'), false);
+  assert.equal(ids.includes('combo'), false);
+  assert.equal(ids.includes('foreign'), false);
+  assert.equal(res.writes, 0);
+});
+
+test('picker list does not mutate stock/sale/finance/consignment', async () => {
+  const {db, base, lojaId} = await seed({protocol: false, grant: false});
+  const before = db.snapshot();
+  await executeConsignmentCommand(db, cmd(lojaId, 'listEligibleProducts', 'op_list_3', {}), owner);
+  assert.deepEqual(db.snapshot(), before);
+  assert.equal(stockQty(db, base), 5);
+  assert.equal(saleExists(db, base, 'x'), false);
+  assert.equal(financeExists(db, base, 'x'), false);
+});

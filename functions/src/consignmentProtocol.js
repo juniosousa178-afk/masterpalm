@@ -157,6 +157,7 @@ export function optionalString(value, label, max = 2000) {
 
 export const OPERATIONS = Object.freeze([
   'createDraft', 'updateDraft', 'issue', 'settle', 'cancelDraft', 'createReseller', 'updateReseller',
+  'listEligibleProducts',
 ]);
 
 export function parseCommand(raw) {

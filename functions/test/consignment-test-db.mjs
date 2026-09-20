@@ -45,6 +45,21 @@ export function createConsignmentTestDb() {
   function makeColl(segments) {
     return {
       doc(id) { return makeRef([...segments, id]); },
+      async get() {
+        const prefix = `${segments.join('/')}/`;
+        const docs = [];
+        for (const [path, data] of store) {
+          if (!path.startsWith(prefix)) continue;
+          const rest = path.slice(prefix.length);
+          if (!rest || rest.includes('/')) continue;
+          docs.push({
+            id: rest,
+            exists: true,
+            data: () => structuredClone(data),
+          });
+        }
+        return {docs, empty: docs.length === 0, size: docs.length};
+      },
     };
   }
 

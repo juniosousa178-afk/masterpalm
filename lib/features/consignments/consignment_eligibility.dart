@@ -120,11 +120,7 @@ ConsignmentPickerItem evaluateConsignmentPickerItem({
   if (claimed.isNotEmpty && claimed != lojaId) return deny();
   if (draft == null) return deny();
   if (dependency == null || dependency['comboIds'] is! List) return deny();
-  if (stock['ativo'] == false ||
-      draft['ativo'] == false ||
-      draft['ativoNoRascunho'] == false) {
-    return deny();
-  }
+  if (stock['ativo'] == false) return deny();
   final kind = stock['stockKind'];
   if (kind != 'simple' && kind != 'variation') return deny();
   final revision = _intQty(stock['stockRevision']);
@@ -148,7 +144,7 @@ ConsignmentPickerItem evaluateConsignmentPickerItem({
     }
   }
   final qty = _intQty(stock['quantidade']);
-  if (qty == null || qty < 0) return deny();
+  if (qty == null || qty < 1) return deny();
   return ConsignmentPickerItem(
     productId: productId,
     name: name,

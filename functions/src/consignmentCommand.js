@@ -10,6 +10,7 @@ import {
 import {
   classifyConsignmentProduct, parseVariationSelector, variationIdentity,
   applyExactConsignmentDelta, loadConsignmentStockRecords, persistConsignmentStock,
+  evaluateConsignmentPickerEligibility,
 } from './consignmentStock.js';
 
 const MAX_LINES = 50;
@@ -53,6 +54,49 @@ async function authorizeStoreMember(tx, db, base, auth, operation) {
 
 async function authorize(tx, db, base, auth, operation) {
   return authorizeStoreMember(tx, db, base, auth, operation);
+}
+
+function docsById(snap) {
+  const map = new Map();
+  for (const doc of snap?.docs || []) map.set(doc.id, doc.data() || {});
+  return map;
+}
+
+async function listEligibleProducts(db, command, auth) {
+  keysOnly(command.payload, []);
+  const base = storeRef(db, command.lojaId);
+  await db.runTransaction(tx => authorize(tx, db, base, auth, command.operation));
+  const [stockSnap, draftSnap, depSnap, tombSnap] = await Promise.all([
+    base.collection('estoque_produtos').get(),
+    base.collection('draft_produtos').get(),
+    base.collection('stock_catalog_dependencies').get(),
+    base.collection('exclusao_produto').get(),
+  ]);
+  const drafts = docsById(draftSnap);
+  const deps = docsById(depSnap);
+  const tombs = docsById(tombSnap);
+  const products = [];
+  for (const doc of stockSnap.docs || []) {
+    const item = evaluateConsignmentPickerEligibility({
+      productId: doc.id,
+      lojaId: command.lojaId,
+      stock: doc.data() || {},
+      draft: drafts.get(doc.id),
+      dependency: deps.get(doc.id),
+      tombstone: tombs.get(doc.id),
+    });
+    if (!item.eligible) continue;
+    products.push({
+      productId: item.productId,
+      name: item.name,
+      price: item.price,
+      availableQty: item.availableQty,
+      stockKind: item.stockKind,
+      variacoes: item.variacoes,
+    });
+  }
+  products.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  return {products, alreadyApplied: false, writes: 0};
 }
 
 function parseLineInput(raw, index) {
@@ -144,6 +188,9 @@ async function runConsignmentTransaction(db, callback) {
 }
 
 export async function executeConsignmentCommand(db, raw, auth) {
+  if (raw?.operation === 'listEligibleProducts') {
+    return listEligibleProducts(db, parseCommand(raw), auth);
+  }
   return runConsignmentTransaction(db, tx => executeConsignmentInTransaction(tx, db, raw, auth));
 }
 

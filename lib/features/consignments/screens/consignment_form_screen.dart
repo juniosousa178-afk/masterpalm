@@ -161,7 +161,7 @@ class _ConsignmentFormScreenState extends State<ConsignmentFormScreen> {
                                 title: Text(p.name),
                                 subtitle: Text(
                                   p.eligible
-                                      ? consignmentMoney.format(p.price)
+                                      ? '${p.availableQty} disponíveis · ${consignmentMoney.format(p.price)}'
                                       : p.unavailableReason,
                                 ),
                                 onTap: p.eligible ? () => Navigator.pop(ctx, p) : null,
