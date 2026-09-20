@@ -3,8 +3,11 @@ export const STOCK_PROTOCOL_VERSION = 1;
 export const SERVER_PAYMENT_AUTH = Object.freeze({uid: 'stock-catalog-payment'});
 export const SERVER_PUBLISH_AUTH = Object.freeze({uid: 'stock-catalog-publisher'});
 
-/** Commands allowed on the inactive/legacy sale compatibility bridge only. */
-export const INACTIVE_COMPAT_ALLOWED_KINDS = Object.freeze(['sale', 'restore']);
+/** Commands allowed on the inactive/legacy sale compatibility bridge.
+ * restock is required to remove/decrease items on an already-saved PDV sale.
+ * It does not authorize new variation sales (grant still applies only to kind=sale).
+ */
+export const INACTIVE_COMPAT_ALLOWED_KINDS = Object.freeze(['sale', 'restore', 'restock']);
 
 /** Product mutation kinds allowed on the inactive/NO_CONTROL compatibility bridge. */
 export const INACTIVE_PRODUCT_COMPAT_ALLOWED_KINDS = Object.freeze([
@@ -155,6 +158,7 @@ export async function authorizeStockTransaction(tx, base, auth, permission) {
  * Does NOT require ACTIVE, migrationComplete, or rollout grants.
  * Does NOT create control/grants/migration markers.
  * Intentionally allows sellers with vendas/sale — MUST NOT be reused for product/publish.
+ * restock uses the same membership as sale so existing-sale item removal can restore stock.
  */
 export async function authorizeInactiveLegacySale(tx, db, base, auth, kind) {
   const uid = requireAuthenticated(auth);
@@ -247,7 +251,7 @@ export async function authorizeInactiveLegacyPublish(tx, db, base, auth) {
 /**
  * Resolve route + authorize stockCatalogCommand.
  * reconcile → dedicated store grant + operator (never protocol ACTIVE / adjust / membership).
- * ACTIVE → grants; sale/restore → sale membership; product kinds → product membership.
+ * ACTIVE → grants; sale/restore/restock → sale membership; product kinds → product membership.
  */
 export async function authorizeStockCommand(tx, db, base, auth, permission, kind) {
   if (kind === 'reconcile') {

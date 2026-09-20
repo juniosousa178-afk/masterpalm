@@ -257,12 +257,13 @@ test('17 replace authorization unaffected', async () => {
   assert.equal((await base.collection('estoque_produtos').doc('safe').get()).data().variacoes.P['sem-cor'], 2);
 });
 
-test('18 restock authorization unaffected', async () => {
-  const {lojaId} = await seed({grant: false, stockKind: 'simple', quantidade: 1, variacoes: undefined, estoquePorTamanho: {}});
-  await denied(executeStockCommand(db, {
+test('18 restock of existing variation does not require sale grant', async () => {
+  const {base, lojaId} = await seed({grant: false, stockKind: 'simple', quantidade: 1, variacoes: undefined, estoquePorTamanho: {}});
+  await executeStockCommand(db, {
     protocolVersion: 1, lojaId, kind: 'restock', operationId: 'rs',
     items: [{productId: 'safe', quantity: 1}],
-  }, owner), 'failed-precondition');
+  }, owner);
+  assert.equal((await base.collection('estoque_produtos').doc('safe').get()).data().quantidade, 2);
 });
 
 test('19 reconcile grant unaffected', async () => {

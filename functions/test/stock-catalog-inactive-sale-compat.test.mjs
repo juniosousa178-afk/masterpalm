@@ -81,7 +81,7 @@ test('classify: no control / inactive / active / invalid', () => {
     exists: true,
     data: () => ({protocolVersion: 2, mode: 'active', migrationComplete: true}),
   }), 'INVALID');
-  assert.deepEqual([...INACTIVE_COMPAT_ALLOWED_KINDS], ['sale', 'restore']);
+  assert.deepEqual([...INACTIVE_COMPAT_ALLOWED_KINDS], ['sale', 'restore', 'restock']);
 });
 
 test('resolveLegacyCompatStockKind: absent / valid / invalid', () => {
@@ -268,10 +268,11 @@ test('CASE12/13 other-store caller denied; unauthenticated denied', async () => 
   await denied(executeStockCommand(db, intent(lojaId, 'sale', 's1'), {uid: 'intruder'}), 'permission-denied');
 });
 
-test('invalid command on inactive denied; restock not allowed on compat bridge', async () => {
+test('invalid command on inactive denied; restock allowed on compat bridge', async () => {
   const {base, lojaId} = await seedLegacy();
-  await denied(executeStockCommand(db, intent(lojaId, 'restock', 'r1'), owner), 'failed-precondition');
-  assert.equal((await base.collection('estoque_produtos').doc('p').get()).data().quantidade, 5);
+  await denied(executeStockCommand(db, intent(lojaId, 'adjust', 'a1', {expectedRevision: 1}), owner), 'failed-precondition');
+  await executeStockCommand(db, intent(lojaId, 'restock', 'r1'), owner);
+  assert.equal((await base.collection('estoque_produtos').doc('p').get()).data().quantidade, 6);
 });
 
 test('duplicate retry does not double decrement', async () => {

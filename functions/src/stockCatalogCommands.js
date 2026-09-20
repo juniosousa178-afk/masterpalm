@@ -439,6 +439,8 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
       });
     }
     comboOrder(records);
+    // Grant only for new sale / add / increase (kind=sale). restock/restore of an
+    // existing sale line must not require variationSaleProductGrant.
     if (command.kind === 'sale') await authorizeVariationSaleItems(tx, base, items, records);
     const appliedItems = [];
     function applyItem(item, expand) {

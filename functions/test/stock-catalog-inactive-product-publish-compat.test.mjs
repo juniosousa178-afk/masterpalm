@@ -108,7 +108,7 @@ async function denied(promise, code, messageIncludes) {
 }
 
 test('allowlists: sale vs product remain separate', () => {
-  assert.deepEqual([...INACTIVE_COMPAT_ALLOWED_KINDS], ['sale', 'restore']);
+  assert.deepEqual([...INACTIVE_COMPAT_ALLOWED_KINDS], ['sale', 'restore', 'restock']);
   assert.deepEqual([...INACTIVE_PRODUCT_COMPAT_ALLOWED_KINDS], [
     'create', 'replace', 'editorial', 'delete',
   ]);
@@ -420,13 +420,14 @@ test('C12/C13 legacy missing metadata + new inactive canonical publish', async (
   assert.equal((await base.collection('produtos').doc('p').get()).data().stockKind, 'simple');
 });
 
-test('sale-only kinds still denied for restock on inactive; sale still works', async () => {
+test('inactive restock restores stock; sale still works', async () => {
   const {base, lojaId} = await seedStore({
     product: {quantidade: 5, stockKind: 'simple', stockRevision: 1},
   });
-  await denied(executeStockCommand(db, intent(lojaId, 'restock', 'r1', {quantity: 1}), owner), 'failed-precondition');
+  await executeStockCommand(db, intent(lojaId, 'restock', 'r1', {quantity: 1}), owner);
+  assert.equal((await base.collection('estoque_produtos').doc('p').get()).data().quantidade, 6);
   await executeStockCommand(db, intent(lojaId, 'sale', 's1', {quantity: 1}), owner);
-  assert.equal((await base.collection('estoque_produtos').doc('p').get()).data().quantidade, 4);
+  assert.equal((await base.collection('estoque_produtos').doc('p').get()).data().quantidade, 5);
 });
 
 test('VALID inactive product/publish do not return migration incomplete', async () => {
