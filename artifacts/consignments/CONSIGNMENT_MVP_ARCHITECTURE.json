@@ -1,0 +1,13 @@
+{
+  "PRODUCT_AUTHORITY": "lojas/{lojaId}/estoque_produtos",
+  "STOCK_AUTHORITY": "canonical variacoes/quantidade via consignmentCommand",
+  "SALE_AUTHORITY": "estoque_vendas on settlement only",
+  "FINANCE_AUTHORITY": "lancamentos_financeiros on settlement only",
+  "STORE_AUTH_PATTERN": "stock_catalog_access.sale + consignment_control.moduleEnabled",
+  "SIMPLE_PRODUCTS": true,
+  "NORMAL_VARIATION_PRODUCTS": true,
+  "GRADE_PRODUCTS": false,
+  "COMBO_PRODUCTS": false,
+  "FEATURE_FLAG": "consignmentModuleEnabled",
+  "FEATURE_FLAG_DEFAULT": false
+}

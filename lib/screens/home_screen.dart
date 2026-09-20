@@ -62,6 +62,7 @@ import '../core/home_module_registry.dart';
 import '../core/app_module_definition.dart';
 import '../core/store_display_name_resolver.dart';
 import '../screens/configure_loja_placeholder_screen.dart';
+import '../features/consignments/consignment_feature_flag.dart';
 
 // ✅ planos
 import '../services/planos_service.dart';
@@ -2576,6 +2577,8 @@ class _HomeScreenState extends State<HomeScreen>
       permissoes: combinadas,
       planTier: menuPlanTier,
       applyPlanGate: applyPlanGate,
+      consignmentModuleEnabled: _lojaIdInterno.trim().isNotEmpty &&
+          await ConsignmentFeatureFlag.isEnabled(_lojaIdInterno),
     );
   }
 

@@ -13,12 +13,14 @@ class HomeModuleAccessContext {
     required this.permissoes,
     required this.planTier,
     required this.applyPlanGate,
+    this.consignmentModuleEnabled = false,
   });
 
   final String tipoUsuario;
   final Map<String, bool> permissoes;
   final PlanAccessTier planTier;
   final bool applyPlanGate;
+  final bool consignmentModuleEnabled;
 
   bool get isAdminOrProgramador =>
       tipoUsuario == 'admin' || tipoUsuario == 'programador';
@@ -76,6 +78,18 @@ abstract final class HomeModuleRegistry {
       permissionKey: 'vendas',
       accent: Color(0xFF22C55E),
       keywords: ['pdv', 'nova venda', 'caixa', 'historico'],
+    ),
+    AppModuleDefinition(
+      id: 'consignados',
+      title: 'Consignados',
+      subtitle: 'Revenda',
+      icon: Icons.handshake_outlined,
+      route: '/consignados',
+      category: HomeModuleCategory.vendas,
+      order: 12,
+      permissionKey: 'estoque',
+      accent: Color(0xFF0D9488),
+      keywords: ['consignado', 'consignacao', 'revendedor', 'acerto'],
     ),
     AppModuleDefinition(
       id: 'carrinhos_abandonados',
@@ -400,7 +414,7 @@ abstract final class HomeModuleRegistry {
 
   /// Visível na Home (accordion), respeitando permissão/plano.
   static List<AppModuleDefinition> visibleForHome(HomeModuleAccessContext ctx) {
-    return all.where((m) => m.showOnHome && isAllowed(m, ctx)).toList()
+    return all.where((m) => m.showOnHome && isAllowed(m, ctx) && _featureVisible(m, ctx)).toList()
       ..sort((a, b) {
         final c = a.category.order.compareTo(b.category.order);
         if (c != 0) return c;
@@ -410,7 +424,7 @@ abstract final class HomeModuleRegistry {
 
   /// Itens do drawer que existem no registry (mesma fonte da Home).
   static List<AppModuleDefinition> visibleForDrawer(HomeModuleAccessContext ctx) {
-    return all.where((m) => m.showInDrawer && isAllowed(m, ctx)).toList()
+    return all.where((m) => m.showInDrawer && isAllowed(m, ctx) && _featureVisible(m, ctx)).toList()
       ..sort((a, b) {
         final c = a.category.order.compareTo(b.category.order);
         if (c != 0) return c;
@@ -439,6 +453,11 @@ abstract final class HomeModuleRegistry {
       map[m.category] = (map[m.category] ?? 0) + 1;
     }
     return map;
+  }
+
+  static bool _featureVisible(AppModuleDefinition m, HomeModuleAccessContext ctx) {
+    if (m.id == 'consignados') return ctx.consignmentModuleEnabled;
+    return true;
   }
 
   /// Mesma regra das telas: [ctx.permissoes] deve vir de

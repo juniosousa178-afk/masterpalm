@@ -1,0 +1,12 @@
+{
+  "DECISION": "A",
+  "BRANCH": "feature/consignments-mvp",
+  "NEW_WEB_VERSION": "1.0.80+96",
+  "FUNCTION_DEPLOYS": 1,
+  "HOSTING_DEPLOYS": 1,
+  "RULES_DEPLOYS": 1,
+  "FEATURE_FLAG_DEFAULT": false,
+  "FEATURE_FLAG_ENABLED_STORES": [],
+  "GLOBAL_ROLLOUT": false,
+  "STOCK_CATALOG_COMMAND_REDEPLOYED": false
+}

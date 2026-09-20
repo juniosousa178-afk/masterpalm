@@ -10,6 +10,8 @@ import { onDocumentCreated, onDocumentWritten } from "firebase-functions/v2/fire
 import { setGlobalOptions } from "firebase-functions/v2";
 import { defineSecret } from "firebase-functions/params";
 import crypto from "node:crypto";
+import {executeConsignmentCommand} from "./src/consignmentCommand.js";
+import {mapConsignmentHttp} from "./src/consignmentProtocol.js";
 
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
@@ -5489,3 +5491,12 @@ export const onSiteConfigUpdated = onDocumentWritten(
     }
   }
 );
+
+function consignmentCallableError(error) {
+  const mapped = mapConsignmentHttp(error);
+  return new HttpsError(mapped.http, mapped.message, mapped.details);
+}
+export const consignmentCommand = onCall(async request => {
+  try { return await executeConsignmentCommand(db, request.data, request.auth); }
+  catch (error) { throw consignmentCallableError(error); }
+});

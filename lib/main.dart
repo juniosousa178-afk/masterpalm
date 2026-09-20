@@ -61,6 +61,7 @@ import 'screens/clientes_screen.dart';
 import 'screens/vendas_canceladas_vendedor_screen.dart';
 import 'screens/estoque_screen.dart';
 import 'screens/catalogo_interno_screen.dart';
+import 'features/consignments/screens/consignment_list_screen.dart';
 import 'screens/historico_clientes_screen.dart';
 import 'screens/backup_screen.dart';
 import 'screens/relatorios_screen.dart';
@@ -4314,6 +4315,9 @@ class MyApp extends StatelessWidget {
                   ? const AdminWebRouteShell(child: ClientesScreen())
                   : const ClientesScreen(),
               '/estoque': (_) => const EstoqueScreen(),
+              '/consignados': (_) => kIsWeb
+                  ? const AdminWebRouteShell(child: ConsignmentListScreen())
+                  : const ConsignmentListScreen(),
               '/historico_cliente': (_) => const HistoricoClientesScreen(),
               '/backup': (_) => _planGate(
                     PlanGateFeature.backupLoja,

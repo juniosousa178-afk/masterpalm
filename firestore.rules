@@ -890,6 +890,27 @@ service cloud.firestore {
         allow create, update, delete: if false;
       }
 
+      match /consignment_control/{id} {
+        allow read: if belongsToStore(lojaId);
+        allow write: if false;
+      }
+      match /consignment_resellers/{id} {
+        allow read: if belongsToStore(lojaId);
+        allow write: if false;
+      }
+      match /consignments/{id} {
+        allow read: if belongsToStore(lojaId);
+        allow write: if false;
+      }
+      match /consignment_operations/{id} {
+        allow read: if belongsToStore(lojaId);
+        allow write: if false;
+      }
+      match /consignment_audit/{id} {
+        allow read: if belongsToStore(lojaId);
+        allow write: if false;
+      }
+
       // Rascunho: produtos (simples e combo) com imagens, itensCombo, variacoes
       match /draft_produtos/{prodId} {
         allow read, write: if isAdminOrSystem();

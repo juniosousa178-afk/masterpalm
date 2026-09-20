@@ -10,6 +10,7 @@ const Set<String> _restorableRoutes = {
   '/vendas',
   '/clientes',
   '/estoque',
+  '/consignados',
   '/pedidos',
   '/pedidos_pendentes',
   '/configuracoes_catalogo',
