@@ -19,6 +19,22 @@ class NovaVendaPosSaveUiDecision {
 const novaVendaPosSaveFallbackError =
     'Não foi possível concluir a venda. Tente novamente.';
 
+const kNovaVendaCloudCommittedLocalMirrorMensagem =
+    'Venda salva com sucesso. Houve uma falha ao atualizar os dados locais. '
+    'Atualize a tela para sincronizar.';
+
+/// True when the backend sale already committed and only the local mirror failed.
+bool isNovaVendaCloudCommittedLocalMirrorMessage(String? raw) {
+  final m = raw?.trim() ?? '';
+  if (m.isEmpty) return false;
+  final lower = m.toLowerCase();
+  return lower.contains('venda gravada na nuvem') ||
+      lower.contains('espelho local falhou') ||
+      lower.contains('conta a receber local falhou') ||
+      lower.contains('falha ao atualizar os dados locais') ||
+      lower.contains('conta a receber ficou pendente de sincronização');
+}
+
 /// Comportamento legado (pré-fix H1STUCK): retorno silencioso na UI.
 bool legacyNovaVendaPosSaveUiIsSilent({
   required bool ok,
@@ -41,13 +57,16 @@ NovaVendaPosSaveUiDecision decideNovaVendaPosSaveUi({
   required String? mensagemErro,
   required bool mounted,
 }) {
-  if (ok) {
+  final cloudCommittedLocalMirror =
+      isNovaVendaCloudCommittedLocalMirrorMessage(mensagemErro);
+  if (ok || cloudCommittedLocalMirror) {
     if (!mounted) {
-      return const NovaVendaPosSaveUiDecision(
+      return NovaVendaPosSaveUiDecision(
         action: NovaVendaPosSaveUiAction.notifyParentError,
-        errorMessage:
-            'A venda pode ter sido concluída, mas a tela foi atualizada. '
-            'Verifique o histórico de vendas.',
+        errorMessage: cloudCommittedLocalMirror
+            ? kNovaVendaCloudCommittedLocalMirrorMensagem
+            : 'A venda pode ter sido concluída, mas a tela foi atualizada. '
+                'Verifique o histórico de vendas.',
       );
     }
     return const NovaVendaPosSaveUiDecision(

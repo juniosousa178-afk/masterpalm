@@ -68,13 +68,22 @@ class VendaSalvaComPendenciaSyncException implements Exception {
       'Venda salva. A conta a receber ficou pendente de sincronização '
       'e será necessário tentar sincronizar novamente.';
 
+  /// Cloud/atomic sale already committed; local Hive/CR mirror failed.
+  /// UI must treat this as success — never "venda não foi salva" / retry.
+  static const String localMirrorMessage =
+      'Venda salva com sucesso. Houve uma falha ao atualizar os dados locais. '
+      'Atualize a tela para sincronizar.';
+
   final String message;
 
   static bool isPendenciaMessage(String? raw) {
     final m = raw?.trim() ?? '';
     if (m.isEmpty) return false;
     return m == defaultMessage ||
-        m.contains('conta a receber ficou pendente de sincronização');
+        m == localMirrorMessage ||
+        m.contains('conta a receber ficou pendente de sincronização') ||
+        m.contains('falha ao atualizar os dados locais') ||
+        m.contains('Venda gravada na nuvem');
   }
 
   @override
@@ -639,19 +648,29 @@ class VendasService {
     }
 
     var falhasFirestore = 0;
+    var falhasHive = 0;
     for (var i = 0; i < contas.length; i++) {
       final conta = contas[i];
-      // LOCAL_RECEIVABLE_COMMIT_POINT — Hive add/save (obrigatório).
-      await crBox.add(conta);
       try {
-        await conta.save();
-      } catch (e) {
-        debugPrint(
-          '⚠️ [VENDAS-SERVICE] conta.save após add falhou (parcela ${i + 1}, type=${e.runtimeType})',
-        );
-        if (!conta.isInBox) {
-          rethrow;
+        // LOCAL_RECEIVABLE_COMMIT_POINT — Hive add/save.
+        await crBox.add(conta);
+        try {
+          await conta.save();
+        } catch (e) {
+          debugPrint(
+            '⚠️ [VENDAS-SERVICE] conta.save após add falhou (parcela ${i + 1}, type=${e.runtimeType})',
+          );
+          if (!conta.isInBox) {
+            rethrow;
+          }
         }
+      } catch (e) {
+        falhasHive++;
+        debugPrint(
+          '⚠️ [VENDAS-SERVICE] Hive CR add/save falhou parcela ${i + 1} '
+          'type=${e.runtimeType} remoteBestEffort=$remoteBestEffort',
+        );
+        if (!remoteBestEffort) rethrow;
       }
       normalizarContaReceberId(conta);
       final docId = resolveContaReceberDocId(conta);
@@ -695,6 +714,11 @@ class VendasService {
           rethrow;
         }
       }
+    }
+    if (falhasHive > 0 && remoteBestEffort) {
+      throw const VendaSalvaComPendenciaSyncException(
+        VendaSalvaComPendenciaSyncException.localMirrorMessage,
+      );
     }
     if (falhasFirestore > 0) {
       debugPrint(
@@ -2779,9 +2803,8 @@ class VendasService {
           '[VENDAS-SERVICE] Hive/local falhou após commit atômico remoto; '
           'sem estorno. Verifique histórico. err=$e',
         );
-        onSyncError?.call(
-          'Venda gravada na nuvem, mas o espelho local falhou. '
-          'Atualize o histórico de vendas.',
+        throw const VendaSalvaComPendenciaSyncException(
+          VendaSalvaComPendenciaSyncException.localMirrorMessage,
         );
       }
       rethrow;
@@ -2851,10 +2874,16 @@ class VendasService {
         debugPrint(
           '⚠️ [VENDAS-SERVICE] Fiado sem vínculo: addedKey=$addedKey venda.key=${venda.key} idFirebase=$vendaIdVinculo',
         );
+        if (remoteAtomicSaleCommitted) {
+          throw const VendaSalvaComPendenciaSyncException(
+            VendaSalvaComPendenciaSyncException.localMirrorMessage,
+          );
+        }
         throw ArgumentError(
           'Não foi possível vincular a venda à conta a receber. Tente novamente.',
         );
       }
+      final contasNovas = <ContaReceber>[];
       try {
         _logContaReceberFiado(
           tag: 'CONTA_RECEBER_CREATE_START',
@@ -2880,7 +2909,6 @@ class VendasService {
           fallback: 30,
         );
         final valoresParcelas = _parcelarValores(saldoFiado, qtdParcelas);
-        final contasNovas = <ContaReceber>[];
         for (var i = 0; i < qtdParcelas; i++) {
           final venc = vencimento.add(Duration(days: i * intervalo));
           contasNovas.add(
@@ -2909,6 +2937,7 @@ class VendasService {
           lojaId: lojaEfetiva,
           vendaIdVinculo: vendaIdVinculo,
           vendaHiveKey: vendaHiveKey,
+          remoteBestEffort: remoteAtomicSaleCommitted,
         );
         if (isCoordinatedPdv &&
             saleIntentStatus == SaleIntentStatus.stockApplied) {
@@ -2921,6 +2950,9 @@ class VendasService {
           );
         }
       } catch (e, st) {
+        if (e is VendaSalvaComPendenciaSyncException) {
+          rethrow;
+        }
         final detalheErro = _mensagemErroContaReceberSegura(e);
         _logContaReceberFiado(
           tag: 'VENDA_FIADA_CONTA_RECEBER_FAIL',
@@ -2946,19 +2978,34 @@ class VendasService {
                 detalheErro.contains('ContaReceber')
             ? detalheErro
             : 'Não foi possível gerar a conta a receber. $detalheErro';
-        onSyncError?.call(msgUsuario);
         if (remoteAtomicSaleCommitted) {
-          // Sale+stock already authoritative; do not reverse stock or delete
-          // remote sale. Contas can be reconciled separately.
+          // Sale+stock already authoritative; do not reverse stock, delete
+          // remote sale, or tell the UI the sale was not saved.
           debugPrint(
             '[VENDAS-SERVICE] Fiado local falhou após commit atômico; '
             'estoque/venda remota preservados.',
           );
-          throw ArgumentError(
-            'Venda gravada na nuvem, mas a conta a receber local falhou. '
-            'Verifique Contas a Receber e o histórico.',
+          if (contasNovas.isNotEmpty) {
+            try {
+              for (final conta in contasNovas) {
+                normalizarContaReceberId(conta);
+                await ContaReceberFirestoreService.upsertContaReceber(
+                  conta,
+                  lastWriteOrigin: 'venda_fiada',
+                );
+              }
+            } catch (pubE) {
+              debugPrint(
+                '⚠️ [VENDAS-SERVICE] CR remota best-effort após falha local: '
+                '$pubE',
+              );
+            }
+          }
+          throw const VendaSalvaComPendenciaSyncException(
+            VendaSalvaComPendenciaSyncException.localMirrorMessage,
           );
         }
+        onSyncError?.call(msgUsuario);
         Object? erroEstorno;
         try {
           final forcar = debugForcarFalhaEstornoPosFiadoRollback;

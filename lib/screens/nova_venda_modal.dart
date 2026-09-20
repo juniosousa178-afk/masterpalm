@@ -2359,6 +2359,22 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
           return;
         case NovaVendaPosSaveUiAction.showErrorDialog:
           final err = posSave.errorMessage ?? '';
+          if (isNovaVendaCloudCommittedLocalMirrorMessage(err)) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(kNovaVendaCloudCommittedLocalMirrorMensagem),
+                  backgroundColor: Colors.orange.shade800,
+                  duration: const Duration(seconds: 6),
+                ),
+              );
+            }
+            await _mostrarSucessoVenda();
+            if (!mounted) return;
+            onVendaFinalizadaRef();
+            Navigator.of(context).pop(true);
+            return;
+          }
           await _mostrarErro(
             StockCatalogAffectedProducts.isLimitUserMessage(err)
                 ? err
@@ -2368,9 +2384,10 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         case NovaVendaPosSaveUiAction.showSuccess:
           _pdvSaleIntentLifecycle.clearOnSuccess();
           if (mensagemErro != null &&
-              VendaSalvaComPendenciaSyncException.isPendenciaMessage(
-                mensagemErro,
-              )) {
+              (VendaSalvaComPendenciaSyncException.isPendenciaMessage(
+                    mensagemErro,
+                  ) ||
+                  isNovaVendaCloudCommittedLocalMirrorMessage(mensagemErro))) {
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
@@ -2432,6 +2449,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     String? saleIntentId,
     void Function()? onLocalPersistUiReady,
   }) async {
+    String? numeroSorteRecebido;
     try {
       if (vendaParaEditar != null) {
         try {
@@ -2490,7 +2508,6 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
 
       // ✅ ETAPA 1: Fluxo único de participação — apenas CampaignEngine (via VendasService).
       // Removido _registrarNumeroSorteio (SorteioNumeroService) para evitar duplicidade.
-      String? numeroSorteRecebido;
       await VendasService.registrarVendaMulti(
         produtosBox: produtosBox,
         clientesBox: clientesBox,
@@ -2523,6 +2540,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       );
 
       return (true, numeroSorteRecebido, null);
+    } on VendaSalvaComPendenciaSyncException catch (e) {
+      return (true, numeroSorteRecebido, e.message);
     } on ArgumentError catch (e, stackTrace) {
       _logErroSalvarVenda(
         etapa: 'BACKGROUND_SAVE_FIADO',
@@ -2533,6 +2552,10 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       final msg = e.message?.toString().trim().isNotEmpty == true
           ? e.message!.toString().trim()
           : e.toString();
+      if (isNovaVendaCloudCommittedLocalMirrorMessage(msg) ||
+          VendaSalvaComPendenciaSyncException.isPendenciaMessage(msg)) {
+        return (true, numeroSorteRecebido, kNovaVendaCloudCommittedLocalMirrorMensagem);
+      }
       onErro?.call(msg);
       return (false, null, msg);
     } catch (e, stackTrace) {
