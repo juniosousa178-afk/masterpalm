@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:master_palm/core/produto_stock_revision.dart';
@@ -365,5 +367,87 @@ void main() {
       rows.every((e) => e['CLASSIFICATION'] == 'LEGACY_SIZE_METADATA_ONLY'),
       isTrue,
     );
+  });
+
+  test('single-file export: exatamente 1 download JSON com summary completo',
+      () async {
+    final p = _p(
+      id: 'mirjoias-anel-bolinha-t-25-semijoia-3',
+      code: 'AN05SM',
+      nome: 'Anel Bolinha',
+      qty: 1,
+      pendingOp: 'pend',
+      pendingBase: 1,
+      variacoes: {
+        '25': {'sem-cor': 1},
+      },
+    );
+    await seedRemote(id: p.idFirebase, qty: 1, rev: 1, op: 'r');
+    final exporter = MirjoiasClientStockDiagnosticExport(firestore: firestore);
+    final result =
+        await exporter.build(storeId: 'mirjoias', hiveProducts: [p]);
+
+    expect(result.downloadArtifacts, hasLength(1));
+    expect(result.jsonFileName.endsWith('.json'), isTrue);
+    expect(result.jsonFileName, startsWith('MIRJOIAS_CLIENT_STOCK_DIAGNOSTIC_'));
+    expect(result.jsonFileName.toLowerCase().endsWith('.txt'), isFalse);
+
+    final summary = result.payload['summary'] as Map;
+    expect(summary['HIVE_PRODUCT_COUNT'], 1);
+    expect(summary['PENDING_COUNT'], 1);
+    expect(summary['SINGLE_FILE_EXPORT'], isTrue);
+    expect(summary.containsKey('DELTA_ACCOUNTING_PASS'), isTrue);
+    expect(summary.containsKey('ORPHAN_VARIATIONS'), isTrue);
+    expect(summary.containsKey('AGGREGATE_MISMATCHES'), isTrue);
+    expect(summary.containsKey('PENDING_ZERO_UI'), isTrue);
+
+    expect(result.payload['hiveProducts'], isA<List>());
+    expect(result.payload['pendingMutations'], isA<List>());
+    expect(result.payload['remoteComparisons'], isA<List>());
+    expect(result.payload['LOCAL_REMOTE_QTY_DELTA_PRODUCTS'], isA<List>());
+    expect(result.payload['ORPHAN_VARIATION_IDENTITIES'], isA<List>());
+    expect(result.payload['AGGREGATE_MISMATCHES'], isA<List>());
+    expect(result.payload['AN05SM'], isA<Map>());
+    expect(result.payload['READ_ONLY'], isTrue);
+
+    var saveCount = 0;
+    String? savedName;
+    await saveStockDiagnosticSingleJson(
+      result: result,
+      saveFile: (bytes, fileName) async {
+        saveCount++;
+        savedName = fileName;
+        expect(fileName.endsWith('.json'), isTrue);
+        final decoded = jsonDecode(utf8.decode(bytes)) as Map;
+        expect(decoded['summary'], isA<Map>());
+        expect(decoded['hiveProducts'], isA<List>());
+      },
+    );
+    expect(saveCount, 1);
+    expect(savedName, result.jsonFileName);
+  });
+
+  test('NATHY single-file filename + summary', () async {
+    final p = _p(
+      id: 'nathy-pratas-e-folheados-anel-x',
+      code: 'NX1',
+      nome: 'Nathy X',
+      qty: 2,
+      lojaId: 'nathy-pratas-e-folheados',
+    );
+    await firestore
+        .collection('lojas')
+        .doc('nathy-pratas-e-folheados')
+        .collection(FSPaths.estoqueProdutosCol)
+        .doc(p.idFirebase)
+        .set({'quantidade': 2, 'stockRevision': 1, 'stockOperationId': 'r'});
+    final exporter = MirjoiasClientStockDiagnosticExport(firestore: firestore);
+    final result = await exporter.build(
+      storeId: 'nathy-pratas-e-folheados',
+      hiveProducts: [p],
+    );
+    expect(result.jsonFileName, startsWith('NATHY_CLIENT_STOCK_DIAGNOSTIC_'));
+    expect(result.downloadArtifacts, hasLength(1));
+    expect(result.payload['summary']['HIVE_PRODUCT_COUNT'], 1);
   });
 }

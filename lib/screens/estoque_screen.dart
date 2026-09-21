@@ -2502,17 +2502,16 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
         storeId: lojaId,
         hiveProducts: _box.values,
       );
-      await file_saver.saveFile(
-        Uint8List.fromList(utf8.encode(result.jsonPretty)),
-        result.jsonFileName,
-      );
-      await file_saver.saveFile(
-        Uint8List.fromList(utf8.encode(result.txtSummary)),
-        result.txtFileName,
+      await saveStockDiagnosticSingleJson(
+        result: result,
+        saveFile: (bytes, fileName) => file_saver.saveFile(
+          Uint8List.fromList(bytes),
+          fileName,
+        ),
       );
       if (mounted) {
         _showSnackBar(
-          'Diagnóstico gerado. Envie o arquivo para o suporte.',
+          'Diagnóstico JSON gerado. Envie o arquivo para o suporte.',
         );
       }
     } catch (e) {

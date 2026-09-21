@@ -46,22 +46,37 @@ extension on MirjoiasPendingClassification {
       };
 }
 
-/// Resultado do export (JSON + TXT) — sem efeitos colaterais.
+/// Resultado do export — um único arquivo JSON por clique.
 class MirjoiasClientStockDiagnosticResult {
   MirjoiasClientStockDiagnosticResult({
     required this.payload,
-    required this.txtSummary,
     required this.jsonFileName,
-    required this.txtFileName,
   });
 
   final Map<String, dynamic> payload;
-  final String txtSummary;
   final String jsonFileName;
-  final String txtFileName;
 
   String get jsonPretty =>
       const JsonEncoder.withIndent('  ').convert(payload);
+
+  /// Artefatos de download: exatamente 1 (JSON). Mobile bloqueia multi-download.
+  List<({String fileName, List<int> bytes})> get downloadArtifacts => [
+        (
+          fileName: jsonFileName,
+          bytes: utf8.encode(jsonPretty),
+        ),
+      ];
+}
+
+/// Dispara exatamente um download do diagnóstico (JSON único).
+Future<void> saveStockDiagnosticSingleJson({
+  required MirjoiasClientStockDiagnosticResult result,
+  required Future<void> Function(List<int> bytes, String fileName) saveFile,
+}) async {
+  final artifacts = result.downloadArtifacts;
+  assert(artifacts.length == 1);
+  final only = artifacts.single;
+  await saveFile(only.bytes, only.fileName);
 }
 
 /// Tenant atual está na allowlist do exportador.
@@ -484,6 +499,29 @@ class MirjoiasClientStockDiagnosticExport {
     final deltaAccountingPass = deltaSum == expectedDelta;
 
     final payload = <String, dynamic>{
+      'summary': {
+        'HIVE_PRODUCT_COUNT': hiveRows.length,
+        'HIVE_TOTAL_QTY': localQtySum,
+        'REMOTE_TOTAL_QTY': remoteQtySum,
+        'LOCAL_REMOTE_QTY_DELTA': localQtySum - remoteQtySum,
+        'DELTA_ACCOUNTING_PASS': deltaAccountingPass,
+        'PENDING_COUNT': pendingRows.length,
+        'ORPHAN_PENDING_COUNT': orphanPending,
+        'DUPLICATE_PENDING_COUNT': duplicatePending,
+        'INVALID_PENDING_COUNT': invalidPending,
+        'DELTA_PRODUCTS': deltaProducts.length,
+        'ORPHAN_VARIATIONS': orphanVariations.length,
+        'AGGREGATE_MISMATCHES': aggregateMismatches.length,
+        'PENDING_ZERO_UI': pendingZeroUi.length,
+        'LEGACY_SIZE_METADATA_ONLY_COUNT': legacySizeMetadataOnly.length,
+        'RAW_AGGREGATE_MISMATCH_COUNT': rawAggregateMismatchCount,
+        'NORMALIZED_AGGREGATE_MISMATCH_COUNT':
+            normalizedAggregateMismatchCount,
+        'NORMALIZED_REMOTE_AGGREGATE_MISMATCH_COUNT':
+            normalizedRemoteAggregateMismatchCount,
+        'DIAGNOSTIC_SNAPSHOT_MUTATION': false,
+        'SINGLE_FILE_EXPORT': true,
+      },
       'generatedAt': now.toIso8601String(),
       'liveBuildId': _liveBuildId,
       'liveGitCommit': _liveGitCommit,
@@ -545,12 +583,9 @@ class MirjoiasClientStockDiagnosticExport {
     // Safety: strip accidental secrets by key name.
     _redactSecretsDeep(payload);
 
-    final txt = _buildTxt(payload, now, filePrefix: filePrefix);
     return MirjoiasClientStockDiagnosticResult(
       payload: payload,
-      txtSummary: txt,
       jsonFileName: '${filePrefix}_$stamp.json',
-      txtFileName: '${filePrefix}_$stamp.txt',
     );
   }
 
@@ -773,54 +808,5 @@ class MirjoiasClientStockDiagnosticExport {
         _redactSecretsDeep(item);
       }
     }
-  }
-
-  String _buildTxt(
-    Map<String, dynamic> payload,
-    DateTime now, {
-    required String filePrefix,
-  }) {
-    final an = payload['AN05SM'] as Map? ?? {};
-    final buf = StringBuffer()
-      ..writeln('$filePrefix (READ-ONLY)')
-      ..writeln('generatedAt: ${now.toIso8601String()}')
-      ..writeln('storeId: ${payload['storeId']}')
-      ..writeln('TENANT_ISOLATION: true')
-      ..writeln('liveBuildId: ${payload['liveBuildId']}')
-      ..writeln('liveGitCommit: ${payload['liveGitCommit']}')
-      ..writeln('HIVE_PRODUCT_COUNT: ${payload['HIVE_PRODUCT_COUNT']}')
-      ..writeln('HIVE_TOTAL_QTY: ${payload['HIVE_TOTAL_QTY']}')
-      ..writeln('REMOTE_TOTAL_QTY: ${payload['REMOTE_TOTAL_QTY']}')
-      ..writeln('LOCAL_REMOTE_QTY_DELTA: ${payload['LOCAL_REMOTE_QTY_DELTA']}')
-      ..writeln('DELTA_ACCOUNTING_PASS: ${payload['DELTA_ACCOUNTING_PASS']}')
-      ..writeln(
-          'DIAGNOSTIC_SNAPSHOT_MUTATION: ${payload['DIAGNOSTIC_SNAPSHOT_MUTATION']}')
-      ..writeln(
-          'LEGACY_SIZE_METADATA_ONLY_COUNT: ${payload['LEGACY_SIZE_METADATA_ONLY_COUNT']}')
-      ..writeln(
-          'RAW_AGGREGATE_MISMATCH_COUNT: ${payload['RAW_AGGREGATE_MISMATCH_COUNT']}')
-      ..writeln(
-          'NORMALIZED_AGGREGATE_MISMATCH_COUNT: ${payload['NORMALIZED_AGGREGATE_MISMATCH_COUNT']}')
-      ..writeln(
-          'NORMALIZED_REMOTE_AGGREGATE_MISMATCH_COUNT: ${payload['NORMALIZED_REMOTE_AGGREGATE_MISMATCH_COUNT']}')
-      ..writeln('PENDING_COUNT: ${payload['PENDING_COUNT']}')
-      ..writeln('ORPHAN_PENDING_COUNT: ${payload['ORPHAN_PENDING_COUNT']}')
-      ..writeln('DUPLICATE_PENDING_COUNT: ${payload['DUPLICATE_PENDING_COUNT']}')
-      ..writeln('INVALID_PENDING_COUNT: ${payload['INVALID_PENDING_COUNT']}')
-      ..writeln(
-          'DELTA_PRODUCTS: ${(payload['LOCAL_REMOTE_QTY_DELTA_PRODUCTS'] as List).length}')
-      ..writeln(
-          'ORPHAN_VARIATIONS: ${(payload['ORPHAN_VARIATION_IDENTITIES'] as List).length}')
-      ..writeln(
-          'AGGREGATE_MISMATCHES: ${(payload['AGGREGATE_MISMATCHES'] as List).length}')
-      ..writeln(
-          'PENDING_ZERO_UI: ${(payload['PENDING_ZERO_UI_PRODUCTS'] as List).length}')
-      ..writeln('AN05SM_CLASSIFICATION: ${an['AN05SM_CLASSIFICATION']}')
-      ..writeln('AN05SM_PENDING: ${an['AN05SM_PENDING']}')
-      ..writeln('AN05SM_LOCAL_QTY: ${an['AN05SM_LOCAL_QTY']}')
-      ..writeln('AN05SM_REMOTE_QTY: ${an['AN05SM_REMOTE_QTY']}')
-      ..writeln('READ_ONLY: true')
-      ..writeln('Envie o .json completo ao suporte.');
-    return buf.toString();
   }
 }

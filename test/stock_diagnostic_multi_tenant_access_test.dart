@@ -205,8 +205,11 @@ void main() {
       );
 
       expect(result.jsonFileName, startsWith('NATHY_CLIENT_STOCK_DIAGNOSTIC_'));
-      expect(result.txtFileName, startsWith('NATHY_CLIENT_STOCK_DIAGNOSTIC_'));
+      expect(result.jsonFileName.endsWith('.json'), isTrue);
+      expect(result.downloadArtifacts, hasLength(1));
       expect(result.payload['storeId'], 'nathy-pratas-e-folheados');
+      expect(result.payload['summary'], isA<Map>());
+      expect(result.payload['summary']['SINGLE_FILE_EXPORT'], isTrue);
       final hive = result.payload['hiveProducts'] as List;
       expect(hive.length, 1);
       expect(hive.first['LOCAL_PRODUCT_ID'], nathy.idFirebase);
