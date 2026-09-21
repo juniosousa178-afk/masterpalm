@@ -4,9 +4,9 @@
   "siteId": "masterpalm-58c46",
   "expectedDomain": "app.mastepalm.com.br",
   "webVersion": "1.0.94+108",
-  "gitCommit": "022cacf",
-  "gitCommitFull": "022cacf34cb0865bf2626924f90c1f55333fc54e",
+  "gitCommit": "bc9960f",
+  "gitCommitFull": "bc9960f817bbc1468bc87cf962a282b8add134b0",
   "featureFlagDefault": false,
   "globalRollout": true,
-  "notes": "Nathy: structural stale pending clear before sale (no false CAS). Preserves Mirjoias pending reconciliation 1.0.93 + variation picker 1.0.92."
+  "notes": "Nathy: structural stale pending clear before sale (no false CAS). Preserves Mirjoias pending reconciliation 1.0.93 + variation picker 1.0.92. Fix commit 022cacf."
 }
