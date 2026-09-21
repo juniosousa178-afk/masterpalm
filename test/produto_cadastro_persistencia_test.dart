@@ -43,9 +43,10 @@ Produto _produtoBase({
 
 Future<void> _closeHiveBoxesByName(Iterable<String> names) async {
   for (final name in names) {
-    if (Hive.isBoxOpen(name)) {
-      await Hive.box(name).close();
-    }
+    if (!Hive.isBoxOpen(name)) continue;
+    // Boxes deste arquivo são abertas como Box<Produto>; Hive.box() sem tipo
+    // falha com "already open and of type Box<Produto>".
+    await Hive.box<Produto>(name).close();
   }
   final vendasBoxName = HiveBoxNames.vendas(_lojaId);
   if (Hive.isBoxOpen(vendasBoxName)) {
@@ -125,6 +126,7 @@ void main() {
       ProdutosFirestoreService.debugFirestoreOverride = firestore;
       final hiveDir =
           Directory.systemTemp.createTempSync('produto_cadastro_push_hive_');
+      await Hive.close();
       Hive.init(hiveDir.path);
       if (!Hive.isAdapterRegistered(2)) {
         Hive.registerAdapter(ProdutoAdapter());
@@ -148,10 +150,14 @@ void main() {
         );
         await box.add(p);
 
+        // Espelha o save explícito do formulário (forcePushFromCadastro).
+        // Auto-sync sem force pode retornar semMudancas quando o guard
+        // anti-Hive-stale detecta células locais > remoto.
         final status = await ProdutosFirestoreService.syncProdutoComStatus(
           p,
           lojaId: _lojaId,
           bumpHiveTimestamp: true,
+          forcePushFromCadastro: true,
           enqueueOnFailure: false,
         );
         expect(status, ProdutoSyncRemotoStatus.confirmado);

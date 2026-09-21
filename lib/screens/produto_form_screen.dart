@@ -2801,12 +2801,13 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                                   ),
                                   const SizedBox(width: 6),
                                   Expanded(
-                                    flex: 1,
+                                    flex: 2,
                                     child: TextFormField(
                                       controller: c['qtd'],
                                       decoration: InputDecoration(
-                                        labelText: 'Qtd',
+                                        labelText: 'Quantidade',
                                         hintText: '0',
+                                        helperText: 'Unidades deste tamanho/cor',
                                         filled: true,
                                         fillColor: Colors.grey.shade50,
                                         border: OutlineInputBorder(

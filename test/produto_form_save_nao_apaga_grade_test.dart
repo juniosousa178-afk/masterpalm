@@ -208,7 +208,7 @@ void main() {
         await box.close();
       } finally {
         ProdutosFirestoreService.debugFirestoreOverride = null;
-        Hive.close();
+        await Hive.close();
         if (hiveDir.existsSync()) hiveDir.deleteSync(recursive: true);
       }
     });

@@ -185,11 +185,17 @@ class ProdutosFirestoreService {
   }
 
   /// Uma única escrita no documento ([set] do payload final já mesclado).
+  ///
+  /// [enforceStockRevision] deve ser true apenas na autoridade de estoque
+  /// (`estoque_produtos`). O doc público `produtos` é projeção de catálogo:
+  /// inclui `quantidade`/`variacoes` espelhadas, mas não carrega
+  /// `stockRevision`/`stockOperationId` — o contrato CAS não se aplica ali.
   static Future<void> _upsertProdutoDocument(
     DocumentReference<Map<String, dynamic>> ref,
     Map<String, dynamic> payload, {
     Map<String, dynamic>? existingData,
     Set<String> forceRemoveKeys = const {},
+    bool enforceStockRevision = true,
   }) async {
     final merged = buildFinalDocumentPayloadForSet(
       existingData: existingData,
@@ -207,10 +213,12 @@ class ProdutosFirestoreService {
         '${sanitize.adjustedPaths.join(' | ')}',
       );
     }
-    enforceStockRevisionWriteContract(
-      updateData: sanitize.payload,
-      existingData: existingData,
-    );
+    if (enforceStockRevision) {
+      enforceStockRevisionWriteContract(
+        updateData: sanitize.payload,
+        existingData: existingData,
+      );
+    }
     await ref.set(sanitize.payload);
   }
 
@@ -1946,6 +1954,7 @@ class ProdutosFirestoreService {
               sanitizePublico.payload,
               existingData: publicoSnap.exists ? publicoSnap.data() : null,
               forceRemoveKeys: publicoRemoveKeys,
+              enforceStockRevision: false,
             );
             if (diagHandle != null) {
               await CatalogoSyncDiagnosticsService.completeSuccess(diagHandle);

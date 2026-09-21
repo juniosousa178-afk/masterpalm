@@ -283,13 +283,15 @@ List<ProdutoFormGradeRow> _suplementarLinhasDeTamanhosAusentes(
   for (final t in sorted) {
     if (tamanhosNasLinhas.contains(t)) continue;
     final qtd = _quantidadeGradeCelula(p: p, tamanho: t);
-    if (qtd == null || qtd <= 0) continue;
+    // Preserva identidade do tamanho mesmo sem qty comprovada (campo vazio).
+    // Não inventa quantidade: null → '', 0 → '0'.
+    final qtdTexto = qtd == null ? '' : qtd.toString();
     out.add({
       'tamanho': produtoFormDisplayTamanhoGrade(t),
       'cor': '',
       'extraTipo': '',
       'extraValor': '',
-      'qtd': qtd.toString(),
+      'qtd': qtdTexto,
       'custo': '',
     });
     tamanhosNasLinhas.add(t);
@@ -396,8 +398,13 @@ class ProdutoFormGradeBaseline {
     this.estoquePorTamanho = const {},
     this.tamanhos = const [],
     this.hydrationSource = ProdutoFormGradeHydrationSource.nenhuma,
+    this.stockRevision,
+    this.quantidade,
   });
 
+  /// Revisão observada ao abrir o cadastro, nunca a revisão relida ao salvar.
+  final int? stockRevision;
+  final int? quantidade;
   final Map<String, dynamic>? variacoes;
   final Map<String, dynamic>? variacoesExtraTipo;
   final Map<String, int> estoquePorTamanho;
@@ -407,18 +414,31 @@ class ProdutoFormGradeBaseline {
   static ProdutoFormGradeBaseline capture(Produto p) {
     final hydration = produtoFormHydrateGradeRows(p);
     return ProdutoFormGradeBaseline(
+      stockRevision: p.stockRevision,
+      quantidade: p.quantidade,
       variacoes: p.variacoes != null && p.variacoes!.isNotEmpty
-          ? Map<String, dynamic>.from(p.variacoes!)
+          ? _copyBaselineMap(p.variacoes!)
           : null,
       variacoesExtraTipo:
           p.variacoesExtraTipo != null && p.variacoesExtraTipo!.isNotEmpty
-              ? Map<String, dynamic>.from(p.variacoesExtraTipo!)
+              ? _copyBaselineMap(p.variacoesExtraTipo!)
               : null,
       estoquePorTamanho: Map<String, int>.from(p.estoquePorTamanho),
       tamanhos: List<String>.from(p.tamanhos),
       hydrationSource: hydration.source,
     );
   }
+}
+
+// A shallow copy shares nested color/extra cells with the edited Hive object.
+// Freeze every container so later edits cannot change the original grade.
+Map<String, dynamic> _copyBaselineMap(Map source) => Map.unmodifiable(
+  source.map((key, value) => MapEntry(key.toString(), _copyBaselineValue(value))),
+);
+dynamic _copyBaselineValue(dynamic value) {
+  if (value is Map) return _copyBaselineMap(value);
+  if (value is List) return List.unmodifiable(value.map(_copyBaselineValue));
+  return value;
 }
 
 bool produtoFormBaselineHadGrade(ProdutoFormGradeBaseline baseline) {

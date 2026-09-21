@@ -2630,7 +2630,11 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     final temEstoqueEstruturado =
         p.estoquePorTamanho.isNotEmpty || p.usaVariacoes || extraTipo;
     if (temEstoqueEstruturado) {
-      _showSnackBar('Use Editar para ajustar produtos com grade', isError: true);
+      _showSnackBar(
+        'Produto com variação: abra Editar e informe a quantidade por tamanho/cor. '
+        'O +/- agregado não altera células.',
+        isError: true,
+      );
       return;
     }
     if (delta > 0) {

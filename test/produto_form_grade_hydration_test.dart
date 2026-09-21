@@ -223,4 +223,19 @@ void main() {
       await box.close();
     });
   });
+  test('baseline preserves nested grade and extra metadata after editing the product in place', () {
+    final p = Produto.vazio()
+      ..stockRevision = 7
+      ..quantidade = 1
+      ..variacoes = {'P': {'Azul': {'_sem_extra': 1, '__custoUnitario': 12.5}}}
+      ..variacoesExtraTipo = {'P': {'Azul': {'_sem_extra': 'Acabamento'}}};
+    final baseline = ProdutoFormGradeBaseline.capture(p);
+    p.stockRevision = 8; p.quantidade = 0;
+    expect(baseline.stockRevision, 7); expect(baseline.quantidade, 1);
+    (p.variacoes!['P']['Azul'] as Map)['_sem_extra'] = 0;
+    (p.variacoesExtraTipo!['P']['Azul'] as Map)['_sem_extra'] = 'Alterado';
+    expect(baseline.variacoes!['P']['Azul']['_sem_extra'], 1);
+    expect(baseline.variacoesExtraTipo!['P']['Azul']['_sem_extra'], 'Acabamento');
+  });
+
 }

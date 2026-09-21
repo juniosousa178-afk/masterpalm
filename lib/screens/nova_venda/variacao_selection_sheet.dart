@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/catalog_color_from_name.dart';
+import '../../core/produto_sale_variation_picker.dart';
 import '../../core/produto_variacao_extra.dart';
 import '../../models/produto.dart';
 import '../../widgets/variacao_extras_collapsible.dart';
@@ -75,42 +76,37 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
       widget.produto.temVariacaoSoloCor ||
       widget.produto.temVariacaoTamanhoECor;
 
-  Map<String, int> get _tamanhosDisponiveis {
-    if (widget.produto.usaVariacoes && widget.produto.variacoes != null) {
-      final result = <String, int>{};
-      widget.produto.variacoes!.forEach((tamanho, cores) {
-        if (tamanho == 'sem-tamanho') return;
-        if (cores is Map) {
-          int total = 0;
-          for (final qtd in cores.values) {
-            total += ProdutoVariacaoExtra.somarCelula(qtd);
-          }
-          if (total > 0) result[tamanho.toString()] = total;
-        }
-      });
-      if (result.isNotEmpty) return result;
-    }
-    return widget.produto.estoquePorTamanho;
-  }
+  Map<String, int> get _tamanhosDisponiveis =>
+      produtoSaleTamanhosComEstoque(widget.produto);
+
+  bool get _stockNeedsConfiguration =>
+      produtoVariationStockNeedsConfiguration(widget.produto);
 
   Map<String, int> get _coresDisponiveis {
+    Map<String, int> raw;
     if (widget.produto.temVariacaoSoloCor) {
-      return widget.produto.estoquePorCor;
-    }
-    if (widget.produto.usaVariacoes &&
+      raw = widget.produto.estoquePorCor;
+    } else if (widget.produto.usaVariacoes &&
         widget.produto.variacoes != null &&
         _tamanhoSelecionado.isNotEmpty) {
       final mapaTamanho = widget.produto.variacoes![_tamanhoSelecionado];
       if (mapaTamanho is Map) {
-        return Map<String, int>.from(
+        raw = Map<String, int>.from(
           mapaTamanho.map(
             (k, v) =>
                 MapEntry(k.toString(), ProdutoVariacaoExtra.somarCelula(v)),
           ),
         );
+      } else {
+        raw = {};
       }
+    } else {
+      raw = {};
     }
-    return {};
+    return {
+      for (final e in raw.entries)
+        if (e.value > 0) e.key: e.value,
+    };
   }
 
   List<String> get _opcoesExtra => ProdutoVariacaoExtra.opcoesExtraPara(
@@ -125,6 +121,7 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
       );
 
   bool get _podeConfirmar {
+    if (_stockNeedsConfiguration) return false;
     final p = widget.produto;
     if (_mostrarTamanho &&
         _tamanhosDisponiveis.isNotEmpty &&
@@ -249,6 +246,25 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
                     ],
                   ),
                   const SizedBox(height: 20),
+                  if (_stockNeedsConfiguration) ...[
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.amber.shade200),
+                      ),
+                      child: Text(
+                        kProdutoVariationStockUnconfiguredMessage,
+                        style: TextStyle(
+                          color: Colors.amber.shade900,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
                   if (_mostrarTamanho) ...[
                     Text(
                       'Tamanho',

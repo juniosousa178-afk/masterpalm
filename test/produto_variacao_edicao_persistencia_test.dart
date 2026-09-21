@@ -4,6 +4,7 @@ import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
+import 'package:master_palm/core/produto_sale_variation_picker.dart';
 import 'package:master_palm/core/produto_variacao_extra.dart';
 import 'package:master_palm/models/produto.dart';
 import 'package:master_palm/screens/produto_form_screen.dart';
@@ -169,10 +170,14 @@ void main() {
         produto.estoquePorTamanho = const {'M': 9};
         produto.quantidade = 9;
 
+        // Contrato: edição de grade no cadastro usa forcePushFromCadastro
+        // (formulário). Auto-sync sem force retorna semMudancas quando o
+        // guard anti-stale vê células locais dominando o remoto (qty 5→9).
         final status = await ProdutosFirestoreService.syncProdutoComStatus(
           produto,
           lojaId: lojaId,
           bumpHiveTimestamp: false,
+          forcePushFromCadastro: true,
           enqueueOnFailure: false,
         );
 
@@ -229,6 +234,123 @@ void main() {
         ),
         isFalse,
       );
+    });
+
+    test(
+        'multi-variation persistência 14/15/18/21 não perde células no sync',
+        () async {
+      SharedPreferences.setMockInitialValues({});
+      final firestore = FakeFirebaseFirestore();
+      ProdutosFirestoreService.debugFirestoreOverride = firestore;
+
+      const lojaId = 'loja-teste';
+      const productId = 'prod-multi-var-persist';
+
+      try {
+        await firestore
+            .collection('lojas')
+            .doc(lojaId)
+            .collection('estoque_produtos')
+            .doc(productId)
+            .set({
+          'id': productId,
+          'slug': productId,
+          'nome': 'Anel Multi',
+          'quantidade': 0,
+        });
+
+        final produto = Produto(
+          nome: 'Anel Multi',
+          custoReal: 20,
+          frete: 0,
+          gastosFixos: 0,
+          gastosVariaveis: 0,
+          precoSugerido: 0,
+          precoFinal: 59.9,
+          quantidade: 3,
+          precoUnitario: 59.9,
+          categoria: 'Aneis',
+          dataEntrada: DateTime(2026, 9, 1),
+          descricao: 'multi',
+          lojaId: lojaId,
+          idFirebase: productId,
+          slug: productId,
+        );
+
+        final rows = <Map<String, TextEditingController>>[
+          _row(tamanho: '14', cor: '', qtd: '1'),
+          _row(tamanho: '15', cor: '', qtd: '0'),
+          _row(tamanho: '18', cor: '', qtd: '1'),
+          _row(tamanho: '21', cor: '', qtd: '1'),
+        ];
+        final merged = produtoFormMergeVariacoesGrade(rows);
+        produto.variacoes = merged.variacoes;
+        produto.estoquePorTamanho = const {
+          '14': 1,
+          '15': 0,
+          '18': 1,
+          '21': 1,
+        };
+        produto.quantidade = 3;
+
+        final status = await ProdutosFirestoreService.syncProdutoComStatus(
+          produto,
+          lojaId: lojaId,
+          bumpHiveTimestamp: false,
+          forcePushFromCadastro: true,
+          enqueueOnFailure: false,
+        );
+        expect(status, ProdutoSyncRemotoStatus.confirmado);
+
+        final snap = await firestore
+            .collection('lojas')
+            .doc(lojaId)
+            .collection('estoque_produtos')
+            .doc(productId)
+            .get();
+        final data = snap.data()!;
+        final remoto = data['variacoes'] as Map<String, dynamic>;
+        expect(ProdutoVariacaoExtra.somarCelula(
+          (remoto['14'] as Map)['sem-cor'],
+        ), 1);
+        expect(ProdutoVariacaoExtra.somarCelula(
+          (remoto['15'] as Map)['sem-cor'],
+        ), 0);
+        expect(ProdutoVariacaoExtra.somarCelula(
+          (remoto['18'] as Map)['sem-cor'],
+        ), 1);
+        expect(ProdutoVariacaoExtra.somarCelula(
+          (remoto['21'] as Map)['sem-cor'],
+        ), 1);
+        expect(data['quantidade'], 3);
+
+        final reloaded = Produto(
+          nome: 'Anel Multi',
+          custoReal: 20,
+          frete: 0,
+          gastosFixos: 0,
+          gastosVariaveis: 0,
+          precoSugerido: 0,
+          precoFinal: 59.9,
+          quantidade: (data['quantidade'] as num).toInt(),
+          precoUnitario: 59.9,
+          categoria: 'Aneis',
+          dataEntrada: DateTime(2026, 9, 1),
+          descricao: 'multi',
+          lojaId: lojaId,
+          idFirebase: productId,
+          slug: productId,
+          variacoes: Map<String, dynamic>.from(remoto),
+        );
+        expect(
+          produtoSaleVariationPickerOptions(reloaded).map((o) => o.label).toList(),
+          ['14 (1)', '18 (1)', '21 (1)'],
+        );
+
+        _disposeRows(rows);
+      } finally {
+        ProdutosFirestoreService.debugFirestoreOverride = null;
+      }
     });
   });
 }
