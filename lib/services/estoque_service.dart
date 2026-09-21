@@ -199,7 +199,7 @@ class EstoqueService {
       return EstoqueResult.erro(msg);
     }
 
-    if (debugFirestoreOverride == null && EstoqueTransactionService.usaBackendConfiavel && hasPendingStockMutation(produto)) {
+    if (debugFirestoreOverride == null && hasPendingStockMutation(produto)) {
       return EstoqueResult.erro('Há um ajuste pendente neste produto. Sincronize antes de uma nova movimentação.');
     }
 
@@ -346,7 +346,7 @@ class EstoqueService {
       }
 
       final syncResult = await _sincronizarComFirestore(produto, lojaId);
-      if (syncResult == ResultadoAjusteEstoque.erro && debugFirestoreOverride == null && EstoqueTransactionService.usaBackendConfiavel) {
+      if (syncResult == ResultadoAjusteEstoque.erro && debugFirestoreOverride == null) {
         return EstoqueResult.erro('A entrada está pendente de confirmação no servidor. Sincronize antes de repetir.');
       }
 
@@ -818,6 +818,59 @@ class EstoqueService {
     return cleared;
   }
 
+  /// Interpreta resposta de `kind: replace` do stockCatalogCommand.
+  static List<EstoqueTransactionResult> _resultadosReplaceDoBackend(
+    Map<String, dynamic> response,
+  ) {
+    final rows = response['products'] as List? ?? const [];
+    return rows.map((raw) {
+      final row = Map<String, dynamic>.from(raw as Map);
+      final grade = Map<String, dynamic>.from(row['variacoes'] as Map? ?? {});
+      return EstoqueTransactionResult(
+        produtoId: row['productId'] as String,
+        produtoNome: (row['nome'] ?? '').toString(),
+        produtoSlug: row['slug']?.toString(),
+        quantidadeDebitada: 0,
+        quantidadeTotalAtualizada: (row['quantidade'] as num).toInt(),
+        variacoesAtualizadas: grade,
+        estoquePorTamanhoAtualizado: (row['estoquePorTamanho'] as Map? ?? {})
+            .map((key, units) =>
+                MapEntry(key.toString(), (units as num).toInt())),
+        newStockRevision: (row['stockRevision'] as num?)?.toInt(),
+        stockOperationId:
+            (row['stockOperationId'] ?? response['operationId'])?.toString(),
+      );
+    }).toList();
+  }
+
+  /// Aplica replace confirmado no Hive e limpa pending só com opId/revision remotos.
+  static Future<void> _aplicarReplaceConfirmadoNoHive({
+    required Box<Produto> produtosBox,
+    required String lojaId,
+    required EstoqueTransactionResult result,
+  }) async {
+    await EstoqueTransactionService.atualizarHiveAposTransacao(
+      produtosBox: produtosBox,
+      lojaId: lojaId,
+      result: result,
+    );
+    // HEAD touch* re-marca pending; confirmar explicitamente após backend GREEN.
+    Produto? produto;
+    for (final p in produtosBox.values) {
+      if (p.lojaId != lojaId) continue;
+      if (result.produtoId.isNotEmpty && p.idFirebase == result.produtoId) {
+        produto = p;
+        break;
+      }
+    }
+    if (produto == null) return;
+    final op = result.stockOperationId?.trim();
+    final rev = result.newStockRevision;
+    if (op == null || op.isEmpty || rev == null) return;
+    confirmStockMutation(produto, operationId: op, revision: rev);
+    await produto.save();
+  }
+
   /// Replace CAS com refresh de revisão em conflito (`aborted`) — 1 retry.
   static Future<ResultadoAjusteEstoque> _sincronizarAjusteViaBackendComRefreshCas({
     required Produto produto,
@@ -873,8 +926,8 @@ class EstoqueService {
       if (box is! Box<Produto>) {
         throw StateError('Caixa de produtos indisponível.');
       }
-      for (final result in EstoqueTransactionService.resultadosDoBackend(response)) {
-        await EstoqueTransactionService.atualizarHiveAposTransacao(
+      for (final result in _resultadosReplaceDoBackend(response)) {
+        await _aplicarReplaceConfirmadoNoHive(
           produtosBox: box,
           lojaId: lojaId,
           result: result,
@@ -922,8 +975,8 @@ class EstoqueService {
       if (box is! Box<Produto>) {
         throw StateError('Caixa de produtos indisponível.');
       }
-      for (final result in EstoqueTransactionService.resultadosDoBackend(retry)) {
-        await EstoqueTransactionService.atualizarHiveAposTransacao(
+      for (final result in _resultadosReplaceDoBackend(retry)) {
+        await _aplicarReplaceConfirmadoNoHive(
           produtosBox: box,
           lojaId: lojaId,
           result: result,
@@ -938,7 +991,7 @@ class EstoqueService {
     Produto produto,
     String lojaId,
   ) async {
-    if (debugFirestoreOverride == null && EstoqueTransactionService.usaBackendConfiavel) {
+    if (debugFirestoreOverride == null) {
       if (produto.idFirebase.trim().isEmpty || !produto.isInBox) {
         return ResultadoAjusteEstoque.erro;
       }
