@@ -1,4 +1,4 @@
-// Exportador forense READ-ONLY do estoque Hive (MIRJOIAS only).
+// Exportador forense READ-ONLY do estoque Hive (tenants autorizados).
 // Não chama flush, sync, save, stockCatalogCommand nem qualquer write.
 
 import 'dart:convert';
@@ -11,13 +11,21 @@ import '../core/hive_box_names.dart';
 import '../core/produto_estoque_grade_snapshot.dart';
 import '../core/produto_stock_revision.dart';
 import '../models/produto.dart';
+import 'catalogo_sync_diagnostics_access.dart';
 import 'firestore_paths.dart';
 import 'produtos_firestore_service.dart';
 
-/// Loja técnica autorizada a exportar diagnóstico.
+/// IDs técnicos canônicos autorizados (estado real Firestore).
 const String kMirjoiasDiagnosticStoreId = 'mirjoias';
+const String kNathyDiagnosticStoreId = 'nathy-pratas-e-folheados';
 
-/// Códigos canário / mismatches conhecidos da auditoria.
+/// Conjunto estável de tenants do exportador de diagnóstico de estoque.
+const Set<String> kStockDiagnosticAllowedStoreIds = {
+  kMirjoiasDiagnosticStoreId,
+  kNathyDiagnosticStoreId,
+};
+
+/// Códigos canário / mismatches conhecidos da auditoria MIRJOIAS.
 const String kAn05smCode = 'AN05SM';
 const List<String> kAggregateMismatchCodes = ['AN13PR', 'BR01SM', 'PL01PR'];
 
@@ -55,13 +63,52 @@ class MirjoiasClientStockDiagnosticResult {
       const JsonEncoder.withIndent('  ').convert(payload);
 }
 
-/// Gate de UI: só MIRJOIAS + admin/owner (AccessScope isAdmin).
+/// Tenant atual está na allowlist do exportador.
+bool isAllowedDiagnosticTenant(String? storeId) {
+  final id = (storeId ?? '').trim().toLowerCase();
+  return kStockDiagnosticAllowedStoreIds.contains(id);
+}
+
+/// Prefixo de arquivo por tenant (sem cross-store).
+String stockDiagnosticFilePrefix(String storeId) {
+  final id = storeId.trim().toLowerCase();
+  if (id == kNathyDiagnosticStoreId) return 'NATHY_CLIENT_STOCK_DIAGNOSTIC';
+  if (id == kMirjoiasDiagnosticStoreId) {
+    return 'MIRJOIAS_CLIENT_STOCK_DIAGNOSTIC';
+  }
+  return 'CLIENT_STOCK_DIAGNOSTIC';
+}
+
+/// Gate síncrono de UI (tenant + flag admin já resolvida).
+/// Preferir [canAccessStockDiagnosticExport] na tela (mesmo predicate do
+/// "Diagnóstico de sincronização do catálogo").
+bool stockDiagnosticExportVisible({
+  required String? storeId,
+  required bool canAccessExistingAdminDiagnostic,
+}) {
+  return isAllowedDiagnosticTenant(storeId) &&
+      canAccessExistingAdminDiagnostic;
+}
+
+/// @deprecated Use [stockDiagnosticExportVisible] / [canAccessStockDiagnosticExport].
 bool mirjoiasDiagnosticExportVisible({
   required String? storeId,
   required bool isAdmin,
 }) {
-  return isAdmin &&
-      (storeId ?? '').trim().toLowerCase() == kMirjoiasDiagnosticStoreId;
+  return stockDiagnosticExportVisible(
+    storeId: storeId,
+    canAccessExistingAdminDiagnostic: isAdmin,
+  );
+}
+
+/// OWNER/ADMIN (mesmo predicate do diagnóstico de catálogo) + tenant allowlist.
+Future<bool> canAccessStockDiagnosticExport({
+  required String? storeId,
+  Future<bool> Function()? adminDiagnosticAccess,
+}) async {
+  if (!isAllowedDiagnosticTenant(storeId)) return false;
+  final check = adminDiagnosticAccess ?? CatalogoSyncDiagnosticsAccess.podeAcessar;
+  return check();
 }
 
 class MirjoiasClientStockDiagnosticExport {
@@ -114,18 +161,20 @@ class MirjoiasClientStockDiagnosticExport {
     return snap.data();
   }
 
-  /// Gera diagnóstico. Lança [StateError] se loja ≠ mirjoias.
+  /// Gera diagnóstico. Lança [StateError] se loja não estiver na allowlist.
   Future<MirjoiasClientStockDiagnosticResult> build({
     required String storeId,
     required Iterable<Produto> hiveProducts,
   }) async {
     final loja = storeId.trim().toLowerCase();
-    if (loja != kMirjoiasDiagnosticStoreId) {
+    if (!isAllowedDiagnosticTenant(loja)) {
       throw StateError(
-        'Diagnostic export is restricted to store "$kMirjoiasDiagnosticStoreId".',
+        'Diagnostic export is restricted to authorized stores '
+        '(${kStockDiagnosticAllowedStoreIds.join(", ")}).',
       );
     }
 
+    final filePrefix = stockDiagnosticFilePrefix(loja);
     final now = _generatedAt ?? DateTime.now().toUtc();
     final stamp = _fileStamp(now);
 
@@ -133,6 +182,18 @@ class MirjoiasClientStockDiagnosticExport {
         .where((p) =>
             p.lojaId.trim().isEmpty ||
             p.lojaId.trim().toLowerCase() == loja)
+        .where((p) {
+          // Isolamento: nunca incluir produto cujo idFirebase aponta outra loja.
+          final id = p.idFirebase.trim().toLowerCase();
+          if (id.isEmpty) return true;
+          for (final other in kStockDiagnosticAllowedStoreIds) {
+            if (other == loja) continue;
+            if (id.startsWith('$other-') || id.startsWith('${other}_')) {
+              return false;
+            }
+          }
+          return true;
+        })
         .toList();
 
     final hiveRows = <Map<String, dynamic>>[];
@@ -399,6 +460,9 @@ class MirjoiasClientStockDiagnosticExport {
       'hiveSchemaNote':
           'Pending mutations live on Produto fields (pendingStockOperationId); no separate pending Hive box.',
       'READ_ONLY': true,
+      'TENANT_ISOLATION': true,
+      'CROSS_STORE_READS': 0,
+      'CROSS_STORE_WRITES': 0,
       'WRITE_ATTEMPTS': writeAttempts,
       'HIVE_PRODUCT_COUNT': hiveRows.length,
       'HIVE_TOTAL_QTY': localQtySum,
@@ -438,12 +502,12 @@ class MirjoiasClientStockDiagnosticExport {
     // Safety: strip accidental secrets by key name.
     _redactSecretsDeep(payload);
 
-    final txt = _buildTxt(payload, now);
+    final txt = _buildTxt(payload, now, filePrefix: filePrefix);
     return MirjoiasClientStockDiagnosticResult(
       payload: payload,
       txtSummary: txt,
-      jsonFileName: 'MIRJOIAS_CLIENT_STOCK_DIAGNOSTIC_$stamp.json',
-      txtFileName: 'MIRJOIAS_CLIENT_STOCK_DIAGNOSTIC_$stamp.txt',
+      jsonFileName: '${filePrefix}_$stamp.json',
+      txtFileName: '${filePrefix}_$stamp.txt',
     );
   }
 
@@ -668,12 +732,17 @@ class MirjoiasClientStockDiagnosticExport {
     }
   }
 
-  String _buildTxt(Map<String, dynamic> payload, DateTime now) {
+  String _buildTxt(
+    Map<String, dynamic> payload,
+    DateTime now, {
+    required String filePrefix,
+  }) {
     final an = payload['AN05SM'] as Map? ?? {};
     final buf = StringBuffer()
-      ..writeln('MIRJOIAS CLIENT STOCK DIAGNOSTIC (READ-ONLY)')
+      ..writeln('$filePrefix (READ-ONLY)')
       ..writeln('generatedAt: ${now.toIso8601String()}')
       ..writeln('storeId: ${payload['storeId']}')
+      ..writeln('TENANT_ISOLATION: true')
       ..writeln('liveBuildId: ${payload['liveBuildId']}')
       ..writeln('liveGitCommit: ${payload['liveGitCommit']}')
       ..writeln('HIVE_PRODUCT_COUNT: ${payload['HIVE_PRODUCT_COUNT']}')

@@ -130,6 +130,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
   bool _catalogoPrecisaAtualizar = false;
   int _comprasRevendaPendentesCount = 0;
   bool _podeRecuperacaoSync = false;
+  bool _podeExportDiagnosticoEstoque = false;
 
   /// Mesma identidade do Catálogo Interno (filtro estoque zero para vendedor).
   AccessScopeIdentity? _scope;
@@ -209,6 +210,12 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
       }
 
       _box = Hive.box<Produto>(boxName);
+
+      if (mounted) {
+        setState(() => _lojaId = lojaId);
+      } else {
+        _lojaId = lojaId;
+      }
 
       await _verificarPermissao();
 
@@ -534,11 +541,16 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
         AccessScopeService.canSeeStockCostAndSupplier(scope);
     final podeVerTotais =
         AccessScopeService.canSeeStockFinancialTotals(scope);
+    final lojaAtual = _lojaId;
+    final podeExportDiag = await canAccessStockDiagnosticExport(
+      storeId: lojaAtual,
+    );
     if (!mounted) return;
     setState(() {
       _scope = scope;
       _temPermissao = permitido;
       _podeRecuperacaoSync = podeRecuperacao;
+      _podeExportDiagnosticoEstoque = podeExportDiag;
       _podeEditarEstoque = podeEditar;
       _podeVerCusto = podeVerCusto;
       _podeVerTotaisFinanceirosEstoque = podeVerTotais;
@@ -2455,14 +2467,14 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     }
   }
 
-  /// Diagnóstico forense READ-ONLY (somente MIRJOIAS + admin). Sem flush/sync/write.
-  Future<void> _exportarDiagnosticoEstoqueMirjoias() async {
-    if (!mirjoiasDiagnosticExportVisible(
-      storeId: _lojaId,
-      isAdmin: _scope?.isAdmin == true,
-    )) {
-      _showSnackBar('Diagnóstico disponível apenas para a loja autorizada.',
-          isError: true);
+  /// Diagnóstico forense READ-ONLY (MIRJOIAS / Nathy + owner/admin). Sem flush/sync/write.
+  Future<void> _exportarDiagnosticoEstoqueCliente() async {
+    final allowed = await canAccessStockDiagnosticExport(storeId: _lojaId);
+    if (!allowed) {
+      if (mounted) {
+        _showSnackBar('Diagnóstico disponível apenas para a loja autorizada.',
+            isError: true);
+      }
       return;
     }
     setState(() => _exportandoDiagnosticoEstoque = true);
@@ -4293,6 +4305,38 @@ String _formatGradeTexto(Produto p) {
                 );
               },
             ),
+            if (_podeExportDiagnosticoEstoque)
+              _drawerTile(
+                icon: Icons.fact_check_outlined,
+                iconColor: _warningColor,
+                label: _exportandoDiagnosticoEstoque
+                    ? 'Gerando diagnóstico…'
+                    : 'Exportar diagnóstico de estoque',
+                subtitle: 'Hive + remoto (somente leitura)',
+                onTap: _exportandoDiagnosticoEstoque
+                    ? null
+                    : () {
+                        Navigator.pop(context);
+                        _exportarDiagnosticoEstoqueCliente();
+                      },
+              ),
+          ],
+          if (!_podeRecuperacaoSync && _podeExportDiagnosticoEstoque) ...[
+            const Divider(height: 24),
+            _drawerTile(
+              icon: Icons.fact_check_outlined,
+              iconColor: _warningColor,
+              label: _exportandoDiagnosticoEstoque
+                  ? 'Gerando diagnóstico…'
+                  : 'Exportar diagnóstico de estoque',
+              subtitle: 'Hive + remoto (somente leitura)',
+              onTap: _exportandoDiagnosticoEstoque
+                  ? null
+                  : () {
+                      Navigator.pop(context);
+                      _exportarDiagnosticoEstoqueCliente();
+                    },
+            ),
           ],
           _drawerTile(
             icon: Icons.auto_awesome,
@@ -4453,23 +4497,6 @@ String _formatGradeTexto(Produto p) {
               _exportarEstoque();
             },
           ),
-          if (mirjoiasDiagnosticExportVisible(
-            storeId: _lojaId,
-            isAdmin: _scope?.isAdmin == true,
-          ))
-            _drawerTile(
-              icon: Icons.bug_report_outlined,
-              iconColor: _warningColor,
-              label: _exportandoDiagnosticoEstoque
-                  ? 'Gerando diagnóstico…'
-                  : 'Exportar diagnóstico de estoque',
-              onTap: _exportandoDiagnosticoEstoque
-                  ? null
-                  : () {
-                      Navigator.pop(context);
-                      _exportarDiagnosticoEstoqueMirjoias();
-                    },
-            ),
           _drawerTile(
             icon: Icons.rocket_launch,
             iconColor: _primaryColor,

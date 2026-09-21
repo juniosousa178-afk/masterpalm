@@ -123,18 +123,34 @@ void main() {
     expect(result.payload['READ_ONLY'], isTrue);
   });
 
-  test('5-6. restricted to mirjoias; other store throws; UI gate', () {
+  test('5-6. restricted to allowlist; other store throws; UI gate', () {
     expect(
-      mirjoiasDiagnosticExportVisible(storeId: 'mirjoias', isAdmin: true),
+      stockDiagnosticExportVisible(
+        storeId: 'mirjoias',
+        canAccessExistingAdminDiagnostic: true,
+      ),
       isTrue,
     );
     expect(
-      mirjoiasDiagnosticExportVisible(storeId: 'nathy-pratas-e-folheados', isAdmin: true),
+      stockDiagnosticExportVisible(
+        storeId: 'nathy-pratas-e-folheados',
+        canAccessExistingAdminDiagnostic: true,
+      ),
+      isTrue,
+    );
+    expect(
+      stockDiagnosticExportVisible(
+        storeId: 'nathy-pratas-e-folheados',
+        canAccessExistingAdminDiagnostic: false,
+      ),
       isFalse,
     );
     expect(
-      mirjoiasDiagnosticExportVisible(storeId: 'mirjoias', isAdmin: false),
-      isFalse,
+      mirjoiasDiagnosticExportVisible(
+        storeId: 'nathy-pratas-e-folheados',
+        isAdmin: true,
+      ),
+      isTrue,
     );
 
     final exporter = MirjoiasClientStockDiagnosticExport(firestore: firestore);

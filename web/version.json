@@ -1,10 +1,10 @@
 {
-  "buildId": "mirjoias-stock-diagnostic-1.0.88",
+  "buildId": "stock-diagnostic-mirjoias-nathy-1.0.89",
   "hostingTarget": "masterpalm-58c46",
   "siteId": "masterpalm-58c46",
   "expectedDomain": "app.mastepalm.com.br",
-  "webVersion": "1.0.88+102",
+  "webVersion": "1.0.89+103",
   "featureFlagDefault": false,
   "globalRollout": true,
-  "notes": "Read-only MIRJOIAS client Hive stock diagnostic export (admin-only). Preserves auto-stock-sync-before-sale baseline."
+  "notes": "Enable read-only stock diagnostic export for MIRJOIAS and Nathy Pratas e Folheados (owner/admin)."
 }
