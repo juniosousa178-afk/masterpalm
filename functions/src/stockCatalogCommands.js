@@ -4,6 +4,7 @@ import {FieldValue} from 'firebase-admin/firestore';
 import {documentId, storeRef, requireAuthenticated, authorizeStockTransaction, SERVER_PAYMENT_AUTH} from './stockCatalogAccess.js';
 import {isMap, stockError, normalizeStock, projectCatalog, quantity, resolveKey, resolveExtraKey, validateEditorial, inferStockKind} from './catalogStockProjection.js';
 import {PRODUCT_VALIDATION_FAILED, REASON, makeIssue, productValidationError, gradeKeyLabel} from './productValidationErrors.js';
+import {ATOMIC_PDV_SALE_FLAG, parseAtomicPdvSale, buildCanonicalEstoqueVendaDoc} from './stockCatalogPdvSale.js';
 
 const MAX_PRODUCTS = 25;
 const ordered = value => Array.isArray(value) ? value.map(ordered) : isMap(value)
@@ -16,7 +17,7 @@ function keysOnly(data, allowed) {
   if (!isMap(data) || Object.keys(data).some(k => !allowed.includes(k))) throw stockError('invalid-argument', 'Unknown or protected command field');
 }
 function parseCommand(raw) {
-  keysOnly(raw, ['protocolVersion','lojaId','operationId','kind','items','sourceOperationId','editorial','definition','tombstoneKeys']);
+  keysOnly(raw, ['protocolVersion','lojaId','operationId','kind','items','sourceOperationId','editorial','definition','tombstoneKeys', ATOMIC_PDV_SALE_FLAG, 'sale']);
   if (raw.protocolVersion !== 1) throw stockError('failed-precondition', 'Unsupported stock protocol');
   documentId(raw.lojaId, 'lojaId'); documentId(raw.operationId, 'operationId');
   if (!['sale','restock','adjust','restore','editorial','create','replace','delete','undo','tombstoneVariation','clearVariationTombstone'].includes(raw.kind)) {
@@ -60,8 +61,22 @@ function parseCommand(raw) {
   } else if ('tombstoneKeys' in raw) {
     throw stockError('invalid-argument', 'tombstoneKeys only for variation tombstone commands');
   }
+  let atomicPdvSale = false;
+  let atomicSale = null;
+  if (raw[ATOMIC_PDV_SALE_FLAG] === true) {
+    if (raw.kind !== 'sale') throw stockError('invalid-argument', 'atomicPdvSale only for sale');
+    atomicPdvSale = true;
+    atomicSale = parseAtomicPdvSale(raw.sale, {
+      operationId: raw.operationId, lojaId: raw.lojaId, stockItems: items,
+    });
+  } else {
+    if (ATOMIC_PDV_SALE_FLAG in raw) {
+      throw stockError('invalid-argument', 'atomicPdvSale must be true when set');
+    }
+    if ('sale' in raw) throw stockError('invalid-argument', 'sale requires atomicPdvSale=true');
+  }
   if (Buffer.byteLength(JSON.stringify(raw)) > 100000) throw stockError('resource-exhausted', 'Command too large');
-  return {...raw, items, tombstoneKeys};
+  return {...raw, items, tombstoneKeys, atomicPdvSale, atomicSale};
 }
 function technicalSimpleColor(value) {
   const n = String(value ?? '').trim().toLowerCase().replace(/\s+/gu, '');
@@ -133,7 +148,12 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
       : command.kind;
     const uid = await authorizeStockTransaction(tx, base, auth, permission);
     const opRef = base.collection('stock_catalog_operations').doc(command.operationId);
+    const saleRef = command.atomicPdvSale
+      ? base.collection('estoque_vendas').doc(command.operationId)
+      : null;
     const op = await tx.get(opRef);
+    // Atomic PDV: all reads precede writes — sale doc identity checked before mutation.
+    const existingSale = saleRef ? await tx.get(saleRef) : null;
     if (op.exists && (op.data().requestHash !== hash || op.data().actorUid !== uid)) throw stockError('already-exists', 'Operation identity conflict');
     // Replays return current canonical values, even after later deletion/editing.
     // They never traverse a recipe that may have changed since the first commit.
@@ -143,7 +163,17 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
         const current = await tx.get(base.collection('estoque_produtos').doc(documentId(id)));
         if (current.exists) products.push({productId: id, ...normalizeStock(current.data())});
       }
-      return {alreadyApplied: true, operationId: command.operationId, products};
+      const replay = {alreadyApplied: true, operationId: command.operationId, products};
+      if (command.atomicPdvSale) {
+        replay.saleCommitted = true;
+        replay.saleId = command.operationId;
+        replay.authoritativeSalePersisted = true;
+        replay.authoritativeStockCommitted = true;
+      }
+      return replay;
+    }
+    if (existingSale?.exists) {
+      throw stockError('already-exists', 'Sale document conflict without applied operation');
     }
     let items = command.items, sourceRef, source;
     if (command.kind === 'restore') {
@@ -380,11 +410,29 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
       if (p.live) set(live, {...p.live, updatedAt: FieldValue.serverTimestamp()}); else remove(live);
     }
     writes.push(() => tx.create(opRef, {actorUid: uid, kind: command.kind, requestHash: hash, items: appliedItems, catalogCountDeltas, status: 'applied',
-      result: {productIds: ids}, sourceOperationId: command.sourceOperationId ?? null, createdAt: FieldValue.serverTimestamp()}));
+      result: {productIds: ids}, sourceOperationId: command.sourceOperationId ?? null,
+      ...(command.atomicPdvSale ? {atomicPdvSale: true, saleId: command.operationId} : {}),
+      createdAt: FieldValue.serverTimestamp()}));
+    if (command.atomicPdvSale) {
+      // Emulator-only regression hook: abort after in-memory stock apply, before durable writes.
+      if (process.env.FIRESTORE_EMULATOR_HOST &&
+          command.atomicSale.observacao === '__FORCE_SALE_WRITE_FAIL__') {
+        throw stockError('internal', 'Forced sale write failure');
+      }
+      const saleDoc = buildCanonicalEstoqueVendaDoc(command.atomicSale, {actorUid: uid});
+      writes.push(() => tx.create(saleRef, saleDoc));
+    }
     if (sourceRef) writes.push(() => tx.update(sourceRef, {restoredBy: command.operationId}));
     if (writes.length + reservedWrites > 100) throw stockError('resource-exhausted', 'Stock transaction write budget exceeded');
     for (const write of writes) write();
-    return {alreadyApplied: false, operationId: command.operationId, products};
+    const result = {alreadyApplied: false, operationId: command.operationId, products};
+    if (command.atomicPdvSale) {
+      result.saleCommitted = true;
+      result.saleId = command.operationId;
+      result.authoritativeSalePersisted = true;
+      result.authoritativeStockCommitted = true;
+    }
+    return result;
 }
 
 export async function publishStockProduct(db, lojaId, productId, auth) {
