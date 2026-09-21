@@ -1761,12 +1761,30 @@ class ProdutosFirestoreService {
         _dlog('[ProdutoSync] create estoque_produtos/$produtoId');
       }
 
+      final preservouGradeRemotaNoPush =
+          resolvedVariationPush.rehydrateLocalFromRemote;
       final remoteGradeBeforePush = docSnap.exists && existingData != null
           ? ProdutoEstoqueGradeSnapshot.fromRemote(existingData)
           : null;
-      final localGradePush = ProdutoEstoqueGradeSnapshot.fromProduto(produto);
-      if (remoteGradeBeforePush == null ||
-          localGradePush.gradeDiffersFrom(remoteGradeBeforePush)) {
+      // Comparar a grade EFETIVA do payload (após preserve/rehydrate), não o Hive
+      // stale — senão save editorial cria pending + CAS com revision antiga.
+      final effectiveGradePush = ProdutoEstoqueGradeSnapshot.fromRemote({
+        'quantidade': preservouGradeRemotaNoPush && existingData != null
+            ? (existingData['quantidade'] ?? produto.quantidade)
+            : produto.quantidade,
+        'variacoes': variacoesPushEfetivo,
+        'estoquePorTamanho': estoquePorTamPushEfetivo,
+      });
+      final gradeMutatingOnPush = !preservouGradeRemotaNoPush &&
+          (remoteGradeBeforePush == null ||
+              effectiveGradePush.gradeDiffersFrom(remoteGradeBeforePush));
+      if (preservouGradeRemotaNoPush && existingData != null) {
+        final remoteQty = (existingData['quantidade'] as num?)?.toInt();
+        if (remoteQty != null) {
+          produtoData['quantidade'] = remoteQty < 0 ? 0 : remoteQty;
+        }
+      }
+      if (gradeMutatingOnPush) {
         produtoData[kProdutoStockUpdatedAtField] = FieldValue.serverTimestamp();
         final remoteRev = parseStockRevisionFromRemote(existingData);
         final opId = hasPendingStockMutation(produto)
@@ -1784,11 +1802,19 @@ class ProdutosFirestoreService {
           nextRevision: remoteRev + 1,
           operationId: opId,
         );
+      } else if (existingData != null) {
+        // Projeção/editorial: espelhar revision remota sem CAS / pending.
+        final remoteRev = parseStockRevisionFromRemote(existingData);
+        final remoteOp = parseStockOperationIdFromRemote(existingData);
+        if (remoteRev > 0) {
+          produtoData[kProdutoStockRevisionField] = remoteRev;
+        }
+        if (remoteOp != null && remoteOp.isNotEmpty) {
+          produtoData[kProdutoStockOperationIdField] = remoteOp;
+        }
       }
 
       final variationKeysToRemove = <String>{};
-      final preservouGradeRemotaNoPush =
-          resolvedVariationPush.rehydrateLocalFromRemote;
       applyVariationFieldsToFirestorePayload(
         produtoData,
         variacoes: variacoesPushEfetivo,
@@ -2328,11 +2354,9 @@ class ProdutosFirestoreService {
                   local: p,
                   data: data,
                 );
-                applyAuthoritativeRemoteStockToProduto(
-                  p,
-                  remote: data,
-                  updateQuantity: false,
-                );
+                // NÃO chamar applyAuthoritativeRemoteStockToProduto com
+                // updateQuantity:false — adotava stockRevision/op remoto
+                // preservando qty local divergente (51 LOCAL_UNTRACKED).
               }
             } else {
               p.nome = data['nome'] ?? p.nome;

@@ -166,6 +166,19 @@ class _NovaVendaVariacaoSheetState extends State<NovaVendaVariacaoSheet> {
     if (!_podeConfirmar) return;
     if (_quantidade > _estoqueDisponivel) return;
 
+    // Fail-closed: produto com identidades reais não pode confirmar sem tamanho/cor.
+    if (produtoHasVariationIdentities(widget.produto)) {
+      final opts = produtoSaleVariationPickerOptions(widget.produto);
+      if (opts.isEmpty) return;
+      final needsTam = _mostrarTamanho && _tamanhosDisponiveis.isNotEmpty;
+      if (needsTam && _tamanhoSelecionado.trim().isEmpty) return;
+      if (widget.produto.temVariacaoSoloCor &&
+          _coresDisponiveis.isNotEmpty &&
+          _corSelecionada.trim().isEmpty) {
+        return;
+      }
+    }
+
     final ex = _extraSelecionado.trim();
     final corKey = _corSelecionada.isEmpty ? 'sem-cor' : _corSelecionada;
     final tamKey =

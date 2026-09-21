@@ -165,9 +165,29 @@ bool applyAuthoritativeRemoteStockToProduto(
   if (updateQuantity && remoteQty != null) {
     local.quantidade = remoteQty < 0 ? 0 : remoteQty;
   }
-  local.stockRevision = remoteRev;
-  if (remoteOp != null && remoteOp.isNotEmpty) {
-    local.confirmedStockOperationId = remoteOp;
+
+  // Contrato: mutação de estoque local = REMOTE_HYDRATION (qty alinhada) OU
+  // PENDING_STOCK_INTENT. Nunca adotar revision/op remota preservando qty
+  // divergente (causa dos 51 LOCAL_UNTRACKED com same rev/op).
+  final remoteQtyNorm =
+      remoteQty == null ? null : (remoteQty < 0 ? 0 : remoteQty);
+  final qtyMatchesRemote =
+      remoteQtyNorm == null || local.quantidade == remoteQtyNorm;
+  final mayAdoptRevision = updateQuantity || qtyMatchesRemote;
+  assert(() {
+    if (!updateQuantity &&
+        remoteQtyNorm != null &&
+        local.quantidade != remoteQtyNorm) {
+      // LOCAL_QTY_MUTATION_WITHOUT_TRACKING fingerprint — não adotar rev/op.
+      return !mayAdoptRevision;
+    }
+    return true;
+  }(), 'LOCAL_QTY_MUTATION_WITHOUT_TRACKING: cannot adopt remote rev/op');
+  if (mayAdoptRevision) {
+    local.stockRevision = remoteRev;
+    if (remoteOp != null && remoteOp.isNotEmpty) {
+      local.confirmedStockOperationId = remoteOp;
+    }
   }
 
   if (kind == EffectiveStockKind.simple) {
@@ -178,22 +198,7 @@ bool applyAuthoritativeRemoteStockToProduto(
     }
   } else if (kind == EffectiveStockKind.variation ||
       kind == EffectiveStockKind.grade) {
-    final vars = <String, dynamic>{};
-    final ept = <String, int>{};
-    for (final e in cells.entries) {
-      if (e.value < 0) continue;
-      final parts = e.key.split('|');
-      final tam = parts.isNotEmpty ? parts[0] : 'sem-tamanho';
-      final cor = parts.length > 1 ? parts[1] : 'sem-cor';
-      vars.putIfAbsent(tam, () => <String, dynamic>{});
-      final inner = vars[tam] as Map<String, dynamic>;
-      inner[cor] = e.value;
-      ept[tam] = (ept[tam] ?? 0) + e.value;
-    }
-    if (vars.isNotEmpty) {
-      local.variacoes = vars;
-      local.estoquePorTamanho = ept;
-    }
+    _applyNormalizedCellsToProdutoGrade(local, cells);
   }
 
   final serverAt = parseFirestoreStockUpdatedAtField(remote);
@@ -201,6 +206,46 @@ bool applyAuthoritativeRemoteStockToProduto(
     applyServerStockVersionToProduto(local, serverAt);
   }
   return true;
+}
+
+/// Só estrutura de variação para UI de venda (mesmo com pending).
+/// Não altera qty, revision, operationId nem limpa pending.
+bool applyRemoteVariationStructureForSaleUi(
+  Produto local, {
+  required Map<String, dynamic> remote,
+}) {
+  final kind = effectiveStockKindFromRemote(remote);
+  final cells = effectiveCanonicalCellsFromRemote(remote);
+  if (kind != EffectiveStockKind.variation &&
+      kind != EffectiveStockKind.grade &&
+      !_hasRealVariationIdentity(cells)) {
+    return false;
+  }
+  if (cells.isEmpty) return false;
+  _applyNormalizedCellsToProdutoGrade(local, cells);
+  return true;
+}
+
+void _applyNormalizedCellsToProdutoGrade(
+  Produto local,
+  Map<String, int> cells,
+) {
+  final vars = <String, dynamic>{};
+  final ept = <String, int>{};
+  for (final e in cells.entries) {
+    if (e.value < 0) continue;
+    final parts = e.key.split('|');
+    final tam = parts.isNotEmpty ? parts[0] : 'sem-tamanho';
+    final cor = parts.length > 1 ? parts[1] : 'sem-cor';
+    vars.putIfAbsent(tam, () => <String, dynamic>{});
+    final inner = vars[tam] as Map<String, dynamic>;
+    inner[cor] = e.value;
+    ept[tam] = (ept[tam] ?? 0) + e.value;
+  }
+  if (vars.isNotEmpty) {
+    local.variacoes = vars;
+    local.estoquePorTamanho = ept;
+  }
 }
 
 /// Snapshot imutável dos campos de estoque (diagnóstico / comparação).

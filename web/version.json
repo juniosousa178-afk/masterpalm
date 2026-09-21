@@ -1,10 +1,10 @@
 {
-  "buildId": "stock-diagnostic-single-file-1.0.91",
+  "buildId": "nathy-sale-variation-routing-fix-1.0.92",
   "hostingTarget": "masterpalm-58c46",
   "siteId": "masterpalm-58c46",
   "expectedDomain": "app.mastepalm.com.br",
-  "webVersion": "1.0.91+105",
+  "webVersion": "1.0.92+106",
   "featureFlagDefault": false,
   "globalRollout": true,
-  "notes": "Stock diagnostic export: single JSON download with embedded summary (no separate TXT). Mobile-safe ONE_CLICK=ONE_FILE."
+  "notes": "Nathy: hydrate variation stock before sale qty sheet; editorial save skips stale CAS. Preserves single-JSON diagnostic export from 1.0.91."
 }

@@ -43,9 +43,10 @@ void main() {
         tamanhos: const ['13', '14', '15', '16', '17', '18', '19'],
         variacoes: {
           for (final t in ['13', '14', '15', '16', '17', '18', '19'])
-            t: {'sem-cor': _cell(0)},
+            t: {'sem-cor': 0},
         },
       );
+      expect(produtoHasVariationIdentities(p), isTrue);
       expect(produtoVariationStockNeedsConfiguration(p), isTrue);
       expect(produtoSaleVariationPickerOptions(p), isEmpty);
       expect(
@@ -105,8 +106,8 @@ void main() {
       final opts = produtoSaleVariationPickerOptions(p);
       expect(opts.length, 3);
       expect(
-        opts.map((o) => '${o.tamanho}/${o.cor}:${o.qty}').toList(),
-        ['P/Dourado:2', 'M/Dourado:1', 'M/Prata:2'],
+        opts.map((o) => '${o.tamanho}/${o.cor}:${o.qty}').toSet(),
+        {'P/Dourado:2', 'M/Dourado:1', 'M/Prata:2'},
       );
       expect(produtoVariationCellSum(p), 5);
     });

@@ -46,11 +46,12 @@ int produtoVariationCellSum(Produto p) {
   return sumNormalizedCells(cells);
 }
 
-/// Identidades de variação com estoque canônico (não basta lista `tamanhos`).
+/// Identidades de variação cadastradas (inclui qty 0 — para “não configurado”).
+/// Não basta lista `tamanhos`. Célula agregada `sem-tamanho|sem-cor` NÃO conta.
 bool produtoHasVariationIdentities(Produto p) {
-  final cells = normalizeSemCorAliasCells(
-    ProdutoEstoqueGradeSnapshot.fromProduto(p).cells,
-  );
+  // Usar células brutas: normalizeSemCorAliasCells descarta qty<=0 e apagaria
+  // o sinal de “variação cadastrada sem estoque”.
+  final cells = ProdutoEstoqueGradeSnapshot.fromProduto(p).cells;
   for (final key in cells.keys) {
     final parts = key.split('|');
     final tam = parts.isNotEmpty ? parts[0] : '';

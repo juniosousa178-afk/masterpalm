@@ -179,7 +179,8 @@ void main() {
       expect(opts.map((e) => e.label).toList(), ['15 (1)', '22 (1)']);
     });
 
-    test('pending blocks overwrite', () async {
+    test('pending blocks qty overwrite but applies variation structure for sale UI',
+        () async {
       const id = 'nathy-pending-block';
       final local = _p(
         id: id,
@@ -212,10 +213,122 @@ void main() {
         lojaId: 'nathy-pratas-e-folheados',
         produto: local,
       );
-      expect(ok, isFalse);
+      expect(ok, isTrue);
       expect(hasPendingStockMutation(local), isTrue);
-      expect(local.quantidade, 1);
-      expect(produtoSaleVariationPickerOptions(local).single.tamanho, '21');
+      expect(local.quantidade, 1); // qty not overwritten
+      expect(local.pendingStockOperationId, 'pend-1');
+      expect(
+        produtoSaleVariationPickerOptions(local).map((e) => e.tamanho).toList(),
+        ['14', '18', '21'],
+      );
+    });
+
+    test('resolveSaleVariationRoute opens picker after stale Hive→remote', () async {
+      const id = 'nathy-pratas-e-folheados-anel-lacinho-encanto';
+      final local = _p(
+        id: id,
+        nome: 'Anel Lacinho Encanto',
+        qty: 2,
+        rev: 7,
+        tamanhos: ['15', '22'],
+      );
+      await fs
+          .collection('lojas')
+          .doc('nathy-pratas-e-folheados')
+          .collection(FSPaths.estoqueProdutosCol)
+          .doc(id)
+          .set({
+        'quantidade': 2,
+        'stockKind': 'variation',
+        'stockRevision': 8,
+        'stockOperationId': 'op-lacinho',
+        'variacoes': {
+          '15': {'sem-cor': 1},
+          '22': {'sem-cor': 1},
+        },
+        'estoquePorTamanho': {'15': 1, '22': 1},
+      });
+
+      final route =
+          await VendaProdutoStockHydrateService.resolveSaleVariationRoute(
+        lojaId: 'nathy-pratas-e-folheados',
+        produto: local,
+      );
+      expect(route.decision, SaleVariationRouteDecision.openVariationPicker);
+      expect(route.effectiveKindWire, 'variation');
+      expect(
+        route.options.map((e) => e.variationKey).toList(),
+        ['15|sem-cor', '22|sem-cor'],
+      );
+    });
+
+    test('resolveSaleVariationRoute failClosed when variation without options',
+        () async {
+      const id = 'nathy-var-empty';
+      final local = _p(id: id, nome: 'Vazio', qty: 0, rev: 1);
+      await fs
+          .collection('lojas')
+          .doc('nathy-pratas-e-folheados')
+          .collection(FSPaths.estoqueProdutosCol)
+          .doc(id)
+          .set({
+        'quantidade': 0,
+        'stockKind': 'variation',
+        'stockRevision': 2,
+        'variacoes': {
+          '15': {'sem-cor': 0},
+          '22': {'sem-cor': 0},
+        },
+      });
+
+      final route =
+          await VendaProdutoStockHydrateService.resolveSaleVariationRoute(
+        lojaId: 'nathy-pratas-e-folheados',
+        produto: local,
+      );
+      expect(route.decision, SaleVariationRouteDecision.failClosed);
+    });
+
+    test('pending + remote variation still opens picker (structure hydrate)',
+        () async {
+      const id = 'nathy-pratas-e-folheados-anel-lacinho-encanto';
+      final local = _p(
+        id: id,
+        nome: 'Anel Lacinho Encanto',
+        qty: 2,
+        rev: 8,
+        pendingOp: 'stale-pend',
+        pendingBase: 8,
+        tamanhos: ['15', '22'],
+      );
+      await fs
+          .collection('lojas')
+          .doc('nathy-pratas-e-folheados')
+          .collection(FSPaths.estoqueProdutosCol)
+          .doc(id)
+          .set({
+        'quantidade': 2,
+        'stockKind': 'variation',
+        'stockRevision': 8,
+        'variacoes': {
+          '15': {'sem-cor': 1},
+          '22': {'sem-cor': 1},
+        },
+        'estoquePorTamanho': {'15': 1, '22': 1},
+      });
+
+      final route =
+          await VendaProdutoStockHydrateService.resolveSaleVariationRoute(
+        lojaId: 'nathy-pratas-e-folheados',
+        produto: local,
+      );
+      expect(route.decision, SaleVariationRouteDecision.openVariationPicker);
+      expect(hasPendingStockMutation(local), isTrue);
+      expect(local.quantidade, 2);
+      expect(
+        route.options.map((e) => e.label).toList(),
+        ['15 (1)', '22 (1)'],
+      );
     });
   });
 

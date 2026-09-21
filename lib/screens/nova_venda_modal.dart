@@ -473,24 +473,86 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     return preco > 0 ? preco : _precoDoProduto(p);
   }
 
-  /// Reidrata grade/qty do remoto antes do picker (Hive é cache).
-  Future<Produto> _hydrateProdutoParaVenda(Produto prod) async {
-    try {
-      await VendaProdutoStockHydrateService.hydrateProdutoFromRemoteEstoque(
-        lojaId: lojaId,
-        produto: prod,
-      );
-    } catch (e) {
-      logW(
-        '[VENDA-HYDRATE] falha type=${e.runtimeType} produto=${prod.idFirebase}',
-      );
-    }
-    return prod;
-  }
-
   bool _produtoRequerPickerVariacao(Produto prod) =>
-      VendaProdutoStockHydrateService.requiresVariationPicker(prod) ||
-      produtoSaleVariationPickerOptions(prod).isNotEmpty;
+      VendaProdutoStockHydrateService.requiresVariationPicker(prod);
+
+  static const _kFailClosedVariacaoMsg =
+      'Não foi possível carregar as variações deste produto. '
+      'Atualize os dados e tente novamente.';
+
+  Future<void> _aplicarProdutoNaLinhaAposRotaVenda({
+    required int index,
+    required Produto produtoBase,
+  }) async {
+    final route = await VendaProdutoStockHydrateService.resolveSaleVariationRoute(
+      lojaId: lojaId,
+      produto: produtoBase,
+    );
+    final hydrated = route.produto;
+
+    if (route.decision == SaleVariationRouteDecision.failClosed) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text(_kFailClosedVariacaoMsg)),
+        );
+      }
+      return;
+    }
+
+    if (route.decision == SaleVariationRouteDecision.openVariationPicker) {
+      if (!mounted) return;
+      await NovaVendaVariacaoSheet.show(
+        context,
+        produto: hydrated,
+        preco: _precoDoProduto(hydrated),
+        onConfirmar: (tam, cor, qtd, extraEv, extraResumo) {
+          if (tam.trim().isEmpty &&
+              cor.trim().isEmpty &&
+              produtoHasVariationIdentities(hydrated)) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text(_kFailClosedVariacaoMsg)),
+            );
+            return;
+          }
+          setState(() {
+            final precoLinha = _precoDoProdutoComVariacao(hydrated, tam);
+            produtosSelecionados[index]['produto'] = hydrated.nome;
+            produtosSelecionados[index]['productId'] =
+                hydrated.idFirebase.trim().isNotEmpty
+                    ? hydrated.idFirebase
+                    : null;
+            produtosSelecionados[index]['preco'] = precoLinha;
+            produtosSelecionados[index]['tamanho'] = tam;
+            produtosSelecionados[index]['cor'] = cor;
+            produtosSelecionados[index]['quantidade'] = qtd;
+            produtosSelecionados[index]['extraValor'] = extraEv;
+            produtosSelecionados[index]['variacaoExtraResumo'] = extraResumo;
+            produtosSelecionados[index].remove('itensComboComSelecao');
+            produtosSelecionados[index].remove('comboConfiguravelResumo');
+          });
+        },
+      );
+      return;
+    }
+
+    // simple
+    setState(() {
+      produtosSelecionados[index]['produto'] = hydrated.nome;
+      produtosSelecionados[index]['preco'] = _precoDoProduto(hydrated);
+      produtosSelecionados[index]['tamanho'] = '';
+      produtosSelecionados[index]['cor'] = '';
+      produtosSelecionados[index]['extraValor'] = '';
+      produtosSelecionados[index]['variacaoExtraResumo'] = '';
+      produtosSelecionados[index].remove('itensComboComSelecao');
+      produtosSelecionados[index].remove('comboConfiguravelResumo');
+      produtosSelecionados[index]['quantidade'] = 1;
+      if (hydrated.idFirebase.trim().isNotEmpty) {
+        produtosSelecionados[index]['productId'] = hydrated.idFirebase;
+      } else {
+        produtosSelecionados[index].remove('productId');
+      }
+    });
+  }
 
   /// Combo já configurado na linha — preservar [preco] definido pelo sheet (não repor pelo cadastro).
   bool _linhaComboProtegida(Map<String, dynamic> item) {
@@ -753,28 +815,9 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
               precoFallback: (item['preco'] ?? 0.0) as double,
             );
           } else if (temVariacao) {
-            final hydrated = await _hydrateProdutoParaVenda(prod);
-            if (!_produtoRequerPickerVariacao(hydrated)) {
-              return;
-            }
-            await NovaVendaVariacaoSheet.show(
-              context,
-              produto: hydrated,
-              preco: _precoDoProduto(hydrated),
-              onConfirmar: (t, c, qtd, extraEv, extraResumo) {
-                setState(() {
-                  final precoLinha = _precoDoProdutoComVariacao(hydrated, t);
-                  produtosSelecionados[index]['tamanho'] = t;
-                  produtosSelecionados[index]['cor'] = c;
-                  produtosSelecionados[index]['preco'] = precoLinha;
-                  produtosSelecionados[index]['quantidade'] = qtd;
-                  produtosSelecionados[index]['extraValor'] = extraEv;
-                  produtosSelecionados[index]['variacaoExtraResumo'] =
-                      extraResumo;
-                  produtosSelecionados[index].remove('itensComboComSelecao');
-                  produtosSelecionados[index].remove('comboConfiguravelResumo');
-                });
-              },
+            await _aplicarProdutoNaLinhaAposRotaVenda(
+              index: index,
+              produtoBase: prod,
             );
           }
         },
@@ -2672,93 +2715,10 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                       );
                                     },
                                     onProductNeedsVariation: (produto) async {
-                                      final hydrated =
-                                          await _hydrateProdutoParaVenda(produto);
-                                      if (_produtoRequerPickerVariacao(
-                                        hydrated,
-                                      )) {
-                                        await NovaVendaVariacaoSheet.show(
-                                          context,
-                                          produto: hydrated,
-                                          preco: _precoDoProduto(hydrated),
-                                          onConfirmar:
-                                              (tam, cor, qtd, extraEv, extraResumo) {
-                                            setState(() {
-                                              final precoLinha =
-                                                  _precoDoProdutoComVariacao(
-                                                hydrated,
-                                                tam,
-                                              );
-                                              produtosSelecionados[index]
-                                                      ['produto'] =
-                                                  hydrated.nome;
-                                              produtosSelecionados[index]
-                                                      ['productId'] =
-                                                  hydrated.idFirebase
-                                                          .trim()
-                                                          .isNotEmpty
-                                                      ? hydrated.idFirebase
-                                                      : null;
-                                              produtosSelecionados[index]
-                                                  ['preco'] = precoLinha;
-                                              produtosSelecionados[index]
-                                                  ['tamanho'] = tam;
-                                              produtosSelecionados[index]
-                                                  ['cor'] = cor;
-                                              produtosSelecionados[index]
-                                                  ['quantidade'] = qtd;
-                                              produtosSelecionados[index]
-                                                  ['extraValor'] = extraEv;
-                                              produtosSelecionados[index]
-                                                      ['variacaoExtraResumo'] =
-                                                  extraResumo;
-                                              produtosSelecionados[index]
-                                                  .remove(
-                                                'itensComboComSelecao',
-                                              );
-                                              produtosSelecionados[index]
-                                                  .remove(
-                                                'comboConfiguravelResumo',
-                                              );
-                                            });
-                                          },
-                                        );
-                                      } else {
-                                        setState(() {
-                                          produtosSelecionados[index]
-                                              ['produto'] = hydrated.nome;
-                                          produtosSelecionados[index]
-                                              ['preco'] = _precoDoProduto(
-                                            hydrated,
-                                          );
-                                          produtosSelecionados[index]
-                                              ['tamanho'] = '';
-                                          produtosSelecionados[index]
-                                              ['cor'] = '';
-                                          produtosSelecionados[index]
-                                              ['extraValor'] = '';
-                                          produtosSelecionados[index]
-                                              ['variacaoExtraResumo'] = '';
-                                          produtosSelecionados[index].remove(
-                                            'itensComboComSelecao',
-                                          );
-                                          produtosSelecionados[index].remove(
-                                            'comboConfiguravelResumo',
-                                          );
-                                          produtosSelecionados[index]
-                                              ['quantidade'] = 1;
-                                          if (hydrated.idFirebase
-                                              .trim()
-                                              .isNotEmpty) {
-                                            produtosSelecionados[index]
-                                                    ['productId'] =
-                                                hydrated.idFirebase;
-                                          } else {
-                                            produtosSelecionados[index]
-                                                .remove('productId');
-                                          }
-                                        });
-                                      }
+                                      await _aplicarProdutoNaLinhaAposRotaVenda(
+                                        index: index,
+                                        produtoBase: produto,
+                                      );
                                     },
                                     onTextChanged: (v) {
                                       setState(() {
@@ -2888,77 +2848,10 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                             ),
                                           );
                                         } else {
-                                          final hydrated =
-                                              await _hydrateProdutoParaVenda(
-                                            prod,
+                                          await _aplicarProdutoNaLinhaAposRotaVenda(
+                                            index: index,
+                                            produtoBase: prod,
                                           );
-                                          if (_produtoRequerPickerVariacao(
-                                            hydrated,
-                                          )) {
-                                            await NovaVendaVariacaoSheet.show(
-                                              navigator.context,
-                                              produto: hydrated,
-                                              preco: _precoDoProduto(hydrated),
-                                              onConfirmar:
-                                                  (tam, cor, qtd, extraEv, extraResumo) {
-                                                if (!mounted) return;
-                                                setState(() {
-                                                  final precoLinha =
-                                                      _precoDoProdutoComVariacao(
-                                                    hydrated,
-                                                    tam,
-                                                  );
-                                                  produtosSelecionados[index]
-                                                          ['produto'] =
-                                                      hydrated.nome;
-                                                  produtosSelecionados[index]
-                                                          ['productId'] =
-                                                      hydrated.idFirebase
-                                                              .trim()
-                                                              .isNotEmpty
-                                                          ? hydrated.idFirebase
-                                                          : null;
-                                                  produtosSelecionados[index]
-                                                      ['preco'] = precoLinha;
-                                                  produtosSelecionados[index]
-                                                      ['tamanho'] = tam;
-                                                  produtosSelecionados[index]
-                                                      ['cor'] = cor;
-                                                  produtosSelecionados[index]
-                                                      ['quantidade'] = qtd;
-                                                  produtosSelecionados[index]
-                                                      ['extraValor'] = extraEv;
-                                                  produtosSelecionados[index]
-                                                          ['variacaoExtraResumo'] =
-                                                      extraResumo;
-                                                });
-                                              },
-                                            );
-                                          } else {
-                                            setState(() {
-                                              produtosSelecionados[index]
-                                                  ['produto'] = hydrated.nome;
-                                              produtosSelecionados[index]
-                                                      ['productId'] =
-                                                  hydrated.idFirebase
-                                                          .trim()
-                                                          .isNotEmpty
-                                                      ? hydrated.idFirebase
-                                                      : null;
-                                              produtosSelecionados[index]
-                                                  ['preco'] = _precoDoProduto(
-                                                hydrated,
-                                              );
-                                              produtosSelecionados[index]
-                                                  ['tamanho'] = '';
-                                              produtosSelecionados[index]
-                                                  ['cor'] = '';
-                                              produtosSelecionados[index]
-                                                  ['extraValor'] = '';
-                                              produtosSelecionados[index]
-                                                  ['variacaoExtraResumo'] = '';
-                                            });
-                                          }
                                         }
                                       },
                                     ),
