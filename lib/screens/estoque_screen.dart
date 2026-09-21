@@ -63,6 +63,7 @@ import '../services/catalog_publish_service.dart';
 import '../services/marketplace_service.dart';
 import '../services/movimentacao_estoque_service.dart';
 import '../services/estoque_service.dart';
+import '../services/mirjoias_client_stock_diagnostic_export.dart';
 import '../core/produto_stock_revision.dart';
 import '../src/file_saver.dart' as file_saver;
 import 'historico_movimentacao_estoque_screen.dart';
@@ -120,6 +121,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
   bool _excluindoOrfaos = false;
   bool _sincronizandoEstoque = false;
   bool _exportandoEstoque = false;
+  bool _exportandoDiagnosticoEstoque = false;
   bool _sincronizandoMarketplace = false;
   String? _marketplaceEmSync;
   bool? _temDadosParaImportar;
@@ -2453,6 +2455,66 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     }
   }
 
+  /// Diagnóstico forense READ-ONLY (somente MIRJOIAS + admin). Sem flush/sync/write.
+  Future<void> _exportarDiagnosticoEstoqueMirjoias() async {
+    if (!mirjoiasDiagnosticExportVisible(
+      storeId: _lojaId,
+      isAdmin: _scope?.isAdmin == true,
+    )) {
+      _showSnackBar('Diagnóstico disponível apenas para a loja autorizada.',
+          isError: true);
+      return;
+    }
+    setState(() => _exportandoDiagnosticoEstoque = true);
+    try {
+      final lojaId = (_lojaId ?? '').trim();
+      if (lojaId.isEmpty) {
+        if (mounted) _showSnackBar('Nenhuma loja ativa', isError: true);
+        return;
+      }
+      final exporter = MirjoiasClientStockDiagnosticExport(
+        liveBuildId: const String.fromEnvironment(
+          'CATALOG_BUILD_ID',
+          defaultValue: 'dev',
+        ),
+        liveGitCommit: const String.fromEnvironment(
+          'GIT_COMMIT',
+          defaultValue: '',
+        ),
+        appVersion: const String.fromEnvironment(
+          'CATALOG_BUILD_ID',
+          defaultValue: 'dev',
+        ),
+      );
+      final result = await exporter.build(
+        storeId: lojaId,
+        hiveProducts: _box.values,
+      );
+      await file_saver.saveFile(
+        Uint8List.fromList(utf8.encode(result.jsonPretty)),
+        result.jsonFileName,
+      );
+      await file_saver.saveFile(
+        Uint8List.fromList(utf8.encode(result.txtSummary)),
+        result.txtFileName,
+      );
+      if (mounted) {
+        _showSnackBar(
+          'Diagnóstico gerado. Envie o arquivo para o suporte.',
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        _showSnackBar(
+          'Não foi possível gerar o diagnóstico. Tente novamente.',
+          isError: true,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _exportandoDiagnosticoEstoque = false);
+    }
+  }
+
   Future<void> _exportarEstoque() async {
     setState(() => _exportandoEstoque = true);
     try {
@@ -4391,6 +4453,23 @@ String _formatGradeTexto(Produto p) {
               _exportarEstoque();
             },
           ),
+          if (mirjoiasDiagnosticExportVisible(
+            storeId: _lojaId,
+            isAdmin: _scope?.isAdmin == true,
+          ))
+            _drawerTile(
+              icon: Icons.bug_report_outlined,
+              iconColor: _warningColor,
+              label: _exportandoDiagnosticoEstoque
+                  ? 'Gerando diagnóstico…'
+                  : 'Exportar diagnóstico de estoque',
+              onTap: _exportandoDiagnosticoEstoque
+                  ? null
+                  : () {
+                      Navigator.pop(context);
+                      _exportarDiagnosticoEstoqueMirjoias();
+                    },
+            ),
           _drawerTile(
             icon: Icons.rocket_launch,
             iconColor: _primaryColor,

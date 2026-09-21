@@ -87,14 +87,19 @@ bool hasPendingStockMutation(Produto p) =>
     p.pendingStockOperationId!.trim().isNotEmpty;
 
 /// Rótulo de quantidade para UI de estoque (não mascara falha remota).
+///
+/// O número após "Alteração pendente" é a **quantidade pretendida local**
+/// (`Produto.quantidade`), **não** um contador de operações pendentes.
+/// Ex.: "Alteração pendente · qtd 0" = há `pendingStockOperationId` e a
+/// intenção local é estoque 0.
 String estoqueQuantidadeUiLabel(Produto p, {int? confirmedRemoteQty}) {
   if (!hasPendingStockMutation(p)) {
     return 'Qtd: ${p.quantidade}';
   }
   if (confirmedRemoteQty != null) {
-    return 'Confirmado: $confirmedRemoteQty · Pendente: ${p.quantidade}';
+    return 'Confirmado: $confirmedRemoteQty · Pretendida: ${p.quantidade}';
   }
-  return 'Alteração pendente: ${p.quantidade}';
+  return 'Alteração pendente · qtd ${p.quantidade}';
 }
 
 /// Estoque autoritativo para venda: pendência local não libera saldo novo.

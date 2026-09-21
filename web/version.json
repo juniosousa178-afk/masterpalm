@@ -1,10 +1,10 @@
 {
-  "buildId": "consignment-hosting-restore-1.0.85",
+  "buildId": "mirjoias-stock-diagnostic-1.0.88",
   "hostingTarget": "masterpalm-58c46",
   "siteId": "masterpalm-58c46",
   "expectedDomain": "app.mastepalm.com.br",
-  "webVersion": "1.0.85+101",
+  "webVersion": "1.0.88+102",
   "featureFlagDefault": false,
   "globalRollout": true,
-  "notes": "Restores consignments settlement/addItems/reports on app domain; preserves stockCatalogCommand 00012-liv"
+  "notes": "Read-only MIRJOIAS client Hive stock diagnostic export (admin-only). Preserves auto-stock-sync-before-sale baseline."
 }

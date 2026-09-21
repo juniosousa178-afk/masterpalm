@@ -683,6 +683,8 @@ void main() {
       expect(msg.toLowerCase(), isNot(contains('bad state')));
       expect(msg, contains('Anel X'));
       expect(msg, contains('ABC123'));
+      expect(msg.toLowerCase(), isNot(contains('confira sua conexão')));
+      expect(msg.toLowerCase(), contains('não indica necessariamente falta de internet'));
 
       final legacy = formatSalvarVendaErrorForUser(
         StateError(VendaEstoqueRemotoPrepMessages.alteracaoPendente),

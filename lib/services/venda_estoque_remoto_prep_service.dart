@@ -42,8 +42,8 @@ class VendaEstoqueRemotoPrepMessages {
     }
     final list = uniq.values.toList();
     if (list.isEmpty) {
-      return 'Não foi possível sincronizar o estoque de um ou mais produtos. '
-          'Confira sua conexão e tente novamente.';
+      return 'Há alteração de estoque ainda não confirmada na nuvem. '
+          'Abra Estoque, toque em "Tentar novamente" e só então finalize a venda.';
     }
     const maxShow = 3;
     final lines = <String>[];
@@ -55,8 +55,10 @@ class VendaEstoqueRemotoPrepMessages {
     final remaining = list.length - maxShow;
     final body = lines.join('\n');
     final extra = remaining > 0 ? '\n… e mais $remaining produto(s).' : '';
-    return 'Não foi possível sincronizar o estoque de:\n$body$extra\n\n'
-        'Confira sua conexão e tente novamente.';
+    return 'Não foi possível confirmar o estoque na nuvem de:\n$body$extra\n\n'
+        'Isso pode ser pendência local, conflito de revisão ou falha de sync — '
+        'não indica necessariamente falta de internet. '
+        'Abra Estoque, toque em "Tentar novamente" e tente a venda de novo.';
   }
 }
 
