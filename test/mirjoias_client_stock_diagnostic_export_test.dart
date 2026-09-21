@@ -266,7 +266,10 @@ void main() {
     expect(result.payload['AN05SM']['AN05SM_PENDING'], isTrue);
     expect(result.payload['AN05SM']['AN05SM_LOCAL_QTY'], 1);
     expect(result.payload['AN05SM']['AN05SM_REMOTE_QTY'], 1);
-    expect(result.payload['AN05SM']['AN05SM_CLASSIFICATION'], 'STALE_PENDING');
+    expect(
+      result.payload['AN05SM']['AN05SM_CLASSIFICATION'],
+      'STALE_CONFIRMED_EQUIVALENT',
+    );
     expect(result.payload['AN05SM']['AN05SM_REMOTE_REV_EQUALS_BASE'], isTrue);
     expect(result.payload['AN05SM']['AN05SM_STATE_EQUIVALENT'], isTrue);
 
@@ -450,4 +453,84 @@ void main() {
     expect(result.downloadArtifacts, hasLength(1));
     expect(result.payload['summary']['HIVE_PRODUCT_COUNT'], 1);
   });
+
+  test(
+    'pendingMutations count == pendingClassified; delta PENDING_STATUS from snapshot',
+    () async {
+      final an03 = _p(
+        id: 'mirjoias-anel-reto-t-16-t-18-prata-925',
+        code: 'AN03PR',
+        nome: 'Anel Reto T.16 / T.18 Prata 925',
+        qty: 2,
+        rev: 4,
+        pendingOp: 'local-an03',
+        pendingBase: 4,
+        confirmedOp: 'old',
+        variacoes: {
+          '16': {'sem-cor': 1},
+          '18': {'sem-cor': 1},
+        },
+        ept: {'16': 1, '18': 1},
+      );
+      final untracked = _p(
+        id: 'mirjoias-untracked-1',
+        code: 'UT01',
+        nome: 'Untracked Local',
+        qty: 1,
+        rev: 2,
+        confirmedOp: 'same-op',
+      );
+      await seedRemote(
+        id: an03.idFirebase,
+        qty: 1,
+        rev: 5,
+        op: 'remote-newer',
+        variacoes: {
+          '16': {'sem-cor': 1},
+        },
+      );
+      await seedRemote(
+        id: untracked.idFirebase,
+        qty: 0,
+        rev: 2,
+        op: 'same-op',
+      );
+
+      final exporter = MirjoiasClientStockDiagnosticExport(firestore: firestore);
+      final result = await exporter.build(
+        storeId: 'mirjoias',
+        hiveProducts: [an03, untracked],
+      );
+
+      final pending = result.payload['pendingMutations'] as List;
+      final classified = result.payload['pendingClassified'] as List;
+      expect(result.payload['PENDING_MUTATION_COUNT'], pending.length);
+      expect(result.payload['PENDING_CLASSIFIED_COUNT'], classified.length);
+      expect(result.payload['PENDING_MUTATION_EQ_CLASSIFIED'], isTrue);
+      expect(pending.length, classified.length);
+      expect(pending.length, 1);
+      expect(
+        classified.first['CLASSIFICATION'],
+        'SUPERSEDED_PENDING_REMOTE_ADVANCED',
+      );
+
+      final deltas =
+          result.payload['LOCAL_REMOTE_QTY_DELTA_PRODUCTS'] as List;
+      final an03Delta = deltas.firstWhere((e) => e['CODE'] == 'AN03PR');
+      expect(an03Delta['PENDING_STATUS'], isTrue);
+      expect(
+        an03Delta['CLASSIFICATION'],
+        'SUPERSEDED_PENDING_REMOTE_ADVANCED',
+      );
+
+      final utDelta = deltas.firstWhere((e) => e['CODE'] == 'UT01');
+      expect(utDelta['PENDING_STATUS'], isFalse);
+      expect(utDelta['CLASSIFICATION'], 'LOCAL_UNTRACKED_MUTATION');
+
+      final untrackedRows =
+          result.payload['LOCAL_UNTRACKED_MUTATIONS'] as List;
+      expect(untrackedRows.length, 1);
+      expect(untrackedRows.first['CODE'], 'UT01');
+    },
+  );
 }

@@ -18,6 +18,7 @@ import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import '../core/produto_custo_guard.dart';
 import '../core/hive_box_names.dart';
+import '../core/produto_pending_stock_reconciliation.dart';
 import '../core/produto_stock_revision.dart';
 import 'stock_catalog_backend_service.dart';
 import '../core/produto_variacao_extra.dart';
@@ -790,20 +791,50 @@ class EstoqueService {
     for (final p in targets) {
       if (p.idFirebase.trim().isEmpty) continue;
       try {
+        // 1) Reconcile local-only primeiro (stale equivalent / superseded /
+        // structural) — zero stock writes remotos.
+        final reconciled = await VendaEstoqueRemotoPrepService
+            .reconcilePendingStockMutationForSale(
+          lojaId: li,
+          produto: p,
+        );
+        if (reconciled && !hasPendingStockMutation(p)) {
+          cleared++;
+          continue;
+        }
+        if (!hasPendingStockMutation(p)) continue;
+
+        // 2) Só REAL_PENDING pode ir a stockCatalogCommand. Manual/structural/
+        // equivalent/superseded marcados mustNeverFlush — nunca flush.
+        // Re-classifica com o remoto (reconcile já leu; re-lê barato se preciso).
+        final snap = await _db
+            .collection('lojas')
+            .doc(li)
+            .collection(FSPaths.estoqueProdutosCol)
+            .doc(p.idFirebase.trim())
+            .get();
+        final remote = snap.data();
+        if (remote != null) {
+          final decision = classifyPendingAgainstRemote(
+            local: p,
+            remote: remote,
+          );
+          if (decision.classification.mustNeverFlush) {
+            debugPrint(
+              '[ESTOQUE-PENDING-FLUSH] skip_flush '
+              'class=${decision.classification.wire} '
+              'produto=${p.idFirebase}',
+            );
+            continue;
+          }
+        }
+
         final result = await sincronizarAjusteManual(p, li);
         if ((result == ResultadoAjusteEstoque.sucesso ||
                 result == ResultadoAjusteEstoque.divergenciaDetectada) &&
             !hasPendingStockMutation(p)) {
           cleared++;
-          continue;
         }
-        // Tentativa de reconcile stale após falha (ex.: failed-precondition).
-        final ready =
-            await VendaEstoqueRemotoPrepService.reconcilePendingStockMutationForSale(
-          lojaId: li,
-          produto: p,
-        );
-        if (ready && !hasPendingStockMutation(p)) cleared++;
       } catch (e) {
         debugPrint(
           '[ESTOQUE-PENDING-FLUSH] falha produto=${p.idFirebase} type=${e.runtimeType}',

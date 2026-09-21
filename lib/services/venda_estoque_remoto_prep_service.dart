@@ -3,6 +3,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
+import '../core/produto_pending_stock_reconciliation.dart';
 import '../core/produto_stock_revision.dart';
 import '../models/produto.dart';
 import 'firestore_paths.dart';
@@ -235,6 +236,21 @@ class VendaEstoqueRemotoPrepService {
 
     if (!snapshot.exists || data == null) return false;
 
+    // Clears seguros ANTES de flush (equivalent / superseded / structural).
+    if (reconcileSafeLocalPendingAgainstRemote(produto, remote: data)) {
+      if (produto.isInBox) await produto.save();
+      return !hasPendingStockMutation(produto);
+    }
+
+    final decision = classifyPendingAgainstRemote(
+      local: produto,
+      remote: data,
+    );
+    // Nunca flush superseded / structural / manual / equivalent.
+    if (decision.classification.mustNeverFlush) {
+      return false;
+    }
+
     if (tryConfirmStockFromRemote(produto, data)) {
       if (produto.isInBox) await produto.save();
       return !hasPendingStockMutation(produto);
@@ -257,6 +273,14 @@ class VendaEstoqueRemotoPrepService {
   }) async {
     if (!hasPendingStockMutation(produto)) return true;
 
+    // Reconcile-only primeiro (sem stock command).
+    final reconciledEarly = await reconcilePendingStockMutationForSale(
+      lojaId: lojaId,
+      produto: produto,
+    );
+    if (reconciledEarly && !hasPendingStockMutation(produto)) return true;
+
+    // Só flush se ainda REAL_PENDING.
     final flushed = await tryFlushPendingStockMutation(
       lojaId: lojaId,
       produto: produto,

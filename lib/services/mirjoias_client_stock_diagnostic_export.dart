@@ -10,6 +10,7 @@ import 'package:hive/hive.dart';
 import '../core/hive_box_names.dart';
 import '../core/produto_effective_stock.dart';
 import '../core/produto_estoque_grade_snapshot.dart';
+import '../core/produto_pending_stock_reconciliation.dart';
 import '../core/produto_stock_revision.dart';
 import '../models/produto.dart';
 import 'catalogo_sync_diagnostics_access.dart';
@@ -30,19 +31,32 @@ const Set<String> kStockDiagnosticAllowedStoreIds = {
 const String kAn05smCode = 'AN05SM';
 const List<String> kAggregateMismatchCodes = ['AN13PR', 'BR01SM', 'PL01PR'];
 
+/// @deprecated Prefer [PendingStockReconcileClass.wire].
 enum MirjoiasPendingClassification {
   realPending,
   stalePending,
   corruptPending,
   ambiguousPending,
+  staleConfirmedEquivalent,
+  supersededPendingRemoteAdvanced,
+  staleStructuralPending,
+  manualStockStructureReviewRequired,
 }
 
-extension on MirjoiasPendingClassification {
+extension MirjoiasPendingClassificationWire on MirjoiasPendingClassification {
   String get wire => switch (this) {
         MirjoiasPendingClassification.realPending => 'REAL_PENDING',
         MirjoiasPendingClassification.stalePending => 'STALE_PENDING',
         MirjoiasPendingClassification.corruptPending => 'CORRUPT_PENDING',
         MirjoiasPendingClassification.ambiguousPending => 'AMBIGUOUS_PENDING',
+        MirjoiasPendingClassification.staleConfirmedEquivalent =>
+          'STALE_CONFIRMED_EQUIVALENT',
+        MirjoiasPendingClassification.supersededPendingRemoteAdvanced =>
+          'SUPERSEDED_PENDING_REMOTE_ADVANCED',
+        MirjoiasPendingClassification.staleStructuralPending =>
+          'STALE_STRUCTURAL_PENDING',
+        MirjoiasPendingClassification.manualStockStructureReviewRequired =>
+          'MANUAL_STOCK_STRUCTURE_REVIEW_REQUIRED',
       };
 }
 
@@ -291,6 +305,8 @@ class MirjoiasClientStockDiagnosticExport {
     final orphanVariations = <Map<String, dynamic>>[];
     final aggregateMismatches = <Map<String, dynamic>>[];
     final legacySizeMetadataOnly = <Map<String, dynamic>>[];
+    final localUntrackedMutations = <Map<String, dynamic>>[];
+    final remoteNewerCacheStale = <Map<String, dynamic>>[];
     var rawAggregateMismatchCount = 0;
     var normalizedAggregateMismatchCount = 0;
     var normalizedRemoteAggregateMismatchCount = 0;
@@ -302,6 +318,9 @@ class MirjoiasClientStockDiagnosticExport {
       final localSnap = rawLocalSnapshots[key]!;
       final id = (localSnap['LOCAL_PRODUCT_ID'] as String?)?.trim() ?? '';
       final localQty = (localSnap['LOCAL_QTY'] as int?) ?? 0;
+      final snapPendingOp =
+          (localSnap['LOCAL_PENDING_OPERATION_ID'] as String?)?.trim() ?? '';
+      final hasPendingSnap = snapPendingOp.isNotEmpty;
       final remote = id.isEmpty ? null : remoteById[id];
       final remoteOk = remote != null && !remote.containsKey('_readError');
       final remoteQty =
@@ -321,14 +340,14 @@ class MirjoiasClientStockDiagnosticExport {
       final remoteGrade =
           remoteOk ? ProdutoEstoqueGradeSnapshot.fromRemote(remote) : null;
 
-      final needsCompare = hasPendingStockMutation(p) ||
+      final needsCompare = hasPendingSnap ||
           (remoteQty != null && remoteQty != localQty) ||
           (remoteGrade != null &&
               Map<String, int>.from(localNormCells).toString() !=
                   Map<String, int>.from(remoteNormCells).toString());
 
       Map<String, dynamic>? classificationRow;
-      if (hasPendingStockMutation(p)) {
+      if (hasPendingSnap) {
         classificationRow = _classifyPending(
           p: p,
           remote: remoteOk ? remote : null,
@@ -343,14 +362,56 @@ class MirjoiasClientStockDiagnosticExport {
             'PRODUCT_NAME': localSnap['LOCAL_PRODUCT_NAME'],
             'PENDING_EXISTS': true,
             'PENDING_INTENDED_QTY': localQty,
-            'PENDING_OPERATION_ID': p.pendingStockOperationId,
+            'PENDING_OPERATION_ID': snapPendingOp,
+            'UI_LABEL': 'Sincronização de estoque pendente',
             'NOTE':
-                'UI label number is intended qty (0), not pending operation count',
+                'Intended qty is 0; UI must not show it as pending-operation count',
           });
         }
       }
 
       if (remoteQty != null && remoteQty != localQty) {
+        final localRev = (localSnap['LOCAL_STOCK_REVISION'] as int?) ?? 0;
+        final remoteRev =
+            remoteOk ? parseStockRevisionFromRemote(remote) : null;
+        final localOp =
+            (localSnap['LOCAL_STOCK_OPERATION_ID'] as String?)?.trim() ?? '';
+        final remoteOp = remoteOk
+            ? (parseStockOperationIdFromRemote(remote) ?? '')
+            : '';
+        final sameRevOp = remoteRev != null &&
+            localRev == remoteRev &&
+            localOp.isNotEmpty &&
+            localOp == remoteOp;
+        if (sameRevOp && !hasPendingSnap) {
+          localUntrackedMutations.add({
+            'CODE': localSnap['LOCAL_PRODUCT_CODE'],
+            'NAME': localSnap['LOCAL_PRODUCT_NAME'],
+            'PRODUCT_ID': id,
+            'LOCAL_QTY': localQty,
+            'REMOTE_QTY': remoteQty,
+            'LOCAL_STOCK_REVISION': localRev,
+            'REMOTE_STOCK_REVISION': remoteRev,
+            'LOCAL_STOCK_OPERATION_ID': localOp,
+            'REMOTE_STOCK_OPERATION_ID': remoteOp,
+            'LOCAL_UPDATED_AT': localSnap['LOCAL_UPDATED_AT'],
+            'CLASSIFICATION': 'LOCAL_UNTRACKED_MUTATION',
+          });
+        }
+        if (!hasPendingSnap &&
+            remoteRev != null &&
+            localRev < remoteRev) {
+          remoteNewerCacheStale.add({
+            'CODE': localSnap['LOCAL_PRODUCT_CODE'],
+            'NAME': localSnap['LOCAL_PRODUCT_NAME'],
+            'PRODUCT_ID': id,
+            'LOCAL_QTY': localQty,
+            'REMOTE_QTY': remoteQty,
+            'LOCAL_STOCK_REVISION': localRev,
+            'REMOTE_STOCK_REVISION': remoteRev,
+            'CLASSIFICATION': 'LOCAL_CACHE_STALE_REMOTE_NEWER',
+          });
+        }
         deltaProducts.add({
           'CODE': localSnap['LOCAL_PRODUCT_CODE'],
           'NAME': localSnap['LOCAL_PRODUCT_NAME'],
@@ -358,9 +419,13 @@ class MirjoiasClientStockDiagnosticExport {
           'LOCAL_QTY': localQty,
           'REMOTE_QTY': remoteQty,
           'DELTA': localQty - remoteQty,
-          'PENDING_STATUS': hasPendingStockMutation(p),
+          'PENDING_STATUS': hasPendingSnap,
           'CLASSIFICATION': classificationRow?['CLASSIFICATION'] ??
-              (hasPendingStockMutation(p) ? 'PENDING_UNCLASSIFIED' : 'NO_PENDING'),
+              (hasPendingSnap
+                  ? 'PENDING_UNCLASSIFIED'
+                  : (sameRevOp
+                      ? 'LOCAL_UNTRACKED_MUTATION'
+                      : 'NO_PENDING')),
         });
       }
 
@@ -389,6 +454,7 @@ class MirjoiasClientStockDiagnosticExport {
           'REMOTE_REV_EQUALS_BASE':
               classificationRow?['REMOTE_REV_EQUALS_BASE'],
           'STATE_EQUIVALENT': classificationRow?['STATE_EQUIVALENT'],
+          'PENDING_STATUS': hasPendingSnap,
         });
       }
 
@@ -415,7 +481,7 @@ class MirjoiasClientStockDiagnosticExport {
             'IN_LOCAL_CELLS': false,
             'IN_REMOTE_CELLS': false,
             'QTY': 0,
-            'HAS_PENDING_REFERENCE': hasPendingStockMutation(p),
+            'HAS_PENDING_REFERENCE': hasPendingSnap,
           };
           legacySizeMetadataOnly.add(row);
           orphanVariations.add(row);
@@ -455,7 +521,7 @@ class MirjoiasClientStockDiagnosticExport {
           'REMOTE_NORMALIZED_CELL_SUM': remoteNormSum,
           'REMOTE_CANONICAL_CELLS': remoteNormCells,
           'REMOTE_NORM_MISMATCH': remoteNormMismatch,
-          'PENDING_STATE': hasPendingStockMutation(p),
+          'PENDING_STATE': hasPendingSnap,
           'CLASSIFICATION': classificationRow?['CLASSIFICATION'],
         });
       }
@@ -467,7 +533,7 @@ class MirjoiasClientStockDiagnosticExport {
           id == 'mirjoias-anel-bolinha-t-25-semijoia-3') {
         an05smSection = {
           'AN05SM_LOCAL_PRODUCT': id,
-          'AN05SM_PENDING': hasPendingStockMutation(p),
+          'AN05SM_PENDING': hasPendingSnap,
           'AN05SM_LOCAL_QTY': localQty,
           'AN05SM_LOCAL_VARIATIONS': localNormCells,
           'AN05SM_LOCAL_STOCK_REVISION': localSnap['LOCAL_STOCK_REVISION'],
@@ -498,6 +564,12 @@ class MirjoiasClientStockDiagnosticExport {
     final expectedDelta = localQtySum - remoteQtySum;
     final deltaAccountingPass = deltaSum == expectedDelta;
 
+    final classCounts = <String, int>{};
+    for (final row in pendingClassified) {
+      final c = (row['CLASSIFICATION'] as String?) ?? 'UNKNOWN';
+      classCounts[c] = (classCounts[c] ?? 0) + 1;
+    }
+
     final payload = <String, dynamic>{
       'summary': {
         'HIVE_PRODUCT_COUNT': hiveRows.length,
@@ -506,6 +578,9 @@ class MirjoiasClientStockDiagnosticExport {
         'LOCAL_REMOTE_QTY_DELTA': localQtySum - remoteQtySum,
         'DELTA_ACCOUNTING_PASS': deltaAccountingPass,
         'PENDING_COUNT': pendingRows.length,
+        'PENDING_CLASSIFIED_COUNT': pendingClassified.length,
+        'PENDING_MUTATION_EQ_CLASSIFIED':
+            pendingRows.length == pendingClassified.length,
         'ORPHAN_PENDING_COUNT': orphanPending,
         'DUPLICATE_PENDING_COUNT': duplicatePending,
         'INVALID_PENDING_COUNT': invalidPending,
@@ -519,6 +594,9 @@ class MirjoiasClientStockDiagnosticExport {
             normalizedAggregateMismatchCount,
         'NORMALIZED_REMOTE_AGGREGATE_MISMATCH_COUNT':
             normalizedRemoteAggregateMismatchCount,
+        'LOCAL_UNTRACKED_MUTATION_COUNT': localUntrackedMutations.length,
+        'REMOTE_NEWER_CACHE_STALE_COUNT': remoteNewerCacheStale.length,
+        'PENDING_CLASS_COUNTS': classCounts,
         'DIAGNOSTIC_SNAPSHOT_MUTATION': false,
         'SINGLE_FILE_EXPORT': true,
       },
@@ -558,6 +636,12 @@ class MirjoiasClientStockDiagnosticExport {
       'hiveProducts': hiveRows,
       'pendingMutations': pendingRows,
       'pendingClassified': pendingClassified,
+      'PENDING_MUTATION_COUNT': pendingRows.length,
+      'PENDING_CLASSIFIED_COUNT': pendingClassified.length,
+      'PENDING_MUTATION_EQ_CLASSIFIED':
+          pendingRows.length == pendingClassified.length,
+      'LOCAL_UNTRACKED_MUTATIONS': localUntrackedMutations,
+      'REMOTE_NEWER_CACHE_STALE': remoteNewerCacheStale,
       'remoteComparisons': comparisons,
       'LOCAL_REMOTE_QTY_DELTA_PRODUCTS': deltaProducts,
       'ORPHAN_VARIATION_IDENTITIES': orphanVariations,
@@ -657,114 +741,45 @@ class MirjoiasClientStockDiagnosticExport {
     required ProdutoEstoqueGradeSnapshot localGrade,
     required ProdutoEstoqueGradeSnapshot? remoteGrade,
   }) {
+    final decision = classifyPendingAgainstRemote(local: p, remote: remote);
     final pendingOp = (p.pendingStockOperationId ?? '').trim();
     final base = p.pendingStockBaseRevision ?? p.stockRevision;
     final intended = {
       'qty': p.quantidade,
-      'cells': Map<String, int>.from(localGrade.cells),
+      'cells': normalizeSemCorAliasCells(
+        Map<String, int>.from(localGrade.cells),
+      ),
     };
-
-    if (pendingOp.isEmpty) {
-      return {
-        'PRODUCT_ID': p.idFirebase,
-        'PRODUCT_CODE': p.codigoBarras,
-        'CLASSIFICATION': MirjoiasPendingClassification.corruptPending.wire,
-        'PENDING_OPERATION_ID': pendingOp,
-        'PENDING_BASE_REVISION': base,
-        'REMOTE_REVISION': null,
-        'REMOTE_OPERATION_ID': null,
-        'INTENDED_STATE': intended,
-        'REMOTE_STATE': null,
-        'STATE_EQUIVALENT': false,
-        'REMOTE_REV_EQUALS_BASE': false,
-        'REASON': 'EMPTY_PENDING_OPERATION_ID',
+    Map<String, dynamic>? remoteState;
+    int? remoteRev;
+    String? remoteOp;
+    if (remote != null) {
+      remoteRev = parseStockRevisionFromRemote(remote);
+      remoteOp = parseStockOperationIdFromRemote(remote);
+      remoteState = {
+        'qty': (remote['quantidade'] as num?)?.toInt() ?? 0,
+        'cells': normalizeSemCorAliasCells(
+          Map<String, int>.from(remoteGrade?.cells ?? {}),
+        ),
       };
-    }
-
-    if (remote == null) {
-      return {
-        'PRODUCT_ID': p.idFirebase,
-        'PRODUCT_CODE': p.codigoBarras,
-        'CLASSIFICATION': MirjoiasPendingClassification.ambiguousPending.wire,
-        'PENDING_OPERATION_ID': pendingOp,
-        'PENDING_BASE_REVISION': base,
-        'REMOTE_REVISION': null,
-        'REMOTE_OPERATION_ID': null,
-        'INTENDED_STATE': intended,
-        'REMOTE_STATE': null,
-        'STATE_EQUIVALENT': false,
-        'REMOTE_REV_EQUALS_BASE': false,
-        'REASON': 'REMOTE_MISSING_OR_UNREADABLE',
-      };
-    }
-
-    final remoteRev = parseStockRevisionFromRemote(remote);
-    final remoteOp = parseStockOperationIdFromRemote(remote) ?? '';
-    final remoteState = {
-      'qty': (remote['quantidade'] as num?)?.toInt() ?? 0,
-      'cells': remoteGrade?.cells ?? {},
-    };
-    final stateEq = _statesEquivalent(intended, remoteState);
-    final revEqBase = remoteRev == base;
-
-    MirjoiasPendingClassification cls;
-    String reason;
-
-    if (remoteOp == pendingOp && remoteRev > base) {
-      cls = MirjoiasPendingClassification.stalePending;
-      reason = 'REMOTE_CONFIRMED_SAME_OPERATION';
-    } else if (remoteOp != pendingOp && remoteRev > base) {
-      cls = MirjoiasPendingClassification.stalePending;
-      reason = 'REMOTE_ADVANCED_OTHER_OPERATION';
-    } else if (remoteOp != pendingOp && revEqBase && stateEq) {
-      // Evidência de stale sem remoteRev>base (gap auditado) — NÃO altera abandon.
-      cls = MirjoiasPendingClassification.stalePending;
-      reason = 'REMOTE_REV_EQ_BASE_BUT_STATE_EQUIVALENT_OTHER_OP';
-    } else if (remoteOp == pendingOp && remoteRev <= base) {
-      cls = MirjoiasPendingClassification.realPending;
-      reason = 'SAME_OP_NOT_YET_ADVANCED';
-    } else if (remoteOp != pendingOp && revEqBase && !stateEq) {
-      cls = MirjoiasPendingClassification.ambiguousPending;
-      reason = 'REMOTE_REV_EQ_BASE_STATE_DIVERGES';
-    } else if (!stateEq && remoteRev < base) {
-      cls = MirjoiasPendingClassification.ambiguousPending;
-      reason = 'REMOTE_REV_BEHIND_BASE';
-    } else if (!stateEq) {
-      cls = MirjoiasPendingClassification.realPending;
-      reason = 'INTENDED_STATE_NOT_ON_REMOTE';
-    } else {
-      cls = MirjoiasPendingClassification.ambiguousPending;
-      reason = 'INSUFFICIENT_EVIDENCE';
     }
 
     return {
       'PRODUCT_ID': p.idFirebase,
       'PRODUCT_CODE': p.codigoBarras,
-      'CLASSIFICATION': cls.wire,
+      'CLASSIFICATION': decision.classification.wire,
       'PENDING_OPERATION_ID': pendingOp,
       'PENDING_BASE_REVISION': base,
       'REMOTE_REVISION': remoteRev,
       'REMOTE_OPERATION_ID': remoteOp,
       'INTENDED_STATE': intended,
       'REMOTE_STATE': remoteState,
-      'STATE_EQUIVALENT': stateEq,
-      'REMOTE_REV_EQUALS_BASE': revEqBase,
-      'REASON': reason,
+      'STATE_EQUIVALENT': decision.stateEquivalent,
+      'REMOTE_REV_EQUALS_BASE': decision.remoteRevEqualsBase,
+      'REASON': decision.reason,
+      'MAY_CLEAR_LOCAL_ONLY': decision.classification.mayClearLocalPendingOnly,
+      'MUST_NEVER_FLUSH': decision.classification.mustNeverFlush,
     };
-  }
-
-  bool _statesEquivalent(
-    Map<String, dynamic> a,
-    Map<String, dynamic> b,
-  ) {
-    if ((a['qty'] as int?) != (b['qty'] as int?)) return false;
-    final ca = Map<String, int>.from(a['cells'] as Map? ?? {});
-    final cb = Map<String, int>.from(b['cells'] as Map? ?? {});
-    if (ca.length != cb.length) return false;
-    for (final e in ca.entries) {
-      if (cb[e.key] != e.value) return false;
-    }
-    return true;
   }
 
   String _inferStockKind(Produto p) {

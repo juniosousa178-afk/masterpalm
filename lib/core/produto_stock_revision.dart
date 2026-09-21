@@ -88,18 +88,17 @@ bool hasPendingStockMutation(Produto p) =>
 
 /// Rótulo de quantidade para UI de estoque (não mascara falha remota).
 ///
-/// O número após "Alteração pendente" é a **quantidade pretendida local**
-/// (`Produto.quantidade`), **não** um contador de operações pendentes.
-/// Ex.: "Alteração pendente · qtd 0" = há `pendingStockOperationId` e a
-/// intenção local é estoque 0.
+/// Com pendência: mensagem neutra — a qty pretendida NÃO é contagem de
+/// operações. Detalhe opcional via [confirmedRemoteQty].
 String estoqueQuantidadeUiLabel(Produto p, {int? confirmedRemoteQty}) {
   if (!hasPendingStockMutation(p)) {
     return 'Qtd: ${p.quantidade}';
   }
   if (confirmedRemoteQty != null) {
-    return 'Confirmado: $confirmedRemoteQty · Pretendida: ${p.quantidade}';
+    return 'Sincronização de estoque pendente · pretendida: ${p.quantidade} · '
+        'confirmada: $confirmedRemoteQty';
   }
-  return 'Alteração pendente · qtd ${p.quantidade}';
+  return 'Sincronização de estoque pendente';
 }
 
 /// Estoque autoritativo para venda: pendência local não libera saldo novo.
@@ -138,6 +137,9 @@ void confirmStockMutation(
 ///
 /// Só aplica se [remoteRevision] > base da pendência — nunca descarta sync real ainda
 /// não refletido no servidor.
+///
+/// Para `remoteRev == base` com estado equivalente, usar
+/// [reconcileSafeLocalPendingAgainstRemote] em `produto_pending_stock_reconciliation.dart`.
 bool abandonStalePendingStockMutationIfRemoteAdvanced(
   Produto p, {
   required Map<String, dynamic> remoteData,

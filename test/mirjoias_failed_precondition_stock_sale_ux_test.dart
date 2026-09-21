@@ -26,19 +26,22 @@ void main() {
       expect(estoqueQuantidadeUiLabel(p), 'Qtd: 1');
     });
 
-    test('pendência sem remoto mostra alteração pendente', () {
+    test('pendência sem remoto mostra sincronização pendente', () {
       final p = _produto(qty: 1, rev: 1);
       markPendingStockMutation(p, operationId: 'op-1', baseRevision: 1);
-      expect(estoqueQuantidadeUiLabel(p), 'Alteração pendente · qtd 1');
-      expect(estoqueQuantidadeUiLabel(p, confirmedRemoteQty: 0),
-          'Confirmado: 0 · Pretendida: 1');
+      expect(estoqueQuantidadeUiLabel(p), 'Sincronização de estoque pendente');
+      expect(
+        estoqueQuantidadeUiLabel(p, confirmedRemoteQty: 0),
+        'Sincronização de estoque pendente · pretendida: 1 · confirmada: 0',
+      );
     });
 
     test('pendência com qtd 0 não significa zero operações', () {
       final p = _produto(qty: 0, rev: 1);
       markPendingStockMutation(p, operationId: 'op-zero', baseRevision: 1);
       expect(hasPendingStockMutation(p), isTrue);
-      expect(estoqueQuantidadeUiLabel(p), 'Alteração pendente · qtd 0');
+      expect(estoqueQuantidadeUiLabel(p), 'Sincronização de estoque pendente');
+      expect(estoqueQuantidadeUiLabel(p).contains('qtd 0'), isFalse);
       expect(estoqueQuantidadeUiLabel(p).contains('pendente: 0'), isFalse);
     });
   });
