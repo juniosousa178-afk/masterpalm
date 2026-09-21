@@ -18,6 +18,7 @@ import '../core/produto_variacao_extra.dart';
 import '../core/produto_estoque_grade_snapshot.dart';
 import '../core/produto_stock_revision.dart';
 import '../core/produto_effective_stock.dart';
+import '../core/produto_untracked_stock_conflict.dart';
 import '../core/produto_stock_version_fields.dart';
 import '../core/produto_stock_write_enforcement.dart';
 import 'firestore_paths.dart';
@@ -2359,6 +2360,11 @@ class ProdutosFirestoreService {
                 // preservando qty local divergente (51 LOCAL_UNTRACKED).
               }
             } else {
+              preserveUntrackedConflictBeforeHydrate(
+                local: p,
+                remote: data,
+                source: 'syncFirestoreToHive.overwrite',
+              );
               p.nome = data['nome'] ?? p.nome;
               p.quantidade =
                   (data['quantidade'] as num?)?.toInt() ?? p.quantidade;

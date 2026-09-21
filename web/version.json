@@ -1,12 +1,10 @@
 {
-  "buildId": "nathy-final-sale-stock-prep-fix-1.0.94",
+  "buildId": "mirjoias-untracked-conflict-preservation-1.0.95",
   "hostingTarget": "masterpalm-58c46",
   "siteId": "masterpalm-58c46",
   "expectedDomain": "app.mastepalm.com.br",
-  "webVersion": "1.0.94+108",
-  "gitCommit": "bc9960f",
-  "gitCommitFull": "bc9960f817bbc1468bc87cf962a282b8add134b0",
+  "webVersion": "1.0.95+109",
   "featureFlagDefault": false,
   "globalRollout": true,
-  "notes": "Nathy: structural stale pending clear before sale (no false CAS). Preserves Mirjoias pending reconciliation 1.0.93 + variation picker 1.0.92. Fix commit 022cacf."
+  "notes": "Mirjoias: preserve LOCAL_UNTRACKED_MUTATION snapshots before remote hydration. No remote repair. Preserves Nathy 1.0.94 sale prep + Mirjoias pending reconciliation."
 }

@@ -92,6 +92,10 @@ class VendaEstoqueRemotoPrepService {
   static Future<bool> Function(String lojaId, Produto produto)?
       flushPendingStockMutationImpl;
 
+  /// Hook READ-ONLY de diagnóstico de prep (testes / console). Sem writes.
+  @visibleForTesting
+  static void Function(Map<String, Object?> event)? debugPrepTraceHook;
+
   @visibleForTesting
   static String estoqueDocIdCanonico(Produto p) {
     final id = p.idFirebase.trim();
@@ -355,11 +359,48 @@ class VendaEstoqueRemotoPrepService {
       if (produto.lojaId.trim().isNotEmpty && produto.lojaId.trim() != li) {
         continue;
       }
+      final pendingBefore = hasPendingStockMutation(produto);
+      var reconciliationClass = 'NO_PENDING';
+      var mustNeverFlush = false;
+      var flushAttempted = false;
+      debugPrepTraceHook?.call({
+        'event': 'PREP_START',
+        'productId': produto.idFirebase,
+        'PENDING_BEFORE': pendingBefore,
+      });
+      debugPrint(
+        '[VENDA-PREP-TRACE] PREP_START productId=${produto.idFirebase} '
+        'PENDING_BEFORE=$pendingBefore',
+      );
       if (hasPendingStockMutation(produto)) {
+        // Classificação pré-flush (read remoto) para diagnóstico.
+        try {
+          final docId = produto.idFirebase.trim();
+          if (docId.isNotEmpty) {
+            final snap = await _db
+                .collection('lojas')
+                .doc(li)
+                .collection(FSPaths.estoqueProdutosCol)
+                .doc(docId)
+                .get();
+            final data = snap.data();
+            if (data != null) {
+              final decision = classifyPendingAgainstRemote(
+                local: produto,
+                remote: data,
+              );
+              reconciliationClass = decision.classification.wire;
+              mustNeverFlush = decision.classification.mustNeverFlush;
+            }
+          }
+        } catch (_) {}
         final ready = await ensurePendingStockReadyForSale(
           lojaId: li,
           produto: produto,
         );
+        // Flush só ocorre em ensurePending quando !mustNeverFlush; erros de
+        // flush são engolidos (não rethrow). Marca intenção diagnóstica.
+        flushAttempted = pendingBefore && !mustNeverFlush;
         if (!ready || hasPendingStockMutation(produto)) {
           blocked.add(produto);
           final diag = buildPendingSaleBlockDiag(
@@ -368,22 +409,52 @@ class VendaEstoqueRemotoPrepService {
           );
           debugPendingSaleBlockHook?.call(diag);
           debugPrint('[PENDING_STOCK_SYNC_REQUIRED] $diag');
+          debugPrepTraceHook?.call({
+            'event': 'PREP_BLOCKED',
+            'productId': produto.idFirebase,
+            'RECONCILIATION_CLASS': reconciliationClass,
+            'MUST_NEVER_FLUSH': mustNeverFlush,
+            'FLUSH_ATTEMPTED': flushAttempted,
+            'PENDING_AFTER': hasPendingStockMutation(produto),
+          });
           continue;
         }
       }
+      final pendingAfter = hasPendingStockMutation(produto);
       // Sempre refrescar revision/op/qty do remoto após reconcile (evita
       // cart/Hive com token stale pós-picker).
+      var remoteRefreshSuccess = false;
+      var remoteRevAfter = produto.stockRevision;
       try {
         await refreshAuthoritativeStockCacheForSale(
           lojaId: li,
           produto: produto,
         );
+        remoteRefreshSuccess = !hasPendingStockMutation(produto);
+        remoteRevAfter = produto.stockRevision;
       } catch (e) {
         debugPrint(
           '[VENDA-PREP-REFRESH] falha type=${e.runtimeType} '
           'produto=${produto.idFirebase}',
         );
       }
+      debugPrepTraceHook?.call({
+        'event': 'PREP_DONE',
+        'productId': produto.idFirebase,
+        'PENDING_BEFORE': pendingBefore,
+        'RECONCILIATION_CLASS': reconciliationClass,
+        'MUST_NEVER_FLUSH': mustNeverFlush,
+        'FLUSH_ATTEMPTED': flushAttempted,
+        'PENDING_AFTER': pendingAfter,
+        'REMOTE_REFRESH_SUCCESS': remoteRefreshSuccess,
+        'REMOTE_REVISION_AFTER_REFRESH': remoteRevAfter,
+      });
+      debugPrint(
+        '[VENDA-PREP-TRACE] PREP_DONE productId=${produto.idFirebase} '
+        'CLASS=$reconciliationClass MUST_NEVER_FLUSH=$mustNeverFlush '
+        'FLUSH_ATTEMPTED=$flushAttempted PENDING_AFTER=$pendingAfter '
+        'REFRESH=$remoteRefreshSuccess REV=$remoteRevAfter',
+      );
     }
     if (blocked.isNotEmpty) {
       throw PendingStockSyncRequiredException(blocked);

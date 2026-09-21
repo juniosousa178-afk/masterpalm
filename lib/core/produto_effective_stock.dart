@@ -4,6 +4,7 @@
 import '../models/produto.dart';
 import 'produto_estoque_grade_snapshot.dart';
 import 'produto_stock_revision.dart';
+import 'produto_untracked_stock_conflict.dart';
 import 'produto_variacao_extra.dart';
 
 enum EffectiveStockKind {
@@ -155,6 +156,15 @@ bool applyAuthoritativeRemoteStockToProduto(
   bool updateQuantity = true,
 }) {
   if (hasPendingStockMutation(local)) return false;
+
+  // Forensic: same-rev/same-op qty divergence must be recorded before overwrite.
+  if (updateQuantity) {
+    preserveUntrackedConflictBeforeHydrate(
+      local: local,
+      remote: remote,
+      source: 'applyAuthoritativeRemoteStockToProduto',
+    );
+  }
 
   final kind = effectiveStockKindFromRemote(remote);
   final cells = effectiveCanonicalCellsFromRemote(remote);

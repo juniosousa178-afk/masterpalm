@@ -1,6 +1,7 @@
 // Revisão monotônica de estoque — ordenação sem relógio misto (R8.3).
 
 import 'package:master_palm/core/produto_estoque_grade_snapshot.dart';
+import 'package:master_palm/core/produto_untracked_stock_conflict.dart';
 import 'package:master_palm/models/produto.dart';
 import 'package:uuid/uuid.dart';
 
@@ -187,6 +188,34 @@ bool tryConfirmStockFromRemote(Produto p, Map<String, dynamic> remote) {
       return true;
     }
     return false;
+  }
+
+  // Captura forense se adotar rev/op deixaria qty divergente same-fingerprint.
+  if (tryConfirmWouldCreateUntrackedFingerprint(local: p, remote: remote)) {
+    final remoteQty = (remote['quantidade'] as num?)?.toInt() ?? 0;
+    final storeId = p.lojaId.trim();
+    final productId = p.idFirebase.trim();
+    if (storeId.isNotEmpty && productId.isNotEmpty) {
+      // Evidence uses *post-adopt* revision/op identity (what diagnostic will see).
+      UntrackedStockConflictStore.captureExplicit(
+        UntrackedStockConflict(
+          storeId: storeId,
+          productId: productId,
+          observedLocalQty: p.quantidade,
+          observedRemoteQty: remoteQty < 0 ? 0 : remoteQty,
+          localRevision: remoteRev,
+          remoteRevision: remoteRev,
+          localOperationId: remoteOp ?? '',
+          remoteOperationId: remoteOp ?? '',
+          detectedAt: DateTime.now().toUtc(),
+          source: 'tryConfirmStockFromRemote',
+          code: p.codigoBarras.trim().isEmpty ? null : p.codigoBarras.trim(),
+          name: p.nome.trim().isEmpty ? null : p.nome.trim(),
+          localUpdatedAt: p.updatedAt,
+          remoteUpdatedAt: serverAt,
+        ),
+      );
+    }
   }
 
   if (remoteRev >= p.stockRevision) {

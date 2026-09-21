@@ -12,6 +12,7 @@ import '../core/produto_effective_stock.dart';
 import '../core/produto_estoque_grade_snapshot.dart';
 import '../core/produto_pending_stock_reconciliation.dart';
 import '../core/produto_stock_revision.dart';
+import '../core/produto_untracked_stock_conflict.dart';
 import '../models/produto.dart';
 import 'catalogo_sync_diagnostics_access.dart';
 import 'firestore_paths.dart';
@@ -595,6 +596,9 @@ class MirjoiasClientStockDiagnosticExport {
         'NORMALIZED_REMOTE_AGGREGATE_MISMATCH_COUNT':
             normalizedRemoteAggregateMismatchCount,
         'LOCAL_UNTRACKED_MUTATION_COUNT': localUntrackedMutations.length,
+        'ACTIVE_LOCAL_UNTRACKED_MUTATION_COUNT': localUntrackedMutations.length,
+        'PRESERVED_UNTRACKED_CONFLICT_COUNT':
+            UntrackedStockConflictStore.countForStore(loja),
         'REMOTE_NEWER_CACHE_STALE_COUNT': remoteNewerCacheStale.length,
         'PENDING_CLASS_COUNTS': classCounts,
         'DIAGNOSTIC_SNAPSHOT_MUTATION': false,
@@ -641,6 +645,10 @@ class MirjoiasClientStockDiagnosticExport {
       'PENDING_MUTATION_EQ_CLASSIFIED':
           pendingRows.length == pendingClassified.length,
       'LOCAL_UNTRACKED_MUTATIONS': localUntrackedMutations,
+      'ACTIVE_LOCAL_UNTRACKED_MUTATIONS': localUntrackedMutations,
+      'PRESERVED_UNTRACKED_CONFLICTS': UntrackedStockConflictStore.allForStore(loja)
+          .map((c) => c.toDiagnosticRow())
+          .toList(growable: false),
       'REMOTE_NEWER_CACHE_STALE': remoteNewerCacheStale,
       'remoteComparisons': comparisons,
       'LOCAL_REMOTE_QTY_DELTA_PRODUCTS': deltaProducts,
