@@ -1,10 +1,10 @@
 {
-  "buildId": "mirjoias-pending-reconciliation-1.0.93",
+  "buildId": "nathy-final-sale-stock-prep-fix-1.0.94",
   "hostingTarget": "masterpalm-58c46",
   "siteId": "masterpalm-58c46",
   "expectedDomain": "app.mastepalm.com.br",
-  "webVersion": "1.0.93+107",
+  "webVersion": "1.0.94+108",
   "featureFlagDefault": false,
   "globalRollout": true,
-  "notes": "Mirjoias: stale/superseded/structural pending local clear + untracked qty guard. No repair of 51 local-only deltas. Preserves Nathy variation routing 1.0.92."
+  "notes": "Nathy: structural stale pending clear before sale (no false CAS). Preserves Mirjoias pending reconciliation 1.0.93 + variation picker 1.0.92."
 }

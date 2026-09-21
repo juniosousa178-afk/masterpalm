@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
 import '../core/produto_pending_stock_reconciliation.dart';
+import '../core/produto_effective_stock.dart';
 import '../core/produto_stock_revision.dart';
 import '../models/produto.dart';
 import 'firestore_paths.dart';
@@ -278,9 +279,31 @@ class VendaEstoqueRemotoPrepService {
       lojaId: lojaId,
       produto: produto,
     );
-    if (reconciledEarly && !hasPendingStockMutation(produto)) return true;
+    if (!hasPendingStockMutation(produto)) return true;
+    if (!reconciledEarly) {
+      // mustNeverFlush (manual/structural não limpo) — nunca replace.
+      final docId = produto.idFirebase.trim();
+      if (docId.isNotEmpty) {
+        final snap = await _db
+            .collection('lojas')
+            .doc(lojaId)
+            .collection(FSPaths.estoqueProdutosCol)
+            .doc(docId)
+            .get();
+        final data = snap.data();
+        if (data != null) {
+          final decision = classifyPendingAgainstRemote(
+            local: produto,
+            remote: data,
+          );
+          if (decision.classification.mustNeverFlush) {
+            return false;
+          }
+        }
+      }
+    }
 
-    // Só flush se ainda REAL_PENDING.
+    // Só REAL_PENDING pode ir a stockCatalogCommand replace.
     final flushed = await tryFlushPendingStockMutation(
       lojaId: lojaId,
       produto: produto,
@@ -292,6 +315,32 @@ class VendaEstoqueRemotoPrepService {
       produto: produto,
     );
     return reconciled && !hasPendingStockMutation(produto);
+  }
+
+  /// Após limpar pending / antes da baixa: alinha Hive ao remoto autoritativo.
+  /// Não mascara pending real restante.
+  @visibleForTesting
+  static Future<void> refreshAuthoritativeStockCacheForSale({
+    required String lojaId,
+    required Produto produto,
+  }) async {
+    if (hasPendingStockMutation(produto)) return;
+    final docId = produto.idFirebase.trim();
+    if (docId.isEmpty) return;
+    final snap = await _db
+        .collection('lojas')
+        .doc(lojaId)
+        .collection(FSPaths.estoqueProdutosCol)
+        .doc(docId)
+        .get();
+    final data = snap.data();
+    if (!snap.exists || data == null) return;
+    applyAuthoritativeRemoteStockToProduto(
+      produto,
+      remote: data,
+      updateQuantity: true,
+    );
+    if (produto.isInBox) await produto.save();
   }
 
   static Future<void> garantirProdutosProntosParaBaixa({
@@ -306,19 +355,34 @@ class VendaEstoqueRemotoPrepService {
       if (produto.lojaId.trim().isNotEmpty && produto.lojaId.trim() != li) {
         continue;
       }
-      if (!hasPendingStockMutation(produto)) continue;
-      final ready = await ensurePendingStockReadyForSale(
-        lojaId: li,
-        produto: produto,
-      );
-      if (!ready || hasPendingStockMutation(produto)) {
-        blocked.add(produto);
-        final diag = buildPendingSaleBlockDiag(
+      if (hasPendingStockMutation(produto)) {
+        final ready = await ensurePendingStockReadyForSale(
+          lojaId: li,
           produto: produto,
-          remoteData: null,
         );
-        debugPendingSaleBlockHook?.call(diag);
-        debugPrint('[PENDING_STOCK_SYNC_REQUIRED] $diag');
+        if (!ready || hasPendingStockMutation(produto)) {
+          blocked.add(produto);
+          final diag = buildPendingSaleBlockDiag(
+            produto: produto,
+            remoteData: null,
+          );
+          debugPendingSaleBlockHook?.call(diag);
+          debugPrint('[PENDING_STOCK_SYNC_REQUIRED] $diag');
+          continue;
+        }
+      }
+      // Sempre refrescar revision/op/qty do remoto após reconcile (evita
+      // cart/Hive com token stale pós-picker).
+      try {
+        await refreshAuthoritativeStockCacheForSale(
+          lojaId: li,
+          produto: produto,
+        );
+      } catch (e) {
+        debugPrint(
+          '[VENDA-PREP-REFRESH] falha type=${e.runtimeType} '
+          'produto=${produto.idFirebase}',
+        );
       }
     }
     if (blocked.isNotEmpty) {

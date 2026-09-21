@@ -197,7 +197,34 @@ PendingStockReconcileDecision classifyPendingAgainstRemote({
     );
   }
 
-  // STALE_STRUCTURAL: pending genérico; remoto estruturado; soma bate; same confirmed op.
+  // Pending genérico (Hive simple / sem células) vs remoto variation estruturado
+  // com mesma qty agregada. Ex.: Lacinho — pending stale de save editorial +
+  // remoto já com 15/22. Nunca flush replace (destruiria a grade).
+  if (remoteOp != pendingOp &&
+      _pendingIsOnlyGenericAggregate(localGrade.cells) &&
+      _remoteHasStructuredVariation(remote) &&
+      _remoteNormalizedAggregateConsistent(remote) &&
+      remoteQty == local.quantidade) {
+    if (remoteRev > base) {
+      return PendingStockReconcileDecision(
+        classification:
+            PendingStockReconcileClass.supersededPendingRemoteAdvanced,
+        stateEquivalent: false,
+        remoteRevEqualsBase: false,
+        reason: 'GENERIC_PENDING_SUPERSEDED_BY_STRUCTURED_REMOTE',
+      );
+    }
+    if (revEqBase) {
+      return PendingStockReconcileDecision(
+        classification: PendingStockReconcileClass.staleStructuralPending,
+        stateEquivalent: false,
+        remoteRevEqualsBase: true,
+        reason: 'GENERIC_PENDING_VS_STRUCTURED_REMOTE_EQUIVALENT_SUM',
+      );
+    }
+  }
+
+  // STALE_STRUCTURAL legado: confirmed op bate com remoto.
   if (remoteOp != pendingOp &&
       revEqBase &&
       _pendingIsOnlyGenericAggregate(localGrade.cells) &&
@@ -210,7 +237,7 @@ PendingStockReconcileDecision classifyPendingAgainstRemote({
       classification: PendingStockReconcileClass.staleStructuralPending,
       stateEquivalent: false,
       remoteRevEqualsBase: revEqBase,
-      reason: 'GENERIC_PENDING_VS_STRUCTURED_REMOTE_EQUIVALENT_SUM',
+      reason: 'GENERIC_PENDING_VS_STRUCTURED_REMOTE_CONFIRMED_OP',
     );
   }
 
