@@ -377,8 +377,25 @@ void main() {
           'cores': ['Azul', 'Vermelho'],
         },
         dependency: {'comboIds': []},
+      ).stockKind,
+      'grade',
+    );
+    expect(
+      eval(
+        id: 'grade',
+        stock: {
+          'stockKind': 'variation',
+          'stockRevision': 0,
+          'quantidade': 3,
+          'variacoes': {
+            'P': {'Azul': 1, 'Vermelho': 2},
+          },
+          'tamanhos': ['P'],
+          'cores': ['Azul', 'Vermelho'],
+        },
+        dependency: {'comboIds': []},
       ).eligible,
-      isFalse,
+      isTrue,
     );
     expect(
       eval(

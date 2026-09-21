@@ -1,9 +1,10 @@
 {
-  "buildId": "grade-multi-error-1.0.84",
+  "buildId": "consignment-hosting-restore-1.0.85",
   "hostingTarget": "masterpalm-58c46",
   "siteId": "masterpalm-58c46",
   "expectedDomain": "app.mastepalm.com.br",
-  "webVersion": "1.0.84+100",
+  "webVersion": "1.0.85+101",
   "featureFlagDefault": false,
-  "globalRollout": true
+  "globalRollout": true,
+  "notes": "Restores consignments settlement/addItems/reports on app domain; preserves stockCatalogCommand 00012-liv"
 }

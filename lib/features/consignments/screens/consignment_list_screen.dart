@@ -11,6 +11,7 @@ import '../consignment_ui.dart';
 import 'consignment_form_screen.dart';
 import 'consignment_details_screen.dart';
 import 'consignment_reseller_history_screen.dart';
+import '../reports/screens/consignment_reports_hub_screen.dart';
 
 class ConsignmentListScreen extends StatefulWidget {
   const ConsignmentListScreen({super.key});
@@ -58,6 +59,17 @@ class _ConsignmentListScreenState extends State<ConsignmentListScreen> {
       appBar: AppBar(
         title: const Text('Consignados'),
         actions: [
+          if (_enabled && _lojaId != null)
+            IconButton(
+              tooltip: 'Relatórios',
+              icon: const Icon(Icons.summarize_outlined),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ConsignmentReportsHubScreen(lojaId: _lojaId!),
+                ),
+              ),
+            ),
           if (_enabled && _lojaId != null)
             IconButton(
               tooltip: 'Histórico por revendedor',

@@ -6,6 +6,8 @@ import '../consignment_models.dart';
 import '../consignment_service.dart';
 import '../consignment_ui.dart';
 import '../consignment_validation.dart';
+import '../reports/consignment_report_actions.dart';
+import '../reports/screens/consignment_reports_hub_screen.dart';
 
 class ConsignmentSettleScreen extends StatefulWidget {
   const ConsignmentSettleScreen({
@@ -131,6 +133,30 @@ class _ConsignmentSettleScreenState extends State<ConsignmentSettleScreen> {
             },
         ],
       );
+      if (!mounted) return;
+      final settled = await ConsignmentService.getConsignment(widget.lojaId, widget.consignmentId);
+      if (!mounted) return;
+      if (settled != null && settled.isSettled) {
+        final action = await showDialog<String>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Acerto concluído'),
+            content: const Text('Deseja imprimir ou gerar o PDF do acerto?'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, 'skip'), child: const Text('Agora não')),
+              FilledButton(onPressed: () => Navigator.pop(ctx, 'print'), child: const Text('Imprimir / PDF')),
+            ],
+          ),
+        );
+        if (action == 'print' && mounted) {
+          await openConsignmentReportPreview(
+            context: context,
+            lojaId: widget.lojaId,
+            doc: settled,
+            kind: ConsignmentReportKind.settlement,
+          );
+        }
+      }
       if (!mounted) return;
       Navigator.pop(context, true);
     } catch (e) {

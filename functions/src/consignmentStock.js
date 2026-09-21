@@ -5,7 +5,7 @@ import {recipe, comboOrder, recalculateFixedCombos} from './stockCatalogCombo.js
 import {documentId} from './stockCatalogAccess.js';
 import {
   isMap, stockError, normalizeStock, projectCatalog, quantity, resolveKey, resolveExtraKey,
-  META_COST,
+  META_COST, cellTotal,
 } from './catalogStockProjection.js';
 import {consignmentError, CODES} from './consignmentProtocol.js';
 
@@ -17,6 +17,33 @@ export const fingerprint = value => createHash('sha256').update(JSON.stringify(o
 const stockEffect = p => Object.fromEntries(['quantidade','variacoes','estoquePorTamanho','estoquePorCor',
   'tamanhos','cores','variacoesExtraTipo','tipoProduto','stockKind','itensCombo','comboConfig','pendingSoftDelete']
   .filter(key => key in p).map(key => [key, p[key]]));
+
+/** Sellable units for picker display. Simple = aggregate; variation/grade = sum of canonical cells. */
+export function sellableConsignmentQty(stock, kind, variacoes) {
+  const aggregate = Number.isFinite(Number(stock?.quantidade))
+    ? Math.max(0, Math.trunc(Number(stock.quantidade)))
+    : 0;
+  if (kind === 'simple' || !isMap(variacoes) || !Object.keys(variacoes).length) {
+    return aggregate;
+  }
+  let sum = 0;
+  let any = false;
+  for (const cells of Object.values(variacoes)) {
+    if (!isMap(cells)) continue;
+    for (const [color, value] of Object.entries(cells)) {
+      if (color === META_COST || color === 'custo') continue;
+      try {
+        sum += cellTotal(value);
+        any = true;
+      } catch {
+        /* skip invalid cell */
+      }
+    }
+  }
+  if (!any) return aggregate;
+  // Never report more than canonical aggregate when both exist.
+  return aggregate > 0 ? Math.min(aggregate, sum) : sum;
+}
 
 function technicalKey(value) {
   const n = String(value ?? '').trim().toLowerCase().replace(/\s+/gu, '');
@@ -286,16 +313,17 @@ export function evaluateConsignmentPickerEligibility({
     quantity(classified.stock.stockRevision ?? stock.stockRevision);
     const qty = quantity(classified.stock.quantidade ?? stock.quantidade);
     if (qty < 1) return deny('ZERO_STOCK');
+    const variacoes = (classified.kind === 'variation' || classified.kind === 'grade')
+      ? (classified.stock.variacoes || {})
+      : {};
     return {
       eligible: true,
       productId,
       name: String(draft?.nome || stock.nome || productId).trim() || productId,
       price: moneyValue(draft?.preco ?? draft?.precoVenda ?? stock.preco ?? stock.precoVenda),
-      availableQty: qty,
+      availableQty: sellableConsignmentQty(classified.stock, classified.kind, variacoes),
       stockKind: classified.kind,
-      variacoes: (classified.kind === 'variation' || classified.kind === 'grade')
-        ? (classified.stock.variacoes || {})
-        : {},
+      variacoes,
       reason: '',
     };
   } catch (error) {

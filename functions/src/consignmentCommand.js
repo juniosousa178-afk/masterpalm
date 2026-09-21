@@ -66,6 +66,20 @@ function docsById(snap) {
   return map;
 }
 
+/** Authoritative Mirjoias code is stock.codigoBarras; never coerce to number. */
+function productCodeFromMaps(draft, stock) {
+  for (const src of [stock, draft]) {
+    if (!src || typeof src !== 'object') continue;
+    for (const key of ['codigoBarras', 'sku', 'codigo', 'codigoProduto', 'productCode', 'barcode', 'code']) {
+      const raw = src[key];
+      if (raw == null) continue;
+      const s = String(raw).trim();
+      if (s) return s;
+    }
+  }
+  return '';
+}
+
 async function listEligibleProducts(db, command, auth) {
   keysOnly(command.payload, []);
   const base = storeRef(db, command.lojaId);
@@ -96,6 +110,7 @@ async function listEligibleProducts(db, command, auth) {
     products.push({
       productId: item.productId,
       name: item.name,
+      productCode: productCodeFromMaps(drafts.get(doc.id), doc.data() || {}),
       price: item.price,
       availableQty: item.availableQty,
       stockKind: item.stockKind,
@@ -105,7 +120,7 @@ async function listEligibleProducts(db, command, auth) {
       unavailableReason: item.eligible
         ? ''
         : (item.reason === 'ZERO_STOCK' || item.reason === 'INSUFFICIENT_STOCK'
-          ? 'Sem estoque'
+          ? '0 disponíveis para consignação'
           : (item.reason === 'COMBO_NOT_SUPPORTED'
             ? 'Produtos do tipo combo ainda não são suportados nesta operação.'
             : 'Produto ainda não disponível para consignação.')),
@@ -119,7 +134,7 @@ async function listEligibleProducts(db, command, auth) {
 }
 
 function parseLineInput(raw, index) {
-  keysOnly(raw, ['productId','variationKey','qtySent','unitSalePrice','commissionType','commissionValue','notes']);
+  keysOnly(raw, ['productId','variationKey','qtySent','unitSalePrice','commissionType','commissionValue','notes','expectedStockRevision']);
   const productId = documentId(raw.productId, 'productId');
   const qtySent = quantityPositive(raw.qtySent);
   const unitSalePrice = money(raw.unitSalePrice);
@@ -130,6 +145,10 @@ function parseLineInput(raw, index) {
   const commissionValue = commissionType === COMMISSION.SEM_COMISSAO ? 0 : money(raw.commissionValue ?? 0);
   const variationKey = raw.variationKey == null ? {size: '', color: '', extra: ''} : parseVariationSelector(raw.variationKey);
   const potential = lineAmounts(qtySent, unitSalePrice, commissionType, commissionValue);
+  let expectedStockRevision;
+  if (raw.expectedStockRevision !== undefined && raw.expectedStockRevision !== null) {
+    expectedStockRevision = quantityNonNegative(raw.expectedStockRevision);
+  }
   return {
     lineId: `${productId}::${variationIdentity(variationKey)}`,
     productId,
@@ -147,6 +166,7 @@ function parseLineInput(raw, index) {
     potentialCommissionAmount: potential.lineCommissionAmount,
     potentialNetAmount: potential.lineNetAmount,
     notes: optionalString(raw.notes, 'line notes', 500),
+    ...(expectedStockRevision !== undefined ? {expectedStockRevision} : {}),
     _index: index,
   };
 }
@@ -268,15 +288,29 @@ async function snapshotLines(tx, base, lines) {
       }
     }
     const gKey = classified.kind === 'simple' ? '' : gradeKey(line.variationKey);
+    if (line.expectedStockRevision !== undefined) {
+      const liveRev = quantity(classified.stock.stockRevision);
+      if (line.expectedStockRevision !== liveRev) {
+        issues.push(makeIssue({
+          productId: line.productId, productName: name, lineIndex: idx,
+          selectionLabel, reasonCode: REASON.STOCK_CONFLICT,
+          requestedQty: line.qtySent, availableQty: liveRev,
+        }));
+        continue;
+      }
+    }
+    const code = productCodeFromMaps(editorial, record.data || {});
     out.push({
       ...line,
       productNameSnapshot: name,
+      productCodeSnapshot: code || '',
       productType: classified.kind,
       variationSnapshot: classified.kind === 'simple' ? null : {...line.variationKey},
       gradeKey: gKey || null,
       gradeDimensions: classified.kind === 'simple' ? null : {...line.variationKey},
     });
     delete out[out.length - 1]._index;
+    delete out[out.length - 1].expectedStockRevision;
   }
   if (issues.length) throw productValidationError(issues);
   return {lines: out, records};
@@ -339,6 +373,7 @@ export async function executeConsignmentInTransaction(tx, db, raw, auth) {
     case 'cancelDraft': result = await cancelDraft(tx, base, command, uid); break;
     case 'issue': result = await issueConsignment(tx, base, command, uid); break;
     case 'settle': result = await settleConsignment(tx, base, command, uid); break;
+    case 'addItems': result = await addItemsToConsignment(tx, base, command, uid); break;
     default: throw consignmentError(CODES.INVALID_ARGUMENT, 'Unsupported consignment operation');
   }
   tx.create(opRef(base, command.operationId), {
@@ -455,6 +490,7 @@ async function createDraft(tx, base, command, uid) {
     settledBy: null,
     notes: optionalString(command.payload.notes, 'notes'),
     lines,
+    additions: [],
     ...totals,
     revision: 1,
     issueOperationId: null,
@@ -555,6 +591,25 @@ async function issueConsignment(tx, base, command, uid) {
         potentialNetAmount,
       };
     }),
+    additions: [{
+      additionId: command.operationId,
+      kind: 'INITIAL',
+      createdAt: FieldValue.serverTimestamp(),
+      createdBy: uid,
+      lines: frozen.map(l => ({
+        lineId: l.lineId,
+        productId: l.productId,
+        productCodeSnapshot: l.productCodeSnapshot || '',
+        productNameSnapshot: l.productNameSnapshot,
+        productType: l.productType,
+        variationKey: l.variationKey,
+        variationSnapshot: l.variationSnapshot ?? null,
+        qtyAdded: l.qtySent,
+        unitSalePriceSnapshot: l.unitSalePriceSnapshot,
+        commissionType: l.commissionType,
+        commissionValueSnapshot: l.commissionValueSnapshot,
+      })),
+    }],
     status: STATUS.ISSUED,
     issuedAt: FieldValue.serverTimestamp(),
     issuedBy: uid,
@@ -589,6 +644,178 @@ async function issueConsignment(tx, base, command, uid) {
 
 function settlementLineKey(line) {
   return line.lineId || `${line.productId}::${variationIdentity(parseVariationSelector(line.variationKey))}`;
+}
+
+function additionHistoryLine(line, stockMeta = {}) {
+  return {
+    lineId: line.lineId,
+    productId: line.productId,
+    productCodeSnapshot: line.productCodeSnapshot || '',
+    productNameSnapshot: line.productNameSnapshot,
+    productType: line.productType,
+    variationKey: line.variationKey,
+    variationSnapshot: line.variationSnapshot ?? null,
+    qtyAdded: line.qtySent,
+    unitSalePriceSnapshot: line.unitSalePriceSnapshot,
+    commissionType: line.commissionType,
+    commissionValueSnapshot: line.commissionValueSnapshot,
+    stockRevisionBefore: stockMeta.before ?? null,
+    stockRevisionAfter: stockMeta.after ?? null,
+  };
+}
+
+function ensureInitialAddition(data) {
+  const existing = Array.isArray(data.additions) ? [...data.additions] : [];
+  if (existing.length > 0) return existing;
+  const lines = Array.isArray(data.lines) ? data.lines : [];
+  if (!lines.length) return existing;
+  existing.push({
+    additionId: data.issueOperationId || `${data.id || 'consignment'}_initial`,
+    kind: 'INITIAL',
+    createdAt: data.issuedAt || data.createdAt || null,
+    createdBy: data.issuedBy || data.createdBy || null,
+    lines: lines.map(l => additionHistoryLine({...l, qtySent: l.qtySent})),
+  });
+  return existing;
+}
+
+async function addItemsToConsignment(tx, base, command, uid) {
+  keysOnly(command.payload, ['lines', 'expectedRevision']);
+  const {ref, data} = await loadDraft(tx, base, command);
+  if (data.status === STATUS.SETTLED) {
+    throw consignmentError(
+      CODES.CONSIGNMENT_ALREADY_SETTLED,
+      'Esta consignação já foi acertada e não pode receber novas peças.',
+    );
+  }
+  if (data.status === STATUS.CANCELLED) {
+    throw consignmentError(CODES.CONSIGNMENT_CANCELLED, 'Esta consignação está cancelada.');
+  }
+  if (data.status !== STATUS.DRAFT && data.status !== STATUS.ISSUED) {
+    throw consignmentError(CODES.FAILED_PRECONDITION, 'Consignment cannot receive additions');
+  }
+  if (command.payload.expectedRevision === undefined || command.payload.expectedRevision === null) {
+    throw consignmentError(CODES.INVALID_ARGUMENT, 'expectedRevision required');
+  }
+  const expectedRevision = quantityNonNegative(command.payload.expectedRevision);
+  const currentRevision = quantityNonNegative(data.revision ?? 1);
+  if (expectedRevision !== currentRevision) {
+    throw consignmentError(
+      CODES.CONSIGNMENT_REVISION_CONFLICT,
+      'Consignment was updated; refresh and try again',
+    );
+  }
+  await readReseller(tx, base, data.resellerId, command.lojaId);
+  const additionId = command.operationId;
+  documentId(additionId, 'additionId');
+  const parsed = uniqueLines(command.payload.lines ?? []);
+  if (!parsed.length) throw consignmentError(CODES.INVALID_ARGUMENT, 'lines required');
+  const existingLines = Array.isArray(data.lines) ? [...data.lines] : [];
+  if (existingLines.length + parsed.length > MAX_LINES) {
+    throw consignmentError(CODES.RESOURCE_EXHAUSTED, 'Too many consignment lines');
+  }
+  const {lines: snapshotted, records} = await snapshotLines(tx, base, parsed);
+  const stockMetaByProduct = new Map();
+  for (const [id, record] of records) {
+    if (!record?.data) continue;
+    stockMetaByProduct.set(id, {before: quantity(record.data.stockRevision ?? 0)});
+  }
+  const stamped = snapshotted.map(line => {
+    const baseKey = `${line.productId}::${variationIdentity(line.variationKey)}`;
+    return {
+      ...line,
+      lineId: `${baseKey}::${additionId}`,
+      additionId,
+      qtySold: 0,
+      qtyReturned: 0,
+    };
+  });
+  const existingIds = new Set(existingLines.map(l => l.lineId));
+  for (const line of stamped) {
+    if (existingIds.has(line.lineId)) {
+      throw consignmentError(CODES.INVALID_ARGUMENT, 'Duplicate addition line identity');
+    }
+  }
+
+  let persisted = {writes: [], products: [], affected: []};
+  if (data.status === STATUS.ISSUED) {
+    for (const line of stamped) {
+      const record = records.get(line.productId);
+      if (!record?.data) throw consignmentError(CODES.PRODUCT_NOT_FOUND, 'Product unavailable');
+      const classified = classifyConsignmentProduct(record.data);
+      if (classified.kind !== line.productType) {
+        throw consignmentError(CODES.PRODUCT_STATE_UNSAFE, 'Product type changed after selection');
+      }
+      const selector = parseVariationSelector(line.variationKey);
+      record.data = applyExactConsignmentDelta(record.data, line.productType, selector, -line.qtySent);
+    }
+    persisted = persistConsignmentStock(tx, base, records, command.operationId, -1);
+    if (persisted.writes.length + 8 > 100) {
+      throw consignmentError(CODES.RESOURCE_EXHAUSTED, 'Stock transaction write budget exceeded');
+    }
+    for (const write of persisted.writes) write();
+    for (const [id, record] of records) {
+      if (!record?.data) continue;
+      const prev = stockMetaByProduct.get(id) || {before: null};
+      stockMetaByProduct.set(id, {
+        before: prev.before,
+        after: quantity(record.data.stockRevision ?? 0),
+      });
+    }
+  }
+
+  const additions = ensureInitialAddition(data);
+  additions.push({
+    additionId,
+    kind: data.status === STATUS.DRAFT ? 'DRAFT_ADD' : 'ADDITION',
+    createdAt: FieldValue.serverTimestamp(),
+    createdBy: uid,
+    lines: stamped.map(l => additionHistoryLine(l, stockMetaByProduct.get(l.productId))),
+  });
+
+  const mergedLines = [...existingLines, ...stamped];
+  const totals = draftTotals(mergedLines);
+  const newRevision = currentRevision + 1;
+  tx.update(ref, {
+    lines: mergedLines,
+    additions,
+    ...totals,
+    totalItemsSold: data.totalItemsSold || 0,
+    totalItemsReturned: data.totalItemsReturned || 0,
+    grossSoldAmount: data.grossSoldAmount || 0,
+    commissionAmount: data.commissionAmount || 0,
+    netAmount: data.netAmount || 0,
+    revision: newRevision,
+    lastAdditionId: additionId,
+    updatedAt: FieldValue.serverTimestamp(),
+    updatedBy: uid,
+  });
+  tx.create(base.collection('consignment_audit').doc(command.operationId), {
+    type: 'CONSIGNMENT_ADD_ITEMS',
+    storeId: command.lojaId,
+    consignmentId: command.consignmentId,
+    operationId: command.operationId,
+    additionId,
+    actorUid: uid,
+    timestamp: FieldValue.serverTimestamp(),
+    affectedProducts: persisted.affected || [],
+    status: data.status,
+  });
+  return {
+    consignmentId: command.consignmentId,
+    additionId,
+    status: data.status,
+    revision: newRevision,
+    addedItems: stamped,
+    updatedTotals: {
+      totalItemsSent: totals.totalItemsSent,
+      potentialGrossAmount: totals.potentialGrossAmount,
+      potentialCommissionAmount: totals.potentialCommissionAmount,
+      potentialNetAmount: totals.potentialNetAmount,
+    },
+    products: persisted.products || [],
+    affected: persisted.affected || [],
+  };
 }
 
 async function settleConsignment(tx, base, command, uid) {

@@ -1,6 +1,11 @@
+import '../../utils/text_utils.dart';
+
 /// Product eligibility for Consignados picker. Hive is never authority.
 const consignmentProductUnavailableReason =
     'Produto ainda não disponível para consignação.';
+
+/// Authoritative Mirjoias product code field on stock/draft docs.
+const consignmentAuthoritativeProductCodeField = 'codigoBarras';
 
 class ConsignmentPickerItem {
   const ConsignmentPickerItem({
@@ -11,18 +16,77 @@ class ConsignmentPickerItem {
     required this.stockKind,
     required this.variacoes,
     required this.eligible,
+    this.productCode = '',
     this.unavailableReason = consignmentProductUnavailableReason,
+    this.stockRevision,
   });
 
   final String productId;
   final String name;
+  /// Store product code (authoritative: [consignmentAuthoritativeProductCodeField]).
+  final String productCode;
   final double price;
   final int availableQty;
   final String stockKind;
   final Map<String, dynamic> variacoes;
   final bool eligible;
   final String unavailableReason;
+  final int? stockRevision;
+
+  ConsignmentPickerItem copyWith({
+    String? productCode,
+    String? name,
+    double? price,
+    int? availableQty,
+    String? stockKind,
+    Map<String, dynamic>? variacoes,
+    bool? eligible,
+    String? unavailableReason,
+    int? stockRevision,
+  }) {
+    return ConsignmentPickerItem(
+      productId: productId,
+      name: name ?? this.name,
+      productCode: productCode ?? this.productCode,
+      price: price ?? this.price,
+      availableQty: availableQty ?? this.availableQty,
+      stockKind: stockKind ?? this.stockKind,
+      variacoes: variacoes ?? this.variacoes,
+      eligible: eligible ?? this.eligible,
+      unavailableReason: unavailableReason ?? this.unavailableReason,
+      stockRevision: stockRevision ?? this.stockRevision,
+    );
+  }
 }
+
+/// Resolve product code without numeric coercion (preserves leading zeros).
+String consignmentProductCodeFromMaps(
+  Map<String, dynamic>? draft,
+  Map<String, dynamic>? stock,
+) {
+  for (final src in [stock, draft]) {
+    if (src == null) continue;
+    for (final key in const [
+      consignmentAuthoritativeProductCodeField,
+      'sku',
+      'codigo',
+      'codigoProduto',
+      'productCode',
+      'barcode',
+      'code',
+    ]) {
+      final raw = src[key];
+      if (raw == null) continue;
+      final s = raw.toString().trim();
+      if (s.isNotEmpty) return s;
+    }
+  }
+  return '';
+}
+
+String consignmentPickerNormalizeQuery(String input) => normalizeText(input);
+
+String consignmentPickerNormalizeCode(String input) => input.trim().toLowerCase();
 
 bool _nonemptyMap(dynamic value) => value is Map && value.isNotEmpty;
 
@@ -114,9 +178,11 @@ ConsignmentPickerItem evaluateConsignmentPickerItem({
   Map<String, dynamic>? tombstone,
 }) {
   final name = (draft?['nome'] ?? stock['nome'] ?? productId).toString();
+  final productCode = consignmentProductCodeFromMaps(draft, stock);
   ConsignmentPickerItem deny() => ConsignmentPickerItem(
         productId: productId,
         name: name,
+        productCode: productCode,
         price: _price(draft, stock),
         availableQty: _intQty(stock['quantidade']) ?? 0,
         stockKind: (stock['stockKind'] ?? '').toString(),
@@ -141,6 +207,7 @@ ConsignmentPickerItem evaluateConsignmentPickerItem({
     return ConsignmentPickerItem(
       productId: productId,
       name: name,
+      productCode: productCode,
       price: _price(draft, stock),
       availableQty: _intQty(stock['quantidade']) ?? 0,
       stockKind: 'combo',
@@ -163,42 +230,106 @@ ConsignmentPickerItem evaluateConsignmentPickerItem({
     return ConsignmentPickerItem(
       productId: productId,
       name: name,
+      productCode: productCode,
       price: _price(draft, stock),
       availableQty: 0,
       stockKind: kind as String,
       variacoes: variacoes,
       eligible: false,
-      unavailableReason: 'Sem estoque',
+      unavailableReason: '0 disponíveis para consignação',
     );
   }
   final isGrade = kind == 'variation' && _isTrueGrade(stock, variacoes);
+  final stockKindOut = isGrade ? 'grade' : (kind as String);
   return ConsignmentPickerItem(
     productId: productId,
     name: name,
+    productCode: productCode,
     price: _price(draft, stock),
-    availableQty: qty,
-    stockKind: isGrade ? 'grade' : (kind as String),
+    availableQty: _sellablePickerQty(qty, stockKindOut, variacoes),
+    stockKind: stockKindOut,
     variacoes: variacoes,
     eligible: true,
     unavailableReason: '',
+    stockRevision: revision,
   );
 }
 
+int _cellQtyDeep(dynamic value) {
+  if (value is int) return value < 0 ? 0 : value;
+  if (value is num) {
+    final n = value.toInt();
+    return n < 0 ? 0 : n;
+  }
+  if (value is Map) {
+    var sum = 0;
+    for (final e in value.entries) {
+      final k = e.key.toString();
+      if (k == 'custo' || k == '__custoUnitario') continue;
+      if (e.value is num) {
+        final n = (e.value as num).toInt();
+        if (n > 0) sum += n;
+      }
+    }
+    return sum;
+  }
+  return int.tryParse('$value') ?? 0;
+}
+
+int _sellablePickerQty(int aggregate, String stockKind, Map<String, dynamic> variacoes) {
+  if (stockKind == 'simple' || variacoes.isEmpty) return aggregate;
+  var sum = 0;
+  var any = false;
+  for (final cells in variacoes.values) {
+    if (cells is! Map) continue;
+    for (final e in cells.entries) {
+      final k = e.key.toString();
+      if (k == 'custo' || k == '__custoUnitario') continue;
+      any = true;
+      sum += _cellQtyDeep(e.value);
+    }
+  }
+  if (!any) return aggregate;
+  return aggregate > 0 ? (sum < aggregate ? sum : aggregate) : sum;
+}
+
+bool consignmentPickerItemMatchesQuery(ConsignmentPickerItem item, String query) {
+  final qRaw = query.trim();
+  if (qRaw.isEmpty) return true;
+  final qName = consignmentPickerNormalizeQuery(qRaw);
+  final qCode = consignmentPickerNormalizeCode(qRaw);
+  final code = consignmentPickerNormalizeCode(item.productCode);
+  // Exact or prefix only — never strip leading zeros via numeric parse / mid-string digit match.
+  if (code.isNotEmpty && (code == qCode || code.startsWith(qCode))) return true;
+  if (consignmentPickerNormalizeQuery(item.name).contains(qName)) return true;
+  if (item.productId.toLowerCase().contains(qCode)) return true;
+  return false;
+}
+
+/// Visible picker rows for [query].
+/// Empty query → all eligible (no page truncate). Non-empty → name/code matches,
+/// including disabled rows so operators can see why a SKU is unavailable.
 List<ConsignmentPickerItem> consignmentPickerVisibleItems(
   List<ConsignmentPickerItem> all, {
   String query = '',
 }) {
-  final q = query.trim().toLowerCase();
-  final matches = q.isEmpty
-      ? all
-      : all.where((e) =>
-          e.name.toLowerCase().contains(q) ||
-          e.productId.toLowerCase().contains(q));
-  // Prefer eligible first, then disabled (zero stock / unsupported) for visibility.
+  final qRaw = query.trim();
+  final qCode = consignmentPickerNormalizeCode(qRaw);
+  final Iterable<ConsignmentPickerItem> matches;
+  if (qRaw.isEmpty) {
+    matches = all.where((e) => e.eligible);
+  } else {
+    matches = all.where((e) => consignmentPickerItemMatchesQuery(e, qRaw));
+  }
   final list = matches.toList()
     ..sort((a, b) {
+      if (qCode.isNotEmpty) {
+        final aExact = consignmentPickerNormalizeCode(a.productCode) == qCode;
+        final bExact = consignmentPickerNormalizeCode(b.productCode) == qCode;
+        if (aExact != bExact) return aExact ? -1 : 1;
+      }
       if (a.eligible == b.eligible) return a.name.compareTo(b.name);
       return a.eligible ? -1 : 1;
     });
-  return list.take(80).toList();
+  return list;
 }

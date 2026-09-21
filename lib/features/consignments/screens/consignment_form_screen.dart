@@ -3,12 +3,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../design_system/mp_tokens.dart';
-import '../consignment_eligibility.dart';
+import '../consignment_product_picker.dart';
 import '../consignment_errors.dart';
 import '../consignment_models.dart';
 import '../consignment_service.dart';
 import '../consignment_ui.dart';
 import '../consignment_validation.dart';
+import '../reports/consignment_report_actions.dart';
+import '../reports/screens/consignment_reports_hub_screen.dart';
 
 class ConsignmentFormScreen extends StatefulWidget {
   const ConsignmentFormScreen({
@@ -111,168 +113,12 @@ class _ConsignmentFormScreenState extends State<ConsignmentFormScreen> {
   }
 
   Future<void> _addProduct() async {
-    List<ConsignmentPickerItem> catalog;
-    try {
-      catalog = await ConsignmentService.loadPickerProducts(widget.lojaId);
-    } catch (_) {
-      catalog = const [];
-    }
-    if (!mounted) return;
-    final selected = await showModalBottomSheet<ConsignmentPickerItem>(
+    final line = await pickConsignmentProductLine(
       context: context,
-      isScrollControlled: true,
-      builder: (ctx) {
-        var q = '';
-        return StatefulBuilder(
-          builder: (ctx, setModal) {
-            final filtered = consignmentPickerVisibleItems(catalog, query: q);
-            return SizedBox(
-              height: MediaQuery.of(ctx).size.height * 0.75,
-              child: Column(
-                children: [
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text('Disponíveis para consignação', style: MpType.section),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: TextField(
-                      key: const Key('consignment_product_search'),
-                      decoration: const InputDecoration(
-                        prefixIcon: Icon(Icons.search),
-                        hintText: 'Buscar produto',
-                      ),
-                      onChanged: (v) => setModal(() => q = v),
-                    ),
-                  ),
-                  Expanded(
-                    child: filtered.isEmpty
-                        ? const Center(child: Text('Nenhum produto disponível para consignação.'))
-                        : ListView.builder(
-                            itemCount: filtered.length,
-                            itemBuilder: (_, i) {
-                              final p = filtered[i];
-                              return ListTile(
-                                key: ValueKey('picker_${p.productId}'),
-                                enabled: p.eligible,
-                                title: Text(p.name),
-                                subtitle: Text(
-                                  p.eligible
-                                      ? '${p.availableQty} disponíveis · ${consignmentMoney.format(p.price)}'
-                                      : p.unavailableReason,
-                                ),
-                                onTap: p.eligible ? () => Navigator.pop(ctx, p) : null,
-                              );
-                            },
-                          ),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
+      lojaId: widget.lojaId,
     );
-    if (selected == null || !selected.eligible) return;
-    var type = selected.stockKind == 'variation' || selected.stockKind == 'grade'
-        ? selected.stockKind
-        : 'simple';
-    var variation = const ConsignmentVariationKey();
-    if (type == 'variation' || type == 'grade') {
-      final picked = await _pickVariation(
-        selected.variacoes,
-        title: type == 'grade' ? 'Grade' : 'Variação',
-      );
-      if (picked == null) return;
-      variation = picked;
-    }
-    if (!mounted) return;
-    setState(() {
-      _lines.add(ConsignmentDraftLine(
-        productId: selected.productId,
-        productName: selected.name,
-        productType: type,
-        qtySent: 1,
-        unitSalePrice: selected.price,
-        variationKey: variation,
-      ));
-    });
-  }
-
-  Future<ConsignmentVariationKey?> _pickVariation(
-    Map<String, dynamic> variacoes, {
-    String title = 'Variação',
-  }) async {
-    final sizes = variacoes.keys.map((e) => e.toString()).toList();
-    if (sizes.isEmpty) return null;
-    String? size = sizes.length == 1 ? sizes.first : null;
-    String? color;
-    List<String> colorsOf(String? s) {
-      if (s == null) return const [];
-      final cells = variacoes[s];
-      if (cells is! Map) return const [];
-      return cells.keys.map((e) => e.toString()).where((k) => k != 'custo' && k != '__custoUnitario').toList();
-    }
-    if (size != null) {
-      final colors = colorsOf(size);
-      color = colors.length == 1 ? colors.first : null;
-    }
-    return showDialog<ConsignmentVariationKey>(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: Text(title),
-          content: StatefulBuilder(
-            builder: (ctx, setLocal) {
-              final colorKeys = colorsOf(size);
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  DropdownButtonFormField<String>(
-                    value: size,
-                    decoration: const InputDecoration(labelText: 'Tamanho'),
-                    items: sizes
-                        .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-                        .toList(),
-                    onChanged: (v) => setLocal(() {
-                      size = v;
-                      color = null;
-                    }),
-                  ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    value: colorKeys.contains(color) ? color : null,
-                    decoration: InputDecoration(
-                      labelText: title == 'Grade' ? 'Cor / opção' : 'Cor',
-                    ),
-                    items: colorKeys
-                        .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-                        .toList(),
-                    onChanged: (v) => setLocal(() => color = v),
-                  ),
-                ],
-              );
-            },
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
-            FilledButton(
-              onPressed: () {
-                if (size == null || color == null) return;
-                Navigator.pop(
-                  ctx,
-                  ConsignmentVariationKey(size: size!, color: color!),
-                );
-              },
-              child: const Text('Usar'),
-            ),
-          ],
-        );
-      },
-    );
+    if (line == null || !mounted) return;
+    setState(() => _lines.add(line));
   }
 
   Future<void> _issue() async {
@@ -316,6 +162,30 @@ class _ConsignmentFormScreenState extends State<ConsignmentFormScreen> {
         lojaId: widget.lojaId,
         consignmentId: _draftId!,
       );
+      if (!mounted) return;
+      final issued = await ConsignmentService.getConsignment(widget.lojaId, _draftId!);
+      if (!mounted) return;
+      if (issued != null) {
+        final action = await showDialog<String>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Consignação enviada'),
+            content: const Text('Deseja imprimir ou gerar o PDF do pedido?'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, 'skip'), child: const Text('Agora não')),
+              FilledButton(onPressed: () => Navigator.pop(ctx, 'print'), child: const Text('Imprimir / PDF')),
+            ],
+          ),
+        );
+        if (action == 'print' && mounted) {
+          await openConsignmentReportPreview(
+            context: context,
+            lojaId: widget.lojaId,
+            doc: issued,
+            kind: ConsignmentReportKind.order,
+          );
+        }
+      }
       if (!mounted) return;
       Navigator.pop(context, true);
     } catch (e) {

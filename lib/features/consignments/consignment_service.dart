@@ -29,9 +29,11 @@ class ConsignmentService {
 
   static bool _issueInFlight = false;
   static bool _settleInFlight = false;
+  static bool _addItemsInFlight = false;
 
   static bool get issueInFlight => _issueInFlight;
   static bool get settleInFlight => _settleInFlight;
+  static bool get addItemsInFlight => _addItemsInFlight;
 
   static FirebaseFirestore get _db =>
       debugFirestore ?? FirebaseFirestore.instance;
@@ -214,6 +216,35 @@ class ConsignmentService {
     }
   }
 
+  static Future<Map<String, dynamic>> addItems({
+    required String lojaId,
+    required String consignmentId,
+    required int expectedRevision,
+    required List<ConsignmentDraftLine> lines,
+    String? operationId,
+  }) async {
+    if (_addItemsInFlight) {
+      throw const ConsignmentException(
+          'IN_FLIGHT', 'Aguarde a confirmação do acréscimo.');
+    }
+    _addItemsInFlight = true;
+    try {
+      return await command(
+        lojaId: lojaId,
+        operation: 'addItems',
+        operationId: (operationId ?? 'add_${newId()}').trim(),
+        consignmentId: consignmentId,
+        payload: {
+          'expectedRevision': expectedRevision,
+          'lines': lines.map((e) => e.toPayload()).toList(),
+        },
+        requireOnline: true,
+      );
+    } finally {
+      _addItemsInFlight = false;
+    }
+  }
+
   static Stream<List<ConsignmentDoc>> watchConsignments(String lojaId) {
     return _db
         .collection('lojas')
@@ -255,15 +286,22 @@ class ConsignmentService {
     );
     final raw = res['products'];
     if (raw is! List) return const [];
-    return raw.whereType<Map>().map((row) {
+    final items = raw.whereType<Map>().map((row) {
       final data = Map<String, dynamic>.from(row);
       final variacoes = data['variacoes'] is Map
           ? Map<String, dynamic>.from(data['variacoes'] as Map)
           : <String, dynamic>{};
       final eligible = data['eligible'] != false;
+      final productCode = (data['productCode'] ??
+              data['codigoBarras'] ??
+              data['sku'] ??
+              '')
+          .toString()
+          .trim();
       return ConsignmentPickerItem(
         productId: (data['productId'] ?? '').toString(),
         name: (data['name'] ?? data['productId'] ?? '').toString(),
+        productCode: productCode,
         price: (data['price'] is num) ? (data['price'] as num).toDouble() : 0,
         availableQty: data['availableQty'] is num ? (data['availableQty'] as num).toInt() : 0,
         stockKind: (data['stockKind'] ?? 'simple').toString(),
@@ -271,9 +309,39 @@ class ConsignmentService {
         eligible: eligible,
         unavailableReason: eligible
             ? ''
-            : (data['unavailableReason'] ?? 'Produto ainda não disponível para consignação.').toString(),
+            : (data['unavailableReason'] ?? '0 disponíveis para consignação').toString(),
       );
     }).where((e) => e.productId.isNotEmpty).toList();
+    return _enrichPickerProductCodes(lojaId, items);
+  }
+
+  /// Fills missing codes from authoritative stock `codigoBarras` (search UX).
+  static Future<List<ConsignmentPickerItem>> _enrichPickerProductCodes(
+    String lojaId,
+    List<ConsignmentPickerItem> items,
+  ) async {
+    if (items.isEmpty) return items;
+    if (items.every((e) => e.productCode.trim().isNotEmpty)) return items;
+    try {
+      final snap =
+          await _db.collection('lojas').doc(lojaId).collection('estoque_produtos').get();
+      final codes = <String, String>{};
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        final code = consignmentProductCodeFromMaps(null, data);
+        if (code.isNotEmpty) codes[doc.id] = code;
+      }
+      return items
+          .map((e) {
+            if (e.productCode.trim().isNotEmpty) return e;
+            final code = codes[e.productId];
+            if (code == null || code.isEmpty) return e;
+            return e.copyWith(productCode: code);
+          })
+          .toList();
+    } catch (_) {
+      return items;
+    }
   }
 
   static Stream<List<ConsignmentReseller>> watchResellers(String lojaId) {

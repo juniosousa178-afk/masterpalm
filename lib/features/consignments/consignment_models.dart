@@ -65,6 +65,7 @@ class ConsignmentDraftLine {
     this.variationKey = const ConsignmentVariationKey(),
     this.commissionType = 'SEM_COMISSAO',
     this.commissionValue = 0,
+    this.expectedStockRevision,
   });
 
   final String productId;
@@ -75,6 +76,7 @@ class ConsignmentDraftLine {
   ConsignmentVariationKey variationKey;
   String commissionType;
   double commissionValue;
+  int? expectedStockRevision;
 
   Map<String, dynamic> toPayload() => {
         'productId': productId,
@@ -83,6 +85,7 @@ class ConsignmentDraftLine {
         'commissionType': commissionType,
         'commissionValue': commissionValue,
         if (productType != 'simple') 'variationKey': variationKey.toMap(),
+        if (expectedStockRevision != null) 'expectedStockRevision': expectedStockRevision,
       };
 }
 
@@ -105,6 +108,8 @@ class ConsignmentDoc {
     this.issuedAt,
     this.settledAt,
     this.createdAt,
+    this.revision = 1,
+    this.additions = const [],
   });
 
   final String id;
@@ -113,6 +118,7 @@ class ConsignmentDoc {
   final String resellerName;
   final String status;
   final List<Map<String, dynamic>> lines;
+  final List<Map<String, dynamic>> additions;
   final int totalItemsSent;
   final int totalItemsSold;
   final int totalItemsReturned;
@@ -124,11 +130,31 @@ class ConsignmentDoc {
   final DateTime? issuedAt;
   final DateTime? settledAt;
   final DateTime? createdAt;
+  final int revision;
 
   bool get isDraft => status == 'DRAFT';
   bool get isIssued => status == 'ISSUED';
   bool get isSettled => status == 'SETTLED';
   bool get isCancelled => status == 'CANCELLED';
+  bool get canAddItems => isDraft || isIssued;
+
+  /// Consolidated qty by productId + variation identity (ignores addition lot suffix).
+  List<Map<String, dynamic>> get consolidatedLines {
+    final map = <String, Map<String, dynamic>>{};
+    for (final line in lines) {
+      final productId = '${line['productId'] ?? ''}';
+      final vk = ConsignmentVariationKey.fromMap(line['variationKey']);
+      final key = '$productId::${vk.size}\u001e${vk.color}\u001e${vk.extra}';
+      final existing = map[key];
+      final qty = (line['qtySent'] is num) ? (line['qtySent'] as num).toInt() : 0;
+      if (existing == null) {
+        map[key] = Map<String, dynamic>.from(line)..['qtySent'] = qty;
+      } else {
+        existing['qtySent'] = ((existing['qtySent'] as num?)?.toInt() ?? 0) + qty;
+      }
+    }
+    return map.values.toList();
+  }
 
   factory ConsignmentDoc.fromMap(String id, Map<String, dynamic> data) {
     DateTime? ts(dynamic v) {
@@ -159,6 +185,12 @@ class ConsignmentDoc {
               .map((e) => Map<String, dynamic>.from(e))
               .toList()
           : const [],
+      additions: (data['additions'] is List)
+          ? (data['additions'] as List)
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList()
+          : const [],
       totalItemsSent: n(data['totalItemsSent']).toInt(),
       totalItemsSold: n(data['totalItemsSold']).toInt(),
       totalItemsReturned: n(data['totalItemsReturned']).toInt(),
@@ -170,6 +202,7 @@ class ConsignmentDoc {
       issuedAt: ts(data['issuedAt']),
       settledAt: ts(data['settledAt']),
       createdAt: ts(data['createdAt']),
+      revision: n(data['revision']).toInt() == 0 ? 1 : n(data['revision']).toInt(),
     );
   }
 }

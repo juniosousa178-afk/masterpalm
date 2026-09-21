@@ -85,7 +85,7 @@ class ConsignmentException implements Exception {
   static String userMessage(String code, [String? fallback]) {
     switch (code) {
       case 'INSUFFICIENT_STOCK':
-        return 'Estoque insuficiente para enviar em consignação.';
+        return 'Estoque insuficiente para este produto. Atualize a quantidade e tente novamente.';
       case 'ZERO_STOCK':
         return 'Este produto está sem estoque disponível.';
       case 'PRODUCT_NOT_FOUND':
@@ -114,7 +114,14 @@ class ConsignmentException implements Exception {
       case 'CONSIGNMENT_ALREADY_ISSUED':
         return 'Esta consignação já foi emitida.';
       case 'CONSIGNMENT_ALREADY_SETTLED':
-        return 'Esta consignação já foi acertada.';
+        return 'Esta consignação já foi acertada e não pode receber novas peças.';
+      case 'CONSIGNMENT_CANCELLED':
+        return 'Esta consignação está cancelada.';
+      case 'CONSIGNMENT_REVISION_CONFLICT':
+      case 'aborted':
+        return 'Esta consignação foi atualizada. Atualize a tela e tente novamente.';
+      case 'STOCK_CONFLICT':
+        return 'O estoque deste produto foi alterado. Atualizamos os dados; confira e tente novamente.';
       case 'INVALID_SETTLEMENT_TOTAL':
         return 'Vendido + devolvido deve ser igual ao enviado em todas as linhas.';
       case 'IDEMPOTENCY_CONFLICT':
