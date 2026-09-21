@@ -86,6 +86,27 @@ bool hasPendingStockMutation(Produto p) =>
     p.pendingStockOperationId != null &&
     p.pendingStockOperationId!.trim().isNotEmpty;
 
+/// Rótulo de quantidade para UI de estoque (não mascara falha remota).
+String estoqueQuantidadeUiLabel(Produto p, {int? confirmedRemoteQty}) {
+  if (!hasPendingStockMutation(p)) {
+    return 'Qtd: ${p.quantidade}';
+  }
+  if (confirmedRemoteQty != null) {
+    return 'Confirmado: $confirmedRemoteQty · Pendente: ${p.quantidade}';
+  }
+  return 'Alteração pendente: ${p.quantidade}';
+}
+
+/// Estoque autoritativo para venda: pendência local não libera saldo novo.
+int sellableConfirmedQuantity({
+  required Produto local,
+  required int remoteQty,
+}) {
+  if (!hasPendingStockMutation(local)) return local.quantidade;
+  // Pendência = intenção local; venda só consome o remoto confirmado.
+  return remoteQty < 0 ? 0 : remoteQty;
+}
+
 /// Confirma mutação quando o remoto devolve o mesmo [operationId] e revisão.
 void confirmStockMutation(
   Produto p, {
@@ -105,6 +126,39 @@ void confirmStockMutation(
   if (serverStockAt != null) {
     applyServerStockVersionToProduto(p, serverStockAt);
   }
+}
+
+/// Abandona pendência local obsoleta quando o remoto já avançou com outro operationId
+/// (ex.: repair/replace em outro dispositivo). Adota a quantidade canônica remota.
+///
+/// Só aplica se [remoteRevision] > base da pendência — nunca descarta sync real ainda
+/// não refletido no servidor.
+bool abandonStalePendingStockMutationIfRemoteAdvanced(
+  Produto p, {
+  required Map<String, dynamic> remoteData,
+}) {
+  if (!hasPendingStockMutation(p)) return false;
+  final remoteRev = parseStockRevisionFromRemote(remoteData);
+  final remoteOp = parseStockOperationIdFromRemote(remoteData);
+  final pendingOp = p.pendingStockOperationId!.trim();
+  final base = p.pendingStockBaseRevision ?? p.stockRevision;
+  if (remoteOp == null || remoteOp == pendingOp) return false;
+  if (remoteRev <= base) return false;
+
+  final remoteQty = (remoteData['quantidade'] as num?)?.toInt();
+  if (remoteQty != null) {
+    p.quantidade = remoteQty < 0 ? 0 : remoteQty;
+  }
+  p.pendingStockOperationId = null;
+  p.pendingStockBaseRevision = null;
+  p.stockRevision = remoteRev;
+  p.confirmedStockOperationId = remoteOp;
+  clearStockSyncConflict(p);
+  final serverAt = parseFirestoreStockUpdatedAtField(remoteData);
+  if (serverAt != null) {
+    applyServerStockVersionToProduto(p, serverAt);
+  }
+  return true;
 }
 
 /// Tenta confirmar ou adotar revisão remota após pull/push/readback.
