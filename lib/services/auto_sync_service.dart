@@ -14,6 +14,7 @@ import '../models/cliente.dart';
 import '../models/fornecedor.dart';
 import '../models/venda.dart';
 import 'deduplicacao_clientes_service.dart';
+import 'estoque_service.dart';
 import 'fornecedores_firestore_service.dart';
 import 'full_sync_service.dart';
 import 'reconciliacao_vendas_clientes_service.dart';
@@ -92,6 +93,21 @@ class AutoSyncService {
         await SyncQueueService.processPending();
       } catch (e) {
         logW('⚠️ [AUTO-SYNC] Erro na fila pendente (type=${e.runtimeType})');
+      }
+
+      // 1b. Reenviar ajustes de estoque com pendingStockOperationId (idempotente).
+      try {
+        EstoqueService.ensurePendingFlushWired();
+        final flushed = await EstoqueService.flushPendingStockMutations(
+          lojaId: lojaId,
+        );
+        if (flushed > 0) {
+          logD('✅ [AUTO-SYNC] Pendências de estoque confirmadas: $flushed');
+        }
+      } catch (e) {
+        logW(
+          '⚠️ [AUTO-SYNC] Erro ao flush pending stock (type=${e.runtimeType})',
+        );
       }
 
       // 2. FullSync: produtos + clientes + vendas + módulo financeiro (Hive ↔ Firestore)

@@ -2,6 +2,8 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../services/venda_estoque_remoto_prep_service.dart'
+    show PendingStockSyncRequiredException;
 import '../services/vendas_service.dart' show VendaPersistenciaInconsistenciaCritica;
 
 /// Erro real após percorrer [error] / [cause] / encadeamento de "converted Future".
@@ -43,6 +45,32 @@ String _firebaseExceptionUserMessage(FirebaseException e) {
   if (code == 'not-found') {
     return 'Registro não encontrado. Verifique se os dados foram sincronizados.';
   }
+  if (code == 'failed-precondition' || code == 'aborted') {
+    final msg = e.message?.trim() ?? '';
+    final lower = msg.toLowerCase();
+    if (lower.contains('revision') ||
+        lower.contains('conflict') ||
+        lower.contains('stock revision')) {
+      return 'Os dados de estoque deste produto foram atualizados. '
+          'Atualize a tela e tente novamente.';
+    }
+    if (lower.contains('insufficient') || lower.contains('quantity')) {
+      return 'Estoque insuficiente para concluir a operação.';
+    }
+    if (lower.contains('product validation') ||
+        lower.contains('product_validation_failed')) {
+      return 'Não foi possível validar o estoque de um ou mais produtos. '
+          'Atualize a tela e tente novamente.';
+    }
+    return 'Os dados de estoque precisam ser atualizados. '
+        'Atualize a tela e tente novamente.';
+  }
+  if (code == 'already-exists') {
+    return 'Esta operação já foi registrada. Atualize a tela antes de repetir.';
+  }
+  if (code == 'invalid-argument') {
+    return 'Dados inválidos para concluir a operação. Verifique os itens e tente novamente.';
+  }
   final msg = e.message?.trim();
   if (msg != null &&
       msg.isNotEmpty &&
@@ -63,10 +91,22 @@ bool _contemDetalheTecnico(String text) {
 }
 
 String _sanitizarTextoErroUsuario(String text) {
-  if (_contemDetalheTecnico(text)) {
+  var cleaned = text.trim();
+  // StateError.toString() = "Bad state: …" — nunca mostrar prefixo técnico.
+  const prefixes = <String>[
+    'Bad state: ',
+    'Exception: ',
+    'Error: ',
+  ];
+  for (final p in prefixes) {
+    if (cleaned.startsWith(p)) {
+      cleaned = cleaned.substring(p.length).trim();
+    }
+  }
+  if (_contemDetalheTecnico(cleaned)) {
     return 'Falha na operação. Verifique conexão e tente novamente.';
   }
-  return text;
+  return cleaned;
 }
 
 /// Mensagem amigável para falha ao finalizar venda (sem erro técnico bruto).
@@ -77,8 +117,18 @@ String formatSalvarVendaErrorForUser(Object e) {
     return _mensagemInconsistenciaCriticaVenda();
   }
 
+  if (root is PendingStockSyncRequiredException) {
+    return root.message;
+  }
+
   final detalhe = formatDartErrorForUser(e);
   final lower = detalhe.toLowerCase();
+
+  if (lower.contains('não foi possível sincronizar o estoque') ||
+      lower.contains('alteração de estoque ainda não sincronizada') ||
+      lower.contains('alteracao de estoque ainda nao sincronizada')) {
+    return detalhe;
+  }
 
   if (_textoErroInutilParaUsuario(detalhe) ||
       detalhe.startsWith('Falha na operação')) {
@@ -115,12 +165,28 @@ String formatSalvarVendaErrorForUser(Object e) {
       lower.contains('permiss')) {
     return 'Sem permissão para concluir a venda. Verifique login e acesso à loja.';
   }
+  if (lower.contains('failed-precondition') ||
+      lower.contains('aborted') ||
+      lower.contains('stock revision') ||
+      lower.contains('revision conflict') ||
+      lower.contains('os dados de estoque')) {
+    return 'Os dados de estoque deste produto foram atualizados. '
+        'Atualize a tela e tente novamente.';
+  }
+  if (lower.contains('already-exists') || lower.contains('já foi registrada')) {
+    return 'Esta venda já foi registrada. Atualize a tela antes de repetir.';
+  }
+  if (lower.contains('invalid-argument') || lower.contains('dados inválidos')) {
+    return 'Dados inválidos para concluir a venda. Verifique os itens e tente novamente.';
+  }
   if (lower.contains('network') ||
       lower.contains('unavailable') ||
-      lower.contains('conex') ||
+      lower.contains('deadline-exceeded') ||
       lower.contains('offline')) {
     return 'Falha de conexão ao salvar a venda. Verifique a internet e tente novamente.';
   }
+  // "conex" sozinho aparece em mensagens genéricas ("Verifique conexão") —
+  // não tratar como falha de rede real.
   if (lower.contains('sincroniz') || lower.contains('nuvem')) {
     return detalhe;
   }

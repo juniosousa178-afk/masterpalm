@@ -63,6 +63,7 @@ import '../services/catalog_publish_service.dart';
 import '../services/marketplace_service.dart';
 import '../services/movimentacao_estoque_service.dart';
 import '../services/estoque_service.dart';
+import '../core/produto_stock_revision.dart';
 import '../src/file_saver.dart' as file_saver;
 import 'historico_movimentacao_estoque_screen.dart';
 import '../services/ai_loja_service.dart';
@@ -470,6 +471,16 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     try {
       await SyncQueueService.processPending();
     } catch (_) {}
+
+    try {
+      EstoqueService.ensurePendingFlushWired();
+      await EstoqueService.flushPendingStockMutations(
+        lojaId: lojaId,
+        produtosBox: _box,
+      );
+    } catch (e) {
+      logW('[ESTOQUE] Flush pending stock na abertura: type=${e.runtimeType}');
+    }
 
     try {
       final stillPending =
@@ -2644,9 +2655,18 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     final nova = (p.quantidade + delta).clamp(0, 99999);
     if (nova == p.quantidade) return;
     final qtdMov = nova - p.quantidade;
+    // Intent local + pending explícito antes do sync (idempotency key estável).
+    if (!hasPendingStockMutation(p)) {
+      markPendingStockMutation(
+        p,
+        operationId: newStockOperationId(),
+        baseRevision: p.stockRevision,
+      );
+    }
     p.quantidade = nova;
     p.updatedAt = DateTime.now();
     await p.save();
+    if (mounted) setState(() {});
     final lojaId = await LojaIdService.getWithTimeoutThenSessionFallback(
         timeout: kIsWeb ? const Duration(seconds: 25) : const Duration(seconds: 10));
     if (lojaId != null && qtdMov != 0) {
@@ -2661,11 +2681,18 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
       ).catchError((_) {});
       // Sincronizar com Firestore e obter resultado para feedback (sucesso / divergência / erro)
       try {
+        if (mounted) {
+          _showSnackBar('Sincronizando estoque…', duration: const Duration(seconds: 2));
+        }
         final resultado = await EstoqueService.sincronizarAjusteManual(p, lojaId);
         if (!mounted) return;
         switch (resultado) {
           case ResultadoAjusteEstoque.sucesso:
-            _showSnackBar('Quantidade atualizada: ${p.quantidade}');
+            _showSnackBar(
+              hasPendingStockMutation(p)
+                  ? 'Quantidade salva. Aguardando confirmação na nuvem.'
+                  : 'Sincronizado · Qtd: ${p.quantidade}',
+            );
             break;
           case ResultadoAjusteEstoque.divergenciaDetectada:
             _showSnackBar(
@@ -2675,19 +2702,64 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
             );
             break;
           case ResultadoAjusteEstoque.erro:
-            _showSnackBar('Quantidade salva localmente. Falha ao sincronizar com o servidor.', isError: true);
+            _showSnackBar(
+              'Alteração pendente de sincronização. '
+              'Confira a conexão — o sistema tentará novamente automaticamente.',
+              isError: true,
+            );
             break;
         }
       } catch (e) {
         logW('⚠️ [ESTOQUE] Falha ao sincronizar quantidade no servidor (type=${e.runtimeType}). A venda pode falhar.');
-        if (mounted) _showSnackBar('Quantidade salva localmente. Verifique a conexão para sincronizar.', isError: true);
+        if (mounted) {
+          _showSnackBar(
+            'Alteração pendente de sincronização. Verifique a conexão.',
+            isError: true,
+          );
+        }
       }
     } else {
       if (mounted) setState(() {});
-      _showSnackBar('Quantidade atualizada: ${p.quantidade}');
+      _showSnackBar(
+        lojaId == null
+            ? 'Alteração pendente de sincronização (sem loja ativa).'
+            : 'Quantidade atualizada: ${p.quantidade}',
+        isError: lojaId == null,
+      );
       return;
     }
     if (mounted) setState(() {});
+  }
+
+  Future<void> _tentarSincronizarPendenciaProduto(Produto p) async {
+    final lojaId = await LojaIdService.getWithTimeoutThenSessionFallback(
+      timeout: kIsWeb
+          ? const Duration(seconds: 25)
+          : const Duration(seconds: 10),
+    );
+    if (lojaId == null) {
+      _showSnackBar('Nenhuma loja ativa', isError: true);
+      return;
+    }
+    if (!hasPendingStockMutation(p)) {
+      _showSnackBar('Estoque já sincronizado');
+      return;
+    }
+    try {
+      _showSnackBar('Sincronizando…', duration: const Duration(seconds: 2));
+      final r = await EstoqueService.sincronizarAjusteManual(p, lojaId);
+      if (!mounted) return;
+      if (r == ResultadoAjusteEstoque.erro || hasPendingStockMutation(p)) {
+        _showSnackBar('Não foi possível sincronizar. Tente novamente.', isError: true);
+      } else {
+        _showSnackBar('Sincronizado');
+      }
+      setState(() {});
+    } catch (e) {
+      if (mounted) {
+        _showSnackBar('Não foi possível sincronizar. Tente novamente.', isError: true);
+      }
+    }
   }
 
   void _showSnackBar(String message, {bool isError = false, Duration? duration}) {
@@ -5389,11 +5461,50 @@ String _formatGradeTexto(Produto p) {
                                     children: [
                                       _buildInfoChip(
                                         Icons.inventory,
-                                        'Qtd: ${p.quantidade}${p.quantidade > 0 && p.quantidade < 3 ? ' ⚠️' : ''}',
-                                        p.quantidade == 0
-                                            ? _errorColor
-                                            : (p.quantidade < 3 ? _warningColor : _primaryColor),
+                                        hasPendingStockMutation(p)
+                                            ? estoqueQuantidadeUiLabel(p)
+                                            : 'Qtd: ${p.quantidade}${p.quantidade > 0 && p.quantidade < 3 ? ' ⚠️' : ''}',
+                                        hasPendingStockMutation(p)
+                                            ? _warningColor
+                                            : (p.quantidade == 0
+                                                ? _errorColor
+                                                : (p.quantidade < 3
+                                                    ? _warningColor
+                                                    : _primaryColor)),
                                       ),
+                                      if (hasPendingStockMutation(p)) ...[
+                                        const SizedBox(width: 4),
+                                        Material(
+                                          color: Colors.transparent,
+                                          child: InkWell(
+                                            borderRadius:
+                                                BorderRadius.circular(6),
+                                            onTap: () =>
+                                                _tentarSincronizarPendenciaProduto(
+                                                    p),
+                                            child: Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 6,
+                                                      vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: _warningColor
+                                                    .withOpacity(0.15),
+                                                borderRadius:
+                                                    BorderRadius.circular(6),
+                                              ),
+                                              child: const Text(
+                                                'Tentar novamente',
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: _warningColor,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                       const SizedBox(width: 4),
                                       Material(
                                         color: Colors.transparent,
@@ -5435,12 +5546,56 @@ String _formatGradeTexto(Produto p) {
                                     _chipKitReceitaLabel,
                                     const Color(0xFF64748B),
                                   )
-                                : _buildInfoChip(
-                                    Icons.inventory,
-                                    'Qtd: ${p.quantidade}${p.quantidade > 0 && p.quantidade < 3 ? ' ⚠️' : ''}',
-                                    p.quantidade == 0
-                                        ? _errorColor
-                                        : (p.quantidade < 3 ? _warningColor : _primaryColor),
+                                : Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      _buildInfoChip(
+                                        Icons.inventory,
+                                        hasPendingStockMutation(p)
+                                            ? estoqueQuantidadeUiLabel(p)
+                                            : 'Qtd: ${p.quantidade}${p.quantidade > 0 && p.quantidade < 3 ? ' ⚠️' : ''}',
+                                        hasPendingStockMutation(p)
+                                            ? _warningColor
+                                            : (p.quantidade == 0
+                                                ? _errorColor
+                                                : (p.quantidade < 3
+                                                    ? _warningColor
+                                                    : _primaryColor)),
+                                      ),
+                                      if (hasPendingStockMutation(p)) ...[
+                                        const SizedBox(width: 4),
+                                        Material(
+                                          color: Colors.transparent,
+                                          child: InkWell(
+                                            borderRadius:
+                                                BorderRadius.circular(6),
+                                            onTap: () =>
+                                                _tentarSincronizarPendenciaProduto(
+                                                    p),
+                                            child: Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 6,
+                                                      vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: _warningColor
+                                                    .withOpacity(0.15),
+                                                borderRadius:
+                                                    BorderRadius.circular(6),
+                                              ),
+                                              child: const Text(
+                                                'Tentar novamente',
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: _warningColor,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ],
                                   ),
                           if (gradeTexto != 'Único')
                             ConstrainedBox(

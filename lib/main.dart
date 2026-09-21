@@ -169,6 +169,7 @@ import 'services/backup_auto_service_io.dart'
 import 'services/produto_auto_sync_service.dart';
 import 'services/notificacao_service.dart';
 import 'services/auto_sync_service.dart';
+import 'services/estoque_service.dart';
 import 'services/sync_queue_service.dart';
 import 'services/soft_delete_service.dart';
 import 'services/financeiro_soft_delete_service.dart';
@@ -756,6 +757,7 @@ Future<void> _bootstrapLoggedInHeavy({required bool firebaseOk}) async {
 
     try {
       await SyncQueueService.init();
+      EstoqueService.ensurePendingFlushWired();
       SyncQueueService.setOnReconnect(AutoSyncService.syncEmBackground);
       SyncQueueService.startConnectivityListener();
       unawaited(SyncQueueService.processPending().then((r) {
@@ -4089,6 +4091,7 @@ Future<void> _bootstrapDeferredFull({
     await resetHiveIfSchemaChanged();
     try {
       await SyncQueueService.init();
+      EstoqueService.ensurePendingFlushWired();
       SyncQueueService.setOnReconnect(AutoSyncService.syncEmBackground);
       SyncQueueService.startConnectivityListener();
       unawaited(SyncQueueService.processPending());

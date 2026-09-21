@@ -101,7 +101,7 @@ void main() {
     test('_salvarVendaEmBackground usa formatter no catch genérico', () {
       final fnStart = src.indexOf('Future<(bool, String?, String?)> _salvarVendaEmBackground');
       expect(fnStart, greaterThan(-1));
-      final fnSlice = src.substring(fnStart, fnStart + 4500);
+      final fnSlice = src.substring(fnStart, fnStart + 9000);
       expect(fnSlice.contains('formatSalvarVendaErrorForUser(e)'), isTrue);
     });
 

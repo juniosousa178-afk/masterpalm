@@ -13,9 +13,13 @@
 // Nunca pode existir inconsistência entre estoque geral, por tamanho e por cor.
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import '../core/produto_custo_guard.dart';
+import '../core/hive_box_names.dart';
+import '../core/produto_stock_revision.dart';
+import 'stock_catalog_backend_service.dart';
 import '../core/produto_variacao_extra.dart';
 import '../models/produto.dart';
 import 'combo_kit_stock_service.dart';
@@ -24,6 +28,7 @@ import 'produto_exclusao_tombstone_service.dart';
 import 'produtos_firestore_service.dart';
 import 'vendas_service.dart';
 import 'catalogo_web_apos_estoque_service.dart';
+import 'venda_estoque_remoto_prep_service.dart';
 import 'estoque_transaction_service.dart';
 
 /// Resultado de uma operação de estoque
@@ -194,6 +199,10 @@ class EstoqueService {
       return EstoqueResult.erro(msg);
     }
 
+    if (debugFirestoreOverride == null && EstoqueTransactionService.usaBackendConfiavel && hasPendingStockMutation(produto)) {
+      return EstoqueResult.erro('Há um ajuste pendente neste produto. Sincronize antes de uma nova movimentação.');
+    }
+
     debugPrint('$tag Produto encontrado: ${produto.nome}');
     debugPrint('$tag   - usaVariacoes: ${produto.usaVariacoes}');
     debugPrint('$tag   - variacoes: ${produto.variacoes}');
@@ -336,7 +345,10 @@ class EstoqueService {
         await produto.save();
       }
 
-      await _sincronizarComFirestore(produto, lojaId);
+      final syncResult = await _sincronizarComFirestore(produto, lojaId);
+      if (syncResult == ResultadoAjusteEstoque.erro && debugFirestoreOverride == null && EstoqueTransactionService.usaBackendConfiavel) {
+        return EstoqueResult.erro('A entrada está pendente de confirmação no servidor. Sincronize antes de repetir.');
+      }
 
       if (estoqueDepois != estoqueAntes) {
         await _recalcularCombosDepoisAjusteManual(
@@ -728,7 +740,197 @@ class EstoqueService {
     Produto produto,
     String lojaId,
   ) async {
+    ensurePendingFlushWired();
     return _sincronizarComFirestore(produto, lojaId);
+  }
+
+  /// Liga o auto-flush de pendência usado pela prep de venda (evita ciclo de imports).
+  static void ensurePendingFlushWired() {
+    VendaEstoqueRemotoPrepService.flushPendingStockMutationImpl ??=
+        (lojaId, produto) async {
+      final result = await sincronizarAjusteManual(produto, lojaId);
+      if (result == ResultadoAjusteEstoque.sucesso ||
+          result == ResultadoAjusteEstoque.divergenciaDetectada) {
+        return !hasPendingStockMutation(produto);
+      }
+      // Falha de envio: ainda pode ser STALE se remoto avançou.
+      return false;
+    };
+  }
+
+  /// Reenvia mutações locais pendentes (produto-scoped ou loja inteira).
+  /// Idempotente: reutiliza [pendingStockOperationId] existente.
+  static Future<int> flushPendingStockMutations({
+    required String lojaId,
+    Box<Produto>? produtosBox,
+    Iterable<Produto>? onlyProducts,
+  }) async {
+    ensurePendingFlushWired();
+    final li = lojaId.trim();
+    if (li.isEmpty) return 0;
+
+    final targets = <Produto>[];
+    if (onlyProducts != null) {
+      for (final p in onlyProducts) {
+        if (hasPendingStockMutation(p)) targets.add(p);
+      }
+    } else {
+      final box = produtosBox ??
+          (Hive.isBoxOpen(HiveBoxNames.produtos(li))
+              ? Hive.box<Produto>(HiveBoxNames.produtos(li))
+              : null);
+      if (box == null) return 0;
+      for (final p in box.values) {
+        if (p.lojaId.trim().isNotEmpty && p.lojaId.trim() != li) continue;
+        if (hasPendingStockMutation(p)) targets.add(p);
+      }
+    }
+
+    var cleared = 0;
+    for (final p in targets) {
+      if (p.idFirebase.trim().isEmpty) continue;
+      try {
+        final result = await sincronizarAjusteManual(p, li);
+        if ((result == ResultadoAjusteEstoque.sucesso ||
+                result == ResultadoAjusteEstoque.divergenciaDetectada) &&
+            !hasPendingStockMutation(p)) {
+          cleared++;
+          continue;
+        }
+        // Tentativa de reconcile stale após falha (ex.: failed-precondition).
+        final ready =
+            await VendaEstoqueRemotoPrepService.reconcilePendingStockMutationForSale(
+          lojaId: li,
+          produto: p,
+        );
+        if (ready && !hasPendingStockMutation(p)) cleared++;
+      } catch (e) {
+        debugPrint(
+          '[ESTOQUE-PENDING-FLUSH] falha produto=${p.idFirebase} type=${e.runtimeType}',
+        );
+        try {
+          final ready = await VendaEstoqueRemotoPrepService
+              .reconcilePendingStockMutationForSale(lojaId: li, produto: p);
+          if (ready && !hasPendingStockMutation(p)) cleared++;
+        } catch (_) {}
+      }
+    }
+    return cleared;
+  }
+
+  /// Replace CAS com refresh de revisão em conflito (`aborted`) — 1 retry.
+  static Future<ResultadoAjusteEstoque> _sincronizarAjusteViaBackendComRefreshCas({
+    required Produto produto,
+    required String lojaId,
+  }) async {
+    if (!hasPendingStockMutation(produto)) {
+      markPendingStockMutation(
+        produto,
+        operationId: newStockOperationId(),
+        baseRevision: produto.stockRevision,
+      );
+      await produto.save();
+    }
+
+    Future<Map<String, dynamic>> sendReplace({required String operationId, required int expectedRevision}) {
+      return StockCatalogBackendService.command(
+        lojaId: lojaId,
+        operationId: operationId,
+        kind: 'replace',
+        items: [
+          {
+            'productId': produto.idFirebase,
+            'expectedRevision': expectedRevision,
+          }
+        ],
+        editorial: <String, dynamic>{},
+        definition: {
+          'quantidade': produto.quantidade,
+          'tipoProduto': produto.tipoProduto,
+          'variacoes': produto.variacoes == null
+              ? null
+              : ProdutoVariacaoExtra.sanitizeVariacoesMapForFirestore(
+                  Map<String, dynamic>.from(produto.variacoes!),
+                ),
+          'estoquePorTamanho': produto.estoquePorTamanho,
+          'tamanhos': produto.tamanhos,
+          'cores': produto.cores,
+          'variacoesExtraTipo':
+              produto.variacoesExtraTipo ?? <String, dynamic>{},
+          'itensCombo': produto.itensCombo ?? <Map<String, dynamic>>[],
+          'comboConfig': produto.comboConfig,
+        },
+      );
+    }
+
+    try {
+      final response = await sendReplace(
+        operationId: produto.pendingStockOperationId!,
+        expectedRevision:
+            produto.pendingStockBaseRevision ?? produto.stockRevision,
+      );
+      final box = produto.box;
+      if (box is! Box<Produto>) {
+        throw StateError('Caixa de produtos indisponível.');
+      }
+      for (final result in EstoqueTransactionService.resultadosDoBackend(response)) {
+        await EstoqueTransactionService.atualizarHiveAposTransacao(
+          produtosBox: box,
+          lojaId: lojaId,
+          result: result,
+        );
+      }
+      return ResultadoAjusteEstoque.sucesso;
+    } catch (error) {
+      final code = error is FirebaseFunctionsException
+          ? error.code
+          : (error is FirebaseException ? error.code : '');
+      final isCasConflict = code == 'aborted' ||
+          (code == 'failed-precondition' &&
+              (error.toString().toLowerCase().contains('revision') ||
+                  error.toString().toLowerCase().contains('conflict')));
+      if (!isCasConflict) rethrow;
+
+      // Refresh remoto → rebases CAS → novo operationId → 1 retry.
+      final snap = await _db
+          .collection('lojas')
+          .doc(lojaId)
+          .collection(FSPaths.estoqueProdutosCol)
+          .doc(produto.idFirebase)
+          .get();
+      if (!snap.exists) rethrow;
+      final remote = snap.data() ?? <String, dynamic>{};
+      final remoteRev = parseStockRevisionFromRemote(remote);
+      final remoteQty = (remote['quantidade'] as num?)?.toInt() ?? 0;
+      debugPrint(
+        '[ESTOQUE-SYNC] CAS conflict — remoteRev=$remoteRev remoteQty=$remoteQty '
+        'localPendingQty=${produto.quantidade}; refreshing base revision',
+      );
+      produto.stockRevision = remoteRev;
+      markPendingStockMutation(
+        produto,
+        operationId: newStockOperationId(),
+        baseRevision: remoteRev,
+      );
+      await produto.save();
+
+      final retry = await sendReplace(
+        operationId: produto.pendingStockOperationId!,
+        expectedRevision: remoteRev,
+      );
+      final box = produto.box;
+      if (box is! Box<Produto>) {
+        throw StateError('Caixa de produtos indisponível.');
+      }
+      for (final result in EstoqueTransactionService.resultadosDoBackend(retry)) {
+        await EstoqueTransactionService.atualizarHiveAposTransacao(
+          produtosBox: box,
+          lojaId: lojaId,
+          result: result,
+        );
+      }
+      return ResultadoAjusteEstoque.sucesso;
+    }
   }
 
   /// Sincroniza produto com Firestore
@@ -736,6 +938,21 @@ class EstoqueService {
     Produto produto,
     String lojaId,
   ) async {
+    if (debugFirestoreOverride == null && EstoqueTransactionService.usaBackendConfiavel) {
+      if (produto.idFirebase.trim().isEmpty || !produto.isInBox) {
+        return ResultadoAjusteEstoque.erro;
+      }
+      try {
+        return await _sincronizarAjusteViaBackendComRefreshCas(
+          produto: produto,
+          lojaId: lojaId,
+        );
+      } catch (error, stack) {
+        debugPrint('[ESTOQUE-SYNC] Comando de ajuste pendente: $error\n$stack');
+        return ResultadoAjusteEstoque.erro;
+      }
+    }
+
     const tag = '[ESTOQUE-SYNC]';
     int? remoteQtd;
     bool divergenciaRelevante = false;

@@ -23,6 +23,7 @@ class VendaEstoqueRemotoPrepMessages {
   static const removido =
       'Produto removido do estoque. Atualize a lista de produtos e tente novamente.';
 
+  /// Mensagem legado (sem nome) — preferir [formatAlteracaoPendenteParaProdutos].
   static const alteracaoPendente =
       'Há alteração de estoque ainda não sincronizada neste produto. '
       'Sincronize o estoque antes de finalizar a venda.';
@@ -30,6 +31,49 @@ class VendaEstoqueRemotoPrepMessages {
   static const estoqueRemotoInsuficiente =
       'Estoque insuficiente na nuvem para um ou mais produtos. '
       'Atualize a tela e tente novamente.';
+
+  static String formatAlteracaoPendenteParaProdutos(List<Produto> produtos) {
+    final uniq = <String, Produto>{};
+    for (final p in produtos) {
+      final key = p.idFirebase.trim().isNotEmpty
+          ? p.idFirebase.trim()
+          : '${p.codigoBarras}|${p.nome}';
+      uniq.putIfAbsent(key, () => p);
+    }
+    final list = uniq.values.toList();
+    if (list.isEmpty) {
+      return 'Não foi possível sincronizar o estoque de um ou mais produtos. '
+          'Confira sua conexão e tente novamente.';
+    }
+    const maxShow = 3;
+    final lines = <String>[];
+    for (final p in list.take(maxShow)) {
+      final nome = p.nome.trim().isEmpty ? 'Produto' : p.nome.trim();
+      final codigo = p.codigoBarras.trim();
+      lines.add(codigo.isEmpty ? nome : '$nome — código $codigo');
+    }
+    final remaining = list.length - maxShow;
+    final body = lines.join('\n');
+    final extra = remaining > 0 ? '\n… e mais $remaining produto(s).' : '';
+    return 'Não foi possível sincronizar o estoque de:\n$body$extra\n\n'
+        'Confira sua conexão e tente novamente.';
+  }
+}
+
+/// Erro amigável quando pendência real persiste após auto-sync.
+/// Não usar [StateError] — evita "Bad state:" na UI.
+class PendingStockSyncRequiredException implements Exception {
+  PendingStockSyncRequiredException(this.produtos);
+
+  final List<Produto> produtos;
+
+  String get message =>
+      VendaEstoqueRemotoPrepMessages.formatAlteracaoPendenteParaProdutos(
+        produtos,
+      );
+
+  @override
+  String toString() => message;
 }
 
 /// Garante que itens da venda existem em `estoque_produtos` antes da baixa.
@@ -37,6 +81,12 @@ class VendaEstoqueRemotoPrepService {
   static FirebaseFirestore get _db =>
       ProdutosFirestoreService.debugFirestoreOverride ??
       FirebaseFirestore.instance;
+
+  /// Pipeline oficial de flush (wired por [EstoqueService] / testes).
+  /// Retorna true se a pendência foi confirmada ou limpa com segurança.
+  @visibleForTesting
+  static Future<bool> Function(String lojaId, Produto produto)?
+      flushPendingStockMutationImpl;
 
   @visibleForTesting
   static String estoqueDocIdCanonico(Produto p) {
@@ -132,6 +182,33 @@ class VendaEstoqueRemotoPrepService {
     };
   }
 
+  /// Tenta enviar a pendência local via pipeline oficial (idempotente).
+  @visibleForTesting
+  static Future<bool> tryFlushPendingStockMutation({
+    required String lojaId,
+    required Produto produto,
+  }) async {
+    if (!hasPendingStockMutation(produto)) return true;
+    final impl = flushPendingStockMutationImpl;
+    if (impl == null) {
+      debugPrint(
+        '[PENDING_STOCK_SYNC_REQUIRED] flushImpl=null '
+        'produto=${produto.idFirebase} codigo=${produto.codigoBarras}',
+      );
+      return false;
+    }
+    try {
+      final ok = await impl(lojaId, produto);
+      if (ok && !hasPendingStockMutation(produto)) return true;
+      return !hasPendingStockMutation(produto);
+    } catch (e, st) {
+      debugPrint(
+        '[PENDING_STOCK_SYNC_REQUIRED] flush_error type=${e.runtimeType} $e\n$st',
+      );
+      return false;
+    }
+  }
+
   /// Reconcilia pendência obsoleta contra o documento remoto canônico.
   /// Mantém bloqueio se a alteração local ainda não estiver no servidor.
   @visibleForTesting
@@ -170,6 +247,27 @@ class VendaEstoqueRemotoPrepService {
     return false;
   }
 
+  /// Flush → reconcile → GREEN se pendência sumir.
+  @visibleForTesting
+  static Future<bool> ensurePendingStockReadyForSale({
+    required String lojaId,
+    required Produto produto,
+  }) async {
+    if (!hasPendingStockMutation(produto)) return true;
+
+    final flushed = await tryFlushPendingStockMutation(
+      lojaId: lojaId,
+      produto: produto,
+    );
+    if (flushed && !hasPendingStockMutation(produto)) return true;
+
+    final reconciled = await reconcilePendingStockMutationForSale(
+      lojaId: lojaId,
+      produto: produto,
+    );
+    return reconciled && !hasPendingStockMutation(produto);
+  }
+
   static Future<void> garantirProdutosProntosParaBaixa({
     required String lojaId,
     required List<Produto> produtos,
@@ -177,31 +275,54 @@ class VendaEstoqueRemotoPrepService {
     final li = lojaId.trim();
     if (li.isEmpty) return;
 
+    final blocked = <Produto>[];
+    for (final produto in produtos) {
+      if (produto.lojaId.trim().isNotEmpty && produto.lojaId.trim() != li) {
+        continue;
+      }
+      if (!hasPendingStockMutation(produto)) continue;
+      final ready = await ensurePendingStockReadyForSale(
+        lojaId: li,
+        produto: produto,
+      );
+      if (!ready || hasPendingStockMutation(produto)) {
+        blocked.add(produto);
+        final diag = buildPendingSaleBlockDiag(
+          produto: produto,
+          remoteData: null,
+        );
+        debugPendingSaleBlockHook?.call(diag);
+        debugPrint('[PENDING_STOCK_SYNC_REQUIRED] $diag');
+      }
+    }
+    if (blocked.isNotEmpty) {
+      throw PendingStockSyncRequiredException(blocked);
+    }
+
     if (ProdutosFirestoreService.debugFirestoreOverride == null) {
       for (final produto in produtos) {
         if (produto.lojaId != li || produto.idFirebase.trim().isEmpty) {
-          throw StateError(VendaEstoqueRemotoPrepMessages.sincronizando);
+          throw Exception(VendaEstoqueRemotoPrepMessages.sincronizando);
         }
-        if (hasPendingStockMutation(produto)) {
-          final cleared = await reconcilePendingStockMutationForSale(
-            lojaId: li,
-            produto: produto,
-          );
-          if (!cleared || hasPendingStockMutation(produto)) {
-            throw StateError(VendaEstoqueRemotoPrepMessages.alteracaoPendente);
-          }
+        final snapshot = await _db
+            .collection('lojas')
+            .doc(li)
+            .collection(FSPaths.estoqueProdutosCol)
+            .doc(produto.idFirebase)
+            .get();
+        if (!snapshot.exists) {
+          throw Exception(VendaEstoqueRemotoPrepMessages.sincronizando);
         }
-        final snapshot = await _db.collection('lojas').doc(li)
-            .collection(FSPaths.estoqueProdutosCol).doc(produto.idFirebase).get();
-        if (!snapshot.exists) throw StateError(VendaEstoqueRemotoPrepMessages.sincronizando);
         final data = snapshot.data() ?? <String, dynamic>{};
         if (data['pendingSoftDelete'] == true) {
-          throw StateError(VendaEstoqueRemotoPrepMessages.removido);
+          throw Exception(VendaEstoqueRemotoPrepMessages.removido);
         }
         final remoteQty = (data['quantidade'] as num?)?.toInt() ?? 0;
         // Hive otimista positivo com remoto zerado: não permitir vender saldo não confirmado.
         if (remoteQty <= 0 && produto.quantidade > 0) {
-          throw StateError(VendaEstoqueRemotoPrepMessages.estoqueRemotoInsuficiente);
+          throw Exception(
+            VendaEstoqueRemotoPrepMessages.estoqueRemotoInsuficiente,
+          );
         }
       }
       return;
