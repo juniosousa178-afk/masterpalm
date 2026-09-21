@@ -17,6 +17,7 @@ import '../core/produto_form_grade_hydration.dart';
 import '../core/produto_variacao_extra.dart';
 import '../core/produto_estoque_grade_snapshot.dart';
 import '../core/produto_stock_revision.dart';
+import '../core/produto_effective_stock.dart';
 import '../core/produto_stock_version_fields.dart';
 import '../core/produto_stock_write_enforcement.dart';
 import 'firestore_paths.dart';
@@ -2317,6 +2318,20 @@ class ProdutosFirestoreService {
                   local: p,
                   remoteData: data,
                   logContext: 'sync_pull_preserve_edits',
+                );
+              }
+              // Mesmo preservando qty local: se remoto tem grade canônica rica e
+              // não há pending de estoque, reidrata metadata de variação (Nathy P0).
+              if (!hasPendingStockMutation(p) &&
+                  remoteDataHasRichGrade(data)) {
+                applyRemoteVariationFieldsToExistingOnPull(
+                  local: p,
+                  data: data,
+                );
+                applyAuthoritativeRemoteStockToProduto(
+                  p,
+                  remote: data,
+                  updateQuantity: false,
                 );
               }
             } else {

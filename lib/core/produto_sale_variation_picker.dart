@@ -1,6 +1,8 @@
 // Opções elegíveis do seletor de variação na venda (somente qty > 0).
 
 import '../models/produto.dart';
+import 'produto_effective_stock.dart';
+import 'produto_estoque_grade_snapshot.dart';
 import 'produto_variacao_extra.dart';
 
 /// Célula vendável (qty > 0) para o picker de Nova Venda.
@@ -36,99 +38,61 @@ class ProdutoSaleVariationOption {
   }
 }
 
-/// Soma canônica das células de variação (0 se não houver grade).
+/// Soma canônica das células de variação (aliases sem-cor normalizados).
 int produtoVariationCellSum(Produto p) {
-  if (p.usaVariacoes && p.variacoes != null) {
-    var sum = 0;
-    p.variacoes!.forEach((_, cores) {
-      if (cores is! Map) return;
-      for (final cell in cores.values) {
-        sum += ProdutoVariacaoExtra.somarCelula(cell);
-      }
-    });
-    return sum;
-  }
-  if (p.estoquePorTamanho.isNotEmpty) {
-    return p.estoquePorTamanho.values.fold<int>(0, (a, b) => a + b);
-  }
-  return 0;
+  final cells = normalizeSemCorAliasCells(
+    ProdutoEstoqueGradeSnapshot.fromProduto(p).cells,
+  );
+  return sumNormalizedCells(cells);
 }
 
-/// Identidades de variação conhecidas (tamanhos/cores/células), independente de qty.
+/// Identidades de variação com estoque canônico (não basta lista `tamanhos`).
 bool produtoHasVariationIdentities(Produto p) {
-  if (p.usaVariacoes) return true;
-  if (p.estoquePorTamanho.isNotEmpty) return true;
-  if (p.tamanhos.any((t) => t.trim().isNotEmpty)) return true;
+  final cells = normalizeSemCorAliasCells(
+    ProdutoEstoqueGradeSnapshot.fromProduto(p).cells,
+  );
+  for (final key in cells.keys) {
+    final parts = key.split('|');
+    final tam = parts.isNotEmpty ? parts[0] : '';
+    final cor = parts.length > 1 ? parts[1] : '';
+    final realTam = tam.isNotEmpty && tam != 'sem-tamanho';
+    final realCor = cor.isNotEmpty && cor != 'sem-cor';
+    if (realTam || realCor) return true;
+  }
   return false;
 }
 
 /// Tamanhos com qty > 0 (mesma regra do sheet de venda).
 Map<String, int> produtoSaleTamanhosComEstoque(Produto p) {
-  if (p.usaVariacoes && p.variacoes != null) {
-    final result = <String, int>{};
-    p.variacoes!.forEach((tamanho, cores) {
-      if (tamanho == 'sem-tamanho') return;
-      if (cores is! Map) return;
-      var total = 0;
-      for (final qtd in cores.values) {
-        total += ProdutoVariacaoExtra.somarCelula(qtd);
-      }
-      if (total > 0) result[tamanho.toString()] = total;
-    });
-    if (result.isNotEmpty) return result;
+  final normalized = normalizeSemCorAliasCells(
+    ProdutoEstoqueGradeSnapshot.fromProduto(p).cells,
+  );
+  final result = <String, int>{};
+  for (final e in normalized.entries) {
+    if (e.value <= 0) continue;
+    final parts = e.key.split('|');
+    final tam = parts.isNotEmpty ? parts[0] : '';
+    if (tam.isEmpty || tam == 'sem-tamanho') continue;
+    result[tam] = (result[tam] ?? 0) + e.value;
   }
-  final fromEstoque = <String, int>{};
-  p.estoquePorTamanho.forEach((k, v) {
-    if (v > 0) fromEstoque[k.toString()] = v;
-  });
-  return fromEstoque;
+  return result;
 }
 
-/// Opções do picker: somente células com qty > 0.
+/// Opções do picker: somente células com qty > 0 (aliases sem-cor normalizados).
 List<ProdutoSaleVariationOption> produtoSaleVariationPickerOptions(Produto p) {
+  final normalized = normalizeSemCorAliasCells(
+    ProdutoEstoqueGradeSnapshot.fromProduto(p).cells,
+  );
   final out = <ProdutoSaleVariationOption>[];
-  if (p.usaVariacoes && p.variacoes != null) {
-    p.variacoes!.forEach((tamanho, cores) {
-      if (cores is! Map) return;
-      cores.forEach((cor, cell) {
-        if (ProdutoVariacaoExtra.isMetaKey(cor.toString())) return;
-        final qty = ProdutoVariacaoExtra.somarCelula(cell);
-        if (qty <= 0) return;
-        if (cell is Map) {
-          for (final e in cell.entries) {
-            final key = e.key.toString();
-            if (ProdutoVariacaoExtra.isMetaKey(key)) continue;
-            final q = e.value is num
-                ? (e.value as num).toInt()
-                : int.tryParse(e.value?.toString() ?? '') ?? 0;
-            if (q <= 0) continue;
-            final ev = ProdutoVariacaoExtra.isSemExtraMapKey(key) ? '' : key;
-            out.add(
-              ProdutoSaleVariationOption(
-                tamanho: tamanho.toString(),
-                cor: cor.toString(),
-                qty: q,
-                extraValor: ev,
-              ),
-            );
-          }
-        } else {
-          out.add(
-            ProdutoSaleVariationOption(
-              tamanho: tamanho.toString(),
-              cor: cor.toString(),
-              qty: qty,
-            ),
-          );
-        }
-      });
-    });
-    return out;
+  for (final opt in saleOptionsFromNormalizedCells(normalized)) {
+    out.add(
+      ProdutoSaleVariationOption(
+        tamanho: opt.tamanho,
+        cor: opt.cor,
+        qty: opt.qty,
+      ),
+    );
   }
-  p.estoquePorTamanho.forEach((k, v) {
-    if (v <= 0) return;
-    out.add(ProdutoSaleVariationOption(tamanho: k.toString(), cor: '', qty: v));
-  });
   return out;
 }
 

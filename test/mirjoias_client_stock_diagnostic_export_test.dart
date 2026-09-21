@@ -307,7 +307,63 @@ void main() {
         await exporter.build(storeId: 'mirjoias', hiveProducts: [an13]);
     final mismatches = result.payload['AGGREGATE_MISMATCHES'] as List;
     expect(mismatches.any((e) => e['CODE'] == 'AN13PR'), isTrue);
-    expect(mismatches.first['LOCAL_CELL_SUM'], 3);
+    expect(mismatches.first['LOCAL_NORMALIZED_CELL_SUM'], 3);
     expect(mismatches.first['LOCAL_AGGREGATE'], 4);
+  });
+
+  test('snapshot imutável + normalização sem-cor no auditor', () async {
+    final alias = _p(
+      id: 'mirjoias-alias',
+      code: 'ALS1',
+      nome: 'Alias Double',
+      qty: 2,
+      variacoes: {
+        '15': {'prata': 1, 'sem-cor': 1},
+        '17': {'prata': 1, 'sem-cor': 1},
+      },
+    );
+    await seedRemote(
+      id: alias.idFirebase,
+      qty: 2,
+      rev: 1,
+      op: 'r',
+      variacoes: {
+        '15': {'prata': 1, 'sem-cor': 1},
+        '17': {'prata': 1, 'sem-cor': 1},
+      },
+    );
+    // Mutate local AFTER snapshot would be taken: exporter must still use raw qty.
+    final exporter = MirjoiasClientStockDiagnosticExport(firestore: firestore);
+    final future = exporter.build(storeId: 'mirjoias', hiveProducts: [alias]);
+    final result = await future;
+    expect(result.payload['DIAGNOSTIC_SNAPSHOT_MUTATION'], isFalse);
+    expect(result.payload['DELTA_ACCOUNTING_PASS'], isTrue);
+    expect(result.payload['RAW_AGGREGATE_MISMATCH_COUNT'], greaterThan(0));
+    expect(result.payload['NORMALIZED_AGGREGATE_MISMATCH_COUNT'], 0);
+    expect(result.payload['NORMALIZED_REMOTE_AGGREGATE_MISMATCH_COUNT'], 0);
+    expect(
+      (result.payload['hiveProducts'] as List).first['LOCAL_QTY'],
+      2,
+    );
+  });
+
+  test('LEGACY_SIZE_METADATA_ONLY for tamanhos without cells', () async {
+    final legacy = _p(
+      id: 'mirjoias-legacy-size',
+      code: 'LEG1',
+      nome: 'Legacy Size',
+      qty: 0,
+      tamanhos: ['15', '22'],
+    );
+    await seedRemote(id: legacy.idFirebase, qty: 0, rev: 0, op: 'r');
+    final exporter = MirjoiasClientStockDiagnosticExport(firestore: firestore);
+    final result =
+        await exporter.build(storeId: 'mirjoias', hiveProducts: [legacy]);
+    expect(result.payload['LEGACY_SIZE_METADATA_ONLY_COUNT'], 2);
+    final rows = result.payload['LEGACY_SIZE_METADATA_ONLY'] as List;
+    expect(
+      rows.every((e) => e['CLASSIFICATION'] == 'LEGACY_SIZE_METADATA_ONLY'),
+      isTrue,
+    );
   });
 }
