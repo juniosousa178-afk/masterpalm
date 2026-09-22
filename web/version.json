@@ -1,13 +1,13 @@
-{
-  "buildId": "stock-tombstone-restore-hotfix-1.0.100",
-  "hostingTarget": "masterpalm-58c46",
-  "siteId": "masterpalm-58c46",
-  "expectedDomain": "app.mastepalm.com.br",
-  "webVersion": "1.0.100+114",
-  "gitCommit": "8c81989",
-  "gitCommitFull": "8c81989a5535418f0988952a5ce91b1e51f5f3fc",
-  "fixCommit": "1e38f729f7e44da5d0639d969e5337695ea08bfe",
-  "featureFlagDefault": false,
-  "globalRollout": true,
-  "notes": "Client hotfix: restore source without stock_catalog_operations read; tombstone v denylist + narrow local rehydrate for TOMBSTONE_FILTER_PROJECTION_CORRUPTION. Function 00013-laz untouched."
+﻿{
+    "formCommit":  "99bd595",
+    "hostingTarget":  "masterpalm-58c46",
+    "siteId":  "masterpalm-58c46",
+    "webVersion":  "1.0.101+115",
+    "buildId":  "stock-catalog-sync-hotfix-1.0.101",
+    "gitCommit":  "99bd595",
+    "featureFlagDefault":  false,
+    "globalRollout":  true,
+    "expectedDomain":  "app.mastepalm.com.br",
+    "gitCommitFull":  "99bd595d0d99b6d320d83ddd0eba639f49d60731",
+    "notes":  "Consolidated: restore+tombstone (1.0.100) + NO_CONTROL editorial/publish/replace auth + cadastro via stockCatalogCommand + pending already-applied confirm + failed-precondition UX."
 }

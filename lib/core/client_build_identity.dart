@@ -5,17 +5,17 @@
 /// Release stamp — updated with each hosting deploy of this app.
 const String kClientBuildId = String.fromEnvironment(
   'CATALOG_BUILD_ID',
-  defaultValue: 'stock-tombstone-restore-hotfix-1.0.100',
+  defaultValue: 'stock-catalog-sync-hotfix-1.0.101',
 );
 
 const String kClientGitCommit = String.fromEnvironment(
   'GIT_COMMIT',
-  defaultValue: '5cc37ee557573c0e42a8aebc30691ebe9549cd89',
+  defaultValue: 'f30fcea503fb37ebaeec8faaffa7d6956b635b85',
 );
 
 const String kClientAppVersion = String.fromEnvironment(
   'APP_VERSION',
-  defaultValue: '1.0.100+114',
+  defaultValue: '1.0.101+115',
 );
 
 /// True when compile-time identity looks like an unstamped/dev placeholder.
