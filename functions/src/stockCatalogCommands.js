@@ -1,7 +1,7 @@
 import {recipe, componentIntents, comboOrder, recalculateFixedCombos} from './stockCatalogCombo.js';
 import {createHash} from 'node:crypto';
 import {FieldValue} from 'firebase-admin/firestore';
-import {documentId, storeRef, requireAuthenticated, authorizeStockTransaction, SERVER_PAYMENT_AUTH} from './stockCatalogAccess.js';
+import {documentId, storeRef, requireAuthenticated, authorizeStockTransaction, authorizeStockCommand, SERVER_PAYMENT_AUTH} from './stockCatalogAccess.js';
 import {isMap, stockError, normalizeStock, projectCatalog, quantity, resolveKey, resolveExtraKey, validateEditorial, inferStockKind} from './catalogStockProjection.js';
 import {PRODUCT_VALIDATION_FAILED, REASON, makeIssue, productValidationError, gradeKeyLabel} from './productValidationErrors.js';
 import {ATOMIC_PDV_SALE_FLAG, parseAtomicPdvSale, buildCanonicalEstoqueVendaDoc} from './stockCatalogPdvSale.js';
@@ -146,7 +146,9 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
       : command.kind === 'tombstoneVariation' ? 'delete'
       : command.kind === 'clearVariationTombstone' ? 'undo'
       : command.kind;
-    const uid = await authorizeStockTransaction(tx, base, auth, permission);
+    const authz = await authorizeStockCommand(tx, db, base, auth, permission, command.kind);
+    const uid = authz.uid;
+    const legacyCompat = authz.legacyCompat === true;
     const opRef = base.collection('stock_catalog_operations').doc(command.operationId);
     const saleRef = command.atomicPdvSale
       ? base.collection('estoque_vendas').doc(command.operationId)
@@ -202,7 +204,11 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
         base.collection('exclusao_produto').doc(id),
       );
       const creating = command.kind === 'create' && targetIds.has(id);
-      if ((!stock.exists || !draft.exists) && !creating) {
+      if (legacyCompat) {
+        // NO_CONTROL sale/restore: estoque_produtos only; draft/dependency optional.
+        if (!stock.exists) throw stockError('failed-precondition', 'Canonical product required');
+        if (creating) throw stockError('invalid-argument', 'Unsupported command');
+      } else if ((!stock.exists || !draft.exists) && !creating) {
         if (softSale && targetIds.has(id)) {
           records.set(id, null);
           continue;
@@ -215,31 +221,53 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
       const fullProductTombstone = tombstone.exists && tombstone.data()?.p === true;
       if (fullProductTombstone && !(command.kind === 'undo' && targetIds.has(id)) && !stock.data()?.pendingSoftDelete) {
         if (softSale && targetIds.has(id)) {
-          records.set(id, {softFail: REASON.PRODUCT_INACTIVE, stockRef, draftRef, editorial: draft.exists ? draft.data() : {}});
+          records.set(id, {softFail: REASON.PRODUCT_INACTIVE, stockRef, draftRef, editorial: draft.exists ? draft.data() : {}, draftExists: draft.exists});
           continue;
         }
         throw stockError('failed-precondition', 'Product tombstone requires reconciliation');
       }
-      if ((!dependency.exists || !Array.isArray(dependency.data().comboIds)) && !creating) {
+      if (!legacyCompat && (!dependency.exists || !Array.isArray(dependency.data().comboIds)) && !creating) {
         if (softSale && targetIds.has(id)) {
-          records.set(id, {softFail: REASON.MISSING_DEPENDENCY, stockRef, draftRef, editorial: draft.data() || {}});
+          records.set(id, {softFail: REASON.MISSING_DEPENDENCY, stockRef, draftRef, editorial: draft.data() || {}, draftExists: draft.exists});
           continue;
         }
         throw stockError('failed-precondition', 'Dependency migration required');
       }
-      for (const related of (dependency.data()?.comboIds ?? [])) if (!ids.includes(documentId(related))) ids.push(related);
+      const dependencyData = dependency.exists && Array.isArray(dependency.data()?.comboIds)
+        ? dependency.data()
+        : {comboIds: []};
+      const dependencyHandle = legacyCompat
+        ? {exists: dependency.exists, data: () => dependencyData}
+        : dependency;
+      for (const related of (dependencyData.comboIds ?? [])) if (!ids.includes(documentId(related))) ids.push(related);
       let data;
       try {
-        data = normalizeStock(creating ? newDefinition : stock.data()); quantity(data.stockRevision);
+        const rawStock = creating ? newDefinition : {...(stock.data() || {})};
+        if (legacyCompat && (rawStock.stockRevision === undefined || rawStock.stockRevision === null)) {
+          rawStock.stockRevision = 0;
+        }
+        data = normalizeStock(creating ? newDefinition : rawStock); quantity(data.stockRevision);
       } catch (error) {
         if (softSale && targetIds.has(id)) {
-          records.set(id, {softFail: REASON.INVALID_STOCK_STATE, stockRef, draftRef, editorial: draft.data() || {}});
+          records.set(id, {softFail: REASON.INVALID_STOCK_STATE, stockRef, draftRef, editorial: draft.data() || {}, draftExists: draft.exists});
           continue;
         }
         throw error;
       }
       for (const component of recipe(data)) if (!ids.includes(component.productId)) ids.push(component.productId);
-      records.set(id, {stockRef, draftRef, dependency, creating, originalRecipe: recipe(data), data, beforeHash: fingerprint(stockEffect(data)), originalRevision: data.stockRevision, editorial: draft.data() ?? validateEditorial(command.editorial)});
+      const editorial = draft.exists
+        ? draft.data()
+        : (legacyCompat
+            ? {
+                nome: (stock.data()?.nome ?? stock.data()?.name ?? '').toString(),
+                publicadoNoCatalogo: stock.data()?.publicadoNoCatalogo === true,
+              }
+            : validateEditorial(command.editorial));
+      records.set(id, {
+        stockRef, draftRef, dependency: dependencyHandle, creating,
+        draftExists: draft.exists, originalRecipe: recipe(data), data,
+        beforeHash: fingerprint(stockEffect(data)), originalRevision: data.stockRevision, editorial,
+      });
     }
     if (!softSale) comboOrder(records);
     else {
@@ -405,12 +433,16 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
         writes.push(() => tx.update(tombRef, patch));
       }
       set(r.stockRef, {...p.stock, stockUpdatedAt: FieldValue.serverTimestamp()});
-      set(r.draftRef, {...p.draft, updatedAt: FieldValue.serverTimestamp()});
-      const live = base.collection('produtos').doc(id);
-      if (p.live) set(live, {...p.live, updatedAt: FieldValue.serverTimestamp()}); else remove(live);
+      // NO_CONTROL compat: never create draft/dependency/control/grants; update draft/live only if draft existed.
+      if (!legacyCompat || r.draftExists) {
+        set(r.draftRef, {...p.draft, updatedAt: FieldValue.serverTimestamp()});
+        const live = base.collection('produtos').doc(id);
+        if (p.live) set(live, {...p.live, updatedAt: FieldValue.serverTimestamp()}); else remove(live);
+      }
     }
     writes.push(() => tx.create(opRef, {actorUid: uid, kind: command.kind, requestHash: hash, items: appliedItems, catalogCountDeltas, status: 'applied',
       result: {productIds: ids}, sourceOperationId: command.sourceOperationId ?? null,
+      legacyCompat: legacyCompat === true,
       ...(command.atomicPdvSale ? {atomicPdvSale: true, saleId: command.operationId} : {}),
       createdAt: FieldValue.serverTimestamp()}));
     if (command.atomicPdvSale) {
