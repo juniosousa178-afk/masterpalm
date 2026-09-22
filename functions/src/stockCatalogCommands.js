@@ -1,7 +1,7 @@
 import {recipe, componentIntents, comboOrder, recalculateFixedCombos} from './stockCatalogCombo.js';
 import {createHash} from 'node:crypto';
 import {FieldValue} from 'firebase-admin/firestore';
-import {documentId, storeRef, requireAuthenticated, authorizeStockTransaction, authorizeStockCommand, SERVER_PAYMENT_AUTH} from './stockCatalogAccess.js';
+import {documentId, storeRef, requireAuthenticated, authorizeStockCommand, authorizePublish, SERVER_PAYMENT_AUTH} from './stockCatalogAccess.js';
 import {isMap, stockError, normalizeStock, projectCatalog, quantity, resolveKey, resolveExtraKey, validateEditorial, inferStockKind} from './catalogStockProjection.js';
 import {PRODUCT_VALIDATION_FAILED, REASON, makeIssue, productValidationError, gradeKeyLabel} from './productValidationErrors.js';
 import {ATOMIC_PDV_SALE_FLAG, parseAtomicPdvSale, buildCanonicalEstoqueVendaDoc} from './stockCatalogPdvSale.js';
@@ -205,9 +205,9 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
       );
       const creating = command.kind === 'create' && targetIds.has(id);
       if (legacyCompat) {
-        // NO_CONTROL sale/restore: estoque_produtos only; draft/dependency optional.
-        if (!stock.exists) throw stockError('failed-precondition', 'Canonical product required');
-        if (creating) throw stockError('invalid-argument', 'Unsupported command');
+        // NO_CONTROL: estoque_produtos required; draft/dependency optional.
+        // create may proceed without existing stock; replace/editorial/sale need stock.
+        if (!stock.exists && !creating) throw stockError('failed-precondition', 'Canonical product required');
       } else if ((!stock.exists || !draft.exists) && !creating) {
         if (softSale && targetIds.has(id)) {
           records.set(id, null);
@@ -471,13 +471,32 @@ export async function publishStockProduct(db, lojaId, productId, auth) {
   requireAuthenticated(auth); documentId(productId, 'productId');
   const base = storeRef(db, lojaId);
   return runStockTransaction(db, async tx => {
-    await authorizeStockTransaction(tx, base, auth, 'publish');
+    await authorizePublish(tx, db, base, auth);
     const sref = base.collection('estoque_produtos').doc(productId), dref = base.collection('draft_produtos').doc(productId);
     const [stock, draft, tombstone] = await tx.getAll(sref, dref, base.collection('exclusao_produto').doc(productId));
-    if (!stock.exists || !draft.exists) throw stockError('failed-precondition', 'Migration or reconciliation required');
-    const fullTomb = tombstone.exists && tombstone.data()?.p === true;
-    const p = projectCatalog({...stock.data(), ...(fullTomb ? {pendingSoftDelete: true} : {})}, draft.data(), productId);
-    tx.set(dref, {...p.draft, updatedAt: FieldValue.serverTimestamp()});
+    if (!stock.exists) throw stockError('failed-precondition', 'Canonical product required');
+    // NO_CONTROL: draft optional — project from authoritative stock + empty editorial defaults.
+    const editorial = draft.exists ? draft.data() : {};
+    let p;
+    try {
+      p = projectCatalog({...stock.data(), ...((tombstone.exists && tombstone.data()?.p === true) ? {pendingSoftDelete: true} : {})}, editorial, productId);
+    } catch (e) {
+      if (e?.code === 'failed-precondition' && String(e.message || '').includes('Invalid canonical stock quantity')) {
+        const details = e.details && typeof e.details === 'object' ? e.details : {};
+        const err = stockError('failed-precondition', 'Invalid canonical stock quantity');
+        err.details = {
+          code: 'INVALID_CANONICAL_STOCK',
+          productId,
+          field: details.field || 'quantidade',
+          reason: details.reason || 'not_safe_nonnegative_integer',
+        };
+        throw err;
+      }
+      throw e;
+    }
+    if (draft.exists) {
+      tx.set(dref, {...p.draft, updatedAt: FieldValue.serverTimestamp()});
+    }
     const live = base.collection('produtos').doc(productId);
     if (p.live) tx.set(live, {...p.live, updatedAt: FieldValue.serverTimestamp()}); else tx.delete(live);
     return {productId, available: p.live !== null, revision: p.stock.stockRevision};
@@ -487,7 +506,7 @@ export async function publishStockProduct(db, lojaId, productId, auth) {
 export async function publishStockAll(db, lojaId, auth) {
   requireAuthenticated(auth);
   const base = storeRef(db, lojaId);
-  await runStockTransaction(db, tx => authorizeStockTransaction(tx, base, auth, 'publish'));
+  await runStockTransaction(db, tx => authorizePublish(tx, db, base, auth));
   let last, count = 0;
   do {
     let query = base.collection('estoque_produtos').orderBy('__name__').limit(100);

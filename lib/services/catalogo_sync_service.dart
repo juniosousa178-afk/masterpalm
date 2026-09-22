@@ -17,6 +17,7 @@ import '../core/logger.dart';
 import '../src/blob_fetch_stub.dart' if (dart.library.html) '../src/blob_fetch_web.dart' as blob_fetch;
 import '../models/produto.dart';
 import 'catalog_cache_service.dart';
+import 'stock_catalog_backend_service.dart';
 import 'produto_exclusao_tombstone_service.dart';
 import 'produtos_firestore_service.dart';
 import 'catalogo_sync_attempt_context.dart';
@@ -41,6 +42,10 @@ class CatalogoSyncService {
   /// Somente testes: força falha em um alvo específico de upsert.
   @visibleForTesting
   static SyncTarget? debugForceUpsertFailureTarget;
+
+  /// Somente testes: falha a remoção da cópia legada (coleção / slug).
+  @visibleForTesting
+  static bool Function(String collection, String docId)? debugFailLegacySlugDelete;
 
   // ===============================================================
   // SDKs
@@ -500,6 +505,12 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
     required Produto pdt,
     required String canonicalDocId,
   }) async {
+    if (debugFirestoreOverride == null) {
+      if (pdt.idFirebase.trim().isEmpty) throw StateError('Produto sem identificador canônico.');
+      await StockCatalogBackendService.publishOne(lojaId, pdt.idFirebase);
+      return;
+    }
+
     final leg = pdt.slug.trim();
     if (leg.isEmpty || leg == canonicalDocId) return;
     if (pdt.idFirebase.trim().isEmpty) return;
@@ -527,6 +538,82 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
     } catch (_) {}
   }
 
+  /// Remove a cópia indexada pelo slug em draft e/ou live se for o mesmo
+  /// produto (id interno, slug ou nome). Não apaga outro SKU nem outra loja.
+  /// Propaga erro de exclusão para o chamador não limpar pendência cedo.
+  static Future<void> removerCopiaLegadaCatalogoSeMesmoProduto({
+    required String lojaId,
+    required Produto pdt,
+    List<SyncTarget> targets = const [SyncTarget.draft, SyncTarget.live],
+  }) async {
+    if (debugFirestoreOverride == null) {
+      if (pdt.idFirebase.trim().isEmpty) throw StateError('Produto sem identificador canônico.');
+      await StockCatalogBackendService.publishOne(lojaId, pdt.idFirebase);
+      return;
+    }
+
+    final canonical = catalogFirestoreDocId(pdt);
+    final slug = pdt.slug.trim();
+    if (slug.isEmpty || slug == canonical) return;
+
+    final produtoId =
+        pdt.idFirebase.trim().isNotEmpty ? pdt.idFirebase.trim() : canonical;
+
+    for (final target in targets) {
+      final col = _collectionName(target);
+      if (debugFailLegacySlugDelete != null &&
+          debugFailLegacySlugDelete!(col, slug)) {
+        throw StateError('falha de teste ao remover legado $col/$slug');
+      }
+      final ref =
+          _db.collection('lojas').doc(lojaId).collection(col).doc(slug);
+      final snap = await ref.get();
+      if (!snap.exists) continue;
+      if (!_catalogDocPertenceAoMesmoProduto(
+        data: snap.data(),
+        produtoId: produtoId,
+        produtoSlug: slug,
+        produtoNome: pdt.nome,
+      )) {
+        continue;
+      }
+      await ref.delete();
+      if (kDebugMode) {
+        debugPrint(
+          '🗑️ [PRODUTO SYNC] Removida cópia legada $col/$slug '
+          '(mesmo produto que $canonical)',
+        );
+      }
+    }
+  }
+
+  static bool _catalogDocPertenceAoMesmoProduto({
+    required Map<String, dynamic>? data,
+    required String produtoId,
+    required String produtoSlug,
+    required String produtoNome,
+  }) {
+    if (data == null) return false;
+    final innerId = (data['id'] ?? data['produtosId'] ?? data['productId'] ?? '')
+        .toString()
+        .trim();
+    final innerSlug = (data['slug'] ?? '').toString().trim();
+    final innerNome = (data['nome'] ?? '').toString().trim();
+    if (produtoId.isNotEmpty && innerId == produtoId) return true;
+    if (produtoSlug.isNotEmpty &&
+        innerSlug == produtoSlug &&
+        (innerId.isEmpty || innerId == produtoSlug || innerId == produtoId)) {
+      return true;
+    }
+    if (produtoSlug.isNotEmpty &&
+        innerId == produtoSlug &&
+        produtoNome.trim().isNotEmpty &&
+        innerNome.toLowerCase() == produtoNome.trim().toLowerCase()) {
+      return true;
+    }
+    return false;
+  }
+
   // ===============================================================
   // Sync de 1 produto
   // ===============================================================
@@ -541,6 +628,13 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
     final lojaId = await _resolveLojaId(lojaIdOverride);
 
     final docId = catalogFirestoreDocId(pdt);
+    if (debugFirestoreOverride == null) {
+      if (pdt.idFirebase.trim().isEmpty) throw StateError('Produto sem identificador canônico.');
+      final editorial = await _buildCatalogData(pdt, docId, lojaId: lojaId);
+      await StockCatalogBackendService.saveEditorial(lojaId, docId, editorial);
+      return;
+    }
+
     await ProdutoExclusaoTombstoneService.ensureHydratedForLoja(lojaId);
     if (await ProdutoExclusaoTombstoneService.isProdutoBloqueadoRemoto(
         lojaId: lojaId, estoqueDocId: docId)) {
@@ -617,6 +711,11 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
     bool allowMassDelete = false,
   }) async {
     final lojaId = await _resolveLojaId(lojaIdOverride);
+    if (debugFirestoreOverride == null) {
+      await StockCatalogBackendService.publishAll(lojaId);
+      return;
+    }
+
 
     final boxName = HiveBoxNames.produtos(lojaId);
     if (!Hive.isBoxOpen(boxName)) {
@@ -738,6 +837,14 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
   // 🔁 ALIASES DE COMPATIBILIDADE (CÓDIGO LEGADO)
   // ---------------------------------------------------------------------------
 
+  static Future<String> _canonicalIdForCatalogAction(String lojaId, String idOrSlug) async {
+    final stock = _db.collection('lojas').doc(lojaId).collection('estoque_produtos');
+    if ((await stock.doc(idOrSlug).get()).exists) return idOrSlug;
+    final matches = await stock.where('slug', isEqualTo: idOrSlug).limit(2).get();
+    if (matches.docs.length != 1) throw StateError('Produto não encontrado de forma inequívoca no estoque.');
+    return matches.docs.single.id;
+  }
+
   /// Compat com telas antigas (ProdutoForm, EstoqueScreen, etc)
   /// Faz UPSERT no DRAFT por padrão
   static Future<void> upsertFromProduto(
@@ -849,6 +956,12 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
   }) async {
     final lojaId = await _resolveLojaId(lojaIdOverride);
     final docId = slugify(slugOuNome);
+    if (debugFirestoreOverride == null) {
+      final canonical = await _canonicalIdForCatalogAction(lojaId, docId);
+      await StockCatalogBackendService.saveEditorial(lojaId, canonical, {'publicadoNoCatalogo': false});
+      return;
+    }
+
 
     final base = _db.collection('lojas').doc(lojaId);
     final ref = base.collection(_collectionName(target)).doc(docId);
@@ -882,6 +995,12 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
   }) async {
     try {
       final lojaId = await _resolveLojaId(lojaIdOverride);
+      if (debugFirestoreOverride == null) {
+        if (pdt.idFirebase.trim().isEmpty) throw StateError('Produto sem identificador canônico.');
+        await StockCatalogBackendService.saveEditorial(lojaId, pdt.idFirebase, {'publicadoNoCatalogo': false});
+        return;
+      }
+
       final colName = _collectionName(target);
       final base = _db.collection('lojas').doc(lojaId).collection(colName);
 
@@ -938,6 +1057,10 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
     required String lojaId,
     required List<String> docIds,
   }) async {
+    if (debugFirestoreOverride == null) {
+      throw StateError('A limpeza de órfãos exige reconciliação no servidor; a lista local pode estar incompleta.');
+    }
+
     if (docIds.isEmpty) return 0;
 
     final base = _db.collection('lojas').doc(lojaId);
@@ -969,6 +1092,12 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
     String productKey, {
     required String lojaId,
   }) async {
+    if (debugFirestoreOverride == null) {
+      final canonical = await _canonicalIdForCatalogAction(lojaId, productKey);
+      await StockCatalogBackendService.saveEditorial(lojaId, canonical, {'publicadoNoCatalogo': false});
+      return;
+    }
+
     try {
       // Remove de draft e live
       final draftCol = _db.collection('lojas').doc(lojaId).collection('draft_produtos');

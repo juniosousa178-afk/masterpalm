@@ -7,8 +7,19 @@ export const normKey = v => String(v).trim().toLowerCase().replace(/\s+/gu, ' ')
 export function stockError(code, message) {
   const error = new Error(message); error.code = code; return error;
 }
-export function quantity(value) {
-  if (!Number.isSafeInteger(value) || value < 0) throw stockError('failed-precondition', 'Invalid canonical stock quantity');
+export function quantity(value, context) {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    const error = stockError('failed-precondition', 'Invalid canonical stock quantity');
+    if (context && typeof context === 'object') {
+      error.details = {
+        code: 'INVALID_CANONICAL_STOCK',
+        field: context.field || 'quantity',
+        reason: context.reason || 'not_safe_nonnegative_integer',
+        ...(context.productId ? {productId: context.productId} : {}),
+      };
+    }
+    throw error;
+  }
   return value;
 }
 export function cellTotal(value) {
@@ -134,8 +145,22 @@ export function validateEditorial(patch) {
   return structuredClone(patch);
 }
 export function projectCatalog(canonical, editorial, productId) {
-  const stock = normalizeStock(canonical);
-  quantity(stock.stockRevision);
+  let stock;
+  try {
+    stock = normalizeStock(canonical);
+    quantity(stock.stockRevision, {field: 'stockRevision', productId});
+  } catch (e) {
+    if (e?.code === 'failed-precondition') {
+      const details = e.details && typeof e.details === 'object' ? e.details : {};
+      e.details = {
+        code: 'INVALID_CANONICAL_STOCK',
+        productId,
+        field: details.field || 'quantidade',
+        reason: details.reason || 'not_safe_nonnegative_integer',
+      };
+    }
+    throw e;
+  }
   const meta = Object.fromEntries(EDITORIAL_FIELDS.filter(k => k in editorial).map(k => [k, editorial[k]]));
   const stockFields = ['quantidade','variacoes','estoquePorTamanho','estoquePorCor','tamanhos','cores',
     'variacoesExtraTipo','tipoProduto','stockKind','itensCombo','comboConfig'];
@@ -146,7 +171,7 @@ export function projectCatalog(canonical, editorial, productId) {
     editorial.catalog_ativo !== false && !stock.pendingSoftDelete;
   const projected = {...meta, ...fields, id: productId,
     ativo: editorial.catalog_ativo !== false, publicar: editorial.publicadoNoCatalogo === true,
-    vendasCatalogoTotal: quantity(stock.vendasCatalogoTotal ?? 0),
+    vendasCatalogoTotal: quantity(stock.vendasCatalogoTotal ?? 0, {field: 'vendasCatalogoTotal', productId}),
     estoque: stock.quantidade,
     estoque_atual: stock.quantidade, qtdEstoque: stock.quantidade,
     catalogStockRevision: stock.stockRevision, catalogProjectionVersion: PROJECTION_VERSION};

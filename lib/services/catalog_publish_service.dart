@@ -1,18 +1,24 @@
+import 'stock_catalog_backend_service.dart';
 // lib/services/catalog_publish_service.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
+import '../screens/public_catalog/catalog_estoque_helper.dart';
+
 import '../services/store_resolver_facade.dart';
 import '../services/pagamentos_service.dart';
 
 const String _keyCatalogoPrecisaAtualizar = 'catalogo_precisa_atualizar';
+const String _keyPendenciasSyncAposEstoque = 'catalogo_web_apos_estoque_pendente';
 
 class CatalogPublishService {
   CatalogPublishService._();
 
   @visibleForTesting
   static FirebaseFirestore? debugFirestoreOverride;
+
+  static bool get usaBackendConfiavel => debugFirestoreOverride == null;
 
   @visibleForTesting
   static Future<void> Function(String lojaId)? debugSyncPaymentsPublicOverride;
@@ -50,6 +56,87 @@ class CatalogPublishService {
     return box.get(_keyCatalogoPrecisaAtualizar, defaultValue: false) as bool;
   }
 
+  /// IDs de produto cuja sync do catálogo falhou após mutação de estoque.
+  /// Persistido no Hive (`config`) — sobrevive ao fechar o app.
+  static Future<Map<String, Set<String>>> lerPendenciasSyncAposEstoque() async {
+    final box = await Hive.openBox('config');
+    return _decodePendenciasSyncAposEstoque(box.get(_keyPendenciasSyncAposEstoque));
+  }
+
+  /// Acumula pendências por loja e acende o FAB "Atualizar catálogo".
+  static Future<void> registrarPendenciaSyncAposEstoque({
+    required String lojaId,
+    required Iterable<String> productIds,
+  }) async {
+    final li = lojaId.trim();
+    final ids = productIds.map((e) => e.trim()).where((e) => e.isNotEmpty).toSet();
+    if (li.isEmpty || ids.isEmpty) return;
+    await marcarCatalogoPrecisaAtualizar();
+    final box = await Hive.openBox('config');
+    final current = _decodePendenciasSyncAposEstoque(
+      box.get(_keyPendenciasSyncAposEstoque),
+    );
+    current.putIfAbsent(li, () => <String>{}).addAll(ids);
+    await box.put(_keyPendenciasSyncAposEstoque, _encodePendenciasSyncAposEstoque(current));
+  }
+
+  /// Remove IDs já sincronizados com sucesso. Não limpa o FAB sozinha
+  /// (outras alterações de catálogo podem coexistir).
+  static Future<void> removerPendenciaSyncAposEstoque({
+    required String lojaId,
+    required Iterable<String> productIds,
+  }) async {
+    final li = lojaId.trim();
+    final ids = productIds.map((e) => e.trim()).where((e) => e.isNotEmpty).toSet();
+    if (li.isEmpty || ids.isEmpty) return;
+    final box = await Hive.openBox('config');
+    final current = _decodePendenciasSyncAposEstoque(
+      box.get(_keyPendenciasSyncAposEstoque),
+    );
+    final remaining = current[li];
+    if (remaining == null) return;
+    remaining.removeAll(ids);
+    if (remaining.isEmpty) {
+      current.remove(li);
+    }
+    if (current.isEmpty) {
+      await box.delete(_keyPendenciasSyncAposEstoque);
+    } else {
+      await box.put(
+        _keyPendenciasSyncAposEstoque,
+        _encodePendenciasSyncAposEstoque(current),
+      );
+    }
+  }
+
+  static Map<String, Set<String>> _decodePendenciasSyncAposEstoque(dynamic raw) {
+    final out = <String, Set<String>>{};
+    if (raw is! Map) return out;
+    raw.forEach((key, value) {
+      final loja = key.toString().trim();
+      if (loja.isEmpty) return;
+      final ids = <String>{};
+      if (value is List) {
+        for (final e in value) {
+          final id = e.toString().trim();
+          if (id.isNotEmpty) ids.add(id);
+        }
+      }
+      if (ids.isNotEmpty) out[loja] = ids;
+    });
+    return out;
+  }
+
+  static Map<String, List<String>> _encodePendenciasSyncAposEstoque(
+    Map<String, Set<String>> current,
+  ) {
+    return {
+      for (final e in current.entries)
+        if (e.key.trim().isNotEmpty && e.value.isNotEmpty)
+          e.key.trim(): e.value.toList(),
+    };
+  }
+
   /// Campos de custo / margem nunca podem permanecer em `produtos` (catálogo público).
   /// Com `merge: true`, omitir a chave não apaga valor antigo — usa [FieldValue.delete].
   static Map<String, dynamic> _payloadCatalogoLiveSemCusto(
@@ -75,16 +162,11 @@ class CatalogPublishService {
   static bool _isAtivoForWeb(Map<String, dynamic> data) {
     final publicar = data['publicar'] == true || data['catalogo'] == true;
     final ativoFlag = data['ativo'] != false; // se vier false, respeita
-    final estoque = (data['estoque_atual'] ??
-        data['estoque'] ??
-        data['qtdEstoque'] ??
-        0) as num;
-
-    // Só aparece se:
-    //  - estiver marcado para catálogo (publicar/catalogo == true)
-    //  - e tiver estoque > 0
-    //  - e não estiver explicitamente desativado
-    return publicar && ativoFlag && estoque > 0;
+    final stock = CatalogEstoqueHelper.processStockFromFirestoreMap(
+      data,
+      isCombo: data['tipoProduto'] == 'combo',
+    );
+    return publicar && ativoFlag && stock.incluirNoCatalogo;
   }
 
   static int _readQtd(Map<String, dynamic> data) {
@@ -157,11 +239,12 @@ class CatalogPublishService {
     merged['estoque'] = estoqueQtd;
     merged['estoque_atual'] = estoqueQtd;
     merged['qtdEstoque'] = estoqueQtd;
-    merged['variacoes'] = _mapGradeCanonico(
-      estoqueData: estoqueData,
-      draftData: draftData,
-      field: 'variacoes',
-    );
+    final rawVariacoes = estoqueData.containsKey('variacoes')
+        ? estoqueData['variacoes']
+        : draftData['variacoes'];
+    merged['variacoes'] = rawVariacoes is Map
+        ? _asStringDynamicMap(rawVariacoes)
+        : null;
     merged['estoquePorTamanho'] = _mapGradeCanonico(
       estoqueData: estoqueData,
       draftData: draftData,
@@ -225,108 +308,61 @@ class CatalogPublishService {
   static Future<void> promoteOne(String docId, {String? lojaIdOverride}) async {
     final lojaId = await _resolveLojaId(lojaIdOverride: lojaIdOverride);
     final base = _db.collection('lojas').doc(lojaId);
+    if (debugFirestoreOverride == null) {
+      await StockCatalogBackendService.publishOne(lojaId, docId);
+      return;
+    }
+    // Existing fake-Firestore regression harness only; production uses server.
     final draftRef = base.collection('draft_produtos').doc(docId);
     final liveRef = base.collection('produtos').doc(docId);
     final estoqueRef = base.collection('estoque_produtos').doc(docId);
 
-    final snap = await draftRef.get();
-    if (!snap.exists) {
-      // foi apagado do draft => tira do catálogo web
-      await liveRef.delete();
-      return;
-    }
-
-    final draftData = Map<String, dynamic>.from(snap.data()!);
-    final estoqueSnap = await estoqueRef.get();
-    final mergedData = _draftComEstoqueCanonico(
-      lojaId: lojaId,
-      productId: docId,
-      draftData: draftData,
-      estoqueData: estoqueSnap.exists
-          ? Map<String, dynamic>.from(estoqueSnap.data()!)
-          : null,
-    );
-
-    final ativoWeb = _isAtivoForWeb(mergedData);
-
-    if (ativoWeb) {
-      final data = _payloadCatalogoLiveSemCusto(mergedData);
-      data['ativo'] = ativoWeb;
-      data['publicado'] = ativoWeb;
-      data['updatedAt'] = FieldValue.serverTimestamp();
-      await liveRef.set(data, SetOptions(merge: true));
-    } else {
-      // não atende as regras => some do catálogo web
-      await liveRef.delete();
-    }
+    // Firestore validates every document read at commit and retries conflicts.
+    // No client clock/revision guess: the stock and draft snapshots used to
+    // publish must still be current when the derived live write commits.
+    await _db.runTransaction((tx) async {
+      final snap = await tx.get(draftRef);
+      final estoqueSnap = await tx.get(estoqueRef);
+      if (!snap.exists) {
+        tx.delete(liveRef);
+        return;
+      }
+      final mergedData = _draftComEstoqueCanonico(
+        lojaId: lojaId,
+        productId: docId,
+        draftData: Map<String, dynamic>.from(snap.data()!),
+        estoqueData: estoqueSnap.exists
+            ? Map<String, dynamic>.from(estoqueSnap.data()!)
+            : null,
+      );
+      final ativoWeb = _isAtivoForWeb(mergedData);
+      if (ativoWeb) {
+        final data = _payloadCatalogoLiveSemCusto(mergedData);
+        data['ativo'] = true;
+        data['publicado'] = true;
+        data['updatedAt'] = FieldValue.serverTimestamp();
+        tx.set(liveRef, data, SetOptions(merge: true));
+      } else {
+        tx.delete(liveRef);
+      }
+    });
   }
 
-  /// Limite seguro de operações por commit (Firestore max 500).
-  static const int _maxBatchOps = 450;
-
-  /// Promove TODOS do draft para live; também faz "purge" de órfãos.
-  /// Commits em chunks para não estourar o limite de 500 ops do Firestore.
+  /// Enumera IDs, mas decide publicação/remoção em transação por produto.
+  /// O snapshot da enumeração nunca é usado como payload de estoque.
   static Future<void> promoteAll({String? lojaIdOverride}) async {
     final lojaId = await _resolveLojaId(lojaIdOverride: lojaIdOverride);
     final base = _db.collection('lojas').doc(lojaId);
-    final draftCol = base.collection('draft_produtos');
-    final liveCol = base.collection('produtos');
-    final estoqueCol = base.collection('estoque_produtos');
-
-    final draft = await draftCol.get();
-    final live = await liveCol.get();
-    final estoque = await estoqueCol.get();
-    final draftIds = draft.docs.map((d) => d.id).toSet();
-    final estoqueById = <String, Map<String, dynamic>>{
-      for (final d in estoque.docs) d.id: Map<String, dynamic>.from(d.data()),
-    };
-
-    WriteBatch batch = _db.batch();
-    var opCount = 0;
-
-    Future<void> commitIfNeeded({bool force = false}) async {
-      if (opCount == 0) return;
-      if (!force && opCount < _maxBatchOps) return;
-      await batch.commit();
-      if (kDebugMode) {
-        debugPrint('📦 [PUBLISH-ALL] batch commit ops=$opCount (chunk)');
-      }
-      batch = _db.batch();
-      opCount = 0;
+    if (debugFirestoreOverride == null) {
+      await StockCatalogBackendService.publishAll(lojaId);
+      return;
     }
-
-    for (final d in draft.docs) {
-      final draftData = Map<String, dynamic>.from(d.data());
-      final mergedData = _draftComEstoqueCanonico(
-        lojaId: lojaId,
-        productId: d.id,
-        draftData: draftData,
-        estoqueData: estoqueById[d.id],
-      );
-      final ativoWeb = _isAtivoForWeb(mergedData);
-
-      if (ativoWeb) {
-        final data = _payloadCatalogoLiveSemCusto(mergedData);
-        data['ativo'] = ativoWeb;
-        data['publicado'] = ativoWeb;
-        data['updatedAt'] = FieldValue.serverTimestamp();
-        batch.set(liveCol.doc(d.id), data, SetOptions(merge: true));
-      } else {
-        batch.delete(liveCol.doc(d.id));
-      }
-      opCount++;
-      await commitIfNeeded();
+    final draft = await base.collection('draft_produtos').get();
+    final live = await base.collection('produtos').get();
+    final ids = {...draft.docs.map((d) => d.id), ...live.docs.map((d) => d.id)};
+    for (final id in ids) {
+      await promoteOne(id, lojaIdOverride: lojaId);
     }
-
-    for (final l in live.docs) {
-      if (!draftIds.contains(l.id)) {
-        batch.delete(liveCol.doc(l.id));
-        opCount++;
-        await commitIfNeeded();
-      }
-    }
-
-    await commitIfNeeded(force: true);
   }
 
   /// ✨ Publica configurações gerais do draft para live

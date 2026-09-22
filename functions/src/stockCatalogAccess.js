@@ -3,8 +3,16 @@ export const STOCK_PROTOCOL_VERSION = 1;
 export const SERVER_PAYMENT_AUTH = Object.freeze({uid: 'stock-catalog-payment'});
 export const SERVER_PUBLISH_AUTH = Object.freeze({uid: 'stock-catalog-publisher'});
 
-/** Commands allowed on the inactive/legacy sale compatibility bridge only. */
+/** Sale/restore remain on the inactive/legacy sale compatibility bridge. */
 export const INACTIVE_COMPAT_ALLOWED_KINDS = Object.freeze(['sale', 'restore']);
+
+/**
+ * NO_CONTROL kinds beyond sale/restore — each role-scoped separately.
+ * Never implies ACTIVE protocol, grants, or migration.
+ */
+export const NO_CONTROL_EDITORIAL_KINDS = Object.freeze(['editorial']);
+export const NO_CONTROL_STOCK_EDIT_KINDS = Object.freeze(['replace', 'create']);
+export const NO_CONTROL_PUBLISH_PERMISSION = 'publish';
 
 export function documentId(value, label = 'id') {
   if (typeof value !== 'string' || !value.trim() || value !== value.trim() || value.includes('/') ||
@@ -21,9 +29,8 @@ export function storeRef(db, lojaId) { return db.collection('lojas').doc(documen
 
 /**
  * Classify stock_catalog_control/state for routing.
- * ACTIVE → grant protocol; NO_CONTROL (absent) → legacy sale/restore;
- * INACTIVE/INVALID/incomplete → fail closed (ticket preference: present-but-not-ACTIVE
- * must not silently fall through to legacy).
+ * ACTIVE → grant protocol; NO_CONTROL (absent) → legacy sale/restore + narrow editorial/stock-edit/publish;
+ * INACTIVE/INVALID/incomplete → fail closed.
  */
 export function classifyStockControlState(controlSnap) {
   if (!controlSnap?.exists) return 'NO_CONTROL';
@@ -35,8 +42,6 @@ export function classifyStockControlState(controlSnap) {
   if (version === STOCK_PROTOCOL_VERSION && mode === 'active' && migrationComplete) {
     return 'ACTIVE';
   }
-  // Present but not fully ACTIVE: fail closed (includes mode=inactive, wrong version,
-  // migrationComplete=false). Stricter than historical INACTIVE→legacy for security.
   if (mode === 'maintenance') return 'INVALID';
   if (version !== undefined && version !== STOCK_PROTOCOL_VERSION) return 'INVALID';
   if (mode === 'active' && !migrationComplete) return 'INVALID';
@@ -64,11 +69,56 @@ export async function authorizeStockTransaction(tx, base, auth, permission) {
       state.mode !== 'active' || state.migrationComplete !== true) {
     throw stockError('failed-precondition', 'Stock protocol unavailable or migration incomplete');
   }
-  // Never consult role/email/storeId in user profiles or legacy membership.
   if (!access.exists || grant.enabled !== true || grant.permissions?.[permission] !== true) {
     throw stockError('permission-denied', 'Stock operation not authorized for this store');
   }
   return uid;
+}
+
+async function loadMembership(tx, db, base, uid) {
+  const [loja, seller, member, user] = await tx.getAll(
+    base,
+    base.collection('vendedores').doc(uid),
+    base.collection('members').doc(uid),
+    db.collection('users').doc(uid),
+  );
+  if (!loja.exists) throw stockError('permission-denied', 'Store not found');
+  return {loja, seller, member, user, data: loja.data() || {}};
+}
+
+function isOwnerOrAdmin({loja, member, user, data, uid, base}) {
+  if (data.ownerUid === uid) return true;
+  if (data.admins && data.admins[uid] === true) return true;
+  if (member.exists) {
+    const role = (member.data()?.role ?? '').toString();
+    if (role === 'owner' || role === 'admin') return true;
+  }
+  if (user.exists) {
+    const ud = user.data() || {};
+    const storeId = (ud.store_id || ud.storeId || '').toString();
+    if (storeId && storeId === base.id) {
+      if (!data.ownerUid || data.ownerUid === uid) return true;
+    }
+  }
+  return false;
+}
+
+function isActiveSellerWithSalePerm({seller}) {
+  if (!seller.exists || seller.data()?.ativo !== true) return false;
+  const perms = seller.data()?.permissoes || {};
+  if (perms.vendas === true || perms.sale === true) return true;
+  if (!Object.keys(perms).length) return true;
+  return false;
+}
+
+function isSellerWithCatalogEditPerm({seller}) {
+  if (!seller.exists || seller.data()?.ativo !== true) return false;
+  const perms = seller.data()?.permissoes || {};
+  return perms.produtos === true ||
+    perms.estoque === true ||
+    perms.cadastro === true ||
+    perms.catalogo === true ||
+    perms.editStock === true;
 }
 
 /**
@@ -84,39 +134,55 @@ export async function authorizeInactiveLegacySale(tx, db, base, auth, kind) {
   if (!INACTIVE_COMPAT_ALLOWED_KINDS.includes(kind)) {
     throw stockError('failed-precondition', 'Stock protocol unavailable or migration incomplete');
   }
-  const [loja, seller, member, user] = await tx.getAll(
-    base,
-    base.collection('vendedores').doc(uid),
-    base.collection('members').doc(uid),
-    db.collection('users').doc(uid),
-  );
-  if (!loja.exists) throw stockError('permission-denied', 'Store not found');
-  const data = loja.data() || {};
-  if (data.ownerUid === uid) return uid;
-  if (data.admins && data.admins[uid] === true) return uid;
-  if (member.exists) {
-    const role = (member.data()?.role ?? '').toString();
-    if (role === 'owner' || role === 'admin') return uid;
-  }
-  if (seller.exists && seller.data()?.ativo === true) {
-    const perms = seller.data()?.permissoes || {};
-    if (perms.vendas === true || perms.sale === true) return uid;
-    // Active seller without explicit deny may sell in legacy PDV.
-    if (!Object.keys(perms).length) return uid;
-  }
-  if (user.exists) {
-    const ud = user.data() || {};
-    const storeId = (ud.store_id || ud.storeId || '').toString();
-    if (storeId && storeId === base.id) {
-      if (!data.ownerUid || data.ownerUid === uid) return uid;
-    }
-  }
+  const membership = await loadMembership(tx, db, base, uid);
+  if (isOwnerOrAdmin({...membership, uid, base})) return uid;
+  if (isActiveSellerWithSalePerm(membership)) return uid;
   throw stockError('permission-denied', 'Stock operation not authorized for this store');
+}
+
+/** NO_CONTROL editorial: owner/admin or seller with catalog/product edit permission. */
+export async function authorizeNoControlEditorial(tx, db, base, auth) {
+  const uid = requireAuthenticated(auth);
+  if ([SERVER_PUBLISH_AUTH, SERVER_PAYMENT_AUTH].some(identity => uid === identity.uid && auth !== identity)) {
+    throw stockError('permission-denied', 'Reserved server identity');
+  }
+  const membership = await loadMembership(tx, db, base, uid);
+  if (isOwnerOrAdmin({...membership, uid, base})) return uid;
+  if (isSellerWithCatalogEditPerm(membership)) return uid;
+  throw stockError('permission-denied', 'Editorial not authorized for this store');
+}
+
+/**
+ * NO_CONTROL stock edit (replace/create): owner/admin only.
+ * Sale-only vendedor is never authorized.
+ */
+export async function authorizeNoControlStockEdit(tx, db, base, auth, kind) {
+  const uid = requireAuthenticated(auth);
+  if ([SERVER_PUBLISH_AUTH, SERVER_PAYMENT_AUTH].some(identity => uid === identity.uid && auth !== identity)) {
+    throw stockError('permission-denied', 'Reserved server identity');
+  }
+  if (!NO_CONTROL_STOCK_EDIT_KINDS.includes(kind)) {
+    throw stockError('failed-precondition', 'Stock protocol unavailable or migration incomplete');
+  }
+  const membership = await loadMembership(tx, db, base, uid);
+  if (isOwnerOrAdmin({...membership, uid, base})) return uid;
+  throw stockError('permission-denied', 'Stock edit not authorized for this store');
+}
+
+/** NO_CONTROL catalog publish: owner/admin only. Does not mutate canonical stock. */
+export async function authorizeNoControlPublish(tx, db, base, auth) {
+  const uid = requireAuthenticated(auth);
+  if ([SERVER_PUBLISH_AUTH, SERVER_PAYMENT_AUTH].some(identity => uid === identity.uid && auth !== identity)) {
+    throw stockError('permission-denied', 'Reserved server identity');
+  }
+  const membership = await loadMembership(tx, db, base, uid);
+  if (isOwnerOrAdmin({...membership, uid, base})) return uid;
+  throw stockError('permission-denied', 'Catalog publish not authorized for this store');
 }
 
 /**
  * Resolve route + authorize.
- * ACTIVE → grants; NO_CONTROL → membership sale/restore; anything else → fail closed.
+ * ACTIVE → grants; NO_CONTROL → kind-scoped membership; anything else → fail closed.
  */
 export async function authorizeStockCommand(tx, db, base, auth, permission, kind) {
   const control = await tx.get(base.collection('stock_catalog_control').doc('state'));
@@ -126,9 +192,36 @@ export async function authorizeStockCommand(tx, db, base, auth, permission, kind
     return {uid, route, legacyCompat: false};
   }
   if (route === 'NO_CONTROL') {
-    const uid = await authorizeInactiveLegacySale(tx, db, base, auth, kind);
+    if (INACTIVE_COMPAT_ALLOWED_KINDS.includes(kind)) {
+      const uid = await authorizeInactiveLegacySale(tx, db, base, auth, kind);
+      return {uid, route, legacyCompat: true};
+    }
+    if (NO_CONTROL_EDITORIAL_KINDS.includes(kind)) {
+      const uid = await authorizeNoControlEditorial(tx, db, base, auth);
+      return {uid, route, legacyCompat: true};
+    }
+    if (NO_CONTROL_STOCK_EDIT_KINDS.includes(kind)) {
+      const uid = await authorizeNoControlStockEdit(tx, db, base, auth, kind);
+      return {uid, route, legacyCompat: true};
+    }
+    throw stockError('failed-precondition', 'Stock protocol unavailable or migration incomplete');
+  }
+  throw stockError('failed-precondition', 'Stock protocol unavailable or migration incomplete');
+}
+
+/**
+ * Publish authorization: ACTIVE grant publish, or NO_CONTROL owner/admin.
+ */
+export async function authorizePublish(tx, db, base, auth) {
+  const control = await tx.get(base.collection('stock_catalog_control').doc('state'));
+  const route = classifyStockControlState(control);
+  if (route === 'ACTIVE') {
+    const uid = await authorizeStockTransaction(tx, base, auth, NO_CONTROL_PUBLISH_PERMISSION);
+    return {uid, route, legacyCompat: false};
+  }
+  if (route === 'NO_CONTROL') {
+    const uid = await authorizeNoControlPublish(tx, db, base, auth);
     return {uid, route, legacyCompat: true};
   }
-  // INVALID / present-but-incomplete / mode=inactive → fail closed
   throw stockError('failed-precondition', 'Stock protocol unavailable or migration incomplete');
 }

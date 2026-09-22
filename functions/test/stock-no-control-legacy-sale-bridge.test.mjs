@@ -149,20 +149,47 @@ test('NO_CONTROL restore after sale', async () => {
   assert.equal(db.getData(base.collection('estoque_produtos').doc(productId)).quantidade, 3);
 });
 
-test('NO_CONTROL adjust/replace/unknown blocked', async () => {
+test('NO_CONTROL adjust blocked; replace/create allowed for owner only', async () => {
   const {db, lojaId, productId} = await seedNoControl({variation: false});
   await denied(executeStockCommand(db, intent(lojaId, 'adjust', 'a1', {
     productId, quantity: 9, expectedRevision: 1,
   }), owner), 'failed-precondition');
-  await denied(executeStockCommand(db, {
+  await denied(executeStockCommand(db, intent(lojaId, 'restock', 'rs1', {
+    productId, quantity: 1,
+  }), owner), 'failed-precondition');
+  // Owner may replace stock grade under NO_CONTROL (journaled).
+  const replaced = await executeStockCommand(db, {
     protocolVersion: 1, lojaId, kind: 'replace', operationId: 'rep1',
     items: [{productId, expectedRevision: 1}],
     editorial: {nome: 'x'},
     definition: {quantidade: 9, tipoProduto: 'simples'},
-  }, owner), 'failed-precondition');
-  await denied(executeStockCommand(db, intent(lojaId, 'restock', 'rs1', {
-    productId, quantity: 1,
-  }), owner), 'failed-precondition');
+  }, owner);
+  assert.equal(replaced.alreadyApplied, false);
+  // Sale-only seller cannot replace.
+  const seller = {uid: 'seller-only'};
+  const seeded = await seedNoControl({variation: false, ownerUid: 'owner'});
+  seeded.db.seed(seeded.base.collection('vendedores').doc('seller-only'), {
+    ativo: true, permissoes: {vendas: true},
+  });
+  await denied(executeStockCommand(seeded.db, {
+    protocolVersion: 1, lojaId: seeded.lojaId, kind: 'replace', operationId: 'rep2',
+    items: [{productId: seeded.productId, expectedRevision: 1}],
+    editorial: {nome: 'y'},
+    definition: {quantidade: 2, tipoProduto: 'simples'},
+  }, seller), 'permission-denied');
+});
+
+test('NO_CONTROL editorial authorized for owner', async () => {
+  const {db, base, lojaId, productId} = await seedNoControl({
+    variation: false, withDraft: true,
+  });
+  await executeStockCommand(db, {
+    protocolVersion: 1, lojaId, kind: 'editorial', operationId: 'ed1',
+    items: [{productId}],
+    editorial: {descricao: 'Nova desc'},
+  }, owner);
+  const draft = db.getData(base.collection('draft_produtos').doc(productId));
+  assert.equal(draft.descricao, 'Nova desc');
 });
 
 test('ACTIVE sale with grant; without grant denied', async () => {
