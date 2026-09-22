@@ -484,8 +484,9 @@ class ProdutoExclusaoTombstoneService {
   static Map<String, dynamic> filtrarMapVariacoes(
     String lojaId,
     String estoqueDocId,
-    Map<String, dynamic> m,
-  ) {
+    Map<String, dynamic> m, {
+    Map<String, dynamic>? dataRemotoCanonico,
+  }) {
     if (m.isEmpty) return m;
     if (isProdutoBloqueadoSinc(lojaId, estoqueDocId)) {
       if (kDebugMode) {
@@ -498,14 +499,22 @@ class ProdutoExclusaoTombstoneService {
     }
     final bloq = _loja(lojaId).varKeys[estoqueDocId] ?? <String>{};
     if (bloq.isEmpty) return m;
-    return _filtrarMapVariacoesDenylist(m, bloq);
+    return _filtrarMapVariacoesDenylist(
+      m,
+      bloq,
+      dataRemotoCanonico: dataRemotoCanonico,
+    );
   }
 
   /// Correct semantic: KEEP unless explicitly tombstoned (`V::` or `T::`).
+  ///
+  /// Live-cell precedence: a tombstone alone must NOT hide a positive
+  /// canonical cell (`qty > 0`) in [m] (remote or already-hydrated stock).
   static Map<String, dynamic> _filtrarMapVariacoesDenylist(
     Map<String, dynamic> m,
-    Set<String> bloq,
-  ) {
+    Set<String> bloq, {
+    Map<String, dynamic>? dataRemotoCanonico,
+  }) {
     final out = Map<String, dynamic>.from(m);
     for (final e in m.entries) {
       if (e.value is! Map) continue;
@@ -513,14 +522,30 @@ class ProdutoExclusaoTombstoneService {
       final inner = Map<String, dynamic>.from(e.value as Map);
       for (final k in (e.value as Map).keys) {
         final cor = k.toString();
-        if (_celulaTombstoned(bloq, tamanho, cor)) {
-          inner.remove(k);
+        if (!_celulaTombstoned(bloq, tamanho, cor)) continue;
+        final cellQty = ProdutoVariacaoExtra.somarCelula(inner[cor]);
+        final liveRemote = dataRemotoCanonico == null
+            ? cellQty > 0
+            : _celulaAtivaNoMapaRemoto(
+                data: dataRemotoCanonico,
+                tamanho: tamanho,
+                corKey: cor,
+              );
+        if (liveRemote || cellQty > 0) {
           if (kDebugMode) {
             logD(
-              '[TOMBSTONE_BLOCK] var excl do payload: $tamanho / $cor',
+              '[TOMBSTONE_LIVE_KEEP] var positiva preservada: $tamanho / $cor',
               tag: 'TOMBSTONE',
             );
           }
+          continue;
+        }
+        inner.remove(k);
+        if (kDebugMode) {
+          logD(
+            '[TOMBSTONE_BLOCK] var excl do payload: $tamanho / $cor',
+            tag: 'TOMBSTONE',
+          );
         }
       }
       if (inner.isEmpty) {
@@ -563,8 +588,9 @@ class ProdutoExclusaoTombstoneService {
   static Map<String, int> filtrarEstoquePorTamanho(
     String lojaId,
     String estoqueDocId,
-    Map<String, int> m,
-  ) {
+    Map<String, int> m, {
+    Map<String, dynamic>? dataRemotoCanonico,
+  }) {
     if (m.isEmpty) return m;
     if (isProdutoBloqueadoSinc(lojaId, estoqueDocId)) {
       if (kDebugMode) {
@@ -577,23 +603,65 @@ class ProdutoExclusaoTombstoneService {
     }
     final bloq = _loja(lojaId).varKeys[estoqueDocId] ?? <String>{};
     if (bloq.isEmpty) return m;
-    return _filtrarEstoquePorTamanhoDenylist(m, bloq);
+    return _filtrarEstoquePorTamanhoDenylist(
+      m,
+      bloq,
+      dataRemotoCanonico: dataRemotoCanonico,
+    );
   }
 
   static Map<String, int> _filtrarEstoquePorTamanhoDenylist(
     Map<String, int> m,
-    Set<String> bloq,
-  ) {
+    Set<String> bloq, {
+    Map<String, dynamic>? dataRemotoCanonico,
+  }) {
     final out = Map<String, int>.from(m);
     for (final k in m.keys) {
-      if (bloq.contains(tKeySoloTamanho(k))) {
-        out.remove(k);
+      if (!bloq.contains(tKeySoloTamanho(k))) continue;
+      final qty = m[k] ?? 0;
+      final liveRemote = dataRemotoCanonico == null
+          ? qty > 0
+          : _tamanhoAtivoNoMapaRemoto(
+              data: dataRemotoCanonico,
+              tamanho: k,
+            );
+      if (liveRemote || qty > 0) {
         if (kDebugMode) {
-          logD('[TOMBSTONE_BLOCK] tam excl: $k', tag: 'TOMBSTONE');
+          logD(
+            '[TOMBSTONE_LIVE_KEEP] tam positivo preservado: $k',
+            tag: 'TOMBSTONE',
+          );
         }
+        continue;
+      }
+      out.remove(k);
+      if (kDebugMode) {
+        logD('[TOMBSTONE_BLOCK] tam excl: $k', tag: 'TOMBSTONE');
       }
     }
     return out;
+  }
+
+  /// True when remote still has any positive qty for [tamanho].
+  static bool _tamanhoAtivoNoMapaRemoto({
+    required Map<String, dynamic>? data,
+    required String tamanho,
+  }) {
+    if (data == null || tamanho.isEmpty) return false;
+    final v = data['variacoes'];
+    if (v is Map) {
+      final mapaTam = v[tamanho];
+      if (mapaTam is Map) {
+        for (final cell in mapaTam.values) {
+          if (ProdutoVariacaoExtra.somarCelula(cell) > 0) return true;
+        }
+      }
+    }
+    final ep = data['estoquePorTamanho'];
+    if (ep is Map) {
+      return ProdutoVariacaoExtra.valorFirestoreComoInt(ep[tamanho]) > 0;
+    }
+    return false;
   }
 
   @visibleForTesting
@@ -643,12 +711,16 @@ class ProdutoExclusaoTombstoneService {
   }
 
   /// Ajusta o doc de estoque logo após leitura no pull.
+  ///
+  /// Positive remote cells survive T/V denylist (stale tombstone must not
+  /// hide live canonical stock).
   static Map<String, dynamic> filtrarDocEstoqueParaPull(
     String lojaId,
     String docId,
     Map<String, dynamic> d,
   ) {
     if (d.isEmpty) return d;
+    final canonico = Map<String, dynamic>.from(d);
     final w = Map<String, dynamic>.from(d);
     final v0 = w['variacoes'];
     if (v0 is Map) {
@@ -656,6 +728,7 @@ class ProdutoExclusaoTombstoneService {
         lojaId,
         docId,
         Map<String, dynamic>.from(v0),
+        dataRemotoCanonico: canonico,
       );
     }
     final e0 = w['estoquePorTamanho'];
@@ -669,6 +742,7 @@ class ProdutoExclusaoTombstoneService {
             ProdutoVariacaoExtra.valorFirestoreComoInt(v),
           ),
         ),
+        dataRemotoCanonico: canonico,
       );
     }
     final x0 = w['variacoesExtraTipo'];
@@ -687,17 +761,27 @@ class ProdutoExclusaoTombstoneService {
   static void filtrarMapasLocaisDoProdutoPeloTombstone(
     String lojaId,
     String estoqueDocId,
-    Produto p,
-  ) {
+    Produto p, {
+    Map<String, dynamic>? dataRemotoCanonico,
+  }) {
     final id = estoqueDocId.trim();
     final l = lojaId.trim();
     if (l.isEmpty || id.isEmpty) return;
     if (isProdutoBloqueadoSinc(l, id)) return;
+    // When remote snapshot is absent, treat the local maps themselves as the
+    // operational stock surface: positive cells must survive stale T/V keys.
+    final canonico = dataRemotoCanonico ??
+        <String, dynamic>{
+          if (p.variacoes != null) 'variacoes': p.variacoes,
+          if (p.estoquePorTamanho.isNotEmpty)
+            'estoquePorTamanho': p.estoquePorTamanho,
+        };
     if (p.variacoes != null && p.variacoes!.isNotEmpty) {
       final f = filtrarMapVariacoes(
         l,
         id,
         Map<String, dynamic>.from(p.variacoes!),
+        dataRemotoCanonico: canonico,
       );
       p.variacoes = f.isEmpty ? null : f;
     }
@@ -706,6 +790,7 @@ class ProdutoExclusaoTombstoneService {
         l,
         id,
         p.estoquePorTamanho,
+        dataRemotoCanonico: canonico,
       );
     }
     if (p.variacoesExtraTipo != null && p.variacoesExtraTipo!.isNotEmpty) {

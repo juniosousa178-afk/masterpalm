@@ -20,6 +20,7 @@ import '../core/produto_variacao_extra.dart';
 import '../core/produto_stock_revision.dart';
 import '../core/produto_stock_version_fields.dart';
 import '../core/strict_product_resolution.dart';
+import '../core/delete_forensic_trace.dart';
 import '../models/produto.dart';
 import 'firestore_paths.dart';
 import 'catalog_cache_service.dart';
@@ -2436,11 +2437,18 @@ class EstoqueTransactionService {
     );
   }
 
-  /// User-facing delete/restore error; raw error stays in debug logs.
+  /// User-facing delete/restore error; raw error stays in debug logs + delete trace.
   static String mensagemUsuarioFalhaDevolucaoEstoque(Object error) {
     debugPrint(
       '[VENDA_DELETE] forensic_raw type=${error.runtimeType} erro=$error',
     );
+    final active = DeleteForensicTraceStore.active;
+    if (active != null) {
+      debugPrint(
+        '[VENDA_DELETE] forensic_trace_id=${active.deleteTraceId} '
+        'finalStage=${active.finalStage} stages=${active.stages.length}',
+      );
+    }
     if (error is EstoqueRestoreSourceUnresolvedException) {
       return EstoqueRestoreSourceUnresolvedException.userMessage;
     }
@@ -2448,8 +2456,13 @@ class EstoqueTransactionService {
     if (raw.contains('Applied sale required')) {
       return EstoqueRestoreSourceUnresolvedException.userMessage;
     }
-    return 'Não foi possível devolver o estoque desta venda. '
+    var msg = 'Não foi possível devolver o estoque desta venda. '
         'A exclusão foi cancelada para proteger o estoque.';
+    final code = active?.shortCode;
+    if (code != null && code.isNotEmpty && !msg.contains(code)) {
+      msg = '$msg\n\nCódigo de diagnóstico: $code';
+    }
+    return msg;
   }
 
   /// Indica se a devolução já foi feita (remoto catálogo ou idempotência local).
@@ -3132,16 +3145,62 @@ class EstoqueTransactionService {
       if (source.isEmpty) {
         throw StateError('Estorno exige a operação original da venda.');
       }
-      final response = await StockCatalogBackendService.command(
-        lojaId: lojaId,
-        operationId: 'restore_${sha256.convert(utf8.encode(source))}',
-        kind: 'restore',
-        sourceOperationId: source,
-        items: [
-          {'productId': 'source-operation'}
-        ],
+      final restoreOpId = 'restore_${sha256.convert(utf8.encode(source))}';
+      DeleteForensicTraceStore.setSourceOperationId(source);
+      DeleteForensicTraceStore.setRestoreOperationId(restoreOpId);
+      DeleteForensicTraceStore.stage(
+        DeleteTraceStage.restoreCommandStart,
+        extra: {
+          'sourceOperationId': source,
+          'restoreOperationId': restoreOpId,
+        },
       );
-      return resultadosDoBackend(response);
+      try {
+        final response = await StockCatalogBackendService.command(
+          lojaId: lojaId,
+          operationId: restoreOpId,
+          kind: 'restore',
+          sourceOperationId: source,
+          items: [
+            {'productId': 'source-operation'}
+          ],
+        );
+        DeleteForensicTraceStore.stage(
+          DeleteTraceStage.restoreCommandHttpSuccess,
+          extra: DeleteForensicTraceStore.sanitizeRestoreResponse(response),
+        );
+        final already = response['alreadyApplied'] == true;
+        DeleteForensicTraceStore.stage(
+          already
+              ? DeleteTraceStage.restoreResultIdempotentAlreadyApplied
+              : DeleteTraceStage.restoreResultNewlyApplied,
+          extra: DeleteForensicTraceStore.sanitizeRestoreResponse(response),
+        );
+        final parsed = resultadosDoBackend(response);
+        DeleteForensicTraceStore.stage(
+          DeleteTraceStage.restoreResultParsed,
+          extra: {
+            'productCount': parsed.length,
+            ...DeleteForensicTraceStore.sanitizeRestoreResponse(response),
+          },
+        );
+        DeleteForensicTraceStore.stage(
+          DeleteTraceStage.restoreResultApplied,
+          extra: {
+            'productCount': parsed.length,
+            'alreadyApplied': already,
+          },
+        );
+        return parsed;
+      } catch (e, st) {
+        DeleteForensicTraceStore.captureError(
+          DeleteTraceStage.deleteAbort,
+          e,
+          st,
+          extra: {'substage': 'restore_command_or_parse'},
+        );
+        rethrow;
+      }
     }
 
     if (itens.isEmpty) return [];

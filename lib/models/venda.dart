@@ -128,6 +128,11 @@ class Venda extends HiveObject {
   @HiveField(34)
   String? vendedorEmail;
 
+  /// Canonical stock_catalog_operations id that mutated stock for this sale.
+  /// Prefer this over assuming [idFirebase] == operation id.
+  @HiveField(35)
+  String? stockOperationId;
+
   Venda({
     required this.clienteNome,
     required this.produtosDescricao,
@@ -164,6 +169,7 @@ class Venda extends HiveObject {
     this.vendedorUid,
     this.vendedorNome,
     this.vendedorEmail,
+    this.stockOperationId,
   });
 
   /// Itens da venda (nunca null, fallback para [] em vendas antigas)

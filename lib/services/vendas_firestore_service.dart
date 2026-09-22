@@ -332,6 +332,14 @@ class VendasFirestoreService {
           'statusVenda': venda.statusVenda!.trim(),
         'cancelada': venda.cancelada,
         'estornada': venda.estornada,
+        // Explicit stock command binding (may equal idFirebase for modern PDV).
+        // Prefer over assuming sale doc id == stock_catalog_operations id.
+        ...() {
+          final bound = (venda.stockOperationId ?? venda.idFirebase ?? '')
+              .trim();
+          if (bound.isEmpty) return <String, dynamic>{};
+          return <String, dynamic>{'stockOperationId': bound};
+        }(),
 
         // Fiado / saldo a receber (backfill cross-device)
         ...() {

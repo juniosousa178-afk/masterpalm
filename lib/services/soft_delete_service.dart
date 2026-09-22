@@ -17,6 +17,7 @@ import '../core/hive_box_names.dart';
 import '../core/logger.dart';
 import '../core/safe_cast.dart';
 import '../core/venda_exclusao_tombstone.dart';
+import '../core/delete_forensic_trace.dart';
 import '../models/cliente.dart';
 import '../models/produto.dart';
 import '../models/venda.dart';
@@ -363,6 +364,8 @@ class SoftDeleteService {
     final key = venda.key as int?;
     if (key == null) return null;
 
+    await DeleteForensicTraceStore.start(lojaId: lojaId);
+
     debugPrint('[VENDA-DELETE] etapa=remover_contas_start lojaId=$lojaId vendaKey=$key');
     await VendasService.removerContasReceberVinculadasAVenda(
       lojaId: lojaId,
@@ -380,6 +383,9 @@ class SoftDeleteService {
         produtosBox: produtosBox,
         lojaId: lojaId,
         vendaHiveKeyMarcador: key,
+        explicitStockOperationId: (venda.stockOperationId ?? '').trim().isEmpty
+            ? null
+            : venda.stockOperationId!.trim(),
       );
     } catch (e, st) {
       if (e is FirebaseException) {
@@ -392,6 +398,12 @@ class SoftDeleteService {
         );
       }
       debugPrint('[VENDA-DELETE] etapa=erro stack=$st');
+      DeleteForensicTraceStore.captureError(
+        DeleteTraceStage.deleteAbort,
+        e,
+        st,
+      );
+      DeleteForensicTraceStore.endActive(aborted: true);
       // Preserve raw forensic log; surface operational message to callers.
       final wrapped = e is EstoqueRestoreSourceUnresolvedException
           ? e
@@ -405,11 +417,23 @@ class SoftDeleteService {
     }
     debugPrint('[VENDA-DELETE] etapa=devolver_estoque_ok');
 
-    await VendaExclusaoTombstone.registrar(
-      lojaId: lojaId,
-      idFirebase: venda.idFirebase,
-      hiveKey: key,
-    );
+    DeleteForensicTraceStore.stage(DeleteTraceStage.saleSoftDeleteStart);
+    try {
+      await VendaExclusaoTombstone.registrar(
+        lojaId: lojaId,
+        idFirebase: venda.idFirebase,
+        hiveKey: key,
+      );
+    } catch (e, st) {
+      DeleteForensicTraceStore.captureError(
+        DeleteTraceStage.saleSoftDeleteError,
+        e,
+        st,
+        extra: {'substage': 'tombstone'},
+      );
+      DeleteForensicTraceStore.endActive(aborted: true);
+      rethrow;
+    }
 
     final idFb = (venda.idFirebase ?? '').trim();
     if (idFb.isNotEmpty) {
@@ -462,6 +486,8 @@ class SoftDeleteService {
     await vendasBox.delete(key);
     final trashKey = await trashBox.add(vendaLixeira);
 
+    DeleteForensicTraceStore.stage(DeleteTraceStage.saleSoftDeleteSuccess);
+
     final id = const Uuid().v4();
     final deleteAt = DateTime.now().add(_undoWindow);
     final uidSeller = (vendedorUid ?? venda.vendedorUid ?? '').trim();
@@ -510,6 +536,7 @@ class SoftDeleteService {
     }
 
     debugPrint('[VENDA-DELETE] etapa=schedule_concluido undoId=$id');
+    DeleteForensicTraceStore.endActive(aborted: false);
     return id;
   }
 

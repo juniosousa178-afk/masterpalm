@@ -181,7 +181,31 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
     if (command.kind === 'restore') {
       sourceRef = base.collection('stock_catalog_operations').doc(command.sourceOperationId);
       source = await tx.get(sourceRef);
-      if (!source.exists || source.data().kind !== 'sale' || source.data().status !== 'applied') throw stockError('failed-precondition', 'Applied sale required');
+      if (!source.exists || source.data().kind !== 'sale' || source.data().status !== 'applied') {
+        // Safe backend recovery for modern sales whose client sent sale-doc id
+        // but the applied stock op is bound via explicit sale.stockOperationId.
+        // Fail closed unless exactly one proven binding exists (explicit field).
+        // Never fuzzy-match by items/time. Never allow client ops collection scans.
+        const saleSnap = await tx.get(base.collection('estoque_vendas').doc(command.sourceOperationId));
+        const bound = saleSnap.exists
+          ? String(saleSnap.data()?.stockOperationId ?? '').trim()
+          : '';
+        if (!bound || bound === command.sourceOperationId) {
+          throw stockError('failed-precondition', 'Applied sale required');
+        }
+        const reboundRef = base.collection('stock_catalog_operations').doc(bound);
+        const rebound = await tx.get(reboundRef);
+        if (!rebound.exists || rebound.data().kind !== 'sale' || rebound.data().status !== 'applied') {
+          throw stockError('failed-precondition', 'Applied sale required');
+        }
+        const opSaleId = String(rebound.data()?.saleId ?? '').trim();
+        // Accept: legacy (no saleId), op.saleId==op id, or op.saleId==sale doc id.
+        if (opSaleId && opSaleId !== bound && opSaleId !== command.sourceOperationId) {
+          throw stockError('failed-precondition', 'Applied sale required');
+        }
+        sourceRef = reboundRef;
+        source = rebound;
+      }
       if (source.data().restoredBy && source.data().restoredBy !== command.operationId) throw stockError('already-exists', 'Sale already restored');
       items = source.data().items;
     }
@@ -266,7 +290,9 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
       records.set(id, {
         stockRef, draftRef, dependency: dependencyHandle, creating,
         draftExists: draft.exists, originalRecipe: recipe(data), data,
-        beforeHash: fingerprint(stockEffect(data)), originalRevision: data.stockRevision, editorial,
+        beforeHash: fingerprint(stockEffect(data)), originalRevision: data.stockRevision,
+        originalStockOperationId: (data.stockOperationId ?? '').toString() || null,
+        editorial,
       });
     }
     if (!softSale) comboOrder(records);
@@ -404,8 +430,19 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
       row.vendasCatalogoTotal = quantity(Math.max(0, quantity(row.vendasCatalogoTotal ?? 0) + delta));
     }
     for (const [id, r] of liveRecords) {
-      r.data.stockRevision = quantity(r.originalRevision + (fingerprint(stockEffect(r.data)) === r.beforeHash ? 0 : 1));
-      r.data.stockOperationId = command.operationId;
+      const effectUnchanged = fingerprint(stockEffect(r.data)) === r.beforeHash;
+      r.data.stockRevision = quantity(r.originalRevision + (effectUnchanged ? 0 : 1));
+      // Canonical stock lineage: only stock-effecting commands stamp operationId.
+      // Pure editorial metadata must preserve the prior stockOperationId.
+      if (effectUnchanged && command.kind === 'editorial') {
+        if (r.originalStockOperationId) {
+          r.data.stockOperationId = r.originalStockOperationId;
+        } else {
+          delete r.data.stockOperationId;
+        }
+      } else {
+        r.data.stockOperationId = command.operationId;
+      }
       const p = projectCatalog(r.data, r.editorial, id);
       products.push({productId: id, ...p.stock});
       if (targetIds.has(id) && command.kind === 'delete') set(base.collection('exclusao_produto').doc(id),
@@ -443,7 +480,8 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
     writes.push(() => tx.create(opRef, {actorUid: uid, kind: command.kind, requestHash: hash, items: appliedItems, catalogCountDeltas, status: 'applied',
       result: {productIds: ids}, sourceOperationId: command.sourceOperationId ?? null,
       legacyCompat: legacyCompat === true,
-      ...(command.atomicPdvSale ? {atomicPdvSale: true, saleId: command.operationId} : {}),
+      ...(command.kind === 'sale' ? {saleId: command.operationId} : {}),
+      ...(command.atomicPdvSale ? {atomicPdvSale: true} : {}),
       createdAt: FieldValue.serverTimestamp()}));
     if (command.atomicPdvSale) {
       // Emulator-only regression hook: abort after in-memory stock apply, before durable writes.

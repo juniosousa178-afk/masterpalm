@@ -2613,6 +2613,7 @@ class ProdutosFirestoreService {
               lojaId,
               produtoId,
               p,
+              dataRemotoCanonico: dataUnfiltered,
             );
             p.recalcularQuantidadeTotal();
             await p.save();

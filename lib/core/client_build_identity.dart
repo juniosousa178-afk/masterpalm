@@ -2,20 +2,20 @@
 // Never use remote /version.json as the sole proof of which build is loaded.
 // Never silently report "dev" as a production CLIENT_BUILD_ID.
 
-/// Release stamp — updated with each hosting deploy of this app.
+/// Release stamp — must be overridden via --dart-define in production builds.
 const String kClientBuildId = String.fromEnvironment(
   'CATALOG_BUILD_ID',
-  defaultValue: 'stock-catalog-sync-hotfix-1.0.101',
+  defaultValue: 'PENDING_STAMP',
 );
 
 const String kClientGitCommit = String.fromEnvironment(
   'GIT_COMMIT',
-  defaultValue: 'f30fcea503fb37ebaeec8faaffa7d6956b635b85',
+  defaultValue: 'PENDING_STAMP',
 );
 
 const String kClientAppVersion = String.fromEnvironment(
   'APP_VERSION',
-  defaultValue: '1.0.101+115',
+  defaultValue: '0.0.0+0',
 );
 
 /// True when compile-time identity looks like an unstamped/dev placeholder.
@@ -26,6 +26,9 @@ bool get kClientBuildMetadataMissing {
   if (commit.isEmpty ||
       commit == 'PENDING_STAMP' ||
       commit.toLowerCase() == 'dev') {
+    return true;
+  }
+  if (id == 'pending_stamp' || id == 'PENDING_STAMP'.toLowerCase()) {
     return true;
   }
   return false;

@@ -95,7 +95,7 @@ void main() {
       expect(out['22'], isNotNull);
     });
 
-    test('C V::20|prata removes only that cell', () {
+    test('C V::20|prata KEEP when remote/local cell qty > 0', () {
       ProdutoExclusaoTombstoneService.debugPutVarKeysCache(
         lojaId: _loja,
         estoqueDocId: _doc,
@@ -115,11 +115,32 @@ void main() {
       );
       expect(out['15'], isNotNull);
       expect(out['22'], isNotNull);
+      // Live positive cell wins over stale V tombstone.
+      expect((out['20'] as Map)['prata'], 1);
+      expect((out['20'] as Map)['ouro'], 1);
+    });
+
+    test('C2 V::20|prata removes only ZERO cell', () {
+      ProdutoExclusaoTombstoneService.debugPutVarKeysCache(
+        lojaId: _loja,
+        estoqueDocId: _doc,
+        keys: {
+          ProdutoExclusaoTombstoneService.vKeyCelula('20', 'prata'),
+        },
+      );
+      final m = {
+        '20': {'prata': 0, 'ouro': 1},
+      };
+      final out = ProdutoExclusaoTombstoneService.filtrarMapVariacoes(
+        _loja,
+        _doc,
+        m,
+      );
       expect((out['20'] as Map).containsKey('prata'), isFalse);
       expect((out['20'] as Map)['ouro'], 1);
     });
 
-    test('D T::20 removes only size-20 identities', () {
+    test('D T::20 KEEP when size still has positive qty', () {
       ProdutoExclusaoTombstoneService.debugPutVarKeysCache(
         lojaId: _loja,
         estoqueDocId: _doc,
@@ -133,6 +154,34 @@ void main() {
         '22': {'sem-cor': 1},
       };
       final ept = {'15': 1, '20': 1, '22': 1};
+      final outV = ProdutoExclusaoTombstoneService.filtrarMapVariacoes(
+        _loja,
+        _doc,
+        vars,
+      );
+      final outE = ProdutoExclusaoTombstoneService.filtrarEstoquePorTamanho(
+        _loja,
+        _doc,
+        ept,
+      );
+      expect(outV.keys, containsAll(['15', '20', '22']));
+      expect(outE.keys, containsAll(['15', '20', '22']));
+    });
+
+    test('D2 T::20 removes zero-only size', () {
+      ProdutoExclusaoTombstoneService.debugPutVarKeysCache(
+        lojaId: _loja,
+        estoqueDocId: _doc,
+        keys: {
+          ProdutoExclusaoTombstoneService.tKeySoloTamanho('20'),
+        },
+      );
+      final vars = {
+        '15': {'sem-cor': 1},
+        '20': {'prata': 0},
+        '22': {'sem-cor': 1},
+      };
+      final ept = {'15': 1, '20': 0, '22': 1};
       final outV = ProdutoExclusaoTombstoneService.filtrarMapVariacoes(
         _loja,
         _doc,
@@ -209,7 +258,7 @@ void main() {
       expect((out['22'] as Map)['sem-cor'], 0);
     });
 
-    test('J sem-cor normalization key match', () {
+    test('J V::15|sem-cor KEEP positive; remove zero', () {
       ProdutoExclusaoTombstoneService.debugPutVarKeysCache(
         lojaId: _loja,
         estoqueDocId: _doc,
@@ -217,7 +266,7 @@ void main() {
           ProdutoExclusaoTombstoneService.vKeyCelula('15', 'sem-cor'),
         },
       );
-      final out = ProdutoExclusaoTombstoneService.filtrarMapVariacoes(
+      final positive = ProdutoExclusaoTombstoneService.filtrarMapVariacoes(
         _loja,
         _doc,
         {
@@ -225,8 +274,19 @@ void main() {
           '22': {'sem-cor': 1},
         },
       );
-      expect(out.containsKey('15'), isFalse);
-      expect(out['22'], isNotNull);
+      expect(positive.containsKey('15'), isTrue);
+      expect(positive['22'], isNotNull);
+
+      final zeroed = ProdutoExclusaoTombstoneService.filtrarMapVariacoes(
+        _loja,
+        _doc,
+        {
+          '15': {'sem-cor': 0},
+          '22': {'sem-cor': 1},
+        },
+      );
+      expect(zeroed.containsKey('15'), isFalse);
+      expect(zeroed['22'], isNotNull);
     });
   });
 

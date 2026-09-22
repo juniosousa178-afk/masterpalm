@@ -21,6 +21,7 @@ import '../core/logger.dart';
 import '../core/safe_cast.dart';
 import '../core/strict_product_resolution.dart';
 import '../core/sale_forensic_trace.dart';
+import '../core/delete_forensic_trace.dart';
 import '../core/produto_effective_stock.dart';
 import '../utils/text_utils.dart';
 import '../services/campaign_engine_service.dart'; // 🎯 integração com campanhas/sorteio (centralizado)
@@ -356,6 +357,11 @@ class VendasService {
   }) {
     if (idFirebaseToReuse != null && idFirebaseToReuse.trim().isNotEmpty) {
       venda.idFirebase = idFirebaseToReuse.trim();
+      // Modern PDV: reserved op id is the stock command identity.
+      final op = idFirebaseToReuse.trim();
+      if ((venda.stockOperationId ?? '').trim().isEmpty) {
+        venda.stockOperationId = op;
+      }
       return;
     }
     if (idVendaEstavelParaVinculo(venda).isNotEmpty) return;
@@ -3596,11 +3602,23 @@ class VendasService {
       vendaId =
           await EstoqueTransactionService.resolverSourceOperationIdParaRestore(
         lojaId: lojaId,
-        explicitStockOperationId: explicitStockOperationId,
+        explicitStockOperationId: (explicitStockOperationId ??
+                venda.stockOperationId)
+            ?.trim(),
         idFirebase: venda.idFirebase,
         vendaIdMarcadorCatalogo: vendaIdMarcador,
       );
+      DeleteForensicTraceStore.setSourceOperationId(vendaId);
+      DeleteForensicTraceStore.stage(
+        DeleteTraceStage.restoreSourceResolved,
+        extra: {'sourceOperationId': vendaId},
+      );
     } on EstoqueRestoreSourceUnresolvedException catch (e, st) {
+      DeleteForensicTraceStore.captureError(
+        DeleteTraceStage.deleteAbort,
+        e,
+        st,
+      );
       debugPrint(
         '[VENDA_DELETE] source_operation_unresolved '
         'candidates=${e.candidatesTried.join(",")}',
@@ -3639,28 +3657,52 @@ class VendasService {
           estornoOrigemCatalogo: estornoOrigem,
         );
         devolucaoResultsExclusao = results;
-        for (final r in results) {
-          await EstoqueTransactionService.atualizarHiveAposTransacao(
-            produtosBox: produtosBox,
-            lojaId: lojaId,
-            result: r,
+        DeleteForensicTraceStore.stage(DeleteTraceStage.localHiveApplyStart);
+        try {
+          for (final r in results) {
+            await EstoqueTransactionService.atualizarHiveAposTransacao(
+              produtosBox: produtosBox,
+              lojaId: lojaId,
+              result: r,
+            );
+          }
+          DeleteForensicTraceStore.stage(DeleteTraceStage.localHiveApplySuccess);
+        } catch (e, st) {
+          DeleteForensicTraceStore.captureError(
+            DeleteTraceStage.localHiveApplyError,
+            e,
+            st,
           );
+          rethrow;
         }
       } catch (e, st) {
         debugPrint(
           '[VENDA_DELETE] devolucao_estoque_falhou vendaId=$vendaId erro=$e',
         );
         debugPrint('[VENDA_DELETE] exclusao_abortada_por_estoque (lote itens)');
+        DeleteForensicTraceStore.captureError(
+          DeleteTraceStage.deleteAbort,
+          e,
+          st,
+          extra: {'substage': 'devolver_ou_hive'},
+        );
         Error.throwWithStackTrace(e, st);
       }
     } else if (venda.itens != null && venda.itens!.isNotEmpty) {
       debugPrint(
         '[VENDA_DELETE] exclusao_abortada_por_estoque (sem itens resolvidos) vendaId=$vendaId',
       );
-      throw StateError(
+      final err = StateError(
         'Não foi possível devolver o estoque desta venda. '
         'Verifique se os produtos ainda existem no cadastro.',
       );
+      DeleteForensicTraceStore.captureError(
+        DeleteTraceStage.deleteAbort,
+        err,
+        StackTrace.current,
+        extra: {'substage': 'itens_nao_resolvidos'},
+      );
+      throw err;
     }
 
     var pisoResultsExclusao = <EstoqueTransactionResult>[];
@@ -3689,9 +3731,16 @@ class VendasService {
         '[VENDA_DELETE] devolucao_estoque_falhou vendaId=$vendaId (piso combo / mov.) erro=$e',
       );
       debugPrint('[VENDA_DELETE] exclusao_abortada_por_estoque');
+      DeleteForensicTraceStore.captureError(
+        DeleteTraceStage.deleteAbort,
+        e,
+        st,
+        extra: {'substage': 'piso_combo'},
+      );
       Error.throwWithStackTrace(e, st);
     }
 
+    DeleteForensicTraceStore.stage(DeleteTraceStage.remoteRefreshStart);
     try {
       await CatalogoWebAposEstoqueService.sincronizarAposResultadosTransacao(
         lojaId: lojaId,
@@ -3699,9 +3748,21 @@ class VendasService {
         resultadosPrincipais: devolucaoResultsExclusao,
         resultadosComboExtra: pisoResultsExclusao,
       );
+      DeleteForensicTraceStore.stage(DeleteTraceStage.remoteRefreshSuccess);
     } catch (e, st) {
       debugPrint(
         '[VENDA_DELETE] catalogo_pos_estoque_falhou vendaId=$vendaId erro=$e — exclusao_abortada',
+      );
+      DeleteForensicTraceStore.captureError(
+        DeleteTraceStage.remoteRefreshError,
+        e,
+        st,
+      );
+      DeleteForensicTraceStore.captureError(
+        DeleteTraceStage.deleteAbort,
+        e,
+        st,
+        extra: {'substage': 'catalog_sync'},
       );
       Error.throwWithStackTrace(e, st);
     }
