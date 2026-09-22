@@ -3391,7 +3391,14 @@ class VendasService {
 
     var devolucaoResults = <EstoqueTransactionResult>[];
     final skipEstornoCatalogo = (marcador.existe && !marcador.baixaAplicada) ||
-        (_vendaOrigemCatalogo(venda) && !marcador.existe);
+        (_vendaOrigemCatalogo(venda) && !marcador.existe) ||
+        (marcador.existe && marcador.estornoAplicado);
+    if (marcador.existe && marcador.estornoAplicado) {
+      debugPrint(
+        '[DESFAZER-VENDA] estorno_ja_aplicado_remoto sem stock op '
+        'vendaIdMarcador=$vendaIdMarcador',
+      );
+    }
     if (!skipEstornoCatalogo) {
       late final String vendaId;
       try {
@@ -3402,17 +3409,7 @@ class VendasService {
           vendaIdMarcadorCatalogo: vendaIdMarcador,
         );
       } on EstoqueRestoreSourceUnresolvedException catch (e) {
-        if (marcador.existe && marcador.estornoAplicado) {
-          debugPrint(
-            '[DESFAZER-VENDA] estorno_ja_aplicado_remoto sem stock op '
-            'vendaIdMarcador=$vendaIdMarcador',
-          );
-          // Legacy path already reversed via marker; nothing to restore.
-        } else {
-          Error.throwWithStackTrace(e, StackTrace.current);
-        }
-        // Fall through with empty devolucao when legacy estorno already applied.
-        vendaId = '';
+        Error.throwWithStackTrace(e, StackTrace.current);
       }
       if (vendaId.isNotEmpty &&
           await EstoqueTransactionService.devolucaoVendaJaAplicada(
@@ -3585,6 +3582,14 @@ class VendasService {
       );
       return;
     }
+    // Already restored via payment marker — never double-restore stock.
+    if (marcador.existe && marcador.estornoAplicado) {
+      debugPrint(
+        '[VENDA_DELETE] estorno_ja_aplicado_remoto sem stock op '
+        'vendaIdMarcador=$vendaIdMarcador',
+      );
+      return;
+    }
 
     late final String vendaId;
     try {
@@ -3596,13 +3601,6 @@ class VendasService {
         vendaIdMarcadorCatalogo: vendaIdMarcador,
       );
     } on EstoqueRestoreSourceUnresolvedException catch (e, st) {
-      if (marcador.existe && marcador.estornoAplicado) {
-        debugPrint(
-          '[VENDA_DELETE] estorno_ja_aplicado_remoto sem stock op '
-          'vendaIdMarcador=$vendaIdMarcador',
-        );
-        return;
-      }
       debugPrint(
         '[VENDA_DELETE] source_operation_unresolved '
         'candidates=${e.candidatesTried.join(",")}',

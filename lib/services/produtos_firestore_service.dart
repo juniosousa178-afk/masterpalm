@@ -2217,7 +2217,8 @@ class ProdutosFirestoreService {
 
       for (final doc in allDocs) {
         try {
-          var data = Map<String, dynamic>.from(doc.data());
+          final dataUnfiltered = Map<String, dynamic>.from(doc.data());
+          var data = Map<String, dynamic>.from(dataUnfiltered);
           final produtoId = doc.id;
 
           await ProdutoExclusaoTombstoneService.ensureHydratedForLoja(lojaId);
@@ -2325,12 +2326,33 @@ class ProdutosFirestoreService {
                   local: p,
                   remoteData: data,
                 );
-            final preserveLocalEdits =
-                preserveLocalQuantidade || preserveStockRegression;
+            final tombstoneProjectionCorruption =
+                ProdutoExclusaoTombstoneService
+                    .isTombstoneFilterProjectionCorruption(
+              lojaId: lojaId,
+              estoqueDocId: produtoId,
+              local: p,
+              remoteUnfiltered: dataUnfiltered,
+            );
+            // Proven inverted-filter corruption: hydrate from remote (Hive only).
+            final preserveLocalEdits = tombstoneProjectionCorruption
+                ? false
+                : (preserveLocalQuantidade || preserveStockRegression);
 
             final custoAntes = p.custoReal;
             final pesoAntes = p.peso;
             final custoManualLocal = p.custoEditadoNoCadastro == true;
+            if (tombstoneProjectionCorruption) {
+              logD(
+                '[TOMBSTONE_FILTER_PROJECTION_CORRUPTION] doc=$produtoId '
+                'rehydratando Hive a partir do remoto autoritativo',
+              );
+              applyAuthoritativeRemoteStockToProduto(
+                p,
+                remote: data,
+                updateQuantity: true,
+              );
+            }
             if (preserveLocalEdits) {
               // Even when preserving local qty, capture ACTIVE untracked if
               // local+remote already form LOCAL_UNTRACKED_MUTATION (BR68PR gap:

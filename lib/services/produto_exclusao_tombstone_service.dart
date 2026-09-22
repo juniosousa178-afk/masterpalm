@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/firestore_access_guard.dart';
 import '../core/logger.dart';
+import '../core/produto_stock_revision.dart';
 import '../core/produto_variacao_extra.dart';
 import '../models/produto.dart';
 import 'firestore_paths.dart';
@@ -90,6 +91,28 @@ class ProdutoExclusaoTombstoneService {
     _prefsCarregou = false;
     debugFirestoreOverride = null;
     FirestoreAccessGuard.resetForTests();
+  }
+
+  /// Test-only cache inject (avoids production seed*Tombstone* helpers).
+  @visibleForTesting
+  static void debugPutVarKeysCache({
+    required String lojaId,
+    required String estoqueDocId,
+    required Set<String> keys,
+    bool produtoCheio = false,
+  }) {
+    final t = _loja(lojaId);
+    final id = estoqueDocId.trim();
+    if (produtoCheio) {
+      t.produtoCheio.add(id);
+    } else {
+      t.produtoCheio.remove(id);
+    }
+    if (keys.isEmpty) {
+      t.varKeys.remove(id);
+    } else {
+      t.varKeys[id] = Set<String>.from(keys);
+    }
   }
 
   // --- chaves a partir de mapa remoto / local (mesma regra em diff e filtro) ---
@@ -444,6 +467,20 @@ class ProdutoExclusaoTombstoneService {
     await _savePrefs();
   }
 
+  /// `v` entries are DELETED identities (denylist), not an allowlist.
+  static bool _celulaTombstoned(
+    Set<String> bloq,
+    String tamanho,
+    String cor,
+  ) {
+    final t = tamanho.trim();
+    final c = cor.trim();
+    if (t.isEmpty) return false;
+    if (bloq.contains(tKeySoloTamanho(t))) return true;
+    if (c.isNotEmpty && bloq.contains(vKeyCelula(t, c))) return true;
+    return false;
+  }
+
   static Map<String, dynamic> filtrarMapVariacoes(
     String lojaId,
     String estoqueDocId,
@@ -461,28 +498,63 @@ class ProdutoExclusaoTombstoneService {
     }
     final bloq = _loja(lojaId).varKeys[estoqueDocId] ?? <String>{};
     if (bloq.isEmpty) return m;
+    return _filtrarMapVariacoesDenylist(m, bloq);
+  }
+
+  /// Correct semantic: KEEP unless explicitly tombstoned (`V::` or `T::`).
+  static Map<String, dynamic> _filtrarMapVariacoesDenylist(
+    Map<String, dynamic> m,
+    Set<String> bloq,
+  ) {
     final out = Map<String, dynamic>.from(m);
     for (final e in m.entries) {
-      if (e.value is Map) {
-        final inner = Map<String, dynamic>.from(e.value as Map);
-        for (final k in (e.value as Map).keys) {
-          if (bloq.contains(vKeyCelula(e.key, k.toString()))) {
-            // Célula ainda presente no payload remoto/local = tombstone legado; manter.
-            continue;
-          }
+      if (e.value is! Map) continue;
+      final tamanho = e.key.toString();
+      final inner = Map<String, dynamic>.from(e.value as Map);
+      for (final k in (e.value as Map).keys) {
+        final cor = k.toString();
+        if (_celulaTombstoned(bloq, tamanho, cor)) {
           inner.remove(k);
           if (kDebugMode) {
             logD(
-              '[TOMBSTONE_BLOCK] var excl do payload: ${e.key} / $k',
+              '[TOMBSTONE_BLOCK] var excl do payload: $tamanho / $cor',
               tag: 'TOMBSTONE',
             );
           }
         }
-        if (inner.isEmpty) {
-          out.remove(e.key);
-        } else {
-          out[e.key] = inner;
-        }
+      }
+      if (inner.isEmpty) {
+        out.remove(e.key);
+      } else {
+        out[e.key] = inner;
+      }
+    }
+    return out;
+  }
+
+  /// Legacy inverted allowlist (bug): kept ONLY identities present in [bloq].
+  /// Used solely to prove [TOMBSTONE_FILTER_PROJECTION_CORRUPTION].
+  @visibleForTesting
+  static Map<String, dynamic> filtrarMapVariacoesBrokenAllowlist(
+    Map<String, dynamic> m,
+    Set<String> bloq,
+  ) {
+    if (m.isEmpty || bloq.isEmpty) return m.isEmpty ? m : <String, dynamic>{};
+    final out = Map<String, dynamic>.from(m);
+    for (final e in m.entries) {
+      if (e.value is! Map) continue;
+      final tamanho = e.key.toString();
+      final inner = Map<String, dynamic>.from(e.value as Map);
+      for (final k in (e.value as Map).keys) {
+        final cor = k.toString();
+        final keep = bloq.contains(vKeyCelula(tamanho, cor)) ||
+            bloq.contains(tKeySoloTamanho(tamanho));
+        if (!keep) inner.remove(k);
+      }
+      if (inner.isEmpty) {
+        out.remove(e.key);
+      } else {
+        out[e.key] = inner;
       }
     }
     return out;
@@ -505,15 +577,35 @@ class ProdutoExclusaoTombstoneService {
     }
     final bloq = _loja(lojaId).varKeys[estoqueDocId] ?? <String>{};
     if (bloq.isEmpty) return m;
+    return _filtrarEstoquePorTamanhoDenylist(m, bloq);
+  }
+
+  static Map<String, int> _filtrarEstoquePorTamanhoDenylist(
+    Map<String, int> m,
+    Set<String> bloq,
+  ) {
     final out = Map<String, int>.from(m);
     for (final k in m.keys) {
       if (bloq.contains(tKeySoloTamanho(k))) {
-        // Tamanho ainda no mapa = tombstone T:: legado; manter.
-        continue;
+        out.remove(k);
+        if (kDebugMode) {
+          logD('[TOMBSTONE_BLOCK] tam excl: $k', tag: 'TOMBSTONE');
+        }
       }
-      out.remove(k);
-      if (kDebugMode) {
-        logD('[TOMBSTONE_BLOCK] tam excl: $k', tag: 'TOMBSTONE');
+    }
+    return out;
+  }
+
+  @visibleForTesting
+  static Map<String, int> filtrarEstoquePorTamanhoBrokenAllowlist(
+    Map<String, int> m,
+    Set<String> bloq,
+  ) {
+    if (m.isEmpty || bloq.isEmpty) return m.isEmpty ? m : <String, int>{};
+    final out = Map<String, int>.from(m);
+    for (final k in m.keys) {
+      if (!bloq.contains(tKeySoloTamanho(k))) {
+        out.remove(k);
       }
     }
     return out;
@@ -822,5 +914,205 @@ class ProdutoExclusaoTombstoneService {
       }
     }
     return false;
+  }
+
+  /// Classification: [TOMBSTONE_FILTER_PROJECTION_CORRUPTION].
+  ///
+  /// Conditions (ALL required):
+  /// - no pending stock mutation
+  /// - same remote/local [stockRevision]
+  /// - same remote/local [stockOperationId]
+  /// - non-empty variation tombstone keys (`v`) for the product
+  /// - local structure equals broken allowlist projection of remote
+  /// - corrected denylist projection differs from local
+  static bool isTombstoneFilterProjectionCorruption({
+    required String lojaId,
+    required String estoqueDocId,
+    required Produto local,
+    required Map<String, dynamic> remoteUnfiltered,
+  }) {
+    if (hasPendingStockMutation(local)) return false;
+    final l = lojaId.trim();
+    final id = estoqueDocId.trim();
+    if (l.isEmpty || id.isEmpty) return false;
+    if (isProdutoBloqueadoSinc(l, id)) return false;
+
+    final bloq = _loja(l).varKeys[id] ?? <String>{};
+    if (bloq.isEmpty) return false;
+
+    final remoteRev = parseStockRevisionFromRemote(remoteUnfiltered);
+    final remoteOp =
+        (parseStockOperationIdFromRemote(remoteUnfiltered) ?? '').trim();
+    if (remoteOp.isEmpty) return false;
+    if (remoteRev != local.stockRevision) return false;
+    if (remoteOp != (local.confirmedStockOperationId ?? '').trim()) {
+      return false;
+    }
+
+    final correct = filtrarDocEstoqueParaPull(
+      l,
+      id,
+      Map<String, dynamic>.from(remoteUnfiltered),
+    );
+    final broken = _projectBrokenAllowlist(remoteUnfiltered, bloq);
+
+    final localFp = stockProjectionFingerprintFromProduto(local);
+    final brokenFp = stockProjectionFingerprintFromMaps(
+      variacoes: broken['variacoes'] as Map<String, dynamic>?,
+      estoquePorTamanho: broken['estoquePorTamanho'] as Map<String, int>,
+      quantidade: (broken['quantidade'] as num?)?.toInt() ?? 0,
+    );
+    final correctFp = stockProjectionFingerprintFromMaps(
+      variacoes: _asVarMap(correct['variacoes']),
+      estoquePorTamanho: _asEptMap(correct['estoquePorTamanho']),
+      quantidade: (correct['quantidade'] as num?)?.toInt() ??
+          (remoteUnfiltered['quantidade'] as num?)?.toInt() ??
+          0,
+    );
+
+    if (brokenFp == correctFp) return false;
+    if (localFp == correctFp) return false;
+
+    if (localFp == brokenFp) return true;
+
+    // Empty-grade collapse: broken wiped all cells; local also collapsed.
+    if (_gradeMapsEmpty(broken['variacoes'] as Map<String, dynamic>?,
+            broken['estoquePorTamanho'] as Map<String, int>) &&
+        _produtoGradeCollapsed(local) &&
+        !_gradeMapsEmpty(
+          _asVarMap(correct['variacoes']),
+          _asEptMap(correct['estoquePorTamanho']),
+        )) {
+      return true;
+    }
+    return false;
+  }
+
+  static Map<String, dynamic> _projectBrokenAllowlist(
+    Map<String, dynamic> remote,
+    Set<String> bloq,
+  ) {
+    final v0 = remote['variacoes'];
+    final e0 = remote['estoquePorTamanho'];
+    final brokenV = v0 is Map
+        ? filtrarMapVariacoesBrokenAllowlist(
+            Map<String, dynamic>.from(v0),
+            bloq,
+          )
+        : <String, dynamic>{};
+    final brokenE = e0 is Map
+        ? filtrarEstoquePorTamanhoBrokenAllowlist(
+            e0.map(
+              (k, v) => MapEntry(
+                k.toString(),
+                ProdutoVariacaoExtra.valorFirestoreComoInt(v),
+              ),
+            ),
+            bloq,
+          )
+        : <String, int>{};
+    final agg = _sumGrade(brokenV, brokenE);
+    final remoteQty = (remote['quantidade'] as num?)?.toInt();
+    final qty = _gradeMapsEmpty(brokenV, brokenE)
+        ? (remoteQty ?? agg)
+        : (agg > 0 ? agg : (remoteQty ?? 0));
+    return {
+      'variacoes': brokenV,
+      'estoquePorTamanho': brokenE,
+      'quantidade': qty,
+    };
+  }
+
+  @visibleForTesting
+  static String stockProjectionFingerprintFromProduto(Produto p) {
+    return stockProjectionFingerprintFromMaps(
+      variacoes: p.variacoes == null
+          ? null
+          : Map<String, dynamic>.from(p.variacoes!),
+      estoquePorTamanho: Map<String, int>.from(p.estoquePorTamanho),
+      quantidade: p.quantidade,
+    );
+  }
+
+  @visibleForTesting
+  static String stockProjectionFingerprintFromMaps({
+    required Map<String, dynamic>? variacoes,
+    required Map<String, int> estoquePorTamanho,
+    required int quantidade,
+  }) {
+    final cells = <String>[];
+    if (variacoes != null) {
+      for (final te in variacoes.entries) {
+        final raw = te.value;
+        if (raw is! Map) continue;
+        for (final ce in raw.entries) {
+          final q = ProdutoVariacaoExtra.valorFirestoreComoInt(ce.value);
+          cells.add('${te.key}|${ce.key}=$q');
+        }
+      }
+    }
+    cells.sort();
+    final ept = estoquePorTamanho.entries
+        .map((e) => 'T:${e.key}=${e.value}')
+        .toList()
+      ..sort();
+    return 'q=$quantidade;v=${cells.join(',')};e=${ept.join(',')}';
+  }
+
+  static Map<String, dynamic>? _asVarMap(dynamic raw) {
+    if (raw is! Map || raw.isEmpty) return null;
+    return Map<String, dynamic>.from(raw);
+  }
+
+  static Map<String, int> _asEptMap(dynamic raw) {
+    if (raw is! Map || raw.isEmpty) return <String, int>{};
+    return raw.map(
+      (k, v) => MapEntry(
+        k.toString(),
+        ProdutoVariacaoExtra.valorFirestoreComoInt(v),
+      ),
+    );
+  }
+
+  static int _sumGrade(
+    Map<String, dynamic>? variacoes,
+    Map<String, int> ept,
+  ) {
+    var sum = 0;
+    if (variacoes != null) {
+      for (final te in variacoes.values) {
+        if (te is! Map) continue;
+        for (final ce in te.values) {
+          sum += ProdutoVariacaoExtra.valorFirestoreComoInt(ce);
+        }
+      }
+    }
+    if (sum > 0) return sum;
+    for (final v in ept.values) {
+      sum += v;
+    }
+    return sum;
+  }
+
+  static bool _gradeMapsEmpty(
+    Map<String, dynamic>? variacoes,
+    Map<String, int> ept,
+  ) {
+    final hasVar = variacoes != null &&
+        variacoes.isNotEmpty &&
+        variacoes.values.any((v) => v is Map && (v as Map).isNotEmpty);
+    final hasEpt = ept.isNotEmpty &&
+        ept.keys.any((k) {
+          final t = k.trim().toLowerCase();
+          return t.isNotEmpty && t != 'sem-tamanho' && t != 'sem_tamanho';
+        });
+    return !hasVar && !hasEpt;
+  }
+
+  static bool _produtoGradeCollapsed(Produto p) {
+    return _gradeMapsEmpty(
+      p.variacoes == null ? null : Map<String, dynamic>.from(p.variacoes!),
+      p.estoquePorTamanho,
+    );
   }
 }

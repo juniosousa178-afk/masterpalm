@@ -46,7 +46,7 @@ class EstoqueBaixaPagamentoMarcador {
   );
 }
 
-/// Nenhum candidato resolveu para `stock_catalog_operations` kind=sale status=applied.
+/// Nenhum candidato confiável de identidade de operação de estoque.
 class EstoqueRestoreSourceUnresolvedException implements Exception {
   EstoqueRestoreSourceUnresolvedException({
     this.candidatesTried = const [],
@@ -2310,50 +2310,64 @@ class EstoqueTransactionService {
     }
   }
 
-  /// Test hook: override applied-sale lookup without hitting Firestore.
-  /// Return `true`/`false`, or `null` to fall through to Firestore.
+  /// Test hook retained for legacy tests — never reads Firestore.
+  /// Return `true`/`false`, or `null` to use shape-only gate.
   static Future<bool?> Function(String lojaId, String operationId)?
       debugIsAppliedSaleStockOperationOverride;
 
-  /// `lojas/{lojaId}/stock_catalog_operations/{operationId}` is kind=sale + status=applied.
+  /// Shape gate only. Backend is the authority for kind/status/applied.
+  /// Never performs a client read of `stock_catalog_operations`.
   static Future<bool> isAppliedSaleStockOperation({
     required String lojaId,
     required String operationId,
   }) async {
     final id = operationId.trim();
-    if (id.isEmpty || id.startsWith('hive_')) return false;
+    if (!looksLikeStockOperationId(id)) return false;
     final override = debugIsAppliedSaleStockOperationOverride;
     if (override != null) {
       final forced = await override(lojaId, id);
       if (forced != null) return forced;
     }
-    try {
-      final snap = await _db
-          .collection('lojas')
-          .doc(lojaId.trim())
-          .collection('stock_catalog_operations')
-          .doc(id)
-          .get();
-      if (!snap.exists) return false;
-      final data = snap.data() ?? {};
-      return data['kind'] == 'sale' && data['status'] == 'applied';
-    } catch (e) {
-      debugPrint(
-        '[ESTOQUE-TX] isAppliedSaleStockOperation falhou id=$id type=${e.runtimeType}',
-      );
-      return false;
-    }
+    // Trusted identity candidate — do not probe protected collections.
+    return true;
   }
 
-  /// Resolve [sourceOperationId] for restore: must be an applied sale stock operation.
+  /// True for UUID / prefixed stock op ids; false for `hive_*` and bare Hive keys.
+  @visibleForTesting
+  static bool looksLikeStockOperationId(String? raw) {
+    final s = (raw ?? '').trim();
+    if (s.isEmpty || s.startsWith('hive_')) return false;
+    if (RegExp(r'^\d+$').hasMatch(s)) return false;
+    if (RegExp(
+      r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+    ).hasMatch(s)) {
+      return true;
+    }
+    const prefixes = <String>[
+      'editstock_',
+      'restore_',
+      'order_',
+      'delete_',
+      'undo_',
+      'tvar_',
+    ];
+    for (final p in prefixes) {
+      if (s.startsWith(p)) return true;
+    }
+    return s.length >= 20 && s.contains('-');
+  }
+
+  /// Resolve [sourceOperationId] for restore: trusted identity candidate only.
   ///
   /// Candidate order:
-  /// 1. [explicitStockOperationId] / appliedStockOperationId
-  /// 2. [idFirebase] (sale doc id when it equals the stock op)
-  /// 3. fields on legacy payment marker (`operationId`, `saleId`)
-  /// 4. marker doc id itself — only if it validates as applied sale
+  /// 1. [explicitStockOperationId]
+  /// 2. [idFirebase] (sale doc id when it is the stock op)
+  /// 3. marker `operationId` / `saleOperationId`
+  /// 4. marker `saleId` / `vendaId` only when [looksLikeStockOperationId]
+  /// 5. marker doc id only when [looksLikeStockOperationId]
   ///
-  /// Never returns raw `hive_<key>` or an unvalidated Hive key.
+  /// Never returns raw `hive_<key>` or bare Hive keys.
+  /// Never reads `stock_catalog_operations` — backend validates applied sale.
   static Future<String> resolverSourceOperationIdParaRestore({
     required String lojaId,
     String? explicitStockOperationId,
@@ -2364,8 +2378,7 @@ class EstoqueTransactionService {
     final candidates = <String>[];
     void addCandidate(String? raw) {
       final s = (raw ?? '').trim();
-      if (s.isEmpty) return;
-      if (s.startsWith('hive_')) return;
+      if (!looksLikeStockOperationId(s)) return;
       if (!candidates.contains(s)) candidates.add(s);
     }
 
@@ -2379,9 +2392,9 @@ class EstoqueTransactionService {
         if (snap.exists) {
           final data = snap.data() ?? {};
           addCandidate(data['operationId']?.toString());
+          addCandidate(data['saleOperationId']?.toString());
           addCandidate(data['saleId']?.toString());
           addCandidate(data['vendaId']?.toString());
-          // Marker doc id only as last resort among marker-derived ids.
           addCandidate(marcadorId);
         }
       } catch (e) {
@@ -2392,22 +2405,18 @@ class EstoqueTransactionService {
       }
     }
 
-    for (final candidate in candidates) {
-      if (await isAppliedSaleStockOperation(
-        lojaId: lid,
-        operationId: candidate,
-      )) {
-        debugPrint(
-          '[ESTOQUE-TX] restore sourceOperationId=$candidate '
-          '(validated applied sale)',
-        );
-        return candidate;
-      }
+    if (candidates.isEmpty) {
+      throw EstoqueRestoreSourceUnresolvedException(
+        candidatesTried: const [],
+      );
     }
 
-    throw EstoqueRestoreSourceUnresolvedException(
-      candidatesTried: List<String>.unmodifiable(candidates),
+    final selected = candidates.first;
+    debugPrint(
+      '[ESTOQUE-TX] restore sourceOperationId=$selected '
+      '(trusted identity; backend validates applied sale)',
     );
+    return selected;
   }
 
   /// Legacy name kept for call sites; now validates applied sale (may throw).

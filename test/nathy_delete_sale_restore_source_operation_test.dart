@@ -162,33 +162,65 @@ void main() {
       );
     });
 
-    test('source kind!=sale rejected', () async {
-      await seedAppliedSale(kind: 'restore', status: 'applied');
+    test('client does not require stock_catalog_operations read', () async {
+      // No seed of stock_catalog_operations — permission-denied equivalent.
+      final resolved =
+          await EstoqueTransactionService.resolverSourceOperationIdParaRestore(
+        lojaId: _store,
+        idFirebase: _saleOp,
+      );
+      expect(resolved, _saleOp);
       expect(
-        () => EstoqueTransactionService.resolverSourceOperationIdParaRestore(
-          lojaId: _store,
-          idFirebase: _saleOp,
-        ),
-        throwsA(isA<EstoqueRestoreSourceUnresolvedException>()),
+        EstoqueTransactionService.looksLikeStockOperationId(_saleOp),
+        isTrue,
       );
     });
 
-    test('source status!=applied rejected', () async {
-      await seedAppliedSale(status: 'pending');
-      expect(
-        () => EstoqueTransactionService.resolverSourceOperationIdParaRestore(
-          lojaId: _store,
-          idFirebase: _saleOp,
-        ),
-        throwsA(isA<EstoqueRestoreSourceUnresolvedException>()),
+    test('backend Applied sale required fails closed without alternate IDs',
+        () async {
+      final source =
+          await EstoqueTransactionService.resolverSourceOperationIdParaRestore(
+        lojaId: _store,
+        idFirebase: _saleOp,
       );
+      expect(source, _saleOp);
+      StockCatalogBackendService.debugTransport = (name, data) async {
+        throw Exception(
+          '[firebase_functions/failed-precondition] Applied sale required',
+        );
+      };
+      expect(
+        () => EstoqueTransactionService.devolverEstoqueTransactionBatch(
+          lojaId: _store,
+          itens: [
+            {
+              'productId': _productId,
+              'quantidade': 1,
+              'tamanho': '15',
+              'cor': 'sem-cor',
+            }
+          ],
+          vendaIdParaIdempotencia: source,
+        ),
+        throwsA(anything),
+      );
+    });
+
+    test('legacy invalid kind is still a trusted identity (backend decides)',
+        () async {
+      // Client must not fail-closed on kind/status — that is backend authority.
+      final resolved =
+          await EstoqueTransactionService.resolverSourceOperationIdParaRestore(
+        lojaId: _store,
+        idFirebase: _saleOp,
+      );
+      expect(resolved, _saleOp);
     });
   });
 
   group('restore payload + idempotency', () {
     test('restore uses validated source and deterministic operationId',
         () async {
-      await seedAppliedSale();
       final source =
           await EstoqueTransactionService.resolverSourceOperationIdParaRestore(
         lojaId: _store,

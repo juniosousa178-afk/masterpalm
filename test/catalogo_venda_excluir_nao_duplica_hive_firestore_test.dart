@@ -89,7 +89,7 @@ void main() {
           ),
         ],
       );
-      vendaOriginal.idFirebase = 'uuid-pulseira';
+      vendaOriginal.idFirebase = 'a1b2c3d4-e5f6-4789-a012-3456789abcde';
 
       await firestore
           .collection('lojas')
@@ -184,7 +184,7 @@ void main() {
           ),
         ],
       );
-      venda.idFirebase = 'uuid-brinco';
+      venda.idFirebase = 'b2c3d4e5-f6a7-4890-b123-456789abcdef';
       final hiveKey = 99;
 
       await firestore

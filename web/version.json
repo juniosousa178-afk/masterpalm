@@ -1,13 +1,13 @@
 {
-  "buildId": "nathy-sale-restore-source-operation-fix-1.0.99",
+  "buildId": "stock-tombstone-restore-hotfix-1.0.100",
   "hostingTarget": "masterpalm-58c46",
   "siteId": "masterpalm-58c46",
   "expectedDomain": "app.mastepalm.com.br",
-  "webVersion": "1.0.99+113",
-  "gitCommit": "388e4db",
-  "gitCommitFull": "388e4dbd5dcae95ded86c04a464b7fe30b5eb031",
-  "fixCommit": "46422a3a230e99103994d5f1680398c22f4731b7",
+  "webVersion": "1.0.100+114",
+  "gitCommit": "PENDING_STAMP",
+  "gitCommitFull": "PENDING_STAMP",
+  "fixCommit": "PENDING_STAMP",
   "featureFlagDefault": false,
   "globalRollout": true,
-  "notes": "Nathy: restore.sourceOperationId must resolve to applied stock sale op (not Hive key). Soft-delete fail-closed. Preserves 1.0.98 sale items + Function 00013-laz."
+  "notes": "Client hotfix: restore source without stock_catalog_operations read; tombstone v denylist + narrow local rehydrate for TOMBSTONE_FILTER_PROJECTION_CORRUPTION. Function 00013-laz untouched."
 }
