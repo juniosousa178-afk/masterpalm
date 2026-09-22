@@ -10,7 +10,7 @@ const String kClientBuildId = String.fromEnvironment(
 
 const String kClientGitCommit = String.fromEnvironment(
   'GIT_COMMIT',
-  defaultValue: 'PENDING_STAMP',
+  defaultValue: 'a7ba2a3c3feae14aab9307d20454b8ce2f0fbd95',
 );
 
 const String kClientAppVersion = String.fromEnvironment(
