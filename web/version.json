@@ -4,8 +4,9 @@
   "siteId": "masterpalm-58c46",
   "expectedDomain": "app.mastepalm.com.br",
   "webVersion": "1.0.99+113",
-  "gitCommit": "46422a3",
-  "gitCommitFull": "46422a3a230e99103994d5f1680398c22f4731b7",
+  "gitCommit": "06b8bcf",
+  "gitCommitFull": "06b8bcfe1d5ab11bcc41b06d4d7e8d27ab215b8b",
+  "fixCommit": "46422a3a230e99103994d5f1680398c22f4731b7",
   "featureFlagDefault": false,
   "globalRollout": true,
   "notes": "Nathy: restore.sourceOperationId must resolve to applied stock sale op (not Hive key). Soft-delete fail-closed. Preserves 1.0.98 sale items + Function 00013-laz."
