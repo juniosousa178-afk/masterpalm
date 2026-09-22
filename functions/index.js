@@ -5519,7 +5519,19 @@ function stockCatalogCallableError(error) {
     "unauthenticated", "permission-denied", "invalid-argument",
     "failed-precondition", "aborted", "already-exists", "resource-exhausted", "not-found",
   ]);
-  return new HttpsError(allowed.has(code) ? code : "internal", error?.message || "SERVER");
+  const details = error?.details && typeof error.details === "object"
+    ? {
+        ...(error.details.code ? { code: String(error.details.code) } : {}),
+        ...(error.details.field ? { field: String(error.details.field) } : {}),
+        ...(error.details.reason ? { reason: String(error.details.reason) } : {}),
+        ...(error.details.productId ? { productId: String(error.details.productId) } : {}),
+      }
+    : undefined;
+  return new HttpsError(
+    allowed.has(code) ? code : "internal",
+    error?.message || "SERVER",
+    details && Object.keys(details).length ? details : undefined,
+  );
 }
 export const stockCatalogCommand = onCall(
   { cors: true, timeoutSeconds: 60, memory: "256MiB" },
@@ -5527,6 +5539,34 @@ export const stockCatalogCommand = onCall(
     try {
       const { executeStockCommand } = await import("./src/stockCatalogCommands.js");
       return await executeStockCommand(db, request.data, request.auth);
+    } catch (error) {
+      throw stockCatalogCallableError(error);
+    }
+  },
+);
+export const catalogPublishOne = onCall(
+  { cors: true, timeoutSeconds: 60, memory: "256MiB" },
+  async (request) => {
+    try {
+      if (!request.data || Object.keys(request.data).some((k) => !["lojaId", "productId"].includes(k))) {
+        throw new HttpsError("invalid-argument", "Publish accepts identifiers only");
+      }
+      const { publishStockProduct } = await import("./src/stockCatalogCommands.js");
+      return await publishStockProduct(db, request.data.lojaId, request.data.productId, request.auth);
+    } catch (error) {
+      throw stockCatalogCallableError(error);
+    }
+  },
+);
+export const catalogPublishAll = onCall(
+  { cors: true, timeoutSeconds: 120, memory: "256MiB" },
+  async (request) => {
+    try {
+      if (!request.data || Object.keys(request.data).some((k) => k !== "lojaId")) {
+        throw new HttpsError("invalid-argument", "Publish accepts lojaId only");
+      }
+      const { publishStockAll } = await import("./src/stockCatalogCommands.js");
+      return await publishStockAll(db, request.data.lojaId, request.auth);
     } catch (error) {
       throw stockCatalogCallableError(error);
     }
