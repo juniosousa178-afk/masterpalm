@@ -1,13 +1,13 @@
 ﻿{
-    "formCommit":  "99bd595",
+    "formCommit":  "c46ee62",
     "hostingTarget":  "masterpalm-58c46",
     "siteId":  "masterpalm-58c46",
     "webVersion":  "1.0.101+115",
     "buildId":  "stock-catalog-sync-hotfix-1.0.101",
-    "gitCommit":  "99bd595",
+    "gitCommit":  "c46ee62",
     "featureFlagDefault":  false,
     "globalRollout":  true,
     "expectedDomain":  "app.mastepalm.com.br",
-    "gitCommitFull":  "99bd595d0d99b6d320d83ddd0eba639f49d60731",
+    "gitCommitFull":  "c46ee62bcf0aa44bff0cb2c9bc27d0c66d0bd28e",
     "notes":  "Consolidated: restore+tombstone (1.0.100) + NO_CONTROL editorial/publish/replace auth + cadastro via stockCatalogCommand + pending already-applied confirm + failed-precondition UX."
 }
