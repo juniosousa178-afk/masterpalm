@@ -2109,6 +2109,19 @@ class VendasService {
       produtosEncontrados: produtosEncontrados,
     );
 
+    // Snapshot imutável das raízes originais do carrinho (antes do 2º prep /
+    // baixa). O backend exige `backendItems` = raízes, não as linhas expandidas
+    // de combo em `txItems`. Sem isso: StateError "itens originais".
+    final backendItemsOriginais = List<Map<String, dynamic>>.unmodifiable(
+      VendaComboEstoqueExpansion.montarItensParaBackend(
+        itens: itens,
+        produtos: produtosLinhaOriginal,
+        selecoes: itensComboSelecaoPorIndice,
+      ).map((row) => Map<String, dynamic>.unmodifiable(
+            Map<String, dynamic>.from(row),
+          )),
+    );
+
     // Forensic: selected cells + object instances (observability only).
     if (SaleForensicTraceStore.active != null) {
       for (var i = 0; i < itensParaEstoque.length; i++) {
@@ -2144,6 +2157,19 @@ class VendasService {
           if (p != null) 'objectHive': produtoForensicMiniSnapshot(p),
         });
       }
+      SaleForensicTraceStore.append('ORIGINAL_BACKEND_ITEMS_SNAPSHOT', {
+        'count': backendItemsOriginais.length,
+        'items': backendItemsOriginais
+            .map((e) => {
+                  'productId': e['productId'],
+                  'quantity': e['quantity'],
+                  'size': e['size'],
+                  'color': e['color'],
+                  if (e['extra'] != null && '${e['extra']}'.isNotEmpty)
+                    'extra': e['extra'],
+                })
+            .toList(growable: false),
+      });
     }
 
     final stockEffectHash =
@@ -2274,11 +2300,19 @@ class VendasService {
           'tamanho=$tam cor=$cor sellerUid=${(vendedorUid ?? '').trim()}',
         );
       }
+      SaleForensicTraceStore.append('SALE_COMMAND_START', {
+        'COMMAND_NAME': 'stockCatalogCommand',
+        'COMMAND_KIND': 'sale',
+        'operationId': idFirebaseReservado,
+        'backendItemCount': backendItemsOriginais.length,
+        'txItemCount': txItems.length,
+      });
       final baixaOp = await EstoqueTransactionService
           .baixarEstoqueTransactionBatchIdempotente(
         lojaId: lojaEfetiva,
         itens: txItems,
         operationId: idFirebaseReservado,
+        backendItems: backendItemsOriginais,
       );
       debugPrint(
         '[H1-TRACE] stage=after_batch_idempotent '

@@ -124,6 +124,15 @@ String formatSalvarVendaErrorForUser(Object e) {
   final detalhe = formatDartErrorForUser(e);
   final lower = detalhe.toLowerCase();
 
+  // StateError interno de contrato cliente (ex.: backendItems ausente) NÃO é
+  // conflito de estoque remoto — mensagem genérica + forense técnico.
+  if (root is StateError ||
+      lower.contains('itens originais ao servidor') ||
+      lower.contains('produtos da venda inconsistentes') ||
+      lower.contains('produto sem identificador canônico')) {
+    return 'Não foi possível concluir a venda. Tente novamente.';
+  }
+
   if (lower.contains('não foi possível sincronizar o estoque') ||
       lower.contains('alteração de estoque ainda não sincronizada') ||
       lower.contains('alteracao de estoque ainda nao sincronizada')) {
@@ -165,11 +174,13 @@ String formatSalvarVendaErrorForUser(Object e) {
       lower.contains('permiss')) {
     return 'Sem permissão para concluir a venda. Verifique login e acesso à loja.';
   }
+  // Somente sinais comprovados de conflito/estoque remoto — não StateError genérico.
   if (lower.contains('failed-precondition') ||
       lower.contains('aborted') ||
       lower.contains('stock revision') ||
       lower.contains('revision conflict') ||
-      lower.contains('os dados de estoque')) {
+      lower.contains('os dados de estoque deste produto foram atualizados') ||
+      lower.contains('os dados de estoque precisam ser atualizados')) {
     return 'Os dados de estoque deste produto foram atualizados. '
         'Atualize a tela e tente novamente.';
   }
