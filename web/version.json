@@ -4,9 +4,9 @@
   "siteId": "masterpalm-58c46",
   "expectedDomain": "app.mastepalm.com.br",
   "webVersion": "1.0.100+114",
-  "gitCommit": "PENDING_STAMP",
-  "gitCommitFull": "PENDING_STAMP",
-  "fixCommit": "PENDING_STAMP",
+  "gitCommit": "1e38f72",
+  "gitCommitFull": "1e38f729f7e44da5d0639d969e5337695ea08bfe",
+  "fixCommit": "1e38f729f7e44da5d0639d969e5337695ea08bfe",
   "featureFlagDefault": false,
   "globalRollout": true,
   "notes": "Client hotfix: restore source without stock_catalog_operations read; tombstone v denylist + narrow local rehydrate for TOMBSTONE_FILTER_PROJECTION_CORRUPTION. Function 00013-laz untouched."
