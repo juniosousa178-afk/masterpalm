@@ -67,6 +67,7 @@ import '../services/mirjoias_client_stock_diagnostic_export.dart';
 import '../core/produto_stock_revision.dart';
 import '../core/client_build_identity.dart';
 import '../core/sale_forensic_trace.dart';
+import '../core/produto_untracked_stock_conflict.dart';
 import '../src/file_saver.dart' as file_saver;
 import 'historico_movimentacao_estoque_screen.dart';
 import '../services/ai_loja_service.dart';
@@ -2487,6 +2488,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
         return;
       }
       await SaleForensicTraceStore.ensureHydrated();
+      await UntrackedStockConflictStore.ensureHydrated();
       final exporter = MirjoiasClientStockDiagnosticExport(
         liveBuildId: kClientBuildId,
         liveGitCommit: kClientGitCommit,

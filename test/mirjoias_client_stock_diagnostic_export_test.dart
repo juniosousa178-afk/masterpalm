@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:master_palm/core/produto_stock_revision.dart';
+import 'package:master_palm/core/produto_untracked_stock_conflict.dart';
 import 'package:master_palm/models/produto.dart';
 import 'package:master_palm/services/firestore_paths.dart';
 import 'package:master_palm/services/mirjoias_client_stock_diagnostic_export.dart';
@@ -53,7 +54,14 @@ void main() {
   late FakeFirebaseFirestore firestore;
 
   setUp(() {
+    UntrackedStockConflictStore.disableHive = true;
+    UntrackedStockConflictStore.clearAll();
     firestore = FakeFirebaseFirestore();
+  });
+
+  tearDown(() {
+    UntrackedStockConflictStore.clearAll();
+    UntrackedStockConflictStore.disableHive = false;
   });
 
   Future<void> seedRemote({

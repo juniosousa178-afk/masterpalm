@@ -211,6 +211,8 @@ class MirjoiasClientStockDiagnosticExport {
     final now = _generatedAt ?? DateTime.now().toUtc();
     final stamp = _fileStamp(now);
 
+    await UntrackedStockConflictStore.ensureHydrated();
+
     final products = hiveProducts
         .where((p) =>
             p.lojaId.trim().isEmpty ||
@@ -387,6 +389,13 @@ class MirjoiasClientStockDiagnosticExport {
             localOp.isNotEmpty &&
             localOp == remoteOp;
         if (sameRevOp && !hasPendingSnap) {
+          // Invariant: when local+remote are both available, ACTIVE untracked
+          // must enter PRESERVED (closes BR68PR PULL_EDIT_GUARD gap).
+          captureUntrackedConflictBeforeAuthoritativeOverwrite(
+            local: p,
+            remote: remote!,
+            source: 'diagnosticExport.remoteCompare',
+          );
           localUntrackedMutations.add({
             'CODE': localSnap['LOCAL_PRODUCT_CODE'],
             'NAME': localSnap['LOCAL_PRODUCT_NAME'],
@@ -607,10 +616,24 @@ class MirjoiasClientStockDiagnosticExport {
         'SINGLE_FILE_EXPORT': true,
       },
       'generatedAt': now.toIso8601String(),
-      'liveBuildId': _liveBuildId,
-      'liveGitCommit': _liveGitCommit,
+      // CLIENT_* = compile-time bundle identity (never silent "dev" in production).
+      'CLIENT_BUILD_ID': kClientBuildId,
+      'CLIENT_GIT_COMMIT': kClientGitCommit,
+      'APP_VERSION': kClientAppVersion,
+      'BUILD_METADATA_MISSING': kClientBuildMetadataMissing,
+      // Legacy aliases — always mirror CLIENT_* (never ctor "dev" fallback).
+      'liveBuildId': kClientBuildId,
+      'liveGitCommit': kClientGitCommit,
+      'clientBuildId': kClientBuildId,
+      'clientGitCommit': kClientGitCommit,
+      'appVersion': kClientAppVersion,
+      // Optional ctor/server stamps kept separate (never overwrite CLIENT_*).
+      'SERVER_VERSION_JSON_BUILD': _liveBuildId.trim().isEmpty ||
+              _liveBuildId.trim().toLowerCase() == 'dev'
+          ? null
+          : _liveBuildId,
+      'SERVER_GIT_COMMIT': _liveGitCommit.trim().isEmpty ? null : _liveGitCommit,
       'storeId': loja,
-      'appVersion': _appVersion,
       'browserPlatform': {
         'kIsWeb': kIsWeb,
         'defaultTargetPlatform': defaultTargetPlatform.name,
@@ -653,27 +676,14 @@ class MirjoiasClientStockDiagnosticExport {
           .toList(growable: false),
       'REMOTE_NEWER_CACHE_STALE': remoteNewerCacheStale,
       'saleForensics': () {
-        // Prefer exporter ctor stamps when provided; else baked bundle identity.
         final section = SaleForensicTraceStore.toDiagnosticSection();
-        if (_liveBuildId.trim().isNotEmpty && _liveBuildId != 'dev') {
-          section['exporterBuildId'] = _liveBuildId;
-        } else {
-          section['clientBuildId'] = kClientBuildId;
-        }
-        if (_liveGitCommit.trim().isNotEmpty) {
-          section['clientGitCommit'] = _liveGitCommit;
-        } else {
-          section['clientGitCommit'] = kClientGitCommit;
-        }
-        if (_appVersion.trim().isNotEmpty) {
-          section['appVersion'] = _appVersion;
-        } else {
-          section['appVersion'] = kClientAppVersion;
-        }
-        // Bundle proof always present (not remote version.json).
+        section['clientBuildId'] = kClientBuildId;
+        section['clientGitCommit'] = kClientGitCommit;
+        section['appVersion'] = kClientAppVersion;
         section['CLIENT_BUILD_ID'] = kClientBuildId;
         section['CLIENT_GIT_COMMIT'] = kClientGitCommit;
         section['APP_VERSION'] = kClientAppVersion;
+        section['BUILD_METADATA_MISSING'] = kClientBuildMetadataMissing;
         return section;
       }(),
       'remoteComparisons': comparisons,

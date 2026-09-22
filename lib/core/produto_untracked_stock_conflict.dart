@@ -4,12 +4,18 @@
 //
 // Not a pending stock mutation: never flush / CAS / revision bump / UI sync block.
 
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
+import 'package:hive/hive.dart';
 import 'package:meta/meta.dart';
 
 import '../models/produto.dart';
 import 'produto_estoque_grade_snapshot.dart';
 import 'produto_pending_stock_reconciliation.dart';
 import 'produto_stock_revision.dart';
+
+const String kUntrackedConflictHiveBox = 'untracked_stock_conflicts_v1';
 
 /// Snapshot of a LOCAL_UNTRACKED_MUTATION observed before hydrate overwrite.
 @immutable
@@ -145,15 +151,78 @@ DateTime? _remoteUpdatedAtFromMap(Map<String, dynamic> remote) {
   return null;
 }
 
-/// Process-local forensic store (no backend). Tests / diagnostic can read it.
+/// Forensic store (memory + optional Hive). Never Firestore.
 class UntrackedStockConflictStore {
   UntrackedStockConflictStore._();
 
   /// Keyed by [UntrackedStockConflict.fingerprint].
   static final Map<String, UntrackedStockConflict> _byFingerprint = {};
+  static bool _hiveHydrated = false;
+  static bool _hiveReady = false;
+
+  /// Unit tests without Hive.init.
+  @visibleForTesting
+  static bool disableHive = false;
 
   @visibleForTesting
-  static void clearAll() => _byFingerprint.clear();
+  static void clearAll() {
+    _byFingerprint.clear();
+    _hiveHydrated = false;
+    _hiveReady = false;
+  }
+
+  static Future<void> ensureHydrated() async {
+    if (_hiveHydrated) return;
+    _hiveHydrated = true;
+    if (disableHive) return;
+    try {
+      final open = Hive.isBoxOpen(kUntrackedConflictHiveBox);
+      if (!open) {
+        await Hive.openBox(kUntrackedConflictHiveBox);
+      }
+      final box = Hive.box(kUntrackedConflictHiveBox);
+      _hiveReady = true;
+      final raw = box.get('conflicts');
+      if (raw is List) {
+        for (final item in raw) {
+          Map<String, dynamic>? map;
+          if (item is Map) {
+            map = Map<String, dynamic>.from(item);
+          } else if (item is String) {
+            final decoded = jsonDecode(item);
+            if (decoded is Map) map = Map<String, dynamic>.from(decoded);
+          }
+          if (map == null) continue;
+          final c = UntrackedStockConflict.fromJson(map);
+          if (c.fingerprint.isEmpty || c.productId.isEmpty) continue;
+          _byFingerprint.putIfAbsent(c.fingerprint, () => c);
+        }
+      }
+    } catch (e) {
+      _hiveReady = false;
+      debugPrint(
+        '[UNTRACKED-CONFLICT] hive hydrate skipped type=${e.runtimeType}',
+      );
+    }
+  }
+
+  static Future<void> _persist() async {
+    if (disableHive || !_hiveReady) return;
+    try {
+      if (!Hive.isBoxOpen(kUntrackedConflictHiveBox)) {
+        await Hive.openBox(kUntrackedConflictHiveBox);
+      }
+      final box = Hive.box(kUntrackedConflictHiveBox);
+      await box.put(
+        'conflicts',
+        _byFingerprint.values.map((c) => c.toJson()).toList(growable: false),
+      );
+    } catch (e) {
+      debugPrint(
+        '[UNTRACKED-CONFLICT] hive persist skipped type=${e.runtimeType}',
+      );
+    }
+  }
 
   static UntrackedStockConflict? get({
     required String storeId,
@@ -189,6 +258,8 @@ class UntrackedStockConflictStore {
     final existing = _byFingerprint[fp];
     if (existing != null) return existing;
     _byFingerprint[fp] = conflict;
+    // ignore: discarded_futures
+    _persist();
     return conflict;
   }
 
@@ -228,9 +299,9 @@ class UntrackedStockConflictStore {
   }
 }
 
-/// Call before any hydrate that would replace local qty with remote.
-/// Returns the captured conflict (if any). Does not block hydrate by itself.
-UntrackedStockConflict? preserveUntrackedConflictBeforeHydrate({
+/// Central guard — call BEFORE any remote adoption / qty overwrite / rev-op adopt.
+/// Does not block the subsequent operation; only persists forensic evidence.
+UntrackedStockConflict? captureUntrackedConflictBeforeAuthoritativeOverwrite({
   required Produto local,
   required Map<String, dynamic> remote,
   required String source,
@@ -241,6 +312,18 @@ UntrackedStockConflict? preserveUntrackedConflictBeforeHydrate({
     source: source,
   );
 }
+
+/// Backward-compatible alias.
+UntrackedStockConflict? preserveUntrackedConflictBeforeHydrate({
+  required Produto local,
+  required Map<String, dynamic> remote,
+  required String source,
+}) =>
+    captureUntrackedConflictBeforeAuthoritativeOverwrite(
+      local: local,
+      remote: remote,
+      source: source,
+    );
 
 /// Adopting remote rev/op while qty still diverges creates/extends untracked.
 bool tryConfirmWouldCreateUntrackedFingerprint({

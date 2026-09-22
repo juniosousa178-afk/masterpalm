@@ -5,6 +5,7 @@ import 'package:master_palm/core/produto_effective_stock.dart';
 import 'package:master_palm/core/produto_pending_stock_reconciliation.dart';
 import 'package:master_palm/core/produto_stock_revision.dart';
 import 'package:master_palm/core/produto_untracked_stock_conflict.dart';
+import 'package:master_palm/core/client_build_identity.dart';
 import 'package:master_palm/models/produto.dart';
 
 Produto _local({
@@ -37,7 +38,14 @@ Map<String, dynamic> _remote({
     };
 
 void main() {
-  setUp(UntrackedStockConflictStore.clearAll);
+  setUp(() {
+    UntrackedStockConflictStore.disableHive = true;
+    UntrackedStockConflictStore.clearAll();
+  });
+  tearDown(() {
+    UntrackedStockConflictStore.clearAll();
+    UntrackedStockConflictStore.disableHive = false;
+  });
 
   group('A detect conflict', () {
     test('same rev/op local1 remote0 no pending → LOCAL_UNTRACKED', () {
@@ -292,6 +300,84 @@ void main() {
         source: 'new-state',
       );
       expect(UntrackedStockConflictStore.countForStore('mirjoias'), 2);
+    });
+  });
+
+  group('BR68PR variation empty cells', () {
+    test('stockKind=variation remote cells={} still captures', () {
+      final local = Produto.vazio()
+        ..nome = 'Brinco Oceano P M G Prata 925'
+        ..codigoBarras = 'BR68PR'
+        ..idFirebase = 'mirjoias-brinco-oceano-p-m-g-prata-925'
+        ..lojaId = 'mirjoias'
+        ..quantidade = 3
+        ..stockRevision = 5
+        ..confirmedStockOperationId = 'op-br68-same'
+        ..tamanhos = ['P', 'M', 'G']
+        ..estoquePorTamanho = {'P': 1, 'M': 1, 'G': 1};
+      final remote = <String, dynamic>{
+        'quantidade': 0,
+        'stockRevision': 5,
+        'stockOperationId': 'op-br68-same',
+        'stockKind': 'variation',
+        'variacoes': <String, dynamic>{},
+        'estoquePorTamanho': <String, dynamic>{},
+      };
+      expect(
+        isLocalUntrackedQtyMutation(local: local, remote: remote),
+        isTrue,
+      );
+      final captured = captureUntrackedConflictBeforeAuthoritativeOverwrite(
+        local: local,
+        remote: remote,
+        source: 'syncFirestoreToHive.preserveLocalEdits',
+      );
+      expect(captured, isNotNull);
+      expect(captured!.observedLocalQty, 3);
+      expect(captured.observedRemoteQty, 0);
+      expect(captured.revision, 5);
+      expect(captured.source, 'syncFirestoreToHive.preserveLocalEdits');
+      expect(hasPendingStockMutation(local), isFalse);
+    });
+
+    test('preserveLocalEdits-style path captures without overwrite', () {
+      final local = Produto.vazio()
+        ..nome = 'Brinco Oceano P M G Prata 925'
+        ..codigoBarras = 'BR68PR'
+        ..idFirebase = 'mirjoias-brinco-oceano-p-m-g-prata-925'
+        ..lojaId = 'mirjoias'
+        ..quantidade = 3
+        ..stockRevision = 5
+        ..confirmedStockOperationId = 'op-br68-same';
+      final remote = <String, dynamic>{
+        'quantidade': 0,
+        'stockRevision': 5,
+        'stockOperationId': 'op-br68-same',
+        'stockKind': 'variation',
+        'variacoes': <String, dynamic>{},
+      };
+      // Simulate PULL_EDIT_GUARD: capture then keep local qty.
+      captureUntrackedConflictBeforeAuthoritativeOverwrite(
+        local: local,
+        remote: remote,
+        source: 'syncFirestoreToHive.preserveLocalEdits',
+      );
+      expect(local.quantidade, 3);
+      expect(
+        UntrackedStockConflictStore.get(
+          storeId: 'mirjoias',
+          productId: 'mirjoias-brinco-oceano-p-m-g-prata-925',
+        ),
+        isNotNull,
+      );
+    });
+  });
+
+  group('build proof compile-time', () {
+    test('CLIENT_BUILD_ID is not silent dev', () {
+      expect(kClientBuildId.toLowerCase(), isNot(equals('dev')));
+      expect(kClientBuildId, contains('1.0.97'));
+      expect(kClientAppVersion, contains('1.0.97'));
     });
   });
 }

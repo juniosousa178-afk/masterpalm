@@ -191,6 +191,13 @@ bool tryConfirmStockFromRemote(Produto p, Map<String, dynamic> remote) {
   }
 
   // Captura forense se adotar rev/op deixaria qty divergente same-fingerprint.
+  // Also covers already-same-rev untracked (captureUntracked) so BR68PR-class
+  // products are preserved even when tryConfirm does not change rev.
+  captureUntrackedConflictBeforeAuthoritativeOverwrite(
+    local: p,
+    remote: remote,
+    source: 'tryConfirmStockFromRemote',
+  );
   if (tryConfirmWouldCreateUntrackedFingerprint(local: p, remote: remote)) {
     final remoteQty = (remote['quantidade'] as num?)?.toInt() ?? 0;
     final storeId = p.lojaId.trim();
@@ -208,7 +215,7 @@ bool tryConfirmStockFromRemote(Produto p, Map<String, dynamic> remote) {
           localOperationId: remoteOp ?? '',
           remoteOperationId: remoteOp ?? '',
           detectedAt: DateTime.now().toUtc(),
-          source: 'tryConfirmStockFromRemote',
+          source: 'tryConfirmStockFromRemote.preAdopt',
           code: p.codigoBarras.trim().isEmpty ? null : p.codigoBarras.trim(),
           name: p.nome.trim().isEmpty ? null : p.nome.trim(),
           localUpdatedAt: p.updatedAt,

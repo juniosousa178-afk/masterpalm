@@ -2332,6 +2332,14 @@ class ProdutosFirestoreService {
             final pesoAntes = p.peso;
             final custoManualLocal = p.custoEditadoNoCadastro == true;
             if (preserveLocalEdits) {
+              // Even when preserving local qty, capture ACTIVE untracked if
+              // local+remote already form LOCAL_UNTRACKED_MUTATION (BR68PR gap:
+              // PULL_EDIT_GUARD previously skipped all capture paths).
+              captureUntrackedConflictBeforeAuthoritativeOverwrite(
+                local: p,
+                remote: data,
+                source: 'syncFirestoreToHive.preserveLocalEdits',
+              );
               final motivo = pendingProdutoSync
                   ? 'sync pendente na fila'
                   : preserveStockRegression
@@ -2360,7 +2368,7 @@ class ProdutosFirestoreService {
                 // preservando qty local divergente (51 LOCAL_UNTRACKED).
               }
             } else {
-              preserveUntrackedConflictBeforeHydrate(
+              captureUntrackedConflictBeforeAuthoritativeOverwrite(
                 local: p,
                 remote: data,
                 source: 'syncFirestoreToHive.overwrite',

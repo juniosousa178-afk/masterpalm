@@ -5,6 +5,7 @@ import 'package:master_palm/core/dart_error_unwrap.dart';
 import 'package:master_palm/core/produto_pending_stock_reconciliation.dart';
 import 'package:master_palm/core/produto_stock_revision.dart';
 import 'package:master_palm/core/sale_forensic_trace.dart';
+import 'package:master_palm/core/produto_untracked_stock_conflict.dart';
 import 'package:master_palm/models/produto.dart';
 import 'package:master_palm/services/mirjoias_client_stock_diagnostic_export.dart';
 import 'package:master_palm/services/stock_catalog_backend_service.dart';
@@ -42,12 +43,16 @@ void main() {
   setUp(() {
     SaleForensicTraceStore.disableHive = true;
     SaleForensicTraceStore.clearAll();
+    UntrackedStockConflictStore.disableHive = true;
+    UntrackedStockConflictStore.clearAll();
     StockCatalogBackendService.debugTransport = null;
   });
 
   tearDown(() {
     SaleForensicTraceStore.clearAll();
     SaleForensicTraceStore.disableHive = false;
+    UntrackedStockConflictStore.clearAll();
+    UntrackedStockConflictStore.disableHive = false;
     StockCatalogBackendService.debugTransport = null;
   });
 
@@ -130,7 +135,8 @@ void main() {
       expect(section['CLIENT_BUILD_ID'], isNull); // top section uses camelCase
       // After exporter merge keys exist via Mirjoias export:
       expect(kClientBuildId, isNot(equals('')));
-      expect(kClientBuildId, contains('sale-forensic-trace'));
+      expect(kClientBuildId.toLowerCase(), isNot(equals('dev')));
+      expect(kClientBuildId, contains('1.0.'));
       expect(section['clientGitCommit'], kClientGitCommit);
       expect(section['appVersion'], kClientAppVersion);
     });

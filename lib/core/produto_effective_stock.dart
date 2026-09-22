@@ -159,7 +159,7 @@ bool applyAuthoritativeRemoteStockToProduto(
 
   // Forensic: same-rev/same-op qty divergence must be recorded before overwrite.
   if (updateQuantity) {
-    preserveUntrackedConflictBeforeHydrate(
+    captureUntrackedConflictBeforeAuthoritativeOverwrite(
       local: local,
       remote: remote,
       source: 'applyAuthoritativeRemoteStockToProduto',
