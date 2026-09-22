@@ -1,12 +1,12 @@
 {
-  "buildId": "mirjoias-untracked-conflict-preservation-1.0.95",
+  "buildId": "sale-forensic-trace-1.0.96",
   "hostingTarget": "masterpalm-58c46",
   "siteId": "masterpalm-58c46",
   "expectedDomain": "app.mastepalm.com.br",
-  "webVersion": "1.0.95+109",
-  "gitCommit": "eaa5b3c",
-  "gitCommitFull": "eaa5b3ca4038cdb73227ddb82447754afddb603f",
+  "webVersion": "1.0.96+110",
+  "gitCommit": "33fabcf",
+  "gitCommitFull": "33fabcf4a8f4aa56d8f1da060c954cc56680efd9",
   "featureFlagDefault": false,
   "globalRollout": true,
-  "notes": "Mirjoias: preserve LOCAL_UNTRACKED_MUTATION snapshots before remote hydration. No remote repair. Preserves Nathy 1.0.94 sale prep + Mirjoias pending reconciliation."
+  "notes": "Nathy: local sale forensic ring buffer captures raw callable errors before UX mapping. No business-rule changes. No remote repair."
 }
