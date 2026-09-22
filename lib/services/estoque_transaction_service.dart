@@ -23,6 +23,8 @@ import '../core/strict_product_resolution.dart';
 import '../models/produto.dart';
 import 'firestore_paths.dart';
 import 'catalog_cache_service.dart';
+import 'catalog_publish_service.dart';
+import 'stock_catalog_backend_service.dart';
 import 'produto_exclusao_tombstone_service.dart';
 
 /// Estado do marcador `lojas/{lojaId}/estoque_baixa_pagamento/{vendaId}`.
@@ -44,6 +46,26 @@ class EstoqueBaixaPagamentoMarcador {
   );
 }
 
+/// Nenhum candidato resolveu para `stock_catalog_operations` kind=sale status=applied.
+class EstoqueRestoreSourceUnresolvedException implements Exception {
+  EstoqueRestoreSourceUnresolvedException({
+    this.candidatesTried = const [],
+    this.cause,
+  });
+
+  final List<String> candidatesTried;
+  final Object? cause;
+
+  static const userMessage =
+      'Não foi possível localizar a operação original de estoque desta venda. '
+      'A exclusão foi cancelada para proteger o estoque.';
+
+  @override
+  String toString() =>
+      'EstoqueRestoreSourceUnresolvedException($userMessage '
+      'candidates=${candidatesTried.join(',')})';
+}
+
 /// Resultado da baixa de estoque via transação
 class EstoqueTransactionResult {
   final String produtoId;
@@ -53,6 +75,7 @@ class EstoqueTransactionResult {
   final Map<String, dynamic>? variacoesAtualizadas;
   final Map<String, int>? estoquePorTamanhoAtualizado;
   final int quantidadeTotalAtualizada;
+  final bool confirmadoPeloBackend;
 
   /// Ajuste de teto combo feito só no Hive (SKU ausente na nuvem); ver [ComboKitStockService].
   final bool ajusteCapComboSomenteHive;
@@ -72,6 +95,7 @@ class EstoqueTransactionResult {
     this.variacoesAtualizadas,
     this.estoquePorTamanhoAtualizado,
     required this.quantidadeTotalAtualizada,
+    this.confirmadoPeloBackend = false,
     this.ajusteCapComboSomenteHive = false,
     this.quantidadeComboAntesAjusteLocal,
     this.newStockRevision,
@@ -180,14 +204,21 @@ class EstoqueTransactionService {
   @visibleForTesting
   static FirebaseFirestore? debugFirestoreOverride;
 
+  static bool get usaBackendConfiavel => debugFirestoreOverride == null;
+
   /// Atraso artificial dentro do callback da transação batch (somente testes).
   @visibleForTesting
   static Duration? debugBatchTransactionDelay;
 
   @visibleForTesting
+  static bool Function(String collection, String docId)? debugFailCatalogDelete;
+
+  @visibleForTesting
   static void debugClearOverrides() {
     debugFirestoreOverride = null;
     debugBatchTransactionDelay = null;
+    debugFailCatalogDelete = null;
+    debugIsAppliedSaleStockOperationOverride = null;
   }
 
   static FirebaseFirestore get _db =>
@@ -298,6 +329,11 @@ class EstoqueTransactionService {
     required String lojaId,
     required String docId,
   }) async {
+    if (debugFirestoreOverride == null) {
+      await StockCatalogBackendService.publishOne(lojaId, docId);
+      return true;
+    }
+
     try {
       final base = _db.collection('lojas').doc(lojaId);
       final estoqueRef = base.collection(FSPaths.estoqueProdutosCol).doc(docId);
@@ -374,6 +410,29 @@ class EstoqueTransactionService {
       throw Exception(
         'Esta variação foi removida do cadastro. Sincronize o app e selecione o produto novamente.',
       );
+    }
+
+    if (debugFirestoreOverride == null) {
+      final opId = newStockOperationId();
+      final response = await StockCatalogBackendService.command(
+        lojaId: lojaId,
+        operationId: opId,
+        kind: 'sale',
+        items: [
+          {
+            'productId': produtoRef.id,
+            'quantity': quantidade,
+            if (tam.isNotEmpty) 'size': tam,
+            if (corTrim.isNotEmpty) 'color': corTrim,
+            if (extraTrim.isNotEmpty) 'extra': extraTrim,
+          },
+        ],
+      );
+      final results = resultadosDoBackend(response);
+      if (results.isEmpty) {
+        throw Exception('Baixa de estoque sem retorno do servidor');
+      }
+      return results.first;
     }
 
     Future<EstoqueTransactionResult> executarTransacao() {
@@ -2026,17 +2085,104 @@ class EstoqueTransactionService {
     }
   }
 
+  /// Read the server response without deriving balances from the outgoing cart.
+  /// Pedido persistido: usa a mesma identidade de baixa do webhook no servidor.
+  /// Nenhuma quantidade, receita expandida ou marcador de pagamento local é autoridade.
+  static String orderSaleOperationId(String pedidoId) =>
+      StockCatalogBackendService.orderSaleOperationId(pedidoId);
+
+  static Future<List<EstoqueTransactionResult>> baixarEstoquePedido({
+    required String lojaId,
+    required String pedidoId,
+  }) async =>
+      (await baixarEstoquePedidoIdempotente(
+        lojaId: lojaId,
+        pedidoId: pedidoId,
+      ))
+          .transactionResults;
+
+  static Future<EstoqueBaixaOperationResult> baixarEstoquePedidoIdempotente({
+    required String lojaId,
+    required String pedidoId,
+  }) async {
+    final response =
+        await StockCatalogBackendService.orderSale(lojaId, pedidoId);
+    return EstoqueBaixaOperationResult(
+      status: response['alreadyApplied'] == true
+          ? EstoqueBaixaOperationStatus.alreadyApplied
+          : EstoqueBaixaOperationStatus.applied,
+      transactionResults: resultadosDoBackend(response),
+    );
+  }
+
+  static List<EstoqueTransactionResult> resultadosDoBackend(
+      Map<String, dynamic> response) {
+    final rows = response['products'] as List;
+    return rows.map((raw) {
+      final row = Map<String, dynamic>.from(raw as Map);
+      final grade = Map<String, dynamic>.from(row['variacoes'] as Map? ?? {});
+      String norm(Object? value) =>
+          value.toString().trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+      final gradeColors =
+          grade.values.whereType<Map>().expand((m) => m.keys).map(norm).toSet();
+      final root = row['estoquePorCor'] as Map? ?? {};
+      for (final entry in root.entries) {
+        if (!gradeColors.contains(norm(entry.key))) {
+          final colors =
+              Map<String, dynamic>.from(grade['sem-tamanho'] as Map? ?? {});
+          colors[entry.key.toString()] = entry.value;
+          grade['sem-tamanho'] = colors;
+        }
+      }
+      return EstoqueTransactionResult(
+        produtoId: row['productId'] as String,
+        produtoNome: (row['nome'] ?? '').toString(),
+        produtoSlug: row['slug']?.toString(),
+        quantidadeDebitada: 0,
+        quantidadeTotalAtualizada: (row['quantidade'] as num).toInt(),
+        variacoesAtualizadas: grade,
+        estoquePorTamanhoAtualizado: (row['estoquePorTamanho'] as Map? ?? {})
+            .map((key, units) =>
+                MapEntry(key.toString(), (units as num).toInt())),
+        newStockRevision: (row['stockRevision'] as num).toInt(),
+        stockOperationId:
+            (row['stockOperationId'] ?? response['operationId']) as String,
+        confirmadoPeloBackend: true,
+      );
+    }).toList();
+  }
+
   /// Baixa idempotente por [operationId] — marker V1 + estoque na mesma transação.
   static Future<EstoqueBaixaOperationResult>
       baixarEstoqueTransactionBatchIdempotente({
     required String lojaId,
     required List<Map<String, dynamic>> itens,
     required String operationId,
+    List<Map<String, dynamic>>? backendItems,
   }) async {
     final opId = operationId.trim();
     if (opId.isEmpty) {
       throw ArgumentError.value(
           operationId, 'operationId', 'não pode ser vazio');
+    }
+
+    if (debugFirestoreOverride == null) {
+      if (backendItems == null) {
+        throw StateError(
+            'A venda precisa enviar os itens originais ao servidor.');
+      }
+      final response = await StockCatalogBackendService.command(
+        lojaId: lojaId,
+        operationId: opId,
+        kind: 'sale',
+        items: backendItems,
+      );
+      return EstoqueBaixaOperationResult(
+        status: response['alreadyApplied'] == true
+            ? EstoqueBaixaOperationStatus.alreadyApplied
+            : EstoqueBaixaOperationStatus.applied,
+        transactionResults: resultadosDoBackend(response),
+      );
     }
 
     if (itens.length > _maxItensPorTransacao) {
@@ -2164,18 +2310,137 @@ class EstoqueTransactionService {
     }
   }
 
-  /// Resolve id de idempotência da devolução: prioriza key Hive do marcador catálogo.
+  /// Test hook: override applied-sale lookup without hitting Firestore.
+  /// Return `true`/`false`, or `null` to fall through to Firestore.
+  static Future<bool?> Function(String lojaId, String operationId)?
+      debugIsAppliedSaleStockOperationOverride;
+
+  /// `lojas/{lojaId}/stock_catalog_operations/{operationId}` is kind=sale + status=applied.
+  static Future<bool> isAppliedSaleStockOperation({
+    required String lojaId,
+    required String operationId,
+  }) async {
+    final id = operationId.trim();
+    if (id.isEmpty || id.startsWith('hive_')) return false;
+    final override = debugIsAppliedSaleStockOperationOverride;
+    if (override != null) {
+      final forced = await override(lojaId, id);
+      if (forced != null) return forced;
+    }
+    try {
+      final snap = await _db
+          .collection('lojas')
+          .doc(lojaId.trim())
+          .collection('stock_catalog_operations')
+          .doc(id)
+          .get();
+      if (!snap.exists) return false;
+      final data = snap.data() ?? {};
+      return data['kind'] == 'sale' && data['status'] == 'applied';
+    } catch (e) {
+      debugPrint(
+        '[ESTOQUE-TX] isAppliedSaleStockOperation falhou id=$id type=${e.runtimeType}',
+      );
+      return false;
+    }
+  }
+
+  /// Resolve [sourceOperationId] for restore: must be an applied sale stock operation.
+  ///
+  /// Candidate order:
+  /// 1. [explicitStockOperationId] / appliedStockOperationId
+  /// 2. [idFirebase] (sale doc id when it equals the stock op)
+  /// 3. fields on legacy payment marker (`operationId`, `saleId`)
+  /// 4. marker doc id itself — only if it validates as applied sale
+  ///
+  /// Never returns raw `hive_<key>` or an unvalidated Hive key.
+  static Future<String> resolverSourceOperationIdParaRestore({
+    required String lojaId,
+    String? explicitStockOperationId,
+    String? idFirebase,
+    String? vendaIdMarcadorCatalogo,
+  }) async {
+    final lid = lojaId.trim();
+    final candidates = <String>[];
+    void addCandidate(String? raw) {
+      final s = (raw ?? '').trim();
+      if (s.isEmpty) return;
+      if (s.startsWith('hive_')) return;
+      if (!candidates.contains(s)) candidates.add(s);
+    }
+
+    addCandidate(explicitStockOperationId);
+    addCandidate(idFirebase);
+
+    final marcadorId = (vendaIdMarcadorCatalogo ?? '').trim();
+    if (marcadorId.isNotEmpty) {
+      try {
+        final snap = await _baixaPagamentoRef(lid, marcadorId).get();
+        if (snap.exists) {
+          final data = snap.data() ?? {};
+          addCandidate(data['operationId']?.toString());
+          addCandidate(data['saleId']?.toString());
+          addCandidate(data['vendaId']?.toString());
+          // Marker doc id only as last resort among marker-derived ids.
+          addCandidate(marcadorId);
+        }
+      } catch (e) {
+        debugPrint(
+          '[ESTOQUE-TX] restore candidate marker read falhou '
+          'marcador=$marcadorId type=${e.runtimeType}',
+        );
+      }
+    }
+
+    for (final candidate in candidates) {
+      if (await isAppliedSaleStockOperation(
+        lojaId: lid,
+        operationId: candidate,
+      )) {
+        debugPrint(
+          '[ESTOQUE-TX] restore sourceOperationId=$candidate '
+          '(validated applied sale)',
+        );
+        return candidate;
+      }
+    }
+
+    throw EstoqueRestoreSourceUnresolvedException(
+      candidatesTried: List<String>.unmodifiable(candidates),
+    );
+  }
+
+  /// Legacy name kept for call sites; now validates applied sale (may throw).
   static Future<String> resolverVendaIdIdempotenciaDevolucao({
     required String lojaId,
     required String? vendaIdMarcadorCatalogo,
     required String vendaIdFallback,
-  }) async {
-    final marcadorId = (vendaIdMarcadorCatalogo ?? '').trim();
-    if (marcadorId.isNotEmpty) {
-      final marcador = await lerMarcadorBaixaPagamento(lojaId, marcadorId);
-      if (marcador.existe) return marcadorId;
+    String? explicitStockOperationId,
+  }) {
+    final fallback = vendaIdFallback.trim();
+    final idFb = fallback.startsWith('hive_') ? null : fallback;
+    return resolverSourceOperationIdParaRestore(
+      lojaId: lojaId,
+      explicitStockOperationId: explicitStockOperationId,
+      idFirebase: idFb,
+      vendaIdMarcadorCatalogo: vendaIdMarcadorCatalogo,
+    );
+  }
+
+  /// User-facing delete/restore error; raw error stays in debug logs.
+  static String mensagemUsuarioFalhaDevolucaoEstoque(Object error) {
+    debugPrint(
+      '[VENDA_DELETE] forensic_raw type=${error.runtimeType} erro=$error',
+    );
+    if (error is EstoqueRestoreSourceUnresolvedException) {
+      return EstoqueRestoreSourceUnresolvedException.userMessage;
     }
-    return vendaIdFallback.trim();
+    final raw = error.toString();
+    if (raw.contains('Applied sale required')) {
+      return EstoqueRestoreSourceUnresolvedException.userMessage;
+    }
+    return 'Não foi possível devolver o estoque desta venda. '
+        'A exclusão foi cancelada para proteger o estoque.';
   }
 
   /// Indica se a devolução já foi feita (remoto catálogo ou idempotência local).
@@ -2287,6 +2552,59 @@ class EstoqueTransactionService {
           'Uma variação desta venda foi removida do cadastro. Sincronize o app.',
         );
       }
+    }
+
+    if (debugFirestoreOverride == null) {
+      Map<String, dynamic> itemPayload(
+        ({
+          DocumentReference<Map<String, dynamic>> ref,
+          int signedQty,
+          String tamanho,
+          String cor,
+          String variacaoExtra,
+        }) r,
+        int qty,
+      ) =>
+          {
+            'productId': r.ref.id,
+            'quantity': qty,
+            if (r.tamanho.trim().isNotEmpty) 'size': r.tamanho.trim(),
+            if (r.cor.trim().isNotEmpty) 'color': r.cor.trim(),
+            if (r.variacaoExtra.trim().isNotEmpty)
+              'extra': r.variacaoExtra.trim(),
+          };
+      final sales = resolvedItems.where((r) => r.signedQty < 0).toList();
+      final rests = resolvedItems.where((r) => r.signedQty > 0).toList();
+      final merged = <EstoqueTransactionResult>[];
+      var already = false;
+      if (sales.isNotEmpty) {
+        final response = await StockCatalogBackendService.command(
+          lojaId: lojaId,
+          operationId: sales.length == resolvedItems.length ? opId : '${opId}_sale',
+          kind: 'sale',
+          items: sales
+              .map((r) => itemPayload(r, -r.signedQty))
+              .toList(),
+        );
+        already = already || response['alreadyApplied'] == true;
+        merged.addAll(resultadosDoBackend(response));
+      }
+      if (rests.isNotEmpty) {
+        final response = await StockCatalogBackendService.command(
+          lojaId: lojaId,
+          operationId: rests.length == resolvedItems.length
+              ? opId
+              : '${opId}_restock',
+          kind: 'restock',
+          items: rests.map((r) => itemPayload(r, r.signedQty)).toList(),
+        );
+        already = already || response['alreadyApplied'] == true;
+        merged.addAll(resultadosDoBackend(response));
+      }
+      return EstoqueEdicaoReconcileResult(
+        alreadyApplied: already,
+        transactionResults: merged,
+      );
     }
 
     final snapshotHash = computeSignedTxItemsHashForIdempotencia(
@@ -2800,6 +3118,23 @@ class EstoqueTransactionService {
     String? vendaIdParaIdempotencia,
     String estornoOrigemCatalogo = 'venda_delete',
   }) async {
+    if (debugFirestoreOverride == null) {
+      final source = (vendaIdParaIdempotencia ?? '').trim();
+      if (source.isEmpty) {
+        throw StateError('Estorno exige a operação original da venda.');
+      }
+      final response = await StockCatalogBackendService.command(
+        lojaId: lojaId,
+        operationId: 'restore_${sha256.convert(utf8.encode(source))}',
+        kind: 'restore',
+        sourceOperationId: source,
+        items: [
+          {'productId': 'source-operation'}
+        ],
+      );
+      return resultadosDoBackend(response);
+    }
+
     if (itens.isEmpty) return [];
 
     final vidTrim = (vendaIdParaIdempotencia ?? '').trim();
@@ -3101,30 +3436,125 @@ class EstoqueTransactionService {
     String lojaId,
     List<EstoqueTransactionResult> results,
   ) async {
+    if (debugFirestoreOverride == null) {
+      if (results.every((r) => r.confirmadoPeloBackend)) return;
+      for (final id in results.map((r) => r.produtoId).toSet()) {
+        await StockCatalogBackendService.publishOne(lojaId, id);
+      }
+      return;
+    }
+
     for (final r in results) {
       if (r.quantidadeTotalAtualizada > 0) continue;
+      final canonicalId = r.produtoId.trim();
+      final slug = (r.produtoSlug ?? '').trim();
       final idsToTry = <String>[
-        if (r.produtoSlug?.trim().isNotEmpty ?? false) r.produtoSlug!.trim(),
-        r.produtoId,
-      ].where((s) => s.isNotEmpty).toSet().toList();
+        if (canonicalId.isNotEmpty) canonicalId,
+        if (slug.isNotEmpty && slug != canonicalId) slug,
+      ];
+      var removedAny = false;
+      var remocaoFalhou = false;
       for (final docId in idsToTry) {
+        final isCanonical = canonicalId.isNotEmpty && docId == canonicalId;
         try {
           final base = _db.collection('lojas').doc(lojaId);
-          final prodRef = base.collection('produtos').doc(docId);
-          final draftRef = base.collection(FSPaths.draftProdutosCol).doc(docId);
-          if ((await prodRef.get()).exists) await prodRef.delete();
-          if ((await draftRef.get()).exists) await draftRef.delete();
-          CatalogCacheService.invalidate(lojaId, preview: false);
-          CatalogCacheService.invalidate(lojaId, preview: true);
+          for (final col in ['produtos', FSPaths.draftProdutosCol]) {
+            final ref = base.collection(col).doc(docId);
+            final removed = await _db.runTransaction<bool>((tx) async {
+              // Um resultado de baixa pode ficar antigo após uma reposição.
+              // A remoção deve validar o estoque no mesmo commit do delete.
+              if (canonicalId.isNotEmpty) {
+                final stock = await tx.get(
+                  base.collection(FSPaths.estoqueProdutosCol).doc(canonicalId),
+                );
+                final data = stock.data();
+                if (data != null &&
+                    ProdutoVariacaoExtra.valorFirestoreComoInt(
+                          data['quantidade'] ?? data['estoque_atual'],
+                        ) >
+                        0) {
+                  return false;
+                }
+              }
+              final snap = await tx.get(ref);
+              if (!snap.exists) return false;
+              if (!isCanonical &&
+                  !_catalogDocPertenceAoProdutoZerado(
+                    data: snap.data(),
+                    produtoId: canonicalId,
+                    produtoSlug: slug,
+                    produtoNome: r.produtoNome,
+                  )) {
+                return false;
+              }
+              if (debugFailCatalogDelete != null &&
+                  debugFailCatalogDelete!(col, docId)) {
+                throw StateError('falha de teste ao remover $col/$docId');
+              }
+              tx.delete(ref);
+              return true;
+            });
+            if (!removed) continue;
+            removedAny = true;
+            debugPrint(
+              '[ESTOQUE-TX] 🗑️ Removido do catálogo (estoque zero): $col/$docId',
+            );
+          }
+        } catch (e) {
+          remocaoFalhou = true;
           debugPrint(
-              '[ESTOQUE-TX] 🗑️ Removido do catálogo (estoque zero): $docId');
-          break;
+            '[ESTOQUE-TX] ⚠️ Erro ao remover $docId (type=${e.runtimeType})',
+          );
+        }
+      }
+      if (removedAny) {
+        CatalogCacheService.invalidate(lojaId, preview: false);
+        CatalogCacheService.invalidate(lojaId, preview: true);
+      }
+      if (remocaoFalhou && canonicalId.isNotEmpty) {
+        try {
+          await CatalogPublishService.registrarPendenciaSyncAposEstoque(
+            lojaId: lojaId,
+            productIds: [canonicalId],
+          );
         } catch (e) {
           debugPrint(
-              '[ESTOQUE-TX] ⚠️ Erro ao remover $docId (type=${e.runtimeType})');
+            '[ESTOQUE-TX] ⚠️ Falha ao registrar pendência de catálogo '
+            '(type=${e.runtimeType}) produto=$canonicalId',
+          );
         }
       }
     }
+  }
+
+  /// Documento legado (id = slug) só é o mesmo produto se o id interno, o slug
+  /// ou o nome baterem com o resultado da baixa — nunca outro SKU.
+  static bool _catalogDocPertenceAoProdutoZerado({
+    required Map<String, dynamic>? data,
+    required String produtoId,
+    required String produtoSlug,
+    required String produtoNome,
+  }) {
+    if (data == null) return false;
+    final innerId =
+        (data['id'] ?? data['produtosId'] ?? data['productId'] ?? '')
+            .toString()
+            .trim();
+    final innerSlug = (data['slug'] ?? '').toString().trim();
+    final innerNome = (data['nome'] ?? '').toString().trim();
+    if (produtoId.isNotEmpty && innerId == produtoId) return true;
+    if (produtoSlug.isNotEmpty &&
+        innerSlug == produtoSlug &&
+        (innerId.isEmpty || innerId == produtoSlug || innerId == produtoId)) {
+      return true;
+    }
+    if (produtoSlug.isNotEmpty &&
+        innerId == produtoSlug &&
+        produtoNome.trim().isNotEmpty &&
+        innerNome.toLowerCase() == produtoNome.trim().toLowerCase()) {
+      return true;
+    }
+    return false;
   }
 
   /// Atualiza o Hive após transação bem-sucedida (para consistência local)
@@ -3159,6 +3589,23 @@ class EstoqueTransactionService {
     }
 
     if (produto != null) {
+      if (result.confirmadoPeloBackend) {
+        if (result.newStockRevision! < produto.stockRevision) return;
+        if (hasPendingStockMutation(produto) &&
+            produto.pendingStockOperationId != result.stockOperationId) {
+          markStockConflict(produto);
+          await produto.save();
+          return;
+        }
+        produto.quantidade = result.quantidadeTotalAtualizada;
+        produto.variacoes = result.variacoesAtualizadas;
+        produto.estoquePorTamanho = result.estoquePorTamanhoAtualizado!;
+        confirmStockMutation(produto,
+            operationId: result.stockOperationId!,
+            revision: result.newStockRevision!);
+        await produto.save();
+        return;
+      }
       produto.quantidade = result.quantidadeTotalAtualizada;
       if (result.variacoesAtualizadas != null) {
         produto.variacoes = result.variacoesAtualizadas;

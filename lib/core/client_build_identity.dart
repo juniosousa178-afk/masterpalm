@@ -5,17 +5,17 @@
 /// Release stamp — updated with each hosting deploy of this app.
 const String kClientBuildId = String.fromEnvironment(
   'CATALOG_BUILD_ID',
-  defaultValue: 'nathy-original-sale-items-fix-1.0.98',
+  defaultValue: 'nathy-sale-restore-source-operation-fix-1.0.99',
 );
 
 const String kClientGitCommit = String.fromEnvironment(
   'GIT_COMMIT',
-  defaultValue: '49b2e9b326d322db1938fb48c67718c840c025bb',
+  defaultValue: 'PENDING_STAMP',
 );
 
 const String kClientAppVersion = String.fromEnvironment(
   'APP_VERSION',
-  defaultValue: '1.0.98+112',
+  defaultValue: '1.0.99+113',
 );
 
 /// True when compile-time identity looks like an unstamped/dev placeholder.

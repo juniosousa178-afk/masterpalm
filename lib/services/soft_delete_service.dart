@@ -392,6 +392,15 @@ class SoftDeleteService {
         );
       }
       debugPrint('[VENDA-DELETE] etapa=erro stack=$st');
+      // Preserve raw forensic log; surface operational message to callers.
+      final wrapped = e is EstoqueRestoreSourceUnresolvedException
+          ? e
+          : (e.toString().contains('Applied sale required')
+              ? EstoqueRestoreSourceUnresolvedException(cause: e)
+              : e);
+      if (!identical(wrapped, e)) {
+        Error.throwWithStackTrace(wrapped, st);
+      }
       rethrow;
     }
     debugPrint('[VENDA-DELETE] etapa=devolver_estoque_ok');

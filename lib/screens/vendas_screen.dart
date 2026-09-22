@@ -41,6 +41,7 @@ import '../services/loja_id_service.dart';
 import '../services/ai_loja_service.dart';
 import '../services/ia_uso_limite_service.dart';
 import '../services/soft_delete_service.dart';
+import '../services/estoque_transaction_service.dart';
 import '../main.dart' show scaffoldMessengerKey;
 import '../utils/store_screen_route_observer.dart';
 
@@ -1999,7 +2000,7 @@ class _VendasScreenState extends State<VendasScreen>
           final msg = e is FirebaseException && e.code == 'permission-denied'
               ? 'Sem permissão para concluir a exclusão (Firestore). '
                   'Se o problema continuar, contacte o suporte. Detalhe: ${e.message}'
-              : 'Erro ao excluir venda: $e';
+              : EstoqueTransactionService.mensagemUsuarioFalhaDevolucaoEstoque(e);
           _showSnackBar(msg, isError: true);
         }
       }
