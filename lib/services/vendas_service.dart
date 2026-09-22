@@ -20,6 +20,8 @@ import '../core/loja_ativa_resolver.dart';
 import '../core/logger.dart';
 import '../core/safe_cast.dart';
 import '../core/strict_product_resolution.dart';
+import '../core/sale_forensic_trace.dart';
+import '../core/produto_effective_stock.dart';
 import '../utils/text_utils.dart';
 import '../services/campaign_engine_service.dart'; // 🎯 integração com campanhas/sorteio (centralizado)
 import '../services/clientes_firestore_service.dart'; // 🔹 sincronização de clientes
@@ -1948,6 +1950,11 @@ class VendasService {
         );
         if (!placeholder.isCompleted) placeholder.complete(venda);
       } catch (e, st) {
+        SaleForensicTraceStore.captureRawCallableError(
+          error: e,
+          stack: st,
+          errorCaughtAt: 'VendasService.registrarVendaMulti',
+        );
         if (!placeholder.isCompleted) placeholder.completeError(e, st);
       } finally {
         _registrarVendaCoalesce.remove(chave);
@@ -2101,6 +2108,43 @@ class VendasService {
       itensParaEstoque: itensParaEstoque,
       produtosEncontrados: produtosEncontrados,
     );
+
+    // Forensic: selected cells + object instances (observability only).
+    if (SaleForensicTraceStore.active != null) {
+      for (var i = 0; i < itensParaEstoque.length; i++) {
+        final item = itensParaEstoque[i];
+        final p = i < produtosEncontrados.length ? produtosEncontrados[i] : null;
+        final size =
+            item.tamanho.trim().isEmpty ? 'sem-tamanho' : item.tamanho.trim();
+        final color = item.cor.trim().isEmpty ? 'sem-cor' : item.cor.trim();
+        final cellKey = '$size|$color';
+        final cellQty = p == null
+            ? null
+            : cellQtyForTamanhoCor(p, item.tamanho, item.cor);
+        SaleForensicTraceStore.append('SALE_LINE_SELECTION', {
+          'productId': item.productId ?? p?.idFirebase,
+          'productCode': p?.codigoBarras,
+          'productName': item.produtoNome,
+          'selectedSize': item.tamanho,
+          'selectedColor': item.cor,
+          'SELECTED_CELL_KEY': cellKey,
+          'SELECTED_CELL_QTY': cellQty,
+          'objectSaleLine': {
+            'productId': item.productId ?? p?.idFirebase,
+            'qty': item.quantidade,
+            'stockRevision': p?.stockRevision,
+            'stockOperationId': p?.confirmedStockOperationId,
+            'pendingOperationId': p?.pendingStockOperationId,
+            'stockKind':
+                p == null ? null : effectiveStockKindFromProduto(p).wire,
+            'canonicalCells': p == null
+                ? null
+                : produtoForensicMiniSnapshot(p)['canonicalCells'],
+          },
+          if (p != null) 'objectHive': produtoForensicMiniSnapshot(p),
+        });
+      }
+    }
 
     final stockEffectHash =
         EstoqueTransactionService.computeTxItemsHashForIdempotencia(txItems);

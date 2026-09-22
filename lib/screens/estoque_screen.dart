@@ -65,6 +65,8 @@ import '../services/movimentacao_estoque_service.dart';
 import '../services/estoque_service.dart';
 import '../services/mirjoias_client_stock_diagnostic_export.dart';
 import '../core/produto_stock_revision.dart';
+import '../core/client_build_identity.dart';
+import '../core/sale_forensic_trace.dart';
 import '../src/file_saver.dart' as file_saver;
 import 'historico_movimentacao_estoque_screen.dart';
 import '../services/ai_loja_service.dart';
@@ -2484,19 +2486,11 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
         if (mounted) _showSnackBar('Nenhuma loja ativa', isError: true);
         return;
       }
+      await SaleForensicTraceStore.ensureHydrated();
       final exporter = MirjoiasClientStockDiagnosticExport(
-        liveBuildId: const String.fromEnvironment(
-          'CATALOG_BUILD_ID',
-          defaultValue: 'dev',
-        ),
-        liveGitCommit: const String.fromEnvironment(
-          'GIT_COMMIT',
-          defaultValue: '',
-        ),
-        appVersion: const String.fromEnvironment(
-          'CATALOG_BUILD_ID',
-          defaultValue: 'dev',
-        ),
+        liveBuildId: kClientBuildId,
+        liveGitCommit: kClientGitCommit,
+        appVersion: kClientAppVersion,
       );
       final result = await exporter.build(
         storeId: lojaId,

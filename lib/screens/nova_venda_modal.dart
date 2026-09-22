@@ -14,6 +14,7 @@ import '../core/access_scope_service.dart';
 import '../core/produto_cadastro_gate.dart';
 import '../core/produto_variacao_extra.dart';
 import '../core/produto_sale_variation_picker.dart';
+import '../core/sale_forensic_trace.dart';
 import '../services/venda_produto_stock_hydrate_service.dart';
 import '../core/strict_product_resolution.dart';
 import '../core/venda_finalizacao_reentrada_guard.dart';
@@ -2348,6 +2349,33 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         return (false, null, msg);
       }
 
+      // Forensic trace — observability only; does not change sale rules.
+      final prepLines = <Map<String, dynamic>>[];
+      for (final it in itens) {
+        final size = it.tamanho.trim().isEmpty ? 'sem-tamanho' : it.tamanho.trim();
+        final color = it.cor.trim().isEmpty ? 'sem-cor' : it.cor.trim();
+        prepLines.add({
+          'productId': it.productId,
+          'productCode': null,
+          'productName': it.produtoNome,
+          'selectedSize': it.tamanho,
+          'selectedColor': it.cor,
+          'selectedVariationKey': '$size|$color',
+          'saleQty': it.quantidade,
+          'objectSaleLine': {
+            'productId': it.productId,
+            'qty': it.quantidade,
+            'size': it.tamanho,
+            'color': it.cor,
+          },
+        });
+      }
+      await SaleForensicTraceStore.start(initialPrep: {
+        'storeId': lojaId,
+        'lineCount': itens.length,
+        'lines': prepLines,
+      });
+
       // ✅ ETAPA 1: Fluxo único de participação — apenas CampaignEngine (via VendasService).
       // Removido _registrarNumeroSorteio (SorteioNumeroService) para evitar duplicidade.
       String? numeroSorteRecebido;
@@ -2384,6 +2412,11 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
 
       return (true, numeroSorteRecebido, null);
     } on ArgumentError catch (e, stackTrace) {
+      SaleForensicTraceStore.captureRawCallableError(
+        error: e,
+        stack: stackTrace,
+        errorCaughtAt: 'NovaVendaModal._salvarVendaEmBackground',
+      );
       _logErroSalvarVenda(
         etapa: 'BACKGROUND_SAVE_FIADO',
         erro: e,
@@ -2393,9 +2426,16 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       final msg = e.message?.toString().trim().isNotEmpty == true
           ? e.message!.toString().trim()
           : e.toString();
-      onErro?.call(msg);
-      return (false, null, msg);
+      final withCode =
+          SaleForensicTraceStore.appendDiagnosticCodeToUserMessage(msg);
+      onErro?.call(withCode);
+      return (false, null, withCode);
     } catch (e, stackTrace) {
+      SaleForensicTraceStore.captureRawCallableError(
+        error: e,
+        stack: stackTrace,
+        errorCaughtAt: 'NovaVendaModal._salvarVendaEmBackground',
+      );
       _logErroSalvarVenda(
         etapa: 'BACKGROUND_SAVE',
         erro: e,
@@ -2403,13 +2443,20 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         itensVenda: itens,
       );
       if (VendaComboEstoqueExpansion.isErroVariacaoObrigatoria(e)) {
-        final msg = formatSalvarVendaErrorForUser(e);
+        final msg = SaleForensicTraceStore.appendDiagnosticCodeToUserMessage(
+          formatSalvarVendaErrorForUser(e),
+        );
         onErro?.call(msg);
         return (false, null, msg);
       }
-      final msg = formatSalvarVendaErrorForUser(e);
+      final msg = SaleForensicTraceStore.appendDiagnosticCodeToUserMessage(
+        formatSalvarVendaErrorForUser(e),
+      );
       onErro?.call(msg);
       return (false, null, msg);
+    } finally {
+      // Clear active pointer; ring buffer retains the attempt.
+      SaleForensicTraceStore.endActive();
     }
   }
 

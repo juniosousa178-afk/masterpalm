@@ -5,7 +5,9 @@ import 'package:flutter/foundation.dart';
 
 import '../core/produto_pending_stock_reconciliation.dart';
 import '../core/produto_effective_stock.dart';
+import '../core/produto_estoque_grade_snapshot.dart';
 import '../core/produto_stock_revision.dart';
+import '../core/sale_forensic_trace.dart';
 import '../models/produto.dart';
 import 'firestore_paths.dart';
 import 'produto_exclusao_tombstone_service.dart';
@@ -363,6 +365,20 @@ class VendaEstoqueRemotoPrepService {
       var reconciliationClass = 'NO_PENDING';
       var mustNeverFlush = false;
       var flushAttempted = false;
+      var pendingClearAttempted = false;
+      var pendingClearSucceeded = false;
+      SaleForensicTraceStore.append('SALE_PREP_PRODUCT_START', {
+        'productId': produto.idFirebase,
+        'productCode': produto.codigoBarras,
+        'productName': produto.nome,
+        'LOCAL_QTY': produto.quantidade,
+        'LOCAL_REVISION': produto.stockRevision,
+        'LOCAL_OPERATION_ID': produto.confirmedStockOperationId,
+        'LOCAL_PENDING_OPERATION_ID': produto.pendingStockOperationId,
+        'LOCAL_PENDING_BASE_REVISION': produto.pendingStockBaseRevision,
+        'LOCAL_EFFECTIVE_KIND': effectiveStockKindFromProduto(produto).wire,
+        'objectHive': produtoForensicMiniSnapshot(produto),
+      });
       debugPrepTraceHook?.call({
         'event': 'PREP_START',
         'productId': produto.idFirebase,
@@ -394,13 +410,26 @@ class VendaEstoqueRemotoPrepService {
             }
           }
         } catch (_) {}
+        pendingClearAttempted = true;
         final ready = await ensurePendingStockReadyForSale(
           lojaId: li,
           produto: produto,
         );
+        pendingClearSucceeded = ready && !hasPendingStockMutation(produto);
         // Flush só ocorre em ensurePending quando !mustNeverFlush; erros de
         // flush são engolidos (não rethrow). Marca intenção diagnóstica.
         flushAttempted = pendingBefore && !mustNeverFlush;
+        SaleForensicTraceStore.append('PENDING_RECONCILIATION', {
+          'productId': produto.idFirebase,
+          'PENDING_BEFORE_PRESENT': pendingBefore,
+          'PENDING_CLASSIFICATION': reconciliationClass,
+          'MUST_NEVER_FLUSH': mustNeverFlush,
+          'FLUSH_ATTEMPTED': flushAttempted,
+          'PENDING_CLEAR_ATTEMPTED': pendingClearAttempted,
+          'PENDING_CLEAR_SUCCEEDED': pendingClearSucceeded,
+          'PENDING_AFTER_PRESENT': hasPendingStockMutation(produto),
+          'objectPostReconciliation': produtoForensicMiniSnapshot(produto),
+        });
         if (!ready || hasPendingStockMutation(produto)) {
           blocked.add(produto);
           final diag = buildPendingSaleBlockDiag(
@@ -425,6 +454,9 @@ class VendaEstoqueRemotoPrepService {
       // cart/Hive com token stale pós-picker).
       var remoteRefreshSuccess = false;
       var remoteRevAfter = produto.stockRevision;
+      SaleForensicTraceStore.append('REMOTE_REFRESH_STARTED', {
+        'productId': produto.idFirebase,
+      });
       try {
         await refreshAuthoritativeStockCacheForSale(
           lojaId: li,
@@ -432,7 +464,24 @@ class VendaEstoqueRemotoPrepService {
         );
         remoteRefreshSuccess = !hasPendingStockMutation(produto);
         remoteRevAfter = produto.stockRevision;
+        final cells = Map<String, int>.from(
+          ProdutoEstoqueGradeSnapshot.fromProduto(produto).cells,
+        );
+        SaleForensicTraceStore.append('REMOTE_REFRESH_SUCCESS', {
+          'productId': produto.idFirebase,
+          'REMOTE_REFRESH_SUCCESS': remoteRefreshSuccess,
+          'REMOTE_QTY': produto.quantidade,
+          'REMOTE_REVISION': remoteRevAfter,
+          'REMOTE_OPERATION_ID': produto.confirmedStockOperationId,
+          'REMOTE_STOCK_KIND': effectiveStockKindFromProduto(produto).wire,
+          'REMOTE_CANONICAL_CELLS': cells,
+          'objectPostRemoteRefresh': produtoForensicMiniSnapshot(produto),
+        });
       } catch (e) {
+        SaleForensicTraceStore.append('REMOTE_REFRESH_FAILED', {
+          'productId': produto.idFirebase,
+          'errorType': e.runtimeType.toString(),
+        });
         debugPrint(
           '[VENDA-PREP-REFRESH] falha type=${e.runtimeType} '
           'produto=${produto.idFirebase}',

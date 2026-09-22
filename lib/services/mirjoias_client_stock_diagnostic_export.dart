@@ -13,10 +13,12 @@ import '../core/produto_estoque_grade_snapshot.dart';
 import '../core/produto_pending_stock_reconciliation.dart';
 import '../core/produto_stock_revision.dart';
 import '../core/produto_untracked_stock_conflict.dart';
+import '../core/sale_forensic_trace.dart';
 import '../models/produto.dart';
 import 'catalogo_sync_diagnostics_access.dart';
 import 'firestore_paths.dart';
 import 'produtos_firestore_service.dart';
+import '../core/client_build_identity.dart';
 
 /// IDs técnicos canônicos autorizados (estado real Firestore).
 const String kMirjoiasDiagnosticStoreId = 'mirjoias';
@@ -650,6 +652,30 @@ class MirjoiasClientStockDiagnosticExport {
           .map((c) => c.toDiagnosticRow())
           .toList(growable: false),
       'REMOTE_NEWER_CACHE_STALE': remoteNewerCacheStale,
+      'saleForensics': () {
+        // Prefer exporter ctor stamps when provided; else baked bundle identity.
+        final section = SaleForensicTraceStore.toDiagnosticSection();
+        if (_liveBuildId.trim().isNotEmpty && _liveBuildId != 'dev') {
+          section['exporterBuildId'] = _liveBuildId;
+        } else {
+          section['clientBuildId'] = kClientBuildId;
+        }
+        if (_liveGitCommit.trim().isNotEmpty) {
+          section['clientGitCommit'] = _liveGitCommit;
+        } else {
+          section['clientGitCommit'] = kClientGitCommit;
+        }
+        if (_appVersion.trim().isNotEmpty) {
+          section['appVersion'] = _appVersion;
+        } else {
+          section['appVersion'] = kClientAppVersion;
+        }
+        // Bundle proof always present (not remote version.json).
+        section['CLIENT_BUILD_ID'] = kClientBuildId;
+        section['CLIENT_GIT_COMMIT'] = kClientGitCommit;
+        section['APP_VERSION'] = kClientAppVersion;
+        return section;
+      }(),
       'remoteComparisons': comparisons,
       'LOCAL_REMOTE_QTY_DELTA_PRODUCTS': deltaProducts,
       'ORPHAN_VARIATION_IDENTITIES': orphanVariations,

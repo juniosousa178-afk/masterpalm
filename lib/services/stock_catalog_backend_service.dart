@@ -4,6 +4,8 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
+import '../core/sale_forensic_trace.dart';
+
 /// Structured multi-product validation failure from stockCatalogCommand.
 class StockCatalogProductValidationException implements Exception {
   StockCatalogProductValidationException(this.message, {this.issues = const []});
@@ -251,10 +253,29 @@ class StockCatalogBackendService {
     };
     final payload =
         Map<String, dynamic>.from(jsonDecode(jsonEncode(rawPayload)) as Map);
+    // Observability only — does not alter command semantics.
+    if (kind == 'sale' && SaleForensicTraceStore.active != null) {
+      SaleForensicTraceStore.captureSalePayload(
+        storeId: lojaId,
+        operationId: operationId,
+        items: items,
+      );
+    }
     for (var attempt = 0;; attempt++) {
       try {
-        return await _call('stockCatalogCommand', payload);
-      } on FirebaseFunctionsException catch (error) {
+        final result = await _call('stockCatalogCommand', payload);
+        if (kind == 'sale' && SaleForensicTraceStore.active != null) {
+          SaleForensicTraceStore.captureSaleCommandSuccess(result);
+        }
+        return result;
+      } on FirebaseFunctionsException catch (error, st) {
+        if (kind == 'sale' && SaleForensicTraceStore.active != null) {
+          SaleForensicTraceStore.captureRawCallableError(
+            error: error,
+            stack: st,
+            errorCaughtAt: 'stockCatalogCommand.call',
+          );
+        }
         final validation = StockCatalogProductValidationException.tryParse(error);
         if (validation != null) throw validation;
         if (attempt >= 2 ||
