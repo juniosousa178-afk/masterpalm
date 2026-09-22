@@ -5,17 +5,17 @@
 /// Release stamp — updated with each hosting deploy of this app.
 const String kClientBuildId = String.fromEnvironment(
   'CATALOG_BUILD_ID',
-  defaultValue: 'mirjoias-untracked-full-preservation-1.0.97',
+  defaultValue: 'nathy-original-sale-items-fix-1.0.98',
 );
 
 const String kClientGitCommit = String.fromEnvironment(
   'GIT_COMMIT',
-  defaultValue: 'a7ba2a3c3feae14aab9307d20454b8ce2f0fbd95',
+  defaultValue: '49b2e9b326d322db1938fb48c67718c840c025bb',
 );
 
 const String kClientAppVersion = String.fromEnvironment(
   'APP_VERSION',
-  defaultValue: '1.0.97+111',
+  defaultValue: '1.0.98+112',
 );
 
 /// True when compile-time identity looks like an unstamped/dev placeholder.

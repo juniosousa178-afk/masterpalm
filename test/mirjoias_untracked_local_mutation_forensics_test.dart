@@ -376,8 +376,8 @@ void main() {
   group('build proof compile-time', () {
     test('CLIENT_BUILD_ID is not silent dev', () {
       expect(kClientBuildId.toLowerCase(), isNot(equals('dev')));
-      expect(kClientBuildId, contains('1.0.97'));
-      expect(kClientAppVersion, contains('1.0.97'));
+      expect(kClientBuildId, contains('1.0.98'));
+      expect(kClientAppVersion, contains('1.0.98'));
     });
   });
 }

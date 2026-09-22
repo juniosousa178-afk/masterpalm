@@ -1,12 +1,12 @@
 {
-  "buildId": "mirjoias-untracked-full-preservation-1.0.97",
+  "buildId": "nathy-original-sale-items-fix-1.0.98",
   "hostingTarget": "masterpalm-58c46",
   "siteId": "masterpalm-58c46",
   "expectedDomain": "app.mastepalm.com.br",
-  "webVersion": "1.0.97+111",
-  "gitCommit": "a7ba2a3",
-  "gitCommitFull": "a7ba2a3c3feae14aab9307d20454b8ce2f0fbd95",
+  "webVersion": "1.0.98+112",
+  "gitCommit": "49b2e9b",
+  "gitCommitFull": "49b2e9b326d322db1938fb48c67718c840c025bb",
   "featureFlagDefault": false,
   "globalRollout": true,
-  "notes": "Mirjoias: capture untracked conflicts on PULL_EDIT_GUARD preserve path (BR68PR 34/34). Client build proof never silent dev. Preserves Nathy sale forensic 1.0.96."
+  "notes": "Nathy: forward cart-root backendItems to idempotent stock transaction (Lacinho). Preserves Mirjoias 1.0.97 untracked 34/34 + sale forensic trace."
 }
