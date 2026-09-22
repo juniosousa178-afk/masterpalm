@@ -39,6 +39,7 @@ import 'produto_catalogo_upsert_falha.dart';
 import 'catalogo_sync_attempt_context.dart';
 import 'catalogo_sync_diagnostics_service.dart';
 import 'produto_exclusao_tombstone_service.dart';
+import 'produto_stock_catalog_cadastro_sync.dart';
 import 'produto_import_sync_prep_service.dart';
 import '../core/produto_firestore_doc_id_validator.dart';
 import 'produto_pull_skip_guard.dart';
@@ -1588,6 +1589,39 @@ class ProdutosFirestoreService {
         return ProdutoSyncRemotoStatus.semMudancas;
       }
 
+      // Cadastro explícito: mutação canônica via stockCatalogCommand (não write direto).
+      if (forcePushFromCadastro) {
+        final intent =
+            await ProdutoStockCatalogCadastroSync.buildOrReuseIntent(
+          produto: produto,
+          produtoId: produtoId,
+          documentExists: docSnap.exists,
+          forcePushFromCadastro: true,
+          gradeBaseline: gradeBaseline,
+        );
+        logD(
+          '[PRODUTOS-SYNC] cadastro via stockCatalogCommand '
+          'kind=${intent.kind} op=${intent.operationId} doc=$produtoId',
+        );
+        final response = await ProdutoStockCatalogCadastroSync.sendIntent(
+          lojaId: storeId,
+          intent: intent,
+        );
+        await ProdutoStockCatalogCadastroSync.applyBackendResponseToHive(
+          produto: produto,
+          lojaId: storeId,
+          response: response,
+        );
+        if (produto.idFirebase.isEmpty) {
+          produto.idFirebase = produtoId;
+          await produto.save();
+        }
+        logD(
+          '✅ [PRODUTOS-SYNC] Cadastro confirmado via backend kind=${intent.kind}',
+        );
+        return ProdutoSyncRemotoStatus.confirmado;
+      }
+
       // Não registrar tombstone de variação via diff remoto×local no sync geral: payload
       // local pode estar incompleto (pull parcial, import, race) e marcar célula ativa como "excluída".
 
@@ -2389,6 +2423,17 @@ class ProdutosFirestoreService {
                 // updateQuantity:false — adotava stockRevision/op remoto
                 // preservando qty local divergente (51 LOCAL_UNTRACKED).
               }
+              // Already-applied pending: confirm + hydrate even under preserve.
+              if (hasPendingStockMutation(p) &&
+                  tryConfirmStockFromRemote(p, data)) {
+                applyAuthoritativeRemoteStockToProduto(
+                  p,
+                  remote: data,
+                  updateQuantity: true,
+                );
+              } else if (preserveStockRegression) {
+                tryConfirmStockFromRemote(p, data);
+              }
             } else {
               captureUntrackedConflictBeforeAuthoritativeOverwrite(
                 local: p,
@@ -2529,7 +2574,13 @@ class ProdutosFirestoreService {
                 p.updatedAt = _maxDateTime(p.updatedAt, updatedAt.toDate());
               }
               if (preserveStockRegression) {
-                tryConfirmStockFromRemote(p, data);
+                if (tryConfirmStockFromRemote(p, data)) {
+                  applyAuthoritativeRemoteStockToProduto(
+                    p,
+                    remote: data,
+                    updateQuantity: true,
+                  );
+                }
               }
             } else {
               if (updatedAt != null && updatedAt is Timestamp) {
@@ -2539,7 +2590,13 @@ class ProdutosFirestoreService {
               if (stockAt is Timestamp) {
                 applyServerStockVersionToProduto(p, stockAt.toDate());
               }
-              tryConfirmStockFromRemote(p, data);
+              if (tryConfirmStockFromRemote(p, data)) {
+                applyAuthoritativeRemoteStockToProduto(
+                  p,
+                  remote: data,
+                  updateQuantity: true,
+                );
+              }
             }
             if ((p.custoReal - custoAntes).abs() > 0.0001 ||
                 (p.peso - pesoAntes).abs() > 0.0001) {

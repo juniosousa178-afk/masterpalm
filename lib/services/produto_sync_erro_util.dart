@@ -1,6 +1,8 @@
 // Mensagens sanitizadas de falha de sync de produto (UI / fila / logs).
 
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 
 import 'produto_catalogo_upsert_falha.dart';
 import 'produtos_firestore_service.dart';
@@ -11,8 +13,19 @@ class ProdutoSyncErroUtil {
 
   /// Último erro sanitizado do ciclo de [ProdutosFirestoreService.syncProdutoComStatus].
   static String? sanitizar(Object? error, {ProdutoSyncRemotoStatus? status}) {
+    if (error is FirebaseFunctionsException) {
+      return mapFailedPreconditionOrCode(
+        code: error.code,
+        message: error.message,
+        details: error.details,
+      );
+    }
     if (error is FirebaseException) {
-      return _firebaseCodeLabel(error.code);
+      return mapFailedPreconditionOrCode(
+        code: error.code,
+        message: error.message,
+        details: null,
+      );
     }
     if (error is FirebaseAuthException) {
       return _firebaseCodeLabel(error.code);
@@ -25,6 +38,54 @@ class ProdutoSyncErroUtil {
     if (raw.isEmpty) return null;
     if (raw.length > 120) return '${raw.substring(0, 120)}…';
     return raw;
+  }
+
+  /// Differentiates failed-precondition causes for UX (raw stays in diagnostics).
+  static String mapFailedPreconditionOrCode({
+    required String code,
+    String? message,
+    Object? details,
+  }) {
+    final msg = (message ?? '').toLowerCase();
+    final detailCode = _detailCode(details);
+
+    if (code == 'failed-precondition') {
+      if (detailCode == 'INVALID_CANONICAL_STOCK' ||
+          msg.contains('invalid canonical stock')) {
+        return 'estoque canônico inválido (publique após corrigir o documento)';
+      }
+      if (msg.contains('stock protocol unavailable') ||
+          msg.contains('migration incomplete')) {
+        return 'protocolo de estoque indisponível para esta operação';
+      }
+      if (msg.contains('editorial not authorized') ||
+          msg.contains('not authorized') && msg.contains('editorial')) {
+        return 'sem permissão para salvar metadados do produto';
+      }
+      if (msg.contains('stock edit not authorized') ||
+          msg.contains('catalog publish not authorized')) {
+        return 'sem permissão para esta operação de estoque/catálogo';
+      }
+      if (msg.contains('applied sale required')) {
+        return 'não foi possível localizar a operação original de estoque desta venda';
+      }
+      if (msg.contains('revision') || msg.contains('conflict')) {
+        return 'estoque desatualizado (atualize e tente novamente)';
+      }
+      return 'operação rejeitada pelo servidor (pré-condição)';
+    }
+    if (code == 'aborted') {
+      return 'conflito de revisão de estoque (atualize e tente novamente)';
+    }
+    return _firebaseCodeLabel(code);
+  }
+
+  static String? _detailCode(Object? details) {
+    if (details is Map) {
+      final c = details['code']?.toString();
+      if (c != null && c.isNotEmpty) return c;
+    }
+    return null;
   }
 
   static String? _statusLabel(ProdutoSyncRemotoStatus status) {
@@ -54,7 +115,9 @@ class ProdutoSyncErroUtil {
       case 'unauthenticated':
         return 'unauthenticated (sessão expirada)';
       case 'failed-precondition':
-        return 'failed-precondition';
+        return 'operação rejeitada pelo servidor (pré-condição)';
+      case 'aborted':
+        return 'conflito de revisão de estoque (atualize e tente novamente)';
       case 'invalid-argument':
         return 'invalid-argument (dados inválidos)';
       case 'unavailable':

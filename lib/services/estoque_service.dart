@@ -19,6 +19,7 @@ import 'package:hive/hive.dart';
 import '../core/produto_custo_guard.dart';
 import '../core/hive_box_names.dart';
 import '../core/produto_pending_stock_reconciliation.dart';
+import '../core/produto_effective_stock.dart';
 import '../core/produto_stock_revision.dart';
 import 'stock_catalog_backend_service.dart';
 import '../core/produto_variacao_extra.dart';
@@ -907,6 +908,34 @@ class EstoqueService {
     required Produto produto,
     required String lojaId,
   }) async {
+    // Before any resend: if remote already has this pending operationId, confirm.
+    try {
+      final snap = await _db
+          .collection('lojas')
+          .doc(lojaId)
+          .collection(FSPaths.estoqueProdutosCol)
+          .doc(produto.idFirebase)
+          .get();
+      if (snap.exists) {
+        final remote = snap.data() ?? <String, dynamic>{};
+        if (hasPendingStockMutation(produto) &&
+            tryConfirmStockFromRemote(produto, remote)) {
+          applyAuthoritativeRemoteStockToProduto(
+            produto,
+            remote: remote,
+            updateQuantity: true,
+          );
+          await produto.save();
+          debugPrint(
+            '[ESTOQUE-SYNC] pending already applied remotely — confirmed, no retry',
+          );
+          return ResultadoAjusteEstoque.sucesso;
+        }
+      }
+    } catch (e) {
+      debugPrint('[ESTOQUE-SYNC] pre-confirm remote read failed: $e');
+    }
+
     if (!hasPendingStockMutation(produto)) {
       markPendingStockMutation(
         produto,

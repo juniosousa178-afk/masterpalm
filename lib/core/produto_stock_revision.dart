@@ -177,11 +177,15 @@ bool tryConfirmStockFromRemote(Produto p, Map<String, dynamic> remote) {
 
   if (hasPendingStockMutation(p)) {
     final pendingOp = p.pendingStockOperationId!.trim();
-    if (remoteOp == pendingOp &&
-        remoteRev > (p.pendingStockBaseRevision ?? 0)) {
+    final baseRev = p.pendingStockBaseRevision ?? 0;
+    // Already-applied remote: same operationId on product doc — confirm, never retry.
+    if (remoteOp != null &&
+        remoteOp == pendingOp &&
+        remoteRev >= baseRev &&
+        remoteRev > 0) {
       confirmStockMutation(
         p,
-        operationId: remoteOp!,
+        operationId: remoteOp,
         revision: remoteRev,
         serverStockAt: serverAt,
       );
