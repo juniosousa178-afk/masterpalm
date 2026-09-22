@@ -16,6 +16,43 @@ import '../models/venda_item.dart';
 class VendaComboEstoqueExpansion {
   VendaComboEstoqueExpansion._();
 
+  /// Original roots only. Recipe expansion and stock validation run on the server.
+  static List<Map<String, dynamic>> montarItensParaBackend({
+    required List<VendaItem> itens,
+    required List<Produto> produtos,
+    Map<int, List<Map<String, dynamic>>>? selecoes,
+  }) {
+    if (itens.length != produtos.length) throw StateError('Produtos da venda inconsistentes.');
+    return List.generate(itens.length, (index) {
+      final item = itens[index];
+      final produto = produtos[index];
+      if (produto.idFirebase.trim().isEmpty) throw StateError('Produto sem identificador canônico.');
+      final selection = <Map<String, dynamic>>[];
+      if (produto.temComboConfigEfetivo) {
+        final groups = (produto.comboConfig?['grupos'] as List? ?? []).whereType<Map>().toList();
+        for (final choice in selecoes?[index] ?? <Map<String, dynamic>>[]) {
+          final pid = (choice['productId'] ?? choice['id'] ?? '').toString();
+          final explicitGroup = (choice['groupId'] ?? '').toString();
+          final matching = groups.where((g) =>
+            (explicitGroup.isEmpty || g['id'] == explicitGroup) &&
+            (g['opcoes'] as List? ?? []).whereType<Map>().any((o) => o['productId'] == pid)).toList();
+          if (matching.length != 1) throw StateError('Seleção de combo sem grupo canônico inequívoco.');
+          selection.add({
+            'groupId': matching.single['id'], 'productId': pid,
+            'quantity': choice['quantidade'] ?? 1,
+            'size': choice['tamanho'] ?? '', 'color': choice['cor'] ?? '',
+            'extra': choice['extraValor'] ?? choice['variacaoExtra'] ?? '',
+          });
+        }
+      }
+      return <String, dynamic>{
+        'productId': produto.idFirebase, 'quantity': item.quantidade,
+        'size': item.tamanho, 'color': item.cor, 'extra': item.extraValor,
+        if (produto.temComboConfigEfetivo) 'selection': selection,
+      };
+    });
+  }
+
   /// Converte itens do carrinho / pré-pedido (mapas) para [VendaItem] + seleção de combo por índice,
   /// no mesmo formato da nova venda (`itensComboSelecaoPorIndice` antes de cada `add`).
   static (List<VendaItem> vendaItens, Map<int, List<Map<String, dynamic>>>? comboPorIndice)
