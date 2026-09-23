@@ -18,6 +18,8 @@ import '../core/logger.dart';
 import '../core/safe_cast.dart';
 import '../core/venda_exclusao_tombstone.dart';
 import '../core/delete_forensic_trace.dart';
+import '../diagnostics/diagnostic_enums.dart';
+import '../diagnostics/diagnostic_trace_service.dart';
 import '../models/cliente.dart';
 import '../models/produto.dart';
 import '../models/venda.dart';
@@ -365,6 +367,13 @@ class SoftDeleteService {
     if (key == null) return null;
 
     await DeleteForensicTraceStore.start(lojaId: lojaId);
+    DiagnosticTraceService.start(
+      storeId: lojaId,
+      module: DiagnosticModule.saleDelete,
+      operationType: 'sale_delete',
+      extra: {'vendaKey': key},
+    );
+    DiagnosticTraceService.stage(DiagnosticStages.deleteStart);
 
     debugPrint('[VENDA-DELETE] etapa=remover_contas_start lojaId=$lojaId vendaKey=$key');
     await VendasService.removerContasReceberVinculadasAVenda(
@@ -404,6 +413,11 @@ class SoftDeleteService {
         st,
       );
       DeleteForensicTraceStore.endActive(aborted: true);
+      DiagnosticTraceService.error(DiagnosticStages.deleteAbort, e, stack: st);
+      DiagnosticTraceService.complete(
+        aborted: true,
+        stageName: DiagnosticStages.deleteAbort,
+      );
       // Preserve raw forensic log; surface operational message to callers.
       final wrapped = e is EstoqueRestoreSourceUnresolvedException
           ? e
@@ -537,6 +551,11 @@ class SoftDeleteService {
 
     debugPrint('[VENDA-DELETE] etapa=schedule_concluido undoId=$id');
     DeleteForensicTraceStore.endActive(aborted: false);
+    DiagnosticTraceService.success(DiagnosticStages.deleteComplete);
+    DiagnosticTraceService.complete(
+      aborted: false,
+      stageName: DiagnosticStages.deleteComplete,
+    );
     return id;
   }
 

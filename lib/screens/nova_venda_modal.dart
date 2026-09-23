@@ -15,6 +15,8 @@ import '../core/produto_cadastro_gate.dart';
 import '../core/produto_variacao_extra.dart';
 import '../core/produto_sale_variation_picker.dart';
 import '../core/sale_forensic_trace.dart';
+import '../diagnostics/diagnostic_enums.dart';
+import '../diagnostics/diagnostic_trace_service.dart';
 import '../services/venda_produto_stock_hydrate_service.dart';
 import '../core/strict_product_resolution.dart';
 import '../core/venda_finalizacao_reentrada_guard.dart';
@@ -2375,6 +2377,13 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
         'lineCount': itens.length,
         'lines': prepLines,
       });
+      DiagnosticTraceService.start(
+        storeId: lojaId,
+        module: DiagnosticModule.sales,
+        operationType: 'sale',
+        extra: {'lineCount': itens.length},
+      );
+      DiagnosticTraceService.stage(DiagnosticStages.saleStart);
 
       // ✅ ETAPA 1: Fluxo único de participação — apenas CampaignEngine (via VendasService).
       // Removido _registrarNumeroSorteio (SorteioNumeroService) para evitar duplicidade.

@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
 import '../core/sale_forensic_trace.dart';
+import '../diagnostics/diagnostic_enums.dart';
+import '../diagnostics/diagnostic_trace_service.dart';
 
 /// Structured multi-product validation failure from stockCatalogCommand.
 class StockCatalogProductValidationException implements Exception {
@@ -261,14 +263,49 @@ class StockCatalogBackendService {
         items: items,
       );
     }
+    final diagModule = switch (kind) {
+      'sale' => DiagnosticModule.sales,
+      'restore' => DiagnosticModule.restore,
+      'replace' || 'adjust' || 'create' || 'editorial' => DiagnosticModule.stock,
+      _ => DiagnosticModule.cloudFunction,
+    };
+    final hadActiveDiag = DiagnosticTraceService.activeTraceId != null;
+    if (!hadActiveDiag) {
+      DiagnosticTraceService.start(
+        storeId: lojaId,
+        module: diagModule,
+        operationType: kind,
+        extra: {'operationId': operationId},
+      );
+    }
+    DiagnosticTraceService.stage(
+      DiagnosticStages.stockCommandStart,
+      extra: {'kind': kind, 'operationId': operationId},
+    );
     for (var attempt = 0;; attempt++) {
       try {
         final result = await _call('stockCatalogCommand', payload);
+        final already = result['alreadyApplied'] == true;
+        DiagnosticTraceService.success(
+          already
+              ? DiagnosticStages.stockCommandAlreadyApplied
+              : DiagnosticStages.stockCommandSuccess,
+          extra: {'kind': kind, 'operationId': operationId},
+        );
         if (kind == 'sale' && SaleForensicTraceStore.active != null) {
           SaleForensicTraceStore.captureSaleCommandSuccess(result);
         }
+        if (!hadActiveDiag) {
+          DiagnosticTraceService.complete();
+        }
         return result;
       } on FirebaseFunctionsException catch (error, st) {
+        DiagnosticTraceService.error(
+          DiagnosticStages.stockCommandStart,
+          error,
+          stack: st,
+          extra: {'kind': kind, 'code': error.code},
+        );
         if (kind == 'sale' && SaleForensicTraceStore.active != null) {
           SaleForensicTraceStore.captureRawCallableError(
             error: error,
@@ -277,9 +314,17 @@ class StockCatalogBackendService {
           );
         }
         final validation = StockCatalogProductValidationException.tryParse(error);
-        if (validation != null) throw validation;
+        if (validation != null) {
+          if (!hadActiveDiag) {
+            DiagnosticTraceService.complete(aborted: true);
+          }
+          throw validation;
+        }
         if (attempt >= 2 ||
             !{'unavailable', 'deadline-exceeded'}.contains(error.code)) {
+          if (!hadActiveDiag) {
+            DiagnosticTraceService.complete(aborted: true);
+          }
           rethrow;
         }
         // No fallback to Firestore writes after an uncertain server commit.

@@ -95,6 +95,8 @@ import 'screens/onboarding_loja_screen.dart';
 // order_review_screen usado em app_routes.dart
 import 'debug/health_check_screen.dart';
 import 'screens/diagnostico_app_screen.dart';
+import 'screens/diagnostics/system_diagnostic_center_screen.dart';
+import 'screens/diagnostics/system_health_admin_screen.dart';
 import 'screens/pre_pedidos_screen.dart';
 import 'screens/planos_screen.dart';
 import 'screens/campanhas_sorteio_screen.dart';
@@ -4452,6 +4454,9 @@ class MyApp extends StatelessWidget {
               '/configuracoes_catalogo': (_) => const LojaConfigScreen(),
               '/health': (_) => const HealthCheckScreen(),
               '/diagnostico': (_) => const DiagnosticoAppScreen(),
+              '/diagnostico_sistema': (_) =>
+                  const SystemDiagnosticCenterScreen(),
+              '/saude_sistema': (_) => const SystemHealthAdminScreen(),
               '/ajuda': (_) => const AjudaScreen(),
               '/config_pin': (_) => const ConfigPinScreen(),
               '/test_checkout': (_) => const TestCheckout(),
