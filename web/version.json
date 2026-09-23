@@ -1,13 +1,11 @@
 ﻿{
-  "buildId": "stock-catalog-sync-hotfix-1.0.101",
+  "buildId": "consignado-search-add-fix-1.0.106",
   "hostingTarget": "masterpalm-58c46",
   "siteId": "masterpalm-58c46",
   "expectedDomain": "app.mastepalm.com.br",
-  "webVersion": "1.0.101+115",
-  "gitCommit": "b6f97d5",
-  "gitCommitFull": "b6f97d5c6b0a5c00e41b2cdfbaf910b2bdd87b71",
-  "formCommit": "c46ee62",
-  "featureFlagDefault": false,
-  "globalRollout": true,
-  "notes": "Consolidated: restore+tombstone (1.0.100) + NO_CONTROL editorial/publish/replace auth + cadastro via stockCatalogCommand + pending already-applied confirm + failed-precondition UX."
+  "webVersion": "1.0.106+120",
+  "gitCommit": "PENDING",
+  "gitCommitFull": "PENDING",
+  "builtAtUtc": "2026-09-23T22:45:00Z",
+  "notes": "Unify consignado search selection with canonical productId resolve + search tap feedback"
 }

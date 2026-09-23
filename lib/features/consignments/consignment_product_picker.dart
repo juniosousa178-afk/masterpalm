@@ -6,6 +6,18 @@ import 'consignment_models.dart';
 import 'consignment_service.dart';
 import 'consignment_ui.dart';
 
+/// Resolve search/list row back to the canonical loaded catalog item by immutable id.
+/// Search is a filter over [catalog]; never use filtered index into another list.
+ConsignmentPickerItem resolveConsignmentPickerSelection({
+  required List<ConsignmentPickerItem> catalog,
+  required ConsignmentPickerItem selected,
+}) {
+  for (final item in catalog) {
+    if (item.productId == selected.productId) return item;
+  }
+  return selected;
+}
+
 /// Shared professional picker used by create + add-items flows.
 Future<ConsignmentDraftLine?> pickConsignmentProductLine({
   required BuildContext context,
@@ -18,6 +30,12 @@ Future<ConsignmentDraftLine?> pickConsignmentProductLine({
     catalog = const [];
   }
   if (!context.mounted) return null;
+  if (catalog.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Nenhum produto disponível para consignação.')),
+    );
+    return null;
+  }
   final selected = await showModalBottomSheet<ConsignmentPickerItem>(
     context: context,
     isScrollControlled: true,
@@ -61,14 +79,37 @@ Future<ConsignmentDraftLine?> pickConsignmentProductLine({
                                 : p.unavailableReason;
                             return ListTile(
                               key: ValueKey('picker_${p.productId}'),
-                              enabled: p.eligible,
+                              // Keep taps receivable when searching (incl. disabled/zero-stock rows)
+                              // so operators get feedback instead of a silent no-op.
+                              enabled: true,
+                              textColor: p.eligible ? null : Theme.of(ctx).disabledColor,
                               title: Text(p.name),
                               subtitle: Text(
                                 codeLabel.isEmpty
                                     ? availability
                                     : '$codeLabel · $availability',
                               ),
-                              onTap: p.eligible ? () => Navigator.pop(ctx, p) : null,
+                              onTap: () {
+                                if (!p.eligible) {
+                                  ScaffoldMessenger.of(ctx).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        p.unavailableReason.isEmpty
+                                            ? 'Produto indisponível para consignação.'
+                                            : p.unavailableReason,
+                                      ),
+                                    ),
+                                  );
+                                  return;
+                                }
+                                // Web: dismiss keyboard before pop so the gesture is not cancelled.
+                                FocusManager.instance.primaryFocus?.unfocus();
+                                final canonical = resolveConsignmentPickerSelection(
+                                  catalog: catalog,
+                                  selected: p,
+                                );
+                                Navigator.pop(ctx, canonical);
+                              },
                             );
                           },
                         ),
@@ -80,28 +121,33 @@ Future<ConsignmentDraftLine?> pickConsignmentProductLine({
       );
     },
   );
-  if (selected == null || !selected.eligible || !context.mounted) return null;
-  var type = selected.stockKind == 'variation' || selected.stockKind == 'grade'
-      ? selected.stockKind
+  if (selected == null || !context.mounted) return null;
+  final canonical = resolveConsignmentPickerSelection(
+    catalog: catalog,
+    selected: selected,
+  );
+  if (!canonical.eligible) return null;
+  var type = canonical.stockKind == 'variation' || canonical.stockKind == 'grade'
+      ? canonical.stockKind
       : 'simple';
   var variation = const ConsignmentVariationKey();
   if (type == 'variation' || type == 'grade') {
     final picked = await pickConsignmentVariation(
       context: context,
-      variacoes: selected.variacoes,
+      variacoes: canonical.variacoes,
       title: type == 'grade' ? 'Grade' : 'Variação',
     );
     if (picked == null) return null;
     variation = picked;
   }
   return ConsignmentDraftLine(
-    productId: selected.productId,
-    productName: selected.name,
+    productId: canonical.productId,
+    productName: canonical.name,
     productType: type,
     qtySent: 1,
-    unitSalePrice: selected.price,
+    unitSalePrice: canonical.price,
     variationKey: variation,
-    expectedStockRevision: selected.stockRevision,
+    expectedStockRevision: canonical.stockRevision,
   );
 }
 

@@ -2,6 +2,7 @@ import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:master_palm/features/consignments/consignment_eligibility.dart';
+import 'package:master_palm/features/consignments/consignment_product_picker.dart';
 import 'package:master_palm/features/consignments/consignment_service.dart';
 import 'package:master_palm/features/consignments/screens/consignment_form_screen.dart';
 
@@ -208,6 +209,25 @@ void main() {
       expect(hit.productId, 'var1');
       expect(hit.stockKind, 'variation');
       expect(hit.variacoes.keys.toSet(), {'P', 'M'});
+    });
+
+    test('18 resolveConsignmentPickerSelection uses productId not filtered index', () {
+      final all = [
+        _item(id: 'first', name: 'Alpha', productCode: 'A1'),
+        _item(id: 'target', name: 'Bravo Target', productCode: 'B2', stockKind: 'variation', variacoes: {
+          'P': {'sem-cor': 2},
+        }),
+        _item(id: 'third', name: 'Charlie', productCode: 'C3'),
+      ];
+      final filtered = consignmentPickerVisibleItems(all, query: 'Bravo');
+      final resolved = resolveConsignmentPickerSelection(
+        catalog: all,
+        selected: filtered.single,
+      );
+      expect(resolved.productId, 'target');
+      expect(identical(resolved, all[1]), isTrue);
+      expect(resolved.stockKind, 'variation');
+      expect(resolved.variacoes.containsKey('P'), isTrue);
     });
   });
 
