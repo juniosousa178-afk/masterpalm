@@ -270,6 +270,10 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
         if (legacyCompat && (rawStock.stockRevision === undefined || rawStock.stockRevision === null)) {
           rawStock.stockRevision = 0;
         }
+        // Legacy/NO_CONTROL docs may lack stockKind; infer before normalize (same as migrate planner).
+        if (rawStock.stockKind == null || rawStock.stockKind === '') {
+          rawStock.stockKind = inferStockKind(rawStock);
+        }
         data = normalizeStock(creating ? newDefinition : rawStock); quantity(data.stockRevision);
       } catch (error) {
         if (softSale && targetIds.has(id)) {
