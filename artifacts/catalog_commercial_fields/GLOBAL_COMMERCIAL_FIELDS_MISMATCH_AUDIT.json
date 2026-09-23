@@ -1,0 +1,320 @@
+{
+  "MODE": "READ_ONLY",
+  "GLOBAL_AFFECTED_TENANT_COUNT": 8,
+  "GLOBAL_AFFECTED_PRODUCT_COUNT": 349,
+  "TABLE": [
+    {
+      "STORE_ID": "mirjoias",
+      "DISPLAY_NAME": "Mir Joias",
+      "SOURCE_WITH_COMMERCIAL": 539,
+      "LIVE_COUNT": 258,
+      "ESTOQUE_COUNT": 539,
+      "AFFECTED_PRODUCT_COUNT": 258,
+      "PIX_MISMATCH_COUNT": 258,
+      "INSTALLMENT_MISMATCH_COUNT": 258,
+      "DIVIDE_MISMATCH_COUNT": 258
+    },
+    {
+      "STORE_ID": "pratana-joiasesemijoias",
+      "DISPLAY_NAME": "Pratana Joias e Semijoias",
+      "SOURCE_WITH_COMMERCIAL": 39,
+      "LIVE_COUNT": 79,
+      "ESTOQUE_COUNT": 113,
+      "AFFECTED_PRODUCT_COUNT": 33,
+      "PIX_MISMATCH_COUNT": 33,
+      "INSTALLMENT_MISMATCH_COUNT": 33,
+      "DIVIDE_MISMATCH_COUNT": 33
+    },
+    {
+      "STORE_ID": "nathy-pratas-e-folheados",
+      "DISPLAY_NAME": "Nathy Pratas e Folheados",
+      "SOURCE_WITH_COMMERCIAL": 711,
+      "LIVE_COUNT": 336,
+      "ESTOQUE_COUNT": 744,
+      "AFFECTED_PRODUCT_COUNT": 28,
+      "PIX_MISMATCH_COUNT": 28,
+      "INSTALLMENT_MISMATCH_COUNT": 28,
+      "DIVIDE_MISMATCH_COUNT": 28
+    },
+    {
+      "STORE_ID": "jaque-thi29",
+      "DISPLAY_NAME": "Jaqueline patricia Oliveira",
+      "SOURCE_WITH_COMMERCIAL": 26,
+      "LIVE_COUNT": 14,
+      "ESTOQUE_COUNT": 26,
+      "AFFECTED_PRODUCT_COUNT": 14,
+      "PIX_MISMATCH_COUNT": 14,
+      "INSTALLMENT_MISMATCH_COUNT": 14,
+      "DIVIDE_MISMATCH_COUNT": 14
+    },
+    {
+      "STORE_ID": "ericabrisasr-1",
+      "DISPLAY_NAME": "Luminá Pratas",
+      "SOURCE_WITH_COMMERCIAL": 98,
+      "LIVE_COUNT": 80,
+      "ESTOQUE_COUNT": 120,
+      "AFFECTED_PRODUCT_COUNT": 12,
+      "PIX_MISMATCH_COUNT": 12,
+      "INSTALLMENT_MISMATCH_COUNT": 12,
+      "DIVIDE_MISMATCH_COUNT": 12
+    },
+    {
+      "STORE_ID": "lavile-joias",
+      "DISPLAY_NAME": "Lavile Joias",
+      "SOURCE_WITH_COMMERCIAL": 370,
+      "LIVE_COUNT": 3,
+      "ESTOQUE_COUNT": 370,
+      "AFFECTED_PRODUCT_COUNT": 2,
+      "PIX_MISMATCH_COUNT": 2,
+      "INSTALLMENT_MISMATCH_COUNT": 2,
+      "DIVIDE_MISMATCH_COUNT": 2
+    },
+    {
+      "STORE_ID": "brisa-do-sol-pratas",
+      "DISPLAY_NAME": "brisa do sol pratas",
+      "SOURCE_WITH_COMMERCIAL": 1,
+      "LIVE_COUNT": 1,
+      "ESTOQUE_COUNT": 1,
+      "AFFECTED_PRODUCT_COUNT": 1,
+      "PIX_MISMATCH_COUNT": 1,
+      "INSTALLMENT_MISMATCH_COUNT": 1,
+      "DIVIDE_MISMATCH_COUNT": 1
+    },
+    {
+      "STORE_ID": "master",
+      "DISPLAY_NAME": "master",
+      "SOURCE_WITH_COMMERCIAL": 117,
+      "LIVE_COUNT": 2,
+      "ESTOQUE_COUNT": 123,
+      "AFFECTED_PRODUCT_COUNT": 1,
+      "PIX_MISMATCH_COUNT": 1,
+      "INSTALLMENT_MISMATCH_COUNT": 1,
+      "DIVIDE_MISMATCH_COUNT": 1
+    },
+    {
+      "STORE_ID": "cecilia-drjn",
+      "DISPLAY_NAME": "Cecília Rosa",
+      "SOURCE_WITH_COMMERCIAL": 1,
+      "LIVE_COUNT": 1,
+      "ESTOQUE_COUNT": 1,
+      "AFFECTED_PRODUCT_COUNT": 0,
+      "PIX_MISMATCH_COUNT": 0,
+      "INSTALLMENT_MISMATCH_COUNT": 0,
+      "DIVIDE_MISMATCH_COUNT": 0
+    },
+    {
+      "STORE_ID": "crisdealbuquerque094",
+      "DISPLAY_NAME": "Cristal Pratas",
+      "SOURCE_WITH_COMMERCIAL": 26,
+      "LIVE_COUNT": 24,
+      "ESTOQUE_COUNT": 26,
+      "AFFECTED_PRODUCT_COUNT": 0,
+      "PIX_MISMATCH_COUNT": 0,
+      "INSTALLMENT_MISMATCH_COUNT": 0,
+      "DIVIDE_MISMATCH_COUNT": 0
+    },
+    {
+      "STORE_ID": "dlumijoias",
+      "DISPLAY_NAME": "Danielly Fernanda Bonatto",
+      "SOURCE_WITH_COMMERCIAL": 12,
+      "LIVE_COUNT": 12,
+      "ESTOQUE_COUNT": 12,
+      "AFFECTED_PRODUCT_COUNT": 0,
+      "PIX_MISMATCH_COUNT": 0,
+      "INSTALLMENT_MISMATCH_COUNT": 0,
+      "DIVIDE_MISMATCH_COUNT": 0
+    },
+    {
+      "STORE_ID": "donna-anna-prata-925",
+      "DISPLAY_NAME": "Donna Anna Prata 925",
+      "SOURCE_WITH_COMMERCIAL": 2,
+      "LIVE_COUNT": 0,
+      "ESTOQUE_COUNT": 2,
+      "AFFECTED_PRODUCT_COUNT": 0,
+      "PIX_MISMATCH_COUNT": 0,
+      "INSTALLMENT_MISMATCH_COUNT": 0,
+      "DIVIDE_MISMATCH_COUNT": 0
+    },
+    {
+      "STORE_ID": "emmypratas925",
+      "DISPLAY_NAME": "emmy pratas",
+      "SOURCE_WITH_COMMERCIAL": 1,
+      "LIVE_COUNT": 1,
+      "ESTOQUE_COUNT": 1,
+      "AFFECTED_PRODUCT_COUNT": 0,
+      "PIX_MISMATCH_COUNT": 0,
+      "INSTALLMENT_MISMATCH_COUNT": 0,
+      "DIVIDE_MISMATCH_COUNT": 0
+    },
+    {
+      "STORE_ID": "flavia",
+      "DISPLAY_NAME": "flavia",
+      "SOURCE_WITH_COMMERCIAL": 1,
+      "LIVE_COUNT": 1,
+      "ESTOQUE_COUNT": 1,
+      "AFFECTED_PRODUCT_COUNT": 0,
+      "PIX_MISMATCH_COUNT": 0,
+      "INSTALLMENT_MISMATCH_COUNT": 0,
+      "DIVIDE_MISMATCH_COUNT": 0
+    },
+    {
+      "STORE_ID": "ilumine-se-acessrios",
+      "DISPLAY_NAME": "Ilumine-se Acessórios",
+      "SOURCE_WITH_COMMERCIAL": 38,
+      "LIVE_COUNT": 67,
+      "ESTOQUE_COUNT": 38,
+      "AFFECTED_PRODUCT_COUNT": 0,
+      "PIX_MISMATCH_COUNT": 0,
+      "INSTALLMENT_MISMATCH_COUNT": 0,
+      "DIVIDE_MISMATCH_COUNT": 0
+    },
+    {
+      "STORE_ID": "joannacrystina-eng",
+      "DISPLAY_NAME": "Joanna Crystina da Silva de Oliveira",
+      "SOURCE_WITH_COMMERCIAL": 1,
+      "LIVE_COUNT": 1,
+      "ESTOQUE_COUNT": 1,
+      "AFFECTED_PRODUCT_COUNT": 0,
+      "PIX_MISMATCH_COUNT": 0,
+      "INSTALLMENT_MISMATCH_COUNT": 0,
+      "DIVIDE_MISMATCH_COUNT": 0
+    },
+    {
+      "STORE_ID": "juliana-lopes0154",
+      "DISPLAY_NAME": "Juliana da Silva Lopes",
+      "SOURCE_WITH_COMMERCIAL": 9,
+      "LIVE_COUNT": 0,
+      "ESTOQUE_COUNT": 9,
+      "AFFECTED_PRODUCT_COUNT": 0,
+      "PIX_MISMATCH_COUNT": 0,
+      "INSTALLMENT_MISMATCH_COUNT": 0,
+      "DIVIDE_MISMATCH_COUNT": 0
+    },
+    {
+      "STORE_ID": "la-pratas",
+      "DISPLAY_NAME": "L.A. pratas",
+      "SOURCE_WITH_COMMERCIAL": 38,
+      "LIVE_COUNT": 0,
+      "ESTOQUE_COUNT": 38,
+      "AFFECTED_PRODUCT_COUNT": 0,
+      "PIX_MISMATCH_COUNT": 0,
+      "INSTALLMENT_MISMATCH_COUNT": 0,
+      "DIVIDE_MISMATCH_COUNT": 0
+    },
+    {
+      "STORE_ID": "lina-shoes",
+      "DISPLAY_NAME": "Lina Shoes",
+      "SOURCE_WITH_COMMERCIAL": 91,
+      "LIVE_COUNT": 0,
+      "ESTOQUE_COUNT": 105,
+      "AFFECTED_PRODUCT_COUNT": 0,
+      "PIX_MISMATCH_COUNT": 0,
+      "INSTALLMENT_MISMATCH_COUNT": 0,
+      "DIVIDE_MISMATCH_COUNT": 0
+    },
+    {
+      "STORE_ID": "lumynejoias",
+      "DISPLAY_NAME": "Lumyne - Joias em Prata 925",
+      "SOURCE_WITH_COMMERCIAL": 71,
+      "LIVE_COUNT": 51,
+      "ESTOQUE_COUNT": 71,
+      "AFFECTED_PRODUCT_COUNT": 0,
+      "PIX_MISMATCH_COUNT": 0,
+      "INSTALLMENT_MISMATCH_COUNT": 0,
+      "DIVIDE_MISMATCH_COUNT": 0
+    },
+    {
+      "STORE_ID": "masterpalm",
+      "DISPLAY_NAME": "masterpalm-gmail-com",
+      "SOURCE_WITH_COMMERCIAL": 1,
+      "LIVE_COUNT": 18,
+      "ESTOQUE_COUNT": 9,
+      "AFFECTED_PRODUCT_COUNT": 0,
+      "PIX_MISMATCH_COUNT": 0,
+      "INSTALLMENT_MISMATCH_COUNT": 0,
+      "DIVIDE_MISMATCH_COUNT": 0
+    },
+    {
+      "STORE_ID": "masterpalm26",
+      "DISPLAY_NAME": "masterpalm_gmail_com",
+      "SOURCE_WITH_COMMERCIAL": 107,
+      "LIVE_COUNT": 0,
+      "ESTOQUE_COUNT": 107,
+      "AFFECTED_PRODUCT_COUNT": 0,
+      "PIX_MISMATCH_COUNT": 0,
+      "INSTALLMENT_MISMATCH_COUNT": 0,
+      "DIVIDE_MISMATCH_COUNT": 0
+    },
+    {
+      "STORE_ID": "merakipratasmk",
+      "DISPLAY_NAME": "Meraki Pratas",
+      "SOURCE_WITH_COMMERCIAL": 82,
+      "LIVE_COUNT": 52,
+      "ESTOQUE_COUNT": 82,
+      "AFFECTED_PRODUCT_COUNT": 0,
+      "PIX_MISMATCH_COUNT": 0,
+      "INSTALLMENT_MISMATCH_COUNT": 0,
+      "DIVIDE_MISMATCH_COUNT": 0
+    },
+    {
+      "STORE_ID": "naty1443lop",
+      "DISPLAY_NAME": "Natalia Silva",
+      "SOURCE_WITH_COMMERCIAL": 1,
+      "LIVE_COUNT": 0,
+      "ESTOQUE_COUNT": 1,
+      "AFFECTED_PRODUCT_COUNT": 0,
+      "PIX_MISMATCH_COUNT": 0,
+      "INSTALLMENT_MISMATCH_COUNT": 0,
+      "DIVIDE_MISMATCH_COUNT": 0
+    },
+    {
+      "STORE_ID": "thais98c",
+      "DISPLAY_NAME": "Thais Alfredo",
+      "SOURCE_WITH_COMMERCIAL": 139,
+      "LIVE_COUNT": 91,
+      "ESTOQUE_COUNT": 139,
+      "AFFECTED_PRODUCT_COUNT": 0,
+      "PIX_MISMATCH_COUNT": 0,
+      "INSTALLMENT_MISMATCH_COUNT": 0,
+      "DIVIDE_MISMATCH_COUNT": 0
+    },
+    {
+      "STORE_ID": "trindadejunio70",
+      "DISPLAY_NAME": "junio trindade",
+      "SOURCE_WITH_COMMERCIAL": 1,
+      "LIVE_COUNT": 1,
+      "ESTOQUE_COUNT": 1,
+      "AFFECTED_PRODUCT_COUNT": 0,
+      "PIX_MISMATCH_COUNT": 0,
+      "INSTALLMENT_MISMATCH_COUNT": 0,
+      "DIVIDE_MISMATCH_COUNT": 0
+    },
+    {
+      "STORE_ID": "vitoriamarinhob393",
+      "DISPLAY_NAME": "Vitoria Aparecida",
+      "SOURCE_WITH_COMMERCIAL": 37,
+      "LIVE_COUNT": 0,
+      "ESTOQUE_COUNT": 37,
+      "AFFECTED_PRODUCT_COUNT": 0,
+      "PIX_MISMATCH_COUNT": 0,
+      "INSTALLMENT_MISMATCH_COUNT": 0,
+      "DIVIDE_MISMATCH_COUNT": 0
+    }
+  ],
+  "MIRJOIAS": {
+    "STORE_ID": "mirjoias",
+    "DISPLAY_NAME": "Mir Joias",
+    "SOURCE_WITH_COMMERCIAL": 539,
+    "LIVE_COUNT": 258,
+    "ESTOQUE_COUNT": 539,
+    "AFFECTED_PRODUCT_COUNT": 258,
+    "PIX_MISMATCH_COUNT": 258,
+    "INSTALLMENT_MISMATCH_COUNT": 258,
+    "DIVIDE_MISMATCH_COUNT": 258
+  },
+  "SAFETY": {
+    "REMOTE_STOCK_WRITES": 0,
+    "CATALOG_WRITES": 0,
+    "CROSS_TENANT_DATA_READS": 0
+  }
+}

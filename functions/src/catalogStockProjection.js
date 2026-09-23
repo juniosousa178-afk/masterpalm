@@ -126,6 +126,12 @@ export function normalizeStock(p) {
   out.quantidade = total;
   return out;
 }
+/** Per-product commercial terms (not store checkout maxParcelas/jurosParcelamento). */
+export const COMMERCIAL_EDITORIAL_FIELDS = Object.freeze([
+  'divideSemJuros',
+  'percentualDescontoPix',
+  'maxParcelasSemJuros',
+]);
 export const EDITORIAL_FIELDS = Object.freeze([
   'nome','descricao','descricao_curta','preco','preco_venda','precoFinal','precoPorTamanho',
   'imagens','imagem_principal','imagemUrl','imageUrl','fotoThumbUrl','fotoOriginalUrl','slug',
@@ -134,6 +140,7 @@ export const EDITORIAL_FIELDS = Object.freeze([
   'publicadoNoCatalogo','exibir_no_catalogo','ocultar_catalogo','catalog_ativo',
   'priceMin','priceMax','images','imgs','fotos','dataInicioPromo','dataFimPromo',
   'precoComPromocao','promocaoAtiva','descontoComboValor','descontoComboPercentual',
+  'divideSemJuros','percentualDescontoPix','maxParcelasSemJuros',
 ]);
 export function validateEditorial(patch) {
   if (!isMap(patch) || Object.keys(patch).some(k => !EDITORIAL_FIELDS.includes(k))) {
@@ -142,7 +149,35 @@ export function validateEditorial(patch) {
   for (const key of ['publicadoNoCatalogo','exibir_no_catalogo','ocultar_catalogo','catalog_ativo']) {
     if (key in patch && typeof patch[key] !== 'boolean') throw stockError('invalid-argument', 'Invalid publication flag');
   }
+  if ('divideSemJuros' in patch && typeof patch.divideSemJuros !== 'boolean') {
+    throw stockError('invalid-argument', 'Invalid divideSemJuros');
+  }
+  if ('percentualDescontoPix' in patch) {
+    const v = patch.percentualDescontoPix;
+    if (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > 100) {
+      throw stockError('invalid-argument', 'Invalid percentualDescontoPix');
+    }
+  }
+  if ('maxParcelasSemJuros' in patch) {
+    const v = patch.maxParcelasSemJuros;
+    if (!Number.isSafeInteger(v) || v < 0 || v > 24) {
+      throw stockError('invalid-argument', 'Invalid maxParcelasSemJuros');
+    }
+  }
   return structuredClone(patch);
+}
+/**
+ * Presence-based commercial merge (never truthy-filter false/0).
+ * Prefer draft/editorial when the key is present; else fall back to canonical estoque.
+ * Absent in both → omit (do not invent defaults).
+ */
+export function mergeCommercialEditorialFields(editorial = {}, canonical = {}) {
+  const out = Object.create(null);
+  for (const k of COMMERCIAL_EDITORIAL_FIELDS) {
+    if (k in editorial) out[k] = editorial[k];
+    else if (k in canonical) out[k] = canonical[k];
+  }
+  return out;
 }
 export function projectCatalog(canonical, editorial, productId) {
   let stock;
@@ -161,7 +196,9 @@ export function projectCatalog(canonical, editorial, productId) {
     }
     throw e;
   }
+  // Presence (`k in obj`), not truthiness — false/0 must project.
   const meta = Object.fromEntries(EDITORIAL_FIELDS.filter(k => k in editorial).map(k => [k, editorial[k]]));
+  Object.assign(meta, mergeCommercialEditorialFields(editorial, stock));
   const stockFields = ['quantidade','variacoes','estoquePorTamanho','estoquePorCor','tamanhos','cores',
     'variacoesExtraTipo','tipoProduto','stockKind','itensCombo','comboConfig'];
   const fields = Object.fromEntries(stockFields.filter(k => k in stock).map(k => [k,

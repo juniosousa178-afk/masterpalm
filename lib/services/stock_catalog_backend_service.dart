@@ -210,6 +210,10 @@ class StockCatalogBackendService {
     'promocaoAtiva',
     'descontoComboValor',
     'descontoComboPercentual',
+    // Per-product commercial terms (not store checkout maxParcelas/jurosParcelamento).
+    'divideSemJuros',
+    'percentualDescontoPix',
+    'maxParcelasSemJuros',
   };
 
   static Future<Map<String, dynamic>> saveEditorial(

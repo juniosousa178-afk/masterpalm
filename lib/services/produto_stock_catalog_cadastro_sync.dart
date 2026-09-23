@@ -116,6 +116,10 @@ class ProdutoStockCatalogCadastroSync {
       'exibir_no_catalogo': produto.publicadoNoCatalogo,
       'ocultar_catalogo': !produto.publicadoNoCatalogo,
       'catalog_ativo': produto.ativoNoRascunho || produto.publicadoNoCatalogo,
+      // Always include (presence-based). false/0 are valid publishable values.
+      'divideSemJuros': produto.divideSemJuros,
+      'percentualDescontoPix': produto.percentualDescontoPix,
+      'maxParcelasSemJuros': produto.maxParcelasSemJuros,
       if (produto.dataInicioPromo != null)
         'dataInicioPromo': produto.dataInicioPromo!.toIso8601String(),
       if (produto.dataFimPromo != null)
