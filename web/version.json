@@ -4,8 +4,8 @@
   "siteId": "masterpalm-58c46",
   "expectedDomain": "app.mastepalm.com.br",
   "webVersion": "1.0.106+120",
-  "gitCommit": "PENDING",
-  "gitCommitFull": "PENDING",
+  "gitCommit": "e5cb561",
+  "gitCommitFull": "e5cb56119159d1f17149bdf0f7a5762d3386630b",
   "builtAtUtc": "2026-09-23T22:45:00Z",
   "notes": "Unify consignado search selection with canonical productId resolve + search tap feedback"
 }
