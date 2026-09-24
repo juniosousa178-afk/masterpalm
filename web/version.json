@@ -4,8 +4,8 @@
   "siteId": "masterpalm-58c46",
   "expectedDomain": "app.mastepalm.com.br",
   "webVersion": "1.0.107+121",
-  "gitCommit": "PENDING",
-  "gitCommitFull": "PENDING",
+  "gitCommit": "5ff2933",
+  "gitCommitFull": "5ff29334fd72392f3e66b7638d9ed77ec393c683",
   "builtAtUtc": "2026-09-24T00:15:00Z",
   "notes": "Prevent stale fiado Hive cache from reopening settled/cancelled remote debt; remote-first overdue/list reconcile; fiado Hive RO export + diagnostic events"
 }
