@@ -67,6 +67,7 @@ import '../services/mirjoias_client_stock_diagnostic_export.dart';
 import '../core/produto_stock_revision.dart';
 import '../core/client_build_identity.dart';
 import '../core/sale_forensic_trace.dart';
+import '../core/delete_forensic_trace.dart';
 import '../core/produto_untracked_stock_conflict.dart';
 import '../src/file_saver.dart' as file_saver;
 import 'historico_movimentacao_estoque_screen.dart';
@@ -2488,6 +2489,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
         return;
       }
       await SaleForensicTraceStore.ensureHydrated();
+      await DeleteForensicTraceStore.ensureHydrated();
       await UntrackedStockConflictStore.ensureHydrated();
       final exporter = MirjoiasClientStockDiagnosticExport(
         liveBuildId: kClientBuildId,
@@ -3349,9 +3351,65 @@ Future<void> _importarProdutos() async {
             _catalogoPrecisaAtualizar = false;
           });
         }
-        _showSnackBar(
-          'Publicação completa! Produtos: ${results['products']}',
-        );
+        final published = results['products'] ?? 0;
+        final blockers = results['blockers'] is List
+            ? results['blockers'] as List
+            : const [];
+        final skipped = results['skippedBlocked'] ?? blockers.length;
+        if (skipped is int && skipped > 0) {
+          void showBlockedDialog() {
+            if (!mounted || blockers.isEmpty) return;
+            final names = blockers
+                .take(12)
+                .map((b) {
+                  if (b is Map) {
+                    return '${b['name'] ?? b['productId'] ?? ''}';
+                  }
+                  return '$b';
+                })
+                .where((s) => s.trim().isNotEmpty)
+                .join('\n• ');
+            showDialog<void>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: const Text('Produtos bloqueados'),
+                content: SingleChildScrollView(
+                  child: Text(
+                    'Estes produtos não foram publicados (exigem revisão):\n\n• $names'
+                    '${blockers.length > 12 ? '\n… e mais ${blockers.length - 12}' : ''}',
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('Fechar'),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Catálogo atualizado: $published produtos atualizados. '
+                '$skipped produtos precisam de revisão/migração.',
+              ),
+              duration: const Duration(seconds: 8),
+              action: blockers.isEmpty
+                  ? null
+                  : SnackBarAction(
+                      label: 'Ver produtos bloqueados',
+                      onPressed: showBlockedDialog,
+                    ),
+            ),
+          );
+        } else {
+          _showSnackBar(
+            'Publicação completa! Produtos: $published',
+          );
+        }
       } else {
         final errors = results['errors'] is List ? results['errors'] as List : <dynamic>[];
         _showSnackBar('Erro na publicação: ${errors.join(', ')}', isError: true);

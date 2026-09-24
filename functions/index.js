@@ -5559,7 +5559,7 @@ export const catalogPublishOne = onCall(
   },
 );
 export const catalogPublishAll = onCall(
-  { cors: true, timeoutSeconds: 120, memory: "256MiB" },
+  { cors: true, timeoutSeconds: 540, memory: "512MiB" },
   async (request) => {
     try {
       if (!request.data || Object.keys(request.data).some((k) => k !== "lojaId")) {
@@ -5567,6 +5567,21 @@ export const catalogPublishAll = onCall(
       }
       const { publishStockAll } = await import("./src/stockCatalogCommands.js");
       return await publishStockAll(db, request.data.lojaId, request.auth);
+    } catch (error) {
+      throw stockCatalogCallableError(error);
+    }
+  },
+);
+/** Live-only commercial fields (Pix / sem juros) — no stock normalize/migration. */
+export const catalogPublishCommercialFieldsOnly = onCall(
+  { cors: true, timeoutSeconds: 60, memory: "256MiB" },
+  async (request) => {
+    try {
+      if (!request.data || Object.keys(request.data).some((k) => !["lojaId", "productId"].includes(k))) {
+        throw new HttpsError("invalid-argument", "Commercial publish accepts lojaId and productId only");
+      }
+      const { publishCommercialFieldsOnly } = await import("./src/stockCatalogCommands.js");
+      return await publishCommercialFieldsOnly(db, request.data.lojaId, request.data.productId, request.auth);
     } catch (error) {
       throw stockCatalogCallableError(error);
     }

@@ -2,7 +2,7 @@ import {recipe, componentIntents, comboOrder, recalculateFixedCombos} from './st
 import {createHash} from 'node:crypto';
 import {FieldValue} from 'firebase-admin/firestore';
 import {documentId, storeRef, requireAuthenticated, authorizeStockCommand, authorizePublish, SERVER_PAYMENT_AUTH} from './stockCatalogAccess.js';
-import {isMap, stockError, normalizeStock, projectCatalog, quantity, resolveKey, resolveExtraKey, validateEditorial, inferStockKind} from './catalogStockProjection.js';
+import {isMap, stockError, normalizeStock, projectCatalog, quantity, resolveKey, resolveExtraKey, validateEditorial, inferStockKind, buildCommercialLiveOnlyPatch, commercialFieldsSnapshot, COMMERCIAL_EDITORIAL_FIELDS} from './catalogStockProjection.js';
 import {PRODUCT_VALIDATION_FAILED, REASON, makeIssue, productValidationError, gradeKeyLabel} from './productValidationErrors.js';
 import {ATOMIC_PDV_SALE_FLAG, parseAtomicPdvSale, buildCanonicalEstoqueVendaDoc} from './stockCatalogPdvSale.js';
 
@@ -540,22 +540,238 @@ export async function publishStockProduct(db, lojaId, productId, auth) {
       tx.set(dref, {...p.draft, updatedAt: FieldValue.serverTimestamp()});
     }
     const live = base.collection('produtos').doc(productId);
+    // Live is always set from canonical projection — never merge prior live cells.
     if (p.live) tx.set(live, {...p.live, updatedAt: FieldValue.serverTimestamp()}); else tx.delete(live);
     return {productId, available: p.live !== null, revision: p.stock.stockRevision};
   });
 }
 
+/** Classify whether a canonical stock doc can be published (no writes). */
+export function classifyCatalogPublishPreflight(stockData, {productId, name, tombstoned} = {}) {
+  const id = String(productId || '').trim();
+  const nome = String(name || stockData?.nome || id).trim();
+  const kind = stockData?.stockKind;
+  // Tombstoned products remain publishable so live can be removed (pendingSoftDelete).
+  const canonical = {
+    ...(stockData || {}),
+    ...(tombstoned ? {pendingSoftDelete: true} : {}),
+  };
+  try {
+    projectCatalog(canonical, {publicadoNoCatalogo: true}, id || 'preflight');
+    return {
+      status: 'PUBLISHABLE',
+      productId: id,
+      name: nome,
+      reason: null,
+      stockKind: kind ?? null,
+      classification: 'PUBLISHABLE',
+    };
+  } catch (e) {
+    const msg = String(e?.message || e);
+    let status = 'BLOCKED_OTHER';
+    let classification = 'OTHER';
+    if (/Stock migration required/i.test(msg)) {
+      status = 'BLOCKED_STOCK_MIGRATION';
+      classification = kind == null || kind === ''
+        ? 'LEGACY_MISSING_STOCK_KIND'
+        : 'AMBIGUOUS_STOCK_STRUCTURE';
+    } else if (/Simple product has variation data/i.test(msg)) {
+      status = 'BLOCKED_AMBIGUOUS';
+      classification = 'AMBIGUOUS_STOCK_STRUCTURE';
+    } else if (/Dependency migration required|combo/i.test(msg) || kind === 'combo') {
+      status = 'BLOCKED_COMBO';
+      classification = 'COMBO';
+    } else if (/Invalid canonical/i.test(msg)) {
+      status = 'BLOCKED_AMBIGUOUS';
+      classification = 'INVALID_CANONICAL';
+    }
+    return {
+      status,
+      productId: id,
+      name: nome,
+      reason: msg,
+      stockKind: kind ?? null,
+      classification,
+    };
+  }
+}
+
+/**
+ * Two-phase bulk publish:
+ * A) preflight all (no writes)
+ * B) publish only PUBLISHABLE — never abort on known blockers
+ */
 export async function publishStockAll(db, lojaId, auth) {
   requireAuthenticated(auth);
   const base = storeRef(db, lojaId);
   await runStockTransaction(db, tx => authorizePublish(tx, db, base, auth));
-  let last, count = 0;
+
+  // PHASE A — collect + classify (no writes)
+  const allIds = [];
+  let last;
   do {
     let query = base.collection('estoque_produtos').orderBy('__name__').limit(100);
     if (last) query = query.startAfter(last);
     const page = await query.get();
-    for (const item of page.docs) { await publishStockProduct(db, lojaId, item.id, auth); count++; }
+    for (const item of page.docs) allIds.push(item.id);
     last = page.docs.length === 100 ? page.docs.at(-1) : null;
   } while (last);
-  return {publishedProductsProcessed: count};
+
+  const preflight = [];
+  const publishable = [];
+  const blockers = [];
+  for (const id of allIds) {
+    const [stock, draft, tombstone] = await Promise.all([
+      base.collection('estoque_produtos').doc(id).get(),
+      base.collection('draft_produtos').doc(id).get(),
+      base.collection('exclusao_produto').doc(id).get(),
+    ]);
+    if (!stock.exists) {
+      const b = {
+        status: 'BLOCKED_OTHER',
+        productId: id,
+        name: id,
+        reason: 'Canonical product missing',
+        stockKind: null,
+        classification: 'OTHER',
+      };
+      preflight.push(b);
+      blockers.push(b);
+      continue;
+    }
+    const data = stock.data() || {};
+    const editorial = draft.exists ? draft.data() : {};
+    const nome = editorial.nome || data.nome || id;
+    const classified = classifyCatalogPublishPreflight(data, {
+      productId: id,
+      name: nome,
+      tombstoned: tombstone.exists && tombstone.data()?.p === true,
+    });
+    preflight.push(classified);
+    if (classified.status === 'PUBLISHABLE') publishable.push(id);
+    else blockers.push(classified);
+  }
+
+  // PHASE B — publish only publishable
+  const completedIds = [];
+  const failedUnexpected = [];
+  let failedId = null;
+  for (let i = 0; i < publishable.length; i++) {
+    const id = publishable[i];
+    try {
+      await publishStockProduct(db, lojaId, id, auth);
+      completedIds.push(id);
+    } catch (e) {
+      const msg = String(e?.message || e);
+      // Known migration/structure failures mid-flight → treat as blocker skip
+      if (/Stock migration required|Simple product has variation|Dependency migration|Invalid canonical/i.test(msg)) {
+        blockers.push({
+          status: 'BLOCKED_OTHER',
+          productId: id,
+          name: id,
+          reason: msg,
+          stockKind: null,
+          classification: 'RUNTIME_BLOCKED',
+        });
+        continue;
+      }
+      failedId = id;
+      failedUnexpected.push({
+        productId: id,
+        reason: msg,
+        remainingIds: publishable.slice(i + 1),
+        completedIds: [...completedIds],
+      });
+      break;
+    }
+  }
+
+  const remainingIds = failedId
+    ? publishable.slice(publishable.indexOf(failedId) + 1)
+    : [];
+
+  const TOTAL = allIds.length;
+  const PUBLISHED = completedIds.length;
+  const SKIPPED_BLOCKED = blockers.length;
+  const FAILED_UNEXPECTED = failedUnexpected.length;
+
+  let outcome = 'SUCCESS';
+  if (FAILED_UNEXPECTED > 0) outcome = 'FAILED';
+  else if (SKIPPED_BLOCKED > 0) outcome = 'SUCCESS_WITH_BLOCKERS';
+
+  return {
+    outcome,
+    TOTAL,
+    PUBLISHED,
+    SKIPPED_BLOCKED,
+    FAILED_UNEXPECTED,
+    publishedProductsProcessed: PUBLISHED,
+    blockers: blockers.map((b) => ({
+      productId: b.productId,
+      name: b.name,
+      reason: b.reason,
+      stockKind: b.stockKind,
+      classification: b.classification,
+      status: b.status,
+    })),
+    completedIds,
+    failedId,
+    remainingIds,
+    preflightCounts: {
+      PUBLISHABLE: publishable.length,
+      BLOCKED_STOCK_MIGRATION: blockers.filter((b) => b.status === 'BLOCKED_STOCK_MIGRATION').length,
+      BLOCKED_AMBIGUOUS: blockers.filter((b) => b.status === 'BLOCKED_AMBIGUOUS').length,
+      BLOCKED_COMBO: blockers.filter((b) => b.status === 'BLOCKED_COMBO').length,
+      BLOCKED_OTHER: blockers.filter((b) => b.status === 'BLOCKED_OTHER').length,
+    },
+  };
+}
+
+/**
+ * Live-only commercial fields projection for legacy products (missing stockKind).
+ * Does NOT call normalizeStock / projectCatalog / publishStockProduct.
+ * Does NOT write estoque_produtos or stock revisions.
+ * Writes ONLY COMMERCIAL_EDITORIAL_FIELDS onto produtos/{productId}.
+ */
+export async function publishCommercialFieldsOnly(db, lojaId, productId, auth) {
+  requireAuthenticated(auth);
+  documentId(productId, 'productId');
+  const base = storeRef(db, lojaId);
+  return runStockTransaction(db, async tx => {
+    await authorizePublish(tx, db, base, auth);
+    const sref = base.collection('estoque_produtos').doc(productId);
+    const lref = base.collection('produtos').doc(productId);
+    const tref = base.collection('exclusao_produto').doc(productId);
+    const [stock, live, tombstone] = await tx.getAll(sref, lref, tref);
+    if (!stock.exists) throw stockError('failed-precondition', 'Canonical product required');
+    if (!live.exists) throw stockError('failed-precondition', 'Live product required');
+    if (tombstone.exists && tombstone.data()?.p === true) {
+      throw stockError('failed-precondition', 'Product tombstoned');
+    }
+    const source = stock.data() || {};
+    const liveData = live.data() || {};
+    const before = commercialFieldsSnapshot(liveData);
+    const patch = buildCommercialLiveOnlyPatch(source);
+    // Idempotent: if live already equals patch for all present keys, still write updatedAt-only? No — skip stock fields always.
+    const afterPreview = {...before, ...patch};
+    const unchanged = COMMERCIAL_EDITORIAL_FIELDS.every((k) => {
+      const aHas = k in patch;
+      const bHas = k in liveData;
+      if (!aHas) return true; // absent source → leave live untouched
+      return bHas && liveData[k] === patch[k];
+    });
+    if (!unchanged) {
+      tx.update(lref, {...patch, updatedAt: FieldValue.serverTimestamp()});
+    }
+    return {
+      productId,
+      lojaId,
+      patched: !unchanged,
+      before,
+      after: unchanged ? before : afterPreview,
+      source: commercialFieldsSnapshot(source),
+      writtenFields: Object.keys(patch),
+      stockUntouched: true,
+    };
+  });
 }

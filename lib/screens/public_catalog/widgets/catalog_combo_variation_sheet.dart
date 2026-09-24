@@ -653,13 +653,19 @@ class _CatalogComboVariationSheetState extends State<CatalogComboVariationSheet>
                         });
                       }
                       if (!temTamanhos && tamanhosDisponiveis.isEmpty) {
-                        final tamanhosList = p['tamanhos'];
-                        if (tamanhosList is List && tamanhosList.isNotEmpty) {
-                          for (final t in tamanhosList) {
-                            final k = t.toString().trim();
-                            if (k.isNotEmpty) tamanhosDisponiveis[k] = 1;
+                        // Controlled stock: tamanhos metadata must NOT invent availability.
+                        final sk = (p['stockKind'] ?? '').toString();
+                        final controlled =
+                            sk == 'variation' || sk == 'simple' || sk == 'combo';
+                        if (!controlled) {
+                          final tamanhosList = p['tamanhos'];
+                          if (tamanhosList is List && tamanhosList.isNotEmpty) {
+                            for (final t in tamanhosList) {
+                              final k = t.toString().trim();
+                              if (k.isNotEmpty) tamanhosDisponiveis[k] = 1;
+                            }
+                            temTamanhos = tamanhosDisponiveis.isNotEmpty;
                           }
-                          temTamanhos = tamanhosDisponiveis.isNotEmpty;
                         }
                       }
                       if (!temTamanhos && coresDisponiveis.isEmpty) {

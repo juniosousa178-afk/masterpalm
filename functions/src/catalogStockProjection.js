@@ -78,6 +78,78 @@ function withoutPrivateVariationCost(value) {
   return Object.fromEntries(Object.entries(value).filter(([key]) => key !== META_COST)
     .map(([key, cell]) => [key, withoutPrivateVariationCost(cell)]));
 }
+/**
+ * Controlled variation availability: only cells with qty > 0 are sellable.
+ * tamanhos/cores remain editorial metadata and do not create availability.
+ * Zero/absent cells are omitted from projected grade maps (never carried as positive).
+ */
+export function projectPositiveAvailabilityMaps(stock) {
+  const out = {
+    variacoes: undefined,
+    estoquePorTamanho: undefined,
+    estoquePorCor: undefined,
+  };
+  if (!isMap(stock)) return out;
+  if (stock.stockKind === 'variation' && isMap(stock.variacoes)) {
+    const grade = Object.create(null);
+    const ept = Object.create(null);
+    for (const [size, colors] of Object.entries(stock.variacoes)) {
+      if (!isMap(colors)) continue;
+      const colorOut = Object.create(null);
+      let sizeTotal = 0;
+      for (const [color, value] of Object.entries(colors)) {
+        if (color === META_COST) continue;
+        const q = cellTotal(value);
+        if (q > 0) {
+          colorOut[color] = withoutPrivateVariationCost(value);
+          sizeTotal = quantity(sizeTotal + q);
+        }
+      }
+      if (Object.keys(colorOut).length) {
+        grade[size] = colorOut;
+        ept[size] = sizeTotal;
+      }
+    }
+    out.variacoes = grade;
+    out.estoquePorTamanho = ept;
+    // Root colors outside grade with positive qty only.
+    if (isMap(stock.estoquePorCor)) {
+      const inGrade = new Set();
+      for (const cells of Object.values(grade)) {
+        for (const c of Object.keys(cells)) inGrade.add(normKey(c));
+      }
+      const epc = Object.create(null);
+      for (const [color, value] of Object.entries(stock.estoquePorCor)) {
+        if (inGrade.has(normKey(color))) continue;
+        const q = quantity(value);
+        if (q > 0) epc[color] = q;
+      }
+      if (Object.keys(epc).length) out.estoquePorCor = epc;
+    }
+    return out;
+  }
+  // Non-variation controlled maps: drop non-positive aggregates.
+  if (isMap(stock.estoquePorTamanho)) {
+    const ept = Object.create(null);
+    for (const [k, v] of Object.entries(stock.estoquePorTamanho)) {
+      const q = quantity(v);
+      if (q > 0) ept[k] = q;
+    }
+    if (Object.keys(ept).length) out.estoquePorTamanho = ept;
+  }
+  if (isMap(stock.estoquePorCor)) {
+    const epc = Object.create(null);
+    for (const [k, v] of Object.entries(stock.estoquePorCor)) {
+      const q = quantity(v);
+      if (q > 0) epc[k] = q;
+    }
+    if (Object.keys(epc).length) out.estoquePorCor = epc;
+  }
+  if (isMap(stock.variacoes)) {
+    out.variacoes = withoutPrivateVariationCost(stock.variacoes);
+  }
+  return out;
+}
 export function resolveKey(map, input) {
   return Object.keys(map).find(k => normKey(k) === normKey(input));
 }
@@ -179,6 +251,46 @@ export function mergeCommercialEditorialFields(editorial = {}, canonical = {}) {
   }
   return out;
 }
+/**
+ * Live-only commercial patch from authoritative estoque (no normalizeStock / stockKind).
+ * Presence-based: only keys present on source are included.
+ * Absent source keys → omit from patch (leave live value untouched — A_LEAVE_LIVE_UNTOUCHED).
+ * false/0 are valid and must be included when present.
+ */
+export function buildCommercialLiveOnlyPatch(source) {
+  if (!isMap(source)) throw stockError('invalid-argument', 'Invalid commercial source');
+  const patch = Object.create(null);
+  if ('divideSemJuros' in source) {
+    if (typeof source.divideSemJuros !== 'boolean') {
+      throw stockError('invalid-argument', 'Invalid divideSemJuros');
+    }
+    patch.divideSemJuros = source.divideSemJuros;
+  }
+  if ('percentualDescontoPix' in source) {
+    const v = source.percentualDescontoPix;
+    if (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > 100) {
+      throw stockError('invalid-argument', 'Invalid percentualDescontoPix');
+    }
+    patch.percentualDescontoPix = v;
+  }
+  if ('maxParcelasSemJuros' in source) {
+    const v = source.maxParcelasSemJuros;
+    if (!Number.isSafeInteger(v) || v < 0 || v > 24) {
+      throw stockError('invalid-argument', 'Invalid maxParcelasSemJuros');
+    }
+    patch.maxParcelasSemJuros = v;
+  }
+  return patch;
+}
+/** Snapshot of the three commercial fields for before/after reporting (presence-aware). */
+export function commercialFieldsSnapshot(doc) {
+  const out = Object.create(null);
+  if (!isMap(doc)) return out;
+  for (const k of COMMERCIAL_EDITORIAL_FIELDS) {
+    if (k in doc) out[k] = doc[k];
+  }
+  return out;
+}
 export function projectCatalog(canonical, editorial, productId) {
   let stock;
   try {
@@ -201,16 +313,58 @@ export function projectCatalog(canonical, editorial, productId) {
   Object.assign(meta, mergeCommercialEditorialFields(editorial, stock));
   const stockFields = ['quantidade','variacoes','estoquePorTamanho','estoquePorCor','tamanhos','cores',
     'variacoesExtraTipo','tipoProduto','stockKind','itensCombo','comboConfig'];
-  const fields = Object.fromEntries(stockFields.filter(k => k in stock).map(k => [k,
+  // Draft keeps full normalized maps (zeros may remain as editorial/exhaustion evidence).
+  const draftFields = Object.fromEntries(stockFields.filter(k => k in stock).map(k => [k,
     k === 'variacoes' ? withoutPrivateVariationCost(stock[k]) : stock[k]]));
+  // Live sellable maps: controlled variation → positive canonical cells only.
+  // Never merge prior live; tamanhos/cores stay metadata and do not invent qty.
+  const availability = projectPositiveAvailabilityMaps(stock);
+  const liveFields = {...draftFields};
+  if (stock.stockKind === 'variation') {
+    if (availability.variacoes !== undefined) liveFields.variacoes = availability.variacoes;
+    if (availability.estoquePorTamanho !== undefined) {
+      liveFields.estoquePorTamanho = availability.estoquePorTamanho;
+    }
+    if (availability.estoquePorCor !== undefined) {
+      liveFields.estoquePorCor = availability.estoquePorCor;
+    } else if ('estoquePorCor' in liveFields && stock.stockKind === 'variation') {
+      // Drop non-positive root colors on live for variation products.
+      const epc = Object.create(null);
+      if (isMap(liveFields.estoquePorCor)) {
+        for (const [k, v] of Object.entries(liveFields.estoquePorCor)) {
+          if (quantity(v) > 0) epc[k] = v;
+        }
+      }
+      liveFields.estoquePorCor = epc;
+    }
+  }
   const available = stock.quantidade > 0 && editorial.publicadoNoCatalogo === true &&
     editorial.exibir_no_catalogo !== false && editorial.ocultar_catalogo !== true &&
     editorial.catalog_ativo !== false && !stock.pendingSoftDelete;
-  const projected = {...meta, ...fields, id: productId,
+  const draft = {...meta, ...draftFields, id: productId,
     ativo: editorial.catalog_ativo !== false, publicar: editorial.publicadoNoCatalogo === true,
     vendasCatalogoTotal: quantity(stock.vendasCatalogoTotal ?? 0, {field: 'vendasCatalogoTotal', productId}),
     estoque: stock.quantidade,
     estoque_atual: stock.quantidade, qtdEstoque: stock.quantidade,
     catalogStockRevision: stock.stockRevision, catalogProjectionVersion: PROJECTION_VERSION};
-  return {stock, draft: projected, live: available ? {...projected, ativo: true, publicar: true, publicado: true} : null};
+  return {
+    stock,
+    draft,
+    live: available
+      ? {
+          ...meta,
+          ...liveFields,
+          id: productId,
+          ativo: true,
+          publicar: true,
+          publicado: true,
+          vendasCatalogoTotal: draft.vendasCatalogoTotal,
+          estoque: stock.quantidade,
+          estoque_atual: stock.quantidade,
+          qtdEstoque: stock.quantidade,
+          catalogStockRevision: stock.stockRevision,
+          catalogProjectionVersion: PROJECTION_VERSION,
+        }
+      : null,
+  };
 }

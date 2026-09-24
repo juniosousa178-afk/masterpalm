@@ -350,12 +350,11 @@ class CatalogPublishService {
 
   /// Enumera IDs, mas decide publicação/remoção em transação por produto.
   /// O snapshot da enumeração nunca é usado como payload de estoque.
-  static Future<void> promoteAll({String? lojaIdOverride}) async {
+  static Future<Map<String, dynamic>> promoteAll({String? lojaIdOverride}) async {
     final lojaId = await _resolveLojaId(lojaIdOverride: lojaIdOverride);
     final base = _db.collection('lojas').doc(lojaId);
     if (debugFirestoreOverride == null) {
-      await StockCatalogBackendService.publishAll(lojaId);
-      return;
+      return StockCatalogBackendService.publishAll(lojaId);
     }
     final draft = await base.collection('draft_produtos').get();
     final live = await base.collection('produtos').get();
@@ -363,6 +362,13 @@ class CatalogPublishService {
     for (final id in ids) {
       await promoteOne(id, lojaIdOverride: lojaId);
     }
+    return {
+      'outcome': 'SUCCESS',
+      'PUBLISHED': ids.length,
+      'SKIPPED_BLOCKED': 0,
+      'blockers': <dynamic>[],
+      'publishedProductsProcessed': ids.length,
+    };
   }
 
   /// ✨ Publica configurações gerais do draft para live
@@ -484,17 +490,19 @@ class CatalogPublishService {
       // 3. Publicar produtos (usando método existente)
       try {
         debugPrint('\n📦 [PUBLISH-ALL] Etapa 3/4: Publicando produtos...');
-        await promoteAll(lojaIdOverride: lojaId);
-
-        // Contar quantos foram publicados
-        final liveSnap = await _db
-            .collection('lojas')
-            .doc(lojaId)
-            .collection('produtos')
-            .get();
-        results['products'] = liveSnap.docs.length;
+        final bulk = await promoteAll(lojaIdOverride: lojaId);
+        results['bulk'] = bulk;
+        results['products'] = bulk['PUBLISHED'] ?? bulk['publishedProductsProcessed'] ?? 0;
+        results['blockers'] = bulk['blockers'] ?? <dynamic>[];
+        results['skippedBlocked'] = bulk['SKIPPED_BLOCKED'] ?? 0;
+        results['bulkOutcome'] = bulk['outcome'] ?? 'SUCCESS';
+        final outcome = '${results['bulkOutcome']}';
+        if (outcome == 'FAILED') {
+          errors.add('Publicação de produtos falhou inesperadamente');
+        }
         debugPrint(
-            '✅ [PUBLISH-ALL] Etapa 3/4: ${results['products']} produtos publicados');
+            '✅ [PUBLISH-ALL] Etapa 3/4: publicados=${results['products']} '
+            'bloqueados=${results['skippedBlocked']} outcome=$outcome');
       } catch (e) {
         errors.add('Erro ao publicar produtos: $e');
         debugPrint('❌ [PUBLISH-ALL] Erro produtos (type=${e.runtimeType})');

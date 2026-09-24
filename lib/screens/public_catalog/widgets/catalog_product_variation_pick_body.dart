@@ -176,6 +176,7 @@ class CatalogProductVariationPickBodyState
   bool get _hasCores => _coresDisponiveis.isNotEmpty;
 
   Map<String, int> get _tamanhosDisponiveis {
+    // Controlled/public: only qty > 0 is sellable. Never invent from tamanhos metadata.
     if (widget.variacoes != null && widget.variacoes!.isNotEmpty) {
       final result = <String, int>{};
       widget.variacoes!.forEach((tamanho, cores) {
@@ -192,25 +193,42 @@ class CatalogProductVariationPickBodyState
       });
       if (result.isNotEmpty) return result;
     }
-    return widget.estoquePorTamanho;
+    final ept = <String, int>{};
+    widget.estoquePorTamanho.forEach((k, v) {
+      if (v > 0) ept[k] = v;
+    });
+    return ept;
   }
 
   Map<String, int> get _coresDisponiveis {
+    // Sellable colors only when projected stock qty > 0.
+    Map<String, int> positiveOnly(Map<dynamic, dynamic> raw) {
+      final out = <String, int>{};
+      raw.forEach((key, value) {
+        final q = ProdutoVariacaoExtra.somarCelula(value);
+        if (q > 0) out[key.toString()] = q;
+      });
+      return out;
+    }
+
     if (widget.variacoes != null && widget.variacoes!.containsKey('sem-tamanho')) {
       final semTam = widget.variacoes!['sem-tamanho'];
       if (semTam is Map && semTam.isNotEmpty) {
-        return Map<String, int>.from(semTam.map((key, value) => MapEntry(
-            key.toString(), ProdutoVariacaoExtra.somarCelula(value))));
+        final pos = positiveOnly(semTam);
+        if (pos.isNotEmpty) return pos;
       }
     }
     if (widget.variacoes != null && _tamanhoSelecionado != null) {
       final mapaTamanho = widget.variacoes![_tamanhoSelecionado];
       if (mapaTamanho is Map) {
-        return Map<String, int>.from(mapaTamanho.map((key, value) =>
-            MapEntry(key.toString(), ProdutoVariacaoExtra.somarCelula(value))));
+        return positiveOnly(mapaTamanho);
       }
     }
-    return widget.estoquePorCor;
+    final epc = <String, int>{};
+    widget.estoquePorCor.forEach((k, v) {
+      if (v > 0) epc[k] = v;
+    });
+    return epc;
   }
 
   bool get _temEixoExtraNaCor {
