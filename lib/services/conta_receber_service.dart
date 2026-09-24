@@ -8,6 +8,7 @@ import '../core/conta_receber_identity.dart';
 import '../core/conta_receber_lancamento_vinculo.dart';
 import '../core/conta_receber_venda_vinculo.dart';
 import '../core/hive_box_names.dart';
+import '../diagnostics/fiado_diagnostic_tracer.dart';
 import '../models/conta_receber.dart';
 import 'conta_receber_firestore_service.dart';
 import 'conta_receber_recebimento_caixa_service.dart';
@@ -241,7 +242,34 @@ class ContaReceberService {
     conta.recalcularStatus();
   }
 
+  /// Firestore → Hive only (no Hive→Firestore push).
+  /// Use on screen open and overdue alert refresh.
+  static Future<ContaReceberPullResultado> reconciliarCacheComRemoto(
+    String lojaId, {
+    bool forcar = true,
+  }) async {
+    final loja = lojaId.trim();
+    debugPrint('[CR-RECONCILE][INICIO] lojaId=$loja pushLocal=false');
+    final pull = await _pullComRetry(loja, forcar: forcar);
+    await FiadoDiagnosticTracer.emit(
+      storeId: loja,
+      eventCode: FiadoDiagnosticEvents.cacheReconciled,
+      decision: pull.remoteRefreshOk ? 'OK' : 'OFFLINE_CACHE',
+      extra: {
+        'importados': pull.importados,
+        'atualizados': pull.atualizados,
+        'offline': pull.offline,
+      },
+    );
+    debugPrint(
+      '[CR-RECONCILE][FIM] ok=${pull.remoteRefreshOk} offline=${pull.offline} '
+      'imp=${pull.importados} att=${pull.atualizados}',
+    );
+    return pull;
+  }
+
   /// Firestore como fonte remota: pull → backfill → publish conservador → pull final.
+  /// Publish path is Policy A (create-if-absent) + guarded upsert elsewhere.
   static Future<ContaReceberPullResultado> sincronizarRemoto(String lojaId) async {
     final loja = lojaId.trim();
     debugPrint('[CR-SYNC][INICIO] lojaId=$loja');
@@ -262,6 +290,7 @@ class ContaReceberService {
     var totalAtt = pull.atualizados;
     var totalPul = pull.pulados;
     var totalErr = pull.erros;
+    var offline = pull.offline;
     debugPrint(
       '[CR-PULL][REMOTE-COUNT] fase=pull_inicial importados=${pull.importados} '
       'atualizados=${pull.atualizados} pulados=${pull.pulados}',
@@ -274,6 +303,7 @@ class ContaReceberService {
       'ignoradas=${backfill.ignoradas} importadas_hive=${backfill.importadasHive}',
     );
 
+    // Policy A: only creates if remote doc absent — never overwrites paid remote.
     final pub =
         await ContaReceberFirestoreService.publicarContasHivePendentes(loja);
     debugPrint(
@@ -285,6 +315,7 @@ class ContaReceberService {
     totalAtt += pull.atualizados;
     totalPul += pull.pulados;
     totalErr += pull.erros;
+    offline = offline || pull.offline;
     debugPrint(
       '[CR-PULL][REMOTE-COUNT] fase=pull_final importados=${pull.importados} '
       'atualizados=${pull.atualizados} pulados=${pull.pulados}',
@@ -305,16 +336,27 @@ class ContaReceberService {
       atualizados: totalAtt,
       pulados: totalPul,
       erros: totalErr,
+      offline: offline,
+      remoteRefreshOk: !offline,
     );
   }
 
-  static Future<ContaReceberPullResultado> _pullComRetry(String loja) async {
-    var pull = await ContaReceberFirestoreService.pullContasReceberRemotas(loja);
+  static Future<ContaReceberPullResultado> _pullComRetry(
+    String loja, {
+    bool forcar = false,
+  }) async {
+    var pull = await ContaReceberFirestoreService.pullContasReceberRemotas(
+      loja,
+      forcarMesmoSemTimestamp: forcar,
+    );
     for (var tentativa = 0;
         pull.ignoradoJaEmExecucao && tentativa < 8;
         tentativa++) {
       await Future.delayed(const Duration(milliseconds: 150));
-      pull = await ContaReceberFirestoreService.pullContasReceberRemotas(loja);
+      pull = await ContaReceberFirestoreService.pullContasReceberRemotas(
+        loja,
+        forcarMesmoSemTimestamp: forcar,
+      );
     }
     return pull;
   }
@@ -370,6 +412,14 @@ class ContaReceberService {
       formaPagamento: formaPagamento,
     );
 
+    await FiadoDiagnosticTracer.emit(
+      storeId: lojaId,
+      eventCode: FiadoDiagnosticEvents.settlementStarted,
+      accountId: docId,
+      localSaldo: conta.saldoRestante,
+      extra: {'valorRecebido': valorRecebido},
+    );
+
     final remoto = await ContaReceberFirestoreService.registrarBaixaRemota(
       lojaId: lojaId,
       conta: conta,
@@ -390,6 +440,11 @@ class ContaReceberService {
     }
 
     if (remoto.idempotente) {
+      await FiadoDiagnosticTracer.emit(
+        storeId: lojaId,
+        eventCode: FiadoDiagnosticEvents.settlementIdempotentRetry,
+        accountId: docId,
+      );
       await sincronizarRemoto(lojaId);
       return ResultadoBaixaContaReceber(
         sucesso: false,
@@ -430,6 +485,13 @@ class ContaReceberService {
     await ContaReceberFirestoreService.upsertContaReceber(
       conta,
       lastWriteOrigin: 'baixa_local',
+    );
+    await FiadoDiagnosticTracer.emit(
+      storeId: lojaId,
+      eventCode: FiadoDiagnosticEvents.settlementConfirmed,
+      accountId: docId,
+      localStatus: conta.status,
+      localSaldo: conta.saldoRestante,
     );
     final quitado = conta.pago;
     final saldo = conta.saldoRestante;

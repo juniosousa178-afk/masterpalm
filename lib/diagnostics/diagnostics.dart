@@ -12,3 +12,5 @@ export 'diagnostic_result.dart';
 export 'diagnostic_sanitize.dart';
 export 'diagnostic_trace_service.dart';
 export 'diagnostic_user_messages.dart';
+export 'fiado_diagnostic_tracer.dart';
+export 'fiado_hive_forensic_export.dart';

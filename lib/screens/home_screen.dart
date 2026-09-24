@@ -37,6 +37,7 @@ import '../models/cliente.dart';
 import '../models/fornecedor.dart';
 import '../models/venda.dart';
 import '../services/conta_receber_service.dart';
+import '../diagnostics/fiado_diagnostic_tracer.dart';
 
 // ✅ tela fretes/cupons
 import '../screens/fretes_cupons_screen.dart';
@@ -366,17 +367,23 @@ class _HomeScreenState extends State<HomeScreen>
   Future<void> _alertarContasReceberPendentes() async {
     if (!mounted || _lojaIdInterno.trim().isEmpty) return;
     try {
-      final box = await ContaReceberService.openBoxLoja(_lojaIdInterno.trim());
+      final loja = _lojaIdInterno.trim();
+      // OVERDUE_REMOTE_REFRESH_BEFORE_CALC: Firestore → Hive, then alert.
+      // Never Hive→Firestore merely to refresh the alert.
+      final reconcile =
+          await ContaReceberService.reconciliarCacheComRemoto(loja);
+      if (!mounted) return;
+
+      final box = await ContaReceberService.openBoxLoja(loja);
       if (!mounted) return;
 
       final hoje = DateTime.now();
       final hojeBase = DateTime(hoje.year, hoje.month, hoje.day);
       final pendentes = ContaReceberService.listar(
         contas: box.values,
-        lojaId: _lojaIdInterno,
+        lojaId: loja,
         filtro: 'pendentes',
       );
-      if (pendentes.isEmpty) return;
 
       final vencidas = pendentes.where((c) {
         final d = DateTime(
@@ -395,10 +402,27 @@ class _HomeScreenState extends State<HomeScreen>
         final dias = d.difference(hojeBase).inDays;
         return dias >= 0 && dias <= 2;
       }).toList();
+
+      await FiadoDiagnosticTracer.emit(
+        storeId: loja,
+        eventCode: FiadoDiagnosticEvents.overdueRecalculated,
+        decision: reconcile.remoteRefreshOk ? 'REMOTE' : 'OFFLINE_CACHE',
+        extra: {
+          'pendentes': pendentes.length,
+          'vencidas': vencidas.length,
+          'vencendo': vencendo.length,
+          'offline': reconcile.offline,
+        },
+      );
+
       if (vencidas.isEmpty && vencendo.isEmpty) return;
 
       final valorTotal =
           (vencidas + vencendo).fold<double>(0, (s, c) => s + c.valor);
+
+      final offlineNote = reconcile.offline
+          ? '\n\n(Aviso com base em cache offline — sem confirmação do servidor.)'
+          : '';
 
       if (!mounted) return;
       await showDialog<void>(
@@ -409,7 +433,8 @@ class _HomeScreenState extends State<HomeScreen>
             'Você tem ${vencidas.length} conta(s) em atraso e '
             '${vencendo.length} vencendo em até 2 dias.\n\n'
             'Total pendente: R\$ ${valorTotal.toStringAsFixed(2).replaceAll('.', ',')}.\n'
-            'Esse aviso continuará aparecendo até as contas serem quitadas.',
+            'Esse aviso continuará aparecendo até as contas serem quitadas.'
+            '$offlineNote',
           ),
           actions: [
             TextButton(

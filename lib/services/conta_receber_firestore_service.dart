@@ -1,4 +1,8 @@
 // Sync Hive ↔ Firestore para contas a receber / fiado.
+//
+// INVARIANT (see conta_receber_remote_authority.dart):
+// Firestore is authoritative for persisted financial state.
+// Hive is CACHE — generic upsert must never reopen settled/cancelled remote debt.
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
@@ -7,6 +11,9 @@ import 'package:hive/hive.dart';
 import '../core/conta_receber_dedup.dart';
 import '../core/conta_receber_identity.dart';
 import '../core/conta_receber_lancamento_vinculo.dart';
+import '../core/conta_receber_remote_authority.dart';
+import '../diagnostics/diagnostic_enums.dart';
+import '../diagnostics/fiado_diagnostic_tracer.dart';
 import '../models/conta_receber.dart';
 import 'conta_receber_service.dart';
 import 'firestore_paths.dart';
@@ -17,6 +24,8 @@ class ContaReceberPullResultado {
   final int pulados;
   final int erros;
   final bool ignoradoJaEmExecucao;
+  final bool offline;
+  final bool remoteRefreshOk;
 
   const ContaReceberPullResultado({
     this.importados = 0,
@@ -24,7 +33,23 @@ class ContaReceberPullResultado {
     this.pulados = 0,
     this.erros = 0,
     this.ignoradoJaEmExecucao = false,
+    this.offline = false,
+    this.remoteRefreshOk = true,
   });
+}
+
+class ContaReceberUpsertResultado {
+  final ContaReceberUpsertDecision decision;
+  final bool sucesso;
+
+  const ContaReceberUpsertResultado({
+    required this.decision,
+    required this.sucesso,
+  });
+
+  bool get applied => decision == ContaReceberUpsertDecision.applied;
+  bool get skippedRemoteStronger =>
+      decision == ContaReceberUpsertDecision.skippedRemoteStronger;
 }
 
 class ContaReceberMigracaoResultado {
@@ -383,6 +408,11 @@ abstract final class ContaReceberFirestoreService {
 
     var imp = 0, att = 0, pul = 0, err = 0;
 
+    await FiadoDiagnosticTracer.emit(
+      storeId: loja,
+      eventCode: FiadoDiagnosticEvents.remotePullStarted,
+    );
+
     try {
       final box = await ContaReceberService.openBoxLoja(loja);
       final qs = await _db
@@ -426,6 +456,13 @@ abstract final class ContaReceberFirestoreService {
           final remotoSaldoMenor = local != null &&
               _fsDouble(data['saldoAtual'], _fsDouble(data['valor'])) <
                   local.saldoRestante - 0.01;
+          final remotoPagoLocalAberto = local != null &&
+              (_fsBool(data['pago']) ||
+                  _fsString(data['status']).toLowerCase() ==
+                      ContaReceberStatus.paga ||
+                  _fsDouble(data['saldoAtual'], _fsDouble(data['valor'])) <
+                      0.01) &&
+              (!local.pago && local.saldoRestante >= 0.01);
 
           if (local != null &&
               remoteMs != null &&
@@ -433,7 +470,8 @@ abstract final class ContaReceberFirestoreService {
               remoteMs <= localKnownMs &&
               !forcarMesmoSemTimestamp &&
               !remotoTemBaixaMaisRecente &&
-              !remotoSaldoMenor) {
+              !remotoSaldoMenor &&
+              !remotoPagoLocalAberto) {
             pul++;
             continue;
           }
@@ -454,15 +492,48 @@ abstract final class ContaReceberFirestoreService {
       }
     } catch (e) {
       debugPrint('[CR-FS] Pull query (type=${e.runtimeType})');
-    } finally {
+      err++;
+      await FiadoDiagnosticTracer.emit(
+        storeId: loja,
+        eventCode: FiadoDiagnosticEvents.remotePullComplete,
+        decision: 'OFFLINE_OR_ERROR',
+        extra: {'errorType': e.runtimeType.toString()},
+        severity: DiagnosticSeverity.warning,
+      );
       _pullEmExecucao = false;
+      return ContaReceberPullResultado(
+        importados: imp,
+        atualizados: att,
+        pulados: pul,
+        erros: err,
+        offline: true,
+        remoteRefreshOk: false,
+      );
+    } finally {
+      if (_pullEmExecucao) {
+        _pullEmExecucao = false;
+      }
     }
+
+    await FiadoDiagnosticTracer.emit(
+      storeId: loja,
+      eventCode: FiadoDiagnosticEvents.remotePullComplete,
+      decision: 'OK',
+      extra: {
+        'importados': imp,
+        'atualizados': att,
+        'pulados': pul,
+        'erros': err,
+      },
+    );
 
     return ContaReceberPullResultado(
       importados: imp,
       atualizados: att,
       pulados: pul,
       erros: err,
+      offline: false,
+      remoteRefreshOk: true,
     );
   }
 
@@ -572,7 +643,81 @@ abstract final class ContaReceberFirestoreService {
     );
   }
 
+  static ContaReceberFinancialSnapshot _snapshotFromConta(ContaReceber c) {
+    return snapshotFromMaps(
+      pago: c.pago,
+      status: c.status,
+      saldo: c.saldoRestante,
+      valorPago: c.valorPago,
+      cancelada: c.status.trim().toLowerCase() == ContaReceberStatus.cancelada,
+      historico: c.historicoPagamentos(),
+    );
+  }
+
+  static ContaReceberFinancialSnapshot _snapshotFromRemoteDoc(
+    Map<String, dynamic> data,
+  ) {
+    final hist = _parseHistorico(data['historicoPagamentos']);
+    final status = _fsString(data['status'], ContaReceberStatus.pendente);
+    final cancelada = _fsBool(data['cancelada']) ||
+        data['deletedAt'] != null ||
+        status.trim().toLowerCase() == ContaReceberStatus.cancelada;
+    return snapshotFromMaps(
+      pago: _fsBool(data['pago']),
+      status: status,
+      saldo: _fsDouble(data['saldoAtual'], _fsDouble(data['valor'])),
+      valorPago: _fsDouble(data['valorPago']),
+      cancelada: cancelada,
+      historico: hist,
+    );
+  }
+
+  /// Converge Hive to remote when generic upsert is rejected as stale.
+  static Future<void> _convergerHiveParaRemoto({
+    required String lojaId,
+    required String docId,
+    required Map<String, dynamic> remoteData,
+  }) async {
+    try {
+      if (_docRemotoCancelado(remoteData)) {
+        await aplicarTombstoneRemotoNoHive(
+          lojaId: lojaId,
+          docId: docId,
+          data: remoteData,
+        );
+        return;
+      }
+      await importarContaRemotaParaHive(
+        lojaId: lojaId,
+        docId: docId,
+        data: remoteData,
+      );
+    } catch (e) {
+      debugPrint(
+        '[CR-FS][CONVERGE] id=$docId type=${e.runtimeType}',
+      );
+    }
+  }
+
+  /// Guarded generic publish. Prefer [upsertContaReceberDetalhado].
+  ///
+  /// Returns true for APPLIED / NO_CHANGE / SKIPPED_REMOTE_STRONGER
+  /// (stale local rejected without remote mutation — not a hard failure).
   static Future<bool> upsertContaReceber(
+    ContaReceber conta, {
+    String lastWriteOrigin = 'app',
+    int maxTentativas = 3,
+  }) async {
+    final r = await upsertContaReceberDetalhado(
+      conta,
+      lastWriteOrigin: lastWriteOrigin,
+      maxTentativas: maxTentativas,
+    );
+    return r.sucesso;
+  }
+
+  /// Remote-first guarded upsert with structured decision.
+  static Future<ContaReceberUpsertResultado> upsertContaReceberDetalhado(
     ContaReceber conta, {
     String lastWriteOrigin = 'app',
     int maxTentativas = 3,
@@ -580,7 +725,10 @@ abstract final class ContaReceberFirestoreService {
     final loja = conta.lojaId.trim();
     if (loja.isEmpty) {
       debugPrint('[CR-FS][UPSERT-ERRO] lojaId vazio origem=$lastWriteOrigin');
-      return false;
+      return const ContaReceberUpsertResultado(
+        decision: ContaReceberUpsertDecision.conflictRejected,
+        sucesso: false,
+      );
     }
     normalizarContaReceberId(conta);
     final docId = resolveContaReceberDocId(conta);
@@ -588,39 +736,185 @@ abstract final class ContaReceberFirestoreService {
       debugPrint(
         '[CR-FS][UPSERT-ERRO] docId vazio lojaId=$loja origem=$lastWriteOrigin',
       );
-      return false;
+      return const ContaReceberUpsertResultado(
+        decision: ContaReceberUpsertDecision.conflictRejected,
+        sucesso: false,
+      );
     }
+
+    final incoming = _snapshotFromConta(conta);
+    await FiadoDiagnosticTracer.emit(
+      storeId: loja,
+      eventCode: FiadoDiagnosticEvents.localUpsertAttempt,
+      accountId: docId,
+      localStatus: incoming.status,
+      localSaldo: incoming.saldo,
+      origin: lastWriteOrigin,
+    );
+
     debugPrint(
       '[CR-FS][UPSERT-INICIO] path=lojas/$loja/contas_receber/$docId '
-      'origem=$lastWriteOrigin',
+      'origem=$lastWriteOrigin guard=remote_authority',
     );
 
     Object? ultimoErro;
     for (var tentativa = 1; tentativa <= maxTentativas; tentativa++) {
       try {
+        final ref = _ref(loja, docId);
+        final snap = await ref.get();
+        final exists = snap.exists;
+        final remoteData =
+            exists ? Map<String, dynamic>.from(snap.data() ?? {}) : null;
+
+        // Tenant isolation: refuse write if remote lojaId mismatches.
+        if (remoteData != null) {
+          final remoteLoja = _fsString(remoteData['lojaId']).trim();
+          if (remoteLoja.isNotEmpty && remoteLoja != loja) {
+            debugPrint(
+              '[CR-FS][UPSERT-TENANT] id=$docId remoteLoja=$remoteLoja local=$loja',
+            );
+            await FiadoDiagnosticTracer.emit(
+              storeId: loja,
+              eventCode: FiadoDiagnosticEvents.syncConflict,
+              accountId: docId,
+              decision: 'TENANT_MISMATCH',
+              origin: lastWriteOrigin,
+              severity: DiagnosticSeverity.critical,
+            );
+            return const ContaReceberUpsertResultado(
+              decision: ContaReceberUpsertDecision.conflictRejected,
+              sucesso: false,
+            );
+          }
+        }
+
+        final remoteSnap =
+            remoteData != null ? _snapshotFromRemoteDoc(remoteData) : null;
+        final decision = decideGenericUpsert(
+          remote: remoteSnap,
+          incoming: incoming,
+          remoteDocExists: exists,
+        );
+
+        if (decision == ContaReceberUpsertDecision.noChange) {
+          conta.garantirDocIdFirestore(docId);
+          debugPrint('[CR-FS][UPSERT-NO_CHANGE] id=$docId');
+          return const ContaReceberUpsertResultado(
+            decision: ContaReceberUpsertDecision.noChange,
+            sucesso: true,
+          );
+        }
+
+        if (decision == ContaReceberUpsertDecision.skippedRemoteStronger) {
+          debugPrint(
+            '[CR-FS][UPSERT-SKIP-REMOTE-STRONGER] id=$docId '
+            'remoteStatus=${remoteSnap?.status} localStatus=${incoming.status}',
+          );
+          await FiadoDiagnosticTracer.emit(
+            storeId: loja,
+            eventCode: FiadoDiagnosticEvents.staleLocalRejected,
+            accountId: docId,
+            localStatus: incoming.status,
+            remoteStatus: remoteSnap?.status,
+            localSaldo: incoming.saldo,
+            remoteSaldo: remoteSnap?.saldo,
+            decision: ContaReceberUpsertDecision.skippedRemoteStronger.name,
+            origin: lastWriteOrigin,
+            severity: DiagnosticSeverity.warning,
+          );
+          if (remoteData != null) {
+            await _convergerHiveParaRemoto(
+              lojaId: loja,
+              docId: docId,
+              remoteData: remoteData,
+            );
+          }
+          return const ContaReceberUpsertResultado(
+            decision: ContaReceberUpsertDecision.skippedRemoteStronger,
+            sucesso: true,
+          );
+        }
+
+        if (decision == ContaReceberUpsertDecision.conflictRejected) {
+          debugPrint('[CR-FS][UPSERT-CONFLICT] id=$docId');
+          await FiadoDiagnosticTracer.emit(
+            storeId: loja,
+            eventCode: FiadoDiagnosticEvents.syncConflict,
+            accountId: docId,
+            localStatus: incoming.status,
+            remoteStatus: remoteSnap?.status,
+            localSaldo: incoming.saldo,
+            remoteSaldo: remoteSnap?.saldo,
+            decision: ContaReceberUpsertDecision.conflictRejected.name,
+            origin: lastWriteOrigin,
+            severity: DiagnosticSeverity.warning,
+          );
+          return const ContaReceberUpsertResultado(
+            decision: ContaReceberUpsertDecision.conflictRejected,
+            sucesso: false,
+          );
+        }
+
+        // APPLIED — create or non-regressing update.
         final data = mapContaReceber(
           conta,
           docId: docId,
           lastWriteOrigin: lastWriteOrigin,
         );
-        await _ref(loja, docId).set(data, SetOptions(merge: true));
+        // Never drop remote payment history on generic write.
+        if (remoteData != null) {
+          final remoteHist = _parseHistorico(remoteData['historicoPagamentos']);
+          final localHist = conta.historicoPagamentos();
+          final remoteIds = remoteHist
+              .map((h) => _fsString(h['baixaId']).trim())
+              .where((id) => id.isNotEmpty)
+              .toSet();
+          final localIds = localHist
+              .map((h) => _fsString(h['baixaId']).trim())
+              .where((id) => id.isNotEmpty)
+              .toSet();
+          if (remoteIds.difference(localIds).isNotEmpty) {
+            // Fail closed — should have been SKIPPED above; belt-and-suspenders.
+            data['historicoPagamentos'] = remoteHist;
+            debugPrint('[CR-FS][UPSERT-PRESERVE-HIST] id=$docId');
+          }
+        }
+        await ref.set(data, SetOptions(merge: true));
         conta.garantirDocIdFirestore(docId);
         if (conta.isInBox) {
           try {
             await conta.save();
           } catch (_) {}
         }
+        await FiadoDiagnosticTracer.emit(
+          storeId: loja,
+          eventCode: FiadoDiagnosticEvents.localUpsertApplied,
+          accountId: docId,
+          localStatus: incoming.status,
+          decision: ContaReceberUpsertDecision.applied.name,
+          origin: lastWriteOrigin,
+        );
         debugPrint(
           '[CR-FS][UPSERT-OK] id=$docId origem=$lastWriteOrigin '
-          'tentativa=$tentativa',
+          'tentativa=$tentativa decision=applied',
         );
-        return true;
+        return const ContaReceberUpsertResultado(
+          decision: ContaReceberUpsertDecision.applied,
+          sucesso: true,
+        );
       } on FirebaseException catch (e) {
         ultimoErro = e;
         debugPrint(
           '[CR-FS][UPSERT-ERRO] id=$docId code=${e.code} message=${e.message} '
           'tentativa=$tentativa/$maxTentativas',
         );
+        // Offline / unavailable: do not destroy Hive; do not force write.
+        if (e.code == 'unavailable' || e.code == 'deadline-exceeded') {
+          return const ContaReceberUpsertResultado(
+            decision: ContaReceberUpsertDecision.conflictRejected,
+            sucesso: false,
+          );
+        }
       } catch (e) {
         ultimoErro = e;
         debugPrint(
@@ -636,7 +930,10 @@ abstract final class ContaReceberFirestoreService {
       '[CR-FS][UPSERT-ERRO] id=$docId falha_final origem=$lastWriteOrigin '
       'erro=$ultimoErro',
     );
-    return false;
+    return const ContaReceberUpsertResultado(
+      decision: ContaReceberUpsertDecision.conflictRejected,
+      sucesso: false,
+    );
   }
 
   /// Garante cache Hive quando o doc já existe no Firestore (backfill/pull).

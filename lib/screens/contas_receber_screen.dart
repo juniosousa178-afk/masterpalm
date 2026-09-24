@@ -68,9 +68,11 @@ class _ContasReceberScreenState extends State<ContasReceberScreen> {
     try {
       _box = await ContaReceberService.openBoxLoja(_lojaId!);
       debugPrint(
-        '[CR-SCREEN][INIT] lojaId=$_lojaId abrindo sincronizarRemoto (Firestore fonte remota)',
+        '[CR-SCREEN][INIT] lojaId=$_lojaId reconciliarCacheComRemoto '
+        '(Firestore→Hive, pushLocal=false)',
       );
-      await ContaReceberService.sincronizarRemoto(_lojaId!);
+      // SCREEN_OPEN_AUTO_PUSH_LOCAL=false — pull-only reconciliation.
+      await ContaReceberService.reconciliarCacheComRemoto(_lojaId!);
       final todas = ContaReceberService.listar(
         contas: _box.values,
         lojaId: _lojaId!,

@@ -11,7 +11,7 @@ import 'diagnostic_incident_history.dart';
 import 'diagnostic_result.dart';
 import 'diagnostic_sanitize.dart';
 import 'diagnostic_trace_service.dart';
-
+import 'fiado_hive_forensic_export.dart';
 /// Facade for the System Diagnostic Center (read-only by default).
 class DiagnosticCenterService {
   DiagnosticCenterService({DiagnosticAnomalyScanner? scanner})
@@ -87,6 +87,16 @@ class DiagnosticCenterService {
       throw StateError('Execute o diagnóstico antes de exportar');
     }
     return DiagnosticExportService.build(r);
+  }
+
+  /// Read-only fiado Hive forensic export (no PII, no mutations).
+  Future<({String fileName, List<int> bytes, String pretty})>
+      exportFiadoHiveForensics({String? storeId}) async {
+    final sid = (storeId ?? await currentStoreId() ?? '').trim();
+    if (sid.isEmpty) {
+      throw StateError('STORE_ID indisponível para export fiado');
+    }
+    return FiadoHiveForensicExport.exportBytes(lojaId: sid);
   }
 
   /// Record a runtime failure into incident history (still no stock mutation).

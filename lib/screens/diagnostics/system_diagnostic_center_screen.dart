@@ -92,6 +92,32 @@ class _SystemDiagnosticCenterScreenState
     }
   }
 
+  Future<void> _exportFiadoHive() async {
+    try {
+      final art = await _center.exportFiadoHiveForensics(storeId: _storeId);
+      if (kIsWeb) {
+        await Clipboard.setData(ClipboardData(text: art.pretty));
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Fiado Hive RO copiado: ${art.fileName}')),
+        );
+        return;
+      }
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/${art.fileName}');
+      await file.writeAsBytes(art.bytes, flush: true);
+      await Share.shareXFiles(
+        [XFile(file.path, mimeType: 'application/json')],
+        subject: art.fileName,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Export fiado Hive: $e')),
+      );
+    }
+  }
+
   Color _statusColor(DiagnosticHealthStatus? s) {
     switch (s) {
       case DiagnosticHealthStatus.critical:
@@ -177,6 +203,13 @@ class _SystemDiagnosticCenterScreenState
                 onPressed: _result == null ? null : _export,
                 icon: const Icon(Icons.download),
                 label: const Text('Exportar diagnóstico'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _storeId == null || _storeId!.isEmpty
+                    ? null
+                    : _exportFiadoHive,
+                icon: const Icon(Icons.account_balance_wallet_outlined),
+                label: const Text('Exportar fiado Hive (RO)'),
               ),
             ],
           ),
