@@ -102,13 +102,17 @@ Future<ConsignmentDraftLine?> pickConsignmentProductLine({
                                   );
                                   return;
                                 }
-                                // Web: dismiss keyboard before pop so the gesture is not cancelled.
-                                FocusManager.instance.primaryFocus?.unfocus();
                                 final canonical = resolveConsignmentPickerSelection(
                                   catalog: catalog,
                                   selected: p,
                                 );
-                                Navigator.pop(ctx, canonical);
+                                // Capture navigator before unfocus: on Flutter web, unfocus in the
+                                // same frame as pop can discard the sheet result (2nd/3rd search).
+                                final navigator = Navigator.of(ctx);
+                                FocusManager.instance.primaryFocus?.unfocus();
+                                WidgetsBinding.instance.addPostFrameCallback((_) {
+                                  navigator.pop(canonical);
+                                });
                               },
                             );
                           },

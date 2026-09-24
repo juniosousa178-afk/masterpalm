@@ -1,12 +1,12 @@
 ﻿{
-    "buildId":  "catalog-canonical-availability-bulk-fix-1.0.108",
+    "buildId":  "consignado-multi-item-search-1.0.109",
     "hostingTarget":  "masterpalm-58c46",
     "siteId":  "masterpalm-58c46",
     "expectedDomain":  "app.mastepalm.com.br",
-    "webVersion":  "1.0.108+122",
-    "gitCommit":  "3be1212",
-    "gitCommitFull":  "3be12129988a8f38fdfcc6e9b201f1c607802983",
-    "builtAtUtc":  "2026-09-24T00:44:43Z",
-    "notes":  "Nathy catalog bulk resilience + canonical variation availability"
+    "webVersion":  "1.0.109+123",
+    "gitCommit":  "cdf1927",
+    "gitCommitFull":  "cdf1927c07515feeed7b4beb2cbbb7c8a07b9b83",
+    "builtAtUtc":  "2026-09-24T16:23:00Z",
+    "notes":  "Consignado multi-item search: preserve draft when adding 2nd/3rd product"
 }
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../design_system/mp_tokens.dart';
+import '../consignment_draft.dart';
 import '../consignment_errors.dart';
 import '../consignment_models.dart';
 import '../consignment_product_picker.dart';
@@ -33,8 +34,9 @@ class _ConsignmentAddItemsScreenState extends State<ConsignmentAddItemsScreen> {
       context: context,
       lojaId: widget.lojaId,
     );
-    if (line == null || !mounted) return;
-    setState(() => _lines.add(line));
+    if (line == null) return;
+    if (!mounted) return;
+    setState(() => ConsignmentDraftMutator.addOrMerge(_lines, line));
   }
 
   Future<void> _submit() async {
@@ -116,36 +118,44 @@ class _ConsignmentAddItemsScreenState extends State<ConsignmentAddItemsScreen> {
           Text(widget.doc.resellerName, style: MpType.title),
           const SizedBox(height: 12),
           for (var i = 0; i < _lines.length; i++)
-            Card(
-              child: ListTile(
-                title: Text(_lines[i].productName),
-                subtitle: Text(
-                  '${_lines[i].variationKey.isEmpty ? 'Simples' : '${_lines[i].variationKey.size} / ${_lines[i].variationKey.color}'}'
-                  ' · ${consignmentMoney.format(_lines[i].unitSalePrice)}',
-                ),
-                trailing: SizedBox(
-                  width: 110,
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          initialValue: '${_lines[i].qtySent}',
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(labelText: 'Qtd'),
-                          onChanged: (v) {
-                            final n = int.tryParse(v.trim()) ?? 1;
-                            setState(() => _lines[i].qtySent = n < 1 ? 1 : n);
-                          },
-                        ),
+            Builder(
+              builder: (context) {
+                final line = _lines[i];
+                final identity = ConsignmentDraftLineIdentity.fromLine(line);
+                return Card(
+                  key: ValueKey('consignment_add_draft_line_$identity'),
+                  child: ListTile(
+                    title: Text(line.productName),
+                    subtitle: Text(
+                      '${line.variationKey.isEmpty ? 'Simples' : '${line.variationKey.size} / ${line.variationKey.color}'}'
+                      ' · ${consignmentMoney.format(line.unitSalePrice)}',
+                    ),
+                    trailing: SizedBox(
+                      width: 110,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              key: ValueKey('consignment_add_draft_qty_$identity'),
+                              initialValue: '${line.qtySent}',
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(labelText: 'Qtd'),
+                              onChanged: (v) {
+                                final n = int.tryParse(v.trim()) ?? 1;
+                                setState(() => line.qtySent = n < 1 ? 1 : n);
+                              },
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => setState(() => _lines.removeAt(i)),
+                            icon: const Icon(Icons.delete_outline),
+                          ),
+                        ],
                       ),
-                      IconButton(
-                        onPressed: () => setState(() => _lines.removeAt(i)),
-                        icon: const Icon(Icons.delete_outline),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
-              ),
+                );
+              },
             ),
           OutlinedButton.icon(
             onPressed: _busy ? null : _addProduct,

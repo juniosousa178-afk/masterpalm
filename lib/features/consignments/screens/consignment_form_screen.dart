@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../design_system/mp_tokens.dart';
+import '../consignment_draft.dart';
 import '../consignment_product_picker.dart';
 import '../consignment_errors.dart';
 import '../consignment_models.dart';
@@ -117,8 +118,9 @@ class _ConsignmentFormScreenState extends State<ConsignmentFormScreen> {
       context: context,
       lojaId: widget.lojaId,
     );
-    if (line == null || !mounted) return;
-    setState(() => _lines.add(line));
+    if (line == null) return;
+    if (!mounted) return;
+    setState(() => ConsignmentDraftMutator.addOrMerge(_lines, line));
   }
 
   Future<void> _issue() async {
@@ -303,7 +305,9 @@ class _ConsignmentFormScreenState extends State<ConsignmentFormScreen> {
 
   Widget _lineTile(int i) {
     final line = _lines[i];
+    final identity = ConsignmentDraftLineIdentity.fromLine(line);
     return Card(
+      key: ValueKey('consignment_draft_line_$identity'),
       child: ListTile(
         title: Text(line.productName),
         subtitle: Column(
@@ -316,6 +320,7 @@ class _ConsignmentFormScreenState extends State<ConsignmentFormScreen> {
                 SizedBox(
                   width: 72,
                   child: TextFormField(
+                    key: ValueKey('consignment_draft_qty_$identity'),
                     initialValue: '${line.qtySent}',
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(labelText: 'Qtd'),
@@ -329,6 +334,7 @@ class _ConsignmentFormScreenState extends State<ConsignmentFormScreen> {
                 SizedBox(
                   width: 96,
                   child: TextFormField(
+                    key: ValueKey('consignment_draft_price_$identity'),
                     initialValue: line.unitSalePrice.toStringAsFixed(2),
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(labelText: 'Preço'),
@@ -352,6 +358,7 @@ class _ConsignmentFormScreenState extends State<ConsignmentFormScreen> {
               SizedBox(
                 width: 96,
                 child: TextFormField(
+                  key: ValueKey('consignment_draft_commission_$identity'),
                   initialValue: line.commissionValue.toStringAsFixed(2),
                   keyboardType: TextInputType.number,
                   decoration: const InputDecoration(labelText: 'Comissão'),

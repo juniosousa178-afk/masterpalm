@@ -250,6 +250,7 @@ void main() {
     expect(find.text('Solitário Cravejado'), findsOneWidget);
     expect(find.text('Alpha Keep'), findsNothing);
     await tester.tap(find.text('Solitário Cravejado'));
+    await tester.pump();
     await tester.pumpAndSettle();
     expect(find.text('Solitário Cravejado'), findsOneWidget);
     expect(find.text('Alpha Keep'), findsNothing);
@@ -269,6 +270,7 @@ void main() {
     await tester.tap(find.text('Adicionar'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Produto Lista B'));
+    await tester.pump();
     await tester.pumpAndSettle();
     expect(find.text('Produto Lista B'), findsOneWidget);
     expect(find.text('Produto Lista A'), findsNothing);
