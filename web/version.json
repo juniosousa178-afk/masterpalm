@@ -1,11 +1,12 @@
 ﻿{
-  "buildId": "fiado-remote-authority-guard-1.0.107",
-  "hostingTarget": "masterpalm-58c46",
-  "siteId": "masterpalm-58c46",
-  "expectedDomain": "app.mastepalm.com.br",
-  "webVersion": "1.0.107+121",
-  "gitCommit": "5ff2933",
-  "gitCommitFull": "5ff29334fd72392f3e66b7638d9ed77ec393c683",
-  "builtAtUtc": "2026-09-24T00:15:00Z",
-  "notes": "Prevent stale fiado Hive cache from reopening settled/cancelled remote debt; remote-first overdue/list reconcile; fiado Hive RO export + diagnostic events"
+    "buildId":  "catalog-canonical-availability-bulk-fix-1.0.108",
+    "hostingTarget":  "masterpalm-58c46",
+    "siteId":  "masterpalm-58c46",
+    "expectedDomain":  "app.mastepalm.com.br",
+    "webVersion":  "1.0.108+122",
+    "gitCommit":  "3be1212",
+    "gitCommitFull":  "3be12129988a8f38fdfcc6e9b201f1c607802983",
+    "builtAtUtc":  "2026-09-24T00:44:43Z",
+    "notes":  "Nathy catalog bulk resilience + canonical variation availability"
 }
+
