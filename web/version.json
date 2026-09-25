@@ -1,12 +1,11 @@
 ﻿{
-    "buildId":  "consignado-multi-item-search-1.0.109",
     "hostingTarget":  "masterpalm-58c46",
+    "builtAtUtc":  "2026-09-25T01:15:58Z",
     "siteId":  "masterpalm-58c46",
+    "webVersion":  "1.0.110+124",
+    "buildId":  "consignado-picker-commit-before-pop-1.0.110",
+    "gitCommit":  "5458cf5",
     "expectedDomain":  "app.mastepalm.com.br",
-    "webVersion":  "1.0.109+123",
-    "gitCommit":  "cdf1927",
-    "gitCommitFull":  "cdf1927c07515feeed7b4beb2cbbb7c8a07b9b83",
-    "builtAtUtc":  "2026-09-24T16:23:00Z",
-    "notes":  "Consignado multi-item search: preserve draft when adding 2nd/3rd product"
+    "gitCommitFull":  "5458cf508c8c6a5a2471989c4267e22e8d15baeb",
+    "notes":  "Consignado picker: commit selection before modal dispose (Safari-safe)"
 }
-

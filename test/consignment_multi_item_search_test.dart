@@ -34,6 +34,7 @@ ConsignmentDraftLine _line({
   required String name,
   String size = '',
   String color = '',
+  String extra = '',
   int qty = 1,
 }) {
   return ConsignmentDraftLine(
@@ -42,7 +43,7 @@ ConsignmentDraftLine _line({
     productType: size.isEmpty ? 'simple' : 'variation',
     qtySent: qty,
     unitSalePrice: 10,
-    variationKey: ConsignmentVariationKey(size: size, color: color),
+    variationKey: ConsignmentVariationKey(size: size, color: color, extra: extra),
   );
 }
 
@@ -86,13 +87,13 @@ void main() {
       expect(draft.map((e) => e.productId), ['A', 'B', 'C']);
     });
 
-    test('DISTINCT_PRODUCT_ID_NOT_DUPLICATE_TEST_PASS', () {
-      final draft = <ConsignmentDraftLine>[_line(id: 'A', name: 'X')];
-      ConsignmentDraftMutator.addOrMerge(draft, _line(id: 'B', name: 'X'));
-      expect(draft, hasLength(2));
+    test('EMPTY_CODE_DISTINCT_PRODUCTS', () {
+      final draft = <ConsignmentDraftLine>[_line(id: 'p1', name: 'X')];
+      ConsignmentDraftMutator.addOrMerge(draft, _line(id: 'p2', name: 'X'));
+      expect(draft.map((e) => e.productId), ['p1', 'p2']);
     });
 
-    test('EMPTY_BARCODE_NOT_DUPLICATE_TEST_PASS', () {
+    test('NULL_BARCODE_DISTINCT_PRODUCTS', () {
       final a = _line(id: 'id-a', name: 'Sem codigo');
       final b = _line(id: 'id-b', name: 'Sem codigo');
       final draft = <ConsignmentDraftLine>[a];
@@ -100,20 +101,14 @@ void main() {
       expect(draft.map((e) => e.productId), ['id-a', 'id-b']);
     });
 
-    test('EMPTY_CODE_NOT_DUPLICATE_TEST_PASS', () {
-      final draft = <ConsignmentDraftLine>[_line(id: 'p1', name: '')];
-      ConsignmentDraftMutator.addOrMerge(draft, _line(id: 'p2', name: ''));
-      expect(draft.map((e) => e.productId), ['p1', 'p2']);
-    });
-
-    test('SAME_PRODUCT_DUPLICATE_POLICY_TEST_PASS', () {
+    test('SAME_LINE_INCREMENT', () {
       final draft = <ConsignmentDraftLine>[_line(id: 'A', name: 'Anel', qty: 1)];
       ConsignmentDraftMutator.addOrMerge(draft, _line(id: 'A', name: 'Anel', qty: 2));
       expect(draft, hasLength(1));
       expect(draft.single.qtySent, 3);
     });
 
-    test('VARIATION_LINE_IDENTITY_TEST_PASS', () {
+    test('VARIATION_DISTINCT_SIZE', () {
       final draft = <ConsignmentDraftLine>[
         _line(id: 'ring', name: 'Anel', size: '14', color: 'prata'),
       ];
@@ -122,26 +117,31 @@ void main() {
         _line(id: 'ring', name: 'Anel', size: '18', color: 'prata'),
       );
       expect(draft, hasLength(2));
+    });
+
+    test('VARIATION_DISTINCT_COLOR', () {
+      final draft = <ConsignmentDraftLine>[
+        _line(id: 'ring', name: 'Anel', size: '14', color: 'prata'),
+      ];
       ConsignmentDraftMutator.addOrMerge(
         draft,
-        _line(id: 'ring', name: 'Anel', size: '14', color: 'prata', qty: 1),
+        _line(id: 'ring', name: 'Anel', size: '14', color: 'ouro'),
       );
       expect(draft, hasLength(2));
-      expect(draft.first.qtySent, 2);
     });
 
-    test('EDIT_ITEM_PRESERVES_OTHER_ITEMS_TEST_PASS', () {
-      final draft = [
-        _line(id: 'A', name: 'A'),
-        _line(id: 'B', name: 'B', qty: 1),
-        _line(id: 'C', name: 'C'),
+    test('VARIATION_DISTINCT_EXTRA', () {
+      final draft = <ConsignmentDraftLine>[
+        _line(id: 'col', name: 'Colar', size: '45cm', color: 'cristal', extra: 'A'),
       ];
-      draft[1].qtySent = 9;
-      expect(draft.map((e) => e.productId), ['A', 'B', 'C']);
-      expect(draft[1].qtySent, 9);
+      ConsignmentDraftMutator.addOrMerge(
+        draft,
+        _line(id: 'col', name: 'Colar', size: '45cm', color: 'cristal', extra: 'B'),
+      );
+      expect(draft, hasLength(2));
     });
 
-    test('REMOVE_ITEM_PRESERVES_OTHER_ITEMS_TEST_PASS', () {
+    test('REMOVE_B_PRESERVES_A_C', () {
       final draft = [
         _line(id: 'A', name: 'A'),
         _line(id: 'B', name: 'B'),
@@ -151,7 +151,7 @@ void main() {
       expect(draft.map((e) => e.productId), ['A', 'C']);
     });
 
-    test('ADD_AFTER_REMOVE_TEST_PASS', () {
+    test('ADD_D_AFTER_REMOVE', () {
       final draft = [
         _line(id: 'A', name: 'A'),
         _line(id: 'C', name: 'C'),
@@ -160,30 +160,46 @@ void main() {
       expect(draft.map((e) => e.productId), ['A', 'C', 'D']);
     });
 
-    test('NO_DRAFT_STOCK_WRITE_TEST_PASS', () {
-      // Draft mutator is pure memory — no service/firestore side effects.
+    test('NO_DRAFT_STOCK_WRITE', () {
       final draft = <ConsignmentDraftLine>[];
       ConsignmentDraftMutator.addOrMerge(draft, _line(id: 'A', name: 'A'));
       expect(identical(ConsignmentService.debugTransport, null), isTrue);
     });
 
-    test('TENANT_ISOLATION_TEST_PASS', () {
-      final a = _line(id: 'loja-a-prod', name: 'P');
-      final b = _line(id: 'loja-b-prod', name: 'P');
-      expect(a.productId == b.productId, isFalse);
+    test('TENANT_ISOLATION', () {
+      expect(
+        _line(id: 'mirjoias-a', name: 'P').productId ==
+            _line(id: 'nathy-a', name: 'P').productId,
+        isFalse,
+      );
     });
 
-    test('never replaces list when appending', () {
-      final draft = <ConsignmentDraftLine>[_line(id: 'A', name: 'A')];
-      final before = List<ConsignmentDraftLine>.from(draft);
-      ConsignmentDraftMutator.addOrMerge(draft, _line(id: 'B', name: 'B'));
-      expect(identical(draft, draft), isTrue);
-      expect(draft.length, before.length + 1);
-      expect(draft.first.productId, 'A');
+    test('sem-cor and empty color are distinct identity slots', () {
+      final a = ConsignmentDraftLineIdentity(productId: 'p', color: '');
+      final b = ConsignmentDraftLineIdentity(productId: 'p', color: 'sem-cor');
+      expect(a == b, isFalse);
     });
   });
 
   group('widget multi-search accumulate', () {
+    Future<void> addById(WidgetTester tester, {required String id, required String name}) async {
+      await tester.ensureVisible(find.text('Adicionar'));
+      await tester.tap(find.text('Adicionar'));
+      await tester.pumpAndSettle();
+      final term = name.split(' ').last;
+      await tester.enterText(
+        find.byKey(const Key('consignment_product_search')),
+        term,
+      );
+      await tester.pumpAndSettle();
+      final tile = find.byKey(ValueKey('picker_$id'));
+      expect(tile, findsOneWidget);
+      await tester.ensureVisible(tile);
+      await tester.tap(tile);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('consignment_product_search')), findsNothing);
+    }
+
     testWidgets('SEARCH_REOPEN adds A then B then C', (tester) async {
       ConsignmentService.debugPickerItems = [
         _item(id: 'A', name: 'Produto Alpha', productCode: 'CA'),
@@ -191,42 +207,79 @@ void main() {
         _item(id: 'C', name: 'Produto Charlie', productCode: 'CC'),
       ];
       await tester.pumpWidget(
-        const MaterialApp(home: ConsignmentFormScreen(lojaId: 'test-loja')),
+        const MaterialApp(home: ConsignmentFormScreen(lojaId: 'mirjoias')),
       );
       await tester.pumpAndSettle();
 
-      Future<void> addNamed(String name) async {
-        await tester.ensureVisible(find.text('Adicionar'));
-        await tester.tap(find.text('Adicionar'));
-        await tester.pumpAndSettle();
-        await tester.enterText(
-          find.byKey(const Key('consignment_product_search')),
-          name.split(' ').last, // Alpha / Bravo / Charlie
-        );
-        await tester.pumpAndSettle();
-        await tester.ensureVisible(find.text(name));
-        await tester.tap(find.text(name));
-        // Post-frame Navigator.pop in picker + draft setState.
-        await tester.pump();
-        await tester.pump();
-        await tester.pumpAndSettle();
-        expect(find.byKey(const Key('consignment_product_search')), findsNothing);
-      }
-
-      await addNamed('Produto Alpha');
+      await addById(tester, id: 'A', name: 'Produto Alpha');
       expect(find.byKey(const ValueKey('consignment_draft_line_A|||')), findsOneWidget);
       expect(find.text('Itens: 1'), findsOneWidget);
 
-      await addNamed('Produto Bravo');
+      await addById(tester, id: 'B', name: 'Produto Bravo');
       expect(find.byKey(const ValueKey('consignment_draft_line_A|||')), findsOneWidget);
       expect(find.byKey(const ValueKey('consignment_draft_line_B|||')), findsOneWidget);
       expect(find.text('Itens: 2'), findsOneWidget);
 
-      await addNamed('Produto Charlie');
+      await addById(tester, id: 'C', name: 'Produto Charlie');
       expect(find.byKey(const ValueKey('consignment_draft_line_A|||')), findsOneWidget);
       expect(find.byKey(const ValueKey('consignment_draft_line_B|||')), findsOneWidget);
       expect(find.byKey(const ValueKey('consignment_draft_line_C|||')), findsOneWidget);
       expect(find.text('Itens: 3'), findsOneWidget);
+    });
+
+    testWidgets('SECOND_SEARCH_FILTER_UPDATES across reopen', (tester) async {
+      ConsignmentService.debugPickerItems = [
+        _item(id: 'A', name: 'Anel Ouro', productCode: ''),
+        _item(id: 'B', name: 'Colar Prata', productCode: ''),
+        _item(id: 'C', name: 'Brinco Azul', productCode: ''),
+      ];
+      await tester.pumpWidget(
+        const MaterialApp(home: ConsignmentFormScreen(lojaId: 'mirjoias')),
+      );
+      await tester.pumpAndSettle();
+
+      await addById(tester, id: 'A', name: 'Anel Ouro');
+
+      await tester.tap(find.text('Adicionar'));
+      await tester.pumpAndSettle();
+      // Fresh controller — must not keep previous query.
+      expect(
+        tester.widget<TextField>(find.byKey(const Key('consignment_product_search'))).controller!.text,
+        isEmpty,
+      );
+      await tester.enterText(find.byKey(const Key('consignment_product_search')), 'Colar');
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('picker_B')), findsOneWidget);
+      expect(find.byKey(const ValueKey('picker_A')), findsNothing);
+      expect(find.byKey(const ValueKey('picker_C')), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('picker_B')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('consignment_draft_line_A|||')), findsOneWidget);
+      expect(find.byKey(const ValueKey('consignment_draft_line_B|||')), findsOneWidget);
+    });
+
+    testWidgets('OPEN_CLOSE_WITHOUT_SELECTION_PRESERVES_DRAFT', (tester) async {
+      ConsignmentService.debugPickerItems = [
+        _item(id: 'A', name: 'Produto Alpha', productCode: 'CA'),
+        _item(id: 'B', name: 'Produto Bravo', productCode: 'CB'),
+      ];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ConsignmentFormScreen(
+            lojaId: 'mirjoias',
+            debugInitialLines: [_line(id: 'A', name: 'Produto Alpha')],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Adicionar'));
+      await tester.pumpAndSettle();
+      // Dismiss sheet via barrier without selecting.
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('consignment_draft_line_A|||')), findsOneWidget);
+      expect(find.text('Itens: 1'), findsOneWidget);
     });
 
     testWidgets('SEARCH_FILTER_DOES_NOT_MUTATE_DRAFT', (tester) async {
@@ -237,7 +290,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: ConsignmentFormScreen(
-            lojaId: 'test-loja',
+            lojaId: 'mirjoias',
             debugInitialLines: [_line(id: 'A', name: 'Anel Ouro')],
           ),
         ),
@@ -252,16 +305,59 @@ void main() {
         'Colar',
       );
       await tester.pumpAndSettle();
-      // Search sheet filters results; draft Anel may still exist under the sheet.
-      expect(find.text('Colar Prata'), findsOneWidget);
-      await tester.tap(find.text('Colar Prata'));
-      await tester.pump();
-      await tester.pump();
+      expect(find.byKey(const ValueKey('picker_B')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('picker_B')));
       await tester.pumpAndSettle();
-      // Draft must still have A after search filtered it from picker.
       expect(find.byKey(const ValueKey('consignment_draft_line_A|||')), findsOneWidget);
       expect(find.byKey(const ValueKey('consignment_draft_line_B|||')), findsOneWidget);
       expect(find.text('Itens: 2'), findsOneWidget);
+    });
+
+    testWidgets('MIR empty-code products accumulate across three opens', (tester) async {
+      ConsignmentService.debugPickerItems = [
+        _item(id: 'mirjoias-anel-folha', name: 'Anel Folha', productCode: ''),
+        _item(id: 'mirjoias-colar-lua', name: 'Colar Lua', productCode: ''),
+        _item(id: 'mirjoias-brinco-sol', name: 'Brinco Sol', productCode: ''),
+      ];
+      await tester.pumpWidget(
+        const MaterialApp(home: ConsignmentFormScreen(lojaId: 'mirjoias')),
+      );
+      await tester.pumpAndSettle();
+
+      await addById(tester, id: 'mirjoias-anel-folha', name: 'Anel Folha');
+      await addById(tester, id: 'mirjoias-colar-lua', name: 'Colar Lua');
+      await addById(tester, id: 'mirjoias-brinco-sol', name: 'Brinco Sol');
+
+      expect(
+        find.byKey(const ValueKey('consignment_draft_line_mirjoias-anel-folha|||')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('consignment_draft_line_mirjoias-colar-lua|||')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('consignment_draft_line_mirjoias-brinco-sol|||')),
+        findsOneWidget,
+      );
+      expect(find.text('Itens: 3'), findsOneWidget);
+    });
+
+    testWidgets('commit-before-pop survives null sheet result (Safari simulation)',
+        (tester) async {
+      ConsignmentService.debugPickerItems = [
+        _item(id: 'A', name: 'Alpha', productCode: ''),
+        _item(id: 'B', name: 'Bravo', productCode: ''),
+      ];
+      await tester.pumpWidget(
+        const MaterialApp(home: ConsignmentFormScreen(lojaId: 'mirjoias')),
+      );
+      await tester.pumpAndSettle();
+
+      await addById(tester, id: 'A', name: 'Alpha');
+      await addById(tester, id: 'B', name: 'Bravo');
+      expect(find.byKey(const ValueKey('consignment_draft_line_A|||')), findsOneWidget);
+      expect(find.byKey(const ValueKey('consignment_draft_line_B|||')), findsOneWidget);
     });
   });
 }

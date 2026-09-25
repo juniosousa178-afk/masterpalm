@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../design_system/mp_tokens.dart';
@@ -5,6 +6,11 @@ import 'consignment_eligibility.dart';
 import 'consignment_models.dart';
 import 'consignment_service.dart';
 import 'consignment_ui.dart';
+
+/// Runtime marker embedded in web bundle for deploy verification.
+@visibleForTesting
+const kConsignmentPickerSelectionContract =
+    'SELECTION_DELIVERED_BEFORE_MODAL_DISPOSAL_v2';
 
 /// Resolve search/list row back to the canonical loaded catalog item by immutable id.
 /// Search is a filter over [catalog]; never use filtered index into another list.
@@ -19,6 +25,9 @@ ConsignmentPickerItem resolveConsignmentPickerSelection({
 }
 
 /// Shared professional picker used by create + add-items flows.
+///
+/// Selection is committed to a local holder **before** the sheet closes so delivery
+/// does not depend on Flutter-web/Safari focus + Navigator.pop result timing.
 Future<ConsignmentDraftLine?> pickConsignmentProductLine({
   required BuildContext context,
   required String lojaId,
@@ -36,95 +45,26 @@ Future<ConsignmentDraftLine?> pickConsignmentProductLine({
     );
     return null;
   }
-  final selected = await showModalBottomSheet<ConsignmentPickerItem>(
+
+  // Holder survives sheet disposal / null pop result (Safari WebKit focus races).
+  ConsignmentPickerItem? committed;
+  await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    builder: (ctx) {
-      var q = '';
-      return StatefulBuilder(
-        builder: (ctx, setModal) {
-          final filtered = consignmentPickerVisibleItems(catalog, query: q);
-          return SizedBox(
-            height: MediaQuery.of(ctx).size.height * 0.75,
-            child: Column(
-              children: [
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text('Disponíveis para consignação', style: MpType.section),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: TextField(
-                    key: const Key('consignment_product_search'),
-                    decoration: const InputDecoration(
-                      prefixIcon: Icon(Icons.search),
-                      hintText: 'Buscar produto',
-                    ),
-                    onChanged: (v) => setModal(() => q = v),
-                  ),
-                ),
-                Expanded(
-                  child: filtered.isEmpty
-                      ? const Center(child: Text('Nenhum produto disponível para consignação.'))
-                      : ListView.builder(
-                          itemCount: filtered.length,
-                          itemBuilder: (_, i) {
-                            final p = filtered[i];
-                            final codeLabel = p.productCode.trim();
-                            final availability = p.eligible
-                                ? '${p.availableQty} disponíveis · ${consignmentMoney.format(p.price)}'
-                                : p.unavailableReason;
-                            return ListTile(
-                              key: ValueKey('picker_${p.productId}'),
-                              // Keep taps receivable when searching (incl. disabled/zero-stock rows)
-                              // so operators get feedback instead of a silent no-op.
-                              enabled: true,
-                              textColor: p.eligible ? null : Theme.of(ctx).disabledColor,
-                              title: Text(p.name),
-                              subtitle: Text(
-                                codeLabel.isEmpty
-                                    ? availability
-                                    : '$codeLabel · $availability',
-                              ),
-                              onTap: () {
-                                if (!p.eligible) {
-                                  ScaffoldMessenger.of(ctx).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        p.unavailableReason.isEmpty
-                                            ? 'Produto indisponível para consignação.'
-                                            : p.unavailableReason,
-                                      ),
-                                    ),
-                                  );
-                                  return;
-                                }
-                                final canonical = resolveConsignmentPickerSelection(
-                                  catalog: catalog,
-                                  selected: p,
-                                );
-                                // Capture navigator before unfocus: on Flutter web, unfocus in the
-                                // same frame as pop can discard the sheet result (2nd/3rd search).
-                                final navigator = Navigator.of(ctx);
-                                FocusManager.instance.primaryFocus?.unfocus();
-                                WidgetsBinding.instance.addPostFrameCallback((_) {
-                                  navigator.pop(canonical);
-                                });
-                              },
-                            );
-                          },
-                        ),
-                ),
-              ],
-            ),
-          );
+    builder: (sheetContext) {
+      return _ConsignmentProductPickerSheet(
+        key: const Key(kConsignmentPickerSelectionContract),
+        catalog: catalog,
+        onCommit: (item) {
+          committed = item;
+          // Close after commit; result channel unused on purpose.
+          Navigator.of(sheetContext).pop();
         },
       );
     },
   );
+
+  final selected = committed;
   if (selected == null || !context.mounted) return null;
   final canonical = resolveConsignmentPickerSelection(
     catalog: catalog,
@@ -153,6 +93,116 @@ Future<ConsignmentDraftLine?> pickConsignmentProductLine({
     variationKey: variation,
     expectedStockRevision: canonical.stockRevision,
   );
+}
+
+/// Fresh TextEditingController / query per open; parent draft is unaffected.
+class _ConsignmentProductPickerSheet extends StatefulWidget {
+  const _ConsignmentProductPickerSheet({
+    super.key,
+    required this.catalog,
+    required this.onCommit,
+  });
+
+  final List<ConsignmentPickerItem> catalog;
+  final ValueChanged<ConsignmentPickerItem> onCommit;
+
+  @override
+  State<_ConsignmentProductPickerSheet> createState() =>
+      _ConsignmentProductPickerSheetState();
+}
+
+class _ConsignmentProductPickerSheetState
+    extends State<_ConsignmentProductPickerSheet> {
+  late final TextEditingController _search;
+  String _query = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _search = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filtered = consignmentPickerVisibleItems(widget.catalog, query: _query);
+    return SizedBox(
+      height: MediaQuery.of(context).size.height * 0.75,
+      child: Column(
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text('Disponíveis para consignação', style: MpType.section),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: TextField(
+              key: const Key('consignment_product_search'),
+              controller: _search,
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.search),
+                hintText: 'Buscar produto',
+              ),
+              onChanged: (v) => setState(() => _query = v),
+            ),
+          ),
+          Expanded(
+            child: filtered.isEmpty
+                ? const Center(child: Text('Nenhum produto disponível para consignação.'))
+                : ListView.builder(
+                    itemCount: filtered.length,
+                    itemBuilder: (_, i) {
+                      final p = filtered[i];
+                      final codeLabel = p.productCode.trim();
+                      final availability = p.eligible
+                          ? '${p.availableQty} disponíveis · ${consignmentMoney.format(p.price)}'
+                          : p.unavailableReason;
+                      return ListTile(
+                        key: ValueKey('picker_${p.productId}'),
+                        enabled: true,
+                        textColor: p.eligible ? null : Theme.of(context).disabledColor,
+                        title: Text(p.name),
+                        subtitle: Text(
+                          codeLabel.isEmpty
+                              ? availability
+                              : '$codeLabel · $availability',
+                        ),
+                        onTap: () {
+                          if (!p.eligible) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  p.unavailableReason.isEmpty
+                                      ? 'Produto indisponível para consignação.'
+                                      : p.unavailableReason,
+                                ),
+                              ),
+                            );
+                            return;
+                          }
+                          final canonical = resolveConsignmentPickerSelection(
+                            catalog: widget.catalog,
+                            selected: p,
+                          );
+                          // Commit first — never depend on pop return value / unfocus timing.
+                          widget.onCommit(canonical);
+                        },
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 Future<ConsignmentVariationKey?> pickConsignmentVariation({
