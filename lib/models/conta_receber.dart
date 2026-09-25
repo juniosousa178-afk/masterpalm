@@ -76,6 +76,18 @@ class ContaReceber extends HiveObject {
   @HiveField(16)
   String vendaIdFirebase;
 
+  /// True after a successful Firestore→Hive pull applied this record.
+  @HiveField(17)
+  bool remoteAuthorityConfirmed;
+
+  /// UTC epoch ms of last successful remote authority stamp (0 = never).
+  @HiveField(18)
+  int remoteConfirmedAtMs;
+
+  /// paid | cancelled | deleted | open | partial | unknown
+  @HiveField(19)
+  String remoteTerminalState;
+
   ContaReceber({
     required this.lojaId,
     required this.clienteNome,
@@ -94,6 +106,9 @@ class ContaReceber extends HiveObject {
     String? status,
     this.historicoPagamentosJson = '[]',
     this.vendaIdFirebase = '',
+    this.remoteAuthorityConfirmed = false,
+    this.remoteConfirmedAtMs = 0,
+    this.remoteTerminalState = 'unknown',
   })  : valorOriginal = valorOriginal ?? valor,
         status = status ?? ContaReceberStatus.pendente {
     normalizarCamposFinanceiros();

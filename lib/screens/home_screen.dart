@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../core/hive_box_names.dart';
 import '../core/access_scope_service.dart';
+import '../core/conta_receber_cache_authority.dart';
 import '../services/permissao_service.dart';
 import '../widgets/vendedor_aguarde_widget.dart';
 import 'package:master_palm/widgets/responsive_shell.dart';
@@ -377,84 +378,89 @@ class _HomeScreenState extends State<HomeScreen>
       final box = await ContaReceberService.openBoxLoja(loja);
       if (!mounted) return;
 
-      final hoje = DateTime.now();
-      final hojeBase = DateTime(hoje.year, hoje.month, hoje.day);
-      final pendentes = ContaReceberService.listar(
+      final decision = decideContaReceberOverdueAlert(
         contas: box.values,
         lojaId: loja,
-        filtro: 'pendentes',
+        remoteRefreshOk: reconcile.remoteRefreshOk,
       );
-
-      final vencidas = pendentes.where((c) {
-        final d = DateTime(
-          c.dataVencimento.year,
-          c.dataVencimento.month,
-          c.dataVencimento.day,
-        );
-        return d.isBefore(hojeBase);
-      }).toList();
-      final vencendo = pendentes.where((c) {
-        final d = DateTime(
-          c.dataVencimento.year,
-          c.dataVencimento.month,
-          c.dataVencimento.day,
-        );
-        final dias = d.difference(hojeBase).inDays;
-        return dias >= 0 && dias <= 2;
-      }).toList();
+      final gate = ContaReceberAlertSessionGate.instance;
 
       await FiadoDiagnosticTracer.emit(
         storeId: loja,
         eventCode: FiadoDiagnosticEvents.overdueRecalculated,
-        decision: reconcile.remoteRefreshOk ? 'REMOTE' : 'OFFLINE_CACHE',
+        decision: decision.authority,
         extra: {
-          'pendentes': pendentes.length,
-          'vencidas': vencidas.length,
-          'vencendo': vencendo.length,
+          'vencidas': decision.vencidas.length,
+          'vencendo': decision.vencendo.length,
           'offline': reconcile.offline,
+          'showDebt': decision.showDebtAlert,
+          'showNeutral': decision.showNeutralSyncWarning,
         },
       );
 
-      if (vencidas.isEmpty && vencendo.isEmpty) return;
-
-      final valorTotal =
-          (vencidas + vencendo).fold<double>(0, (s, c) => s + c.valor);
-
-      final offlineNote = reconcile.offline
-          ? '\n\n(Aviso com base em cache offline — sem confirmação do servidor.)'
-          : '';
-
-      if (!mounted) return;
-      await showDialog<void>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Lembrete de cobrança'),
-          content: Text(
-            'Você tem ${vencidas.length} conta(s) em atraso e '
-            '${vencendo.length} vencendo em até 2 dias.\n\n'
-            'Total pendente: R\$ ${valorTotal.toStringAsFixed(2).replaceAll('.', ',')}.\n'
-            'Esse aviso continuará aparecendo até as contas serem quitadas.'
-            '$offlineNote',
+      if (decision.showDebtAlert) {
+        if (!gate.shouldShowDebtAlert(decision.fingerprint)) return;
+        final valorTotal = decision.totalPendente;
+        if (!mounted) return;
+        await showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Lembrete de cobrança'),
+            content: Text(
+              'Você tem ${decision.vencidas.length} conta(s) em atraso e '
+              '${decision.vencendo.length} vencendo em até 2 dias.\n\n'
+              'Total pendente: R\$ ${valorTotal.toStringAsFixed(2).replaceAll('.', ',')}.\n'
+              'Esse aviso continuará aparecendo até as contas serem quitadas.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  // SNOOZE_POLICY=same_fingerprint_rest_of_session
+                  gate.snoozeDebtAlert(decision.fingerprint);
+                  Navigator.pop(ctx);
+                },
+                child: const Text('Lembrar depois'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  gate.markDebtAlertShown(decision.fingerprint);
+                  Navigator.pop(ctx);
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const ContasReceberScreen(),
+                    ),
+                  );
+                },
+                child: const Text('Abrir contas a receber'),
+              ),
+            ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Lembrar depois'),
+        );
+        gate.markDebtAlertShown(decision.fingerprint);
+        return;
+      }
+
+      if (decision.showNeutralSyncWarning &&
+          gate.shouldShowNeutralWarning(decision.fingerprint)) {
+        if (!mounted) return;
+        await showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Contas a receber'),
+            content: const Text(
+              'Não foi possível confirmar suas contas a receber agora.\n\n'
+              'Nenhuma cobrança em atraso foi confirmada pelo servidor.',
             ),
-            FilledButton(
-              onPressed: () {
-                Navigator.pop(ctx);
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const ContasReceberScreen(),
-                  ),
-                );
-              },
-              child: const Text('Abrir contas a receber'),
-            ),
-          ],
-        ),
-      );
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+        gate.markNeutralShown(decision.fingerprint);
+      }
     } catch (_) {
       // Aviso não pode bloquear a Home caso a box não esteja disponível.
     }

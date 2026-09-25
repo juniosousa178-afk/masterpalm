@@ -11,6 +11,7 @@ import 'package:hive/hive.dart';
 import '../core/conta_receber_dedup.dart';
 import '../core/conta_receber_identity.dart';
 import '../core/conta_receber_lancamento_vinculo.dart';
+import '../core/conta_receber_cache_authority.dart';
 import '../core/conta_receber_remote_authority.dart';
 import '../diagnostics/diagnostic_enums.dart';
 import '../diagnostics/fiado_diagnostic_tracer.dart';
@@ -360,6 +361,8 @@ abstract final class ContaReceberFirestoreService {
     required ContaReceber remoto,
     ContaReceber? local,
   }) async {
+    // REMOTE_TERMINAL_ALWAYS_WINS: stamp authority watermark on every successful pull apply.
+    stampContaReceberRemoteAuthority(remoto);
     if (local != null) {
       local
         ..lojaId = remoto.lojaId
@@ -378,12 +381,18 @@ abstract final class ContaReceberFirestoreService {
         ..lembrete2DiasEnviado = remoto.lembrete2DiasEnviado
         ..status = remoto.status
         ..historicoPagamentosJson = remoto.historicoPagamentosJson
-        ..vendaIdFirebase = remoto.vendaIdFirebase;
+        ..vendaIdFirebase = remoto.vendaIdFirebase
+        ..remoteAuthorityConfirmed = remoto.remoteAuthorityConfirmed
+        ..remoteConfirmedAtMs = remoto.remoteConfirmedAtMs
+        ..remoteTerminalState = remoto.remoteTerminalState;
       local.normalizarCamposFinanceiros();
+      // Re-stamp after normalize (pago/status may tighten to paid).
+      stampContaReceberRemoteAuthority(local);
       await local.save();
       return;
     }
     remoto.garantirDocIdFirestore(remoto.idFirebase ?? '');
+    stampContaReceberRemoteAuthority(remoto);
     await box.add(remoto);
     await remoto.save();
   }

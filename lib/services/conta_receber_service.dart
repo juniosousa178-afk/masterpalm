@@ -3,6 +3,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
+import '../core/conta_receber_cache_authority.dart';
 import '../core/conta_receber_dedup.dart';
 import '../core/conta_receber_identity.dart';
 import '../core/conta_receber_lancamento_vinculo.dart';
@@ -115,6 +116,10 @@ class ContaReceberService {
               c.status.trim().toLowerCase() != ContaReceberStatus.cancelada,
         )
         .toList();
+    // Terminal remote watermark must not appear in active receivable lists.
+    if (filtro == 'pendentes' || filtro == 'vencidas') {
+      list = list.where(contaReceberVisibleInActiveReceivables).toList();
+    }
     list = deduplicarContasReceber(list);
     list.sort((a, b) => b.dataVencimento.compareTo(a.dataVencimento));
     switch (filtro) {
