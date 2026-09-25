@@ -13,11 +13,16 @@ class MovimentacaoEstoqueService {
     required String lojaId,
     required String produtoId,
     required String produtoNome,
-    required String tipo, // 'entrada' | 'saida'
+    required String tipo, // 'entrada' | 'saida' | 'correcao_fisica'
     required int quantidade,
     String motivo = '',
     String usuario = 'App',
     String? vendaId,
+    int? beforeQty,
+    int? afterQty,
+    int? delta,
+    List<Map<String, dynamic>>? cellsChanged,
+    String? stockOperationId,
   }) async {
     try {
       await _db
@@ -33,6 +38,11 @@ class MovimentacaoEstoqueService {
         'motivo': motivo,
         'usuario': usuario,
         if (vendaId != null) 'vendaId': vendaId,
+        if (beforeQty != null) 'beforeQty': beforeQty,
+        if (afterQty != null) 'afterQty': afterQty,
+        if (delta != null) 'delta': delta,
+        if (cellsChanged != null) 'cellsChanged': cellsChanged,
+        if (stockOperationId != null) 'stockOperationId': stockOperationId,
       });
       debugPrint('✅ Movimentação registrada: $tipo $quantidade x $produtoNome');
     } catch (e) {
