@@ -1,0 +1,188 @@
+{
+  "STORE_ID": "nathy-pratas-e-folheados",
+  "APPLY": true,
+  "AFFECTED_TARGET_COUNT": 4,
+  "AFFECTED_REPUBLISHED_COUNT": 3,
+  "AFFECTED_SKIPPED_COUNT": 1,
+  "CATALOG_WRITES": 3,
+  "STOCK_WRITES": 0,
+  "QTY_CHANGED_PRODUCT_COUNT": 0,
+  "CELL_CHANGED_PRODUCT_COUNT": 0,
+  "REVISION_CHANGED_PRODUCT_COUNT": 0,
+  "OPERATION_ID_CHANGED_PRODUCT_COUNT": 0,
+  "ZERO_STOCK_PUBLIC_POLICY": "qty_gt_0_required",
+  "PUBLICATION_INTENT_SOURCE_FIELD": "draft.publicadoNoCatalogo|stock.publicadoNoCatalogo",
+  "PRODUCTS": [
+    {
+      "PRODUCT_ID": "nathy-pratas-e-folheados-pulseira-2-cora-o-cristal-semijoia",
+      "REMOTE_EXISTS": true,
+      "TOMBSTONE_P": false,
+      "PREFLIGHT": "PUBLISHABLE",
+      "STOCK_STRUCTURE_VALID": true,
+      "PENDING_OPERATION_ID": null,
+      "PUBLICATION_INTENT": true,
+      "PUBLICATION_INTENT_SOURCE_FIELD": "stock.publicadoNoCatalogo",
+      "REMOTE_QTY": 1,
+      "BEFORE": {
+        "quantidade": 1,
+        "stockRevision": 0,
+        "stockOperationId": "7a675faa-b46a-4037-95c4-95d54a1a47e1",
+        "variacoes": {
+          "18cm": {
+            "cristal": 1
+          }
+        },
+        "estoquePorTamanho": {
+          "18cm": 1
+        },
+        "publicadoNoCatalogo": true
+      },
+      "SKIP_REASON": null,
+      "PUBLIC_DOC_EXISTS": true,
+      "PUBLIC_QTY": 1,
+      "PUBLIC_VISIBLE": true,
+      "REPUBLISHED": true,
+      "AFTER": {
+        "quantidade": 1,
+        "stockRevision": 0,
+        "stockOperationId": "7a675faa-b46a-4037-95c4-95d54a1a47e1",
+        "variacoes": {
+          "18cm": {
+            "cristal": 1
+          }
+        },
+        "estoquePorTamanho": {
+          "18cm": 1
+        },
+        "publicadoNoCatalogo": true
+      },
+      "PUBLIC_VARIATIONS": {
+        "18cm": {
+          "cristal": 1
+        }
+      }
+    },
+    {
+      "PRODUCT_ID": "nathy-pratas-e-folheados-colar-cora-o-vermelho-semijoia",
+      "REMOTE_EXISTS": true,
+      "TOMBSTONE_P": false,
+      "PREFLIGHT": "PUBLISHABLE",
+      "STOCK_STRUCTURE_VALID": true,
+      "PENDING_OPERATION_ID": null,
+      "PUBLICATION_INTENT": true,
+      "PUBLICATION_INTENT_SOURCE_FIELD": "stock.publicadoNoCatalogo",
+      "REMOTE_QTY": 1,
+      "BEFORE": {
+        "quantidade": 1,
+        "stockRevision": 0,
+        "stockOperationId": "2d23f75e-b52b-4a74-bed8-aaca773ae88a",
+        "variacoes": {
+          "45cm": {
+            "vermelho": 1
+          }
+        },
+        "estoquePorTamanho": {
+          "45cm": 1
+        },
+        "publicadoNoCatalogo": true
+      },
+      "SKIP_REASON": null,
+      "PUBLIC_DOC_EXISTS": true,
+      "PUBLIC_QTY": 1,
+      "PUBLIC_VISIBLE": true,
+      "REPUBLISHED": true,
+      "AFTER": {
+        "quantidade": 1,
+        "stockRevision": 0,
+        "stockOperationId": "2d23f75e-b52b-4a74-bed8-aaca773ae88a",
+        "variacoes": {
+          "45cm": {
+            "vermelho": 1
+          }
+        },
+        "estoquePorTamanho": {
+          "45cm": 1
+        },
+        "publicadoNoCatalogo": true
+      },
+      "PUBLIC_VARIATIONS": {
+        "45cm": {
+          "vermelho": 1
+        }
+      }
+    },
+    {
+      "PRODUCT_ID": "nathy-pratas-e-folheados-colar-2-cora-o-cristal",
+      "REMOTE_EXISTS": true,
+      "TOMBSTONE_P": false,
+      "PREFLIGHT": "PUBLISHABLE",
+      "STOCK_STRUCTURE_VALID": true,
+      "PENDING_OPERATION_ID": null,
+      "PUBLICATION_INTENT": true,
+      "PUBLICATION_INTENT_SOURCE_FIELD": "stock.publicadoNoCatalogo",
+      "REMOTE_QTY": 1,
+      "BEFORE": {
+        "quantidade": 1,
+        "stockRevision": 0,
+        "stockOperationId": "a7c40de2-1634-41f4-bbc1-1ec864c33d48",
+        "variacoes": {
+          "45cm": {
+            "cristal": 1
+          }
+        },
+        "estoquePorTamanho": {
+          "45cm": 1
+        },
+        "publicadoNoCatalogo": true
+      },
+      "SKIP_REASON": null,
+      "PUBLIC_DOC_EXISTS": true,
+      "PUBLIC_QTY": 1,
+      "PUBLIC_VISIBLE": true,
+      "REPUBLISHED": true,
+      "AFTER": {
+        "quantidade": 1,
+        "stockRevision": 0,
+        "stockOperationId": "a7c40de2-1634-41f4-bbc1-1ec864c33d48",
+        "variacoes": {
+          "45cm": {
+            "cristal": 1
+          }
+        },
+        "estoquePorTamanho": {
+          "45cm": 1
+        },
+        "publicadoNoCatalogo": true
+      },
+      "PUBLIC_VARIATIONS": {
+        "45cm": {
+          "cristal": 1
+        }
+      }
+    },
+    {
+      "PRODUCT_ID": "nathy-pratas-e-folheados-kit-a-o-verde",
+      "REMOTE_EXISTS": true,
+      "TOMBSTONE_P": false,
+      "PREFLIGHT": "PUBLISHABLE",
+      "STOCK_STRUCTURE_VALID": true,
+      "PENDING_OPERATION_ID": null,
+      "PUBLICATION_INTENT": false,
+      "PUBLICATION_INTENT_SOURCE_FIELD": "stock.publicadoNoCatalogo",
+      "REMOTE_QTY": 1,
+      "BEFORE": {
+        "quantidade": 1,
+        "stockRevision": 0,
+        "stockOperationId": "2619e9f4-2b15-4236-bfd0-f993196864ea",
+        "variacoes": null,
+        "estoquePorTamanho": {},
+        "publicadoNoCatalogo": false
+      },
+      "SKIP_REASON": "PUBLICATION_INTENT=false",
+      "PUBLIC_DOC_EXISTS": false,
+      "PUBLIC_QTY": null,
+      "PUBLIC_VISIBLE": null,
+      "REPUBLISHED": false
+    }
+  ]
+}

@@ -291,6 +291,45 @@ export function commercialFieldsSnapshot(doc) {
   }
   return out;
 }
+
+/**
+ * Publication / draft projection editorial.
+ * Draft remains authoritative when it carries publicadoNoCatalogo (or related flags).
+ * When draft is absent for those keys, fall back to stock document flags persisted by create
+ * (NO_CONTROL / legacyCompat) — do not treat editorial={} as implicit unpublished.
+ *
+ * PUBLICATION_INTENT_SOURCE_FIELD:
+ * - draft.publicadoNoCatalogo when present on editorial
+ * - else stock.publicadoNoCatalogo
+ */
+export function resolveCatalogEditorial(stock = {}, editorial = {}) {
+  const source = isMap(stock) ? stock : {};
+  const ed = isMap(editorial) ? {...editorial} : {};
+  const publicationKeys = ['publicadoNoCatalogo', 'exibir_no_catalogo', 'ocultar_catalogo', 'catalog_ativo'];
+  for (const k of publicationKeys) {
+    if (!(k in ed) && (k in source)) ed[k] = source[k];
+  }
+  // Bootstrap remaining editorial meta from stock when missing (NO_CONTROL create without draft).
+  for (const k of EDITORIAL_FIELDS) {
+    if (!(k in ed) && (k in source)) ed[k] = source[k];
+  }
+  return ed;
+}
+
+/** True when resolved editorial explicitly wants public catalog listing. */
+export function hasExplicitPublicationIntent(stock = {}, editorial = {}) {
+  return resolveCatalogEditorial(stock, editorial).publicadoNoCatalogo === true;
+}
+
+/** Which field supplied publication intent (for audits / repair preflight). */
+export function publicationIntentSourceField(stock = {}, editorial = {}) {
+  const ed = isMap(editorial) ? editorial : {};
+  const source = isMap(stock) ? stock : {};
+  if ('publicadoNoCatalogo' in ed) return 'draft.publicadoNoCatalogo';
+  if ('publicadoNoCatalogo' in source) return 'stock.publicadoNoCatalogo';
+  return null;
+}
+
 export function projectCatalog(canonical, editorial, productId) {
   let stock;
   try {
@@ -308,9 +347,12 @@ export function projectCatalog(canonical, editorial, productId) {
     }
     throw e;
   }
+  const resolvedEditorial = resolveCatalogEditorial(stock, editorial);
   // Presence (`k in obj`), not truthiness — false/0 must project.
-  const meta = Object.fromEntries(EDITORIAL_FIELDS.filter(k => k in editorial).map(k => [k, editorial[k]]));
-  Object.assign(meta, mergeCommercialEditorialFields(editorial, stock));
+  const meta = Object.fromEntries(
+    EDITORIAL_FIELDS.filter(k => k in resolvedEditorial).map(k => [k, resolvedEditorial[k]]),
+  );
+  Object.assign(meta, mergeCommercialEditorialFields(resolvedEditorial, stock));
   const stockFields = ['quantidade','variacoes','estoquePorTamanho','estoquePorCor','tamanhos','cores',
     'variacoesExtraTipo','tipoProduto','stockKind','itensCombo','comboConfig'];
   // Draft keeps full normalized maps (zeros may remain as editorial/exhaustion evidence).
@@ -338,11 +380,13 @@ export function projectCatalog(canonical, editorial, productId) {
       liveFields.estoquePorCor = epc;
     }
   }
-  const available = stock.quantidade > 0 && editorial.publicadoNoCatalogo === true &&
-    editorial.exibir_no_catalogo !== false && editorial.ocultar_catalogo !== true &&
-    editorial.catalog_ativo !== false && !stock.pendingSoftDelete;
+  // ZERO_STOCK_PUBLIC_POLICY=qty_gt_0_required: live only when quantidade > 0 and explicit publish intent.
+  const available = stock.quantidade > 0 && resolvedEditorial.publicadoNoCatalogo === true &&
+    resolvedEditorial.exibir_no_catalogo !== false && resolvedEditorial.ocultar_catalogo !== true &&
+    resolvedEditorial.catalog_ativo !== false && !stock.pendingSoftDelete;
   const draft = {...meta, ...draftFields, id: productId,
-    ativo: editorial.catalog_ativo !== false, publicar: editorial.publicadoNoCatalogo === true,
+    ativo: resolvedEditorial.catalog_ativo !== false,
+    publicar: resolvedEditorial.publicadoNoCatalogo === true,
     vendasCatalogoTotal: quantity(stock.vendasCatalogoTotal ?? 0, {field: 'vendasCatalogoTotal', productId}),
     estoque: stock.quantidade,
     estoque_atual: stock.quantidade, qtdEstoque: stock.quantidade,

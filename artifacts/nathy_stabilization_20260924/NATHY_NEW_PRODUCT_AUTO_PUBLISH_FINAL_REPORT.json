@@ -1,0 +1,88 @@
+{
+  "DECISION": "MASTERPALM_NATHY_NEW_PRODUCT_AUTO_PUBLISH_FIXED",
+  "ROOT_CAUSE_FIXED": true,
+  "VALID_NEW_PRODUCT_CAN_PUBLISH_WITHOUT_PREEXISTING_DRAFT": true,
+  "DRAFT_ABSENT_PUBLICATION_INTENT_SUPPORTED": true,
+  "PUBLICATION_INTENT_SOURCE_FIELD": "draft.publicadoNoCatalogo|stock.publicadoNoCatalogo",
+  "LEGACY_UNPUBLISHED_PRODUCT_REMAINS_UNPUBLISHED": true,
+  "ZERO_STOCK_PUBLIC_POLICY": "qty_gt_0_required",
+  "AFFECTED_TARGET_COUNT": 4,
+  "AFFECTED_REPUBLISHED_COUNT": 3,
+  "AFFECTED_SKIPPED_COUNT": 1,
+  "AFFECTED_SKIPPED_REASON": "kit-a-o-verde PUBLICATION_INTENT=false (stock.publicadoNoCatalogo=false)",
+  "PRODUCT_1_PUBLIC": true,
+  "PRODUCT_1_ID": "nathy-pratas-e-folheados-pulseira-2-cora-o-cristal-semijoia",
+  "PRODUCT_2_PUBLIC": true,
+  "PRODUCT_2_ID": "nathy-pratas-e-folheados-colar-cora-o-vermelho-semijoia",
+  "PRODUCT_3_PUBLIC": true,
+  "PRODUCT_3_ID": "nathy-pratas-e-folheados-colar-2-cora-o-cristal",
+  "PRODUCT_4_PUBLIC": false,
+  "PRODUCT_4_ID": "nathy-pratas-e-folheados-kit-a-o-verde",
+  "PRODUCT_4_SKIP": "PUBLICATION_INTENT=false",
+  "ANEL_PROMO_INCLUDED": false,
+  "ANEL_PROMO_REASON": "qty=0 ZERO_STOCK_PUBLIC_POLICY=qty_gt_0_required",
+  "QTY_CHANGED_PRODUCT_COUNT": 0,
+  "CELL_CHANGED_PRODUCT_COUNT": 0,
+  "REVISION_CHANGED_PRODUCT_COUNT": 0,
+  "OPERATION_ID_CHANGED_PRODUCT_COUNT": 0,
+  "REMOTE_STOCK_WRITES": 0,
+  "PRODUCT_DELETES": 0,
+  "SALE_WRITES": 0,
+  "MIGRATION_WRITES": 0,
+  "CATALOG_WRITES": 3,
+  "APP_VERSION": "1.0.112+126",
+  "BUILD_ID": "nathy-new-product-auto-publish-legacycompat-1.0.112",
+  "GIT_COMMIT": "282b799c87f0f4b684e29e0af0f66ba40065bfe6",
+  "GIT_NOTE": "Functions deployed from working tree with uncommitted fix; HEAD still 282b799",
+  "FUNCTION_DEPLOYS": [
+    "stockCatalogCommand",
+    "catalogPublishOne",
+    "catalogPublishAll"
+  ],
+  "HOSTING_DEPLOYS": 0,
+  "RULES_DEPLOYS": 0,
+  "TESTS": {
+    "LEGACYCOMPAT_CREATE_AUTO_PUBLISH_TEST_PASS": true,
+    "DRAFT_ABSENT_PUBLICATION_INTENT_TEST_PASS": true,
+    "DRAFT_PRESENT_PUBLICATION_INTENT_TEST_PASS": true,
+    "UNPUBLISHED_LEGACY_REMAINS_UNPUBLISHED_TEST_PASS": true,
+    "SIMPLE_NEW_PRODUCT_PUBLICATION_TEST_PASS": true,
+    "VARIATION_NEW_PRODUCT_PUBLICATION_TEST_PASS": true,
+    "ZERO_STOCK_POLICY_TEST_PASS": true,
+    "FRESH_BULK_NEW_PRODUCT_TEST_PASS": true,
+    "NO_STOCK_MUTATION_TEST_PASS": true,
+    "TENANT_ISOLATION_TEST_PASS": true,
+    "EXISTING_DRAFT_EDITORIAL_AUTHORITY_PRESERVED": true
+  },
+  "VERIFY": [
+    {
+      "PRODUCT_ID": "nathy-pratas-e-folheados-pulseira-2-cora-o-cristal-semijoia",
+      "REMOTE_QTY": 1,
+      "PUBLIC_DOC_EXISTS": true,
+      "PUBLIC_QTY": 1,
+      "PUBLIC_VISIBLE": true
+    },
+    {
+      "PRODUCT_ID": "nathy-pratas-e-folheados-colar-cora-o-vermelho-semijoia",
+      "REMOTE_QTY": 1,
+      "PUBLIC_DOC_EXISTS": true,
+      "PUBLIC_QTY": 1,
+      "PUBLIC_VISIBLE": true
+    },
+    {
+      "PRODUCT_ID": "nathy-pratas-e-folheados-colar-2-cora-o-cristal",
+      "REMOTE_QTY": 1,
+      "PUBLIC_DOC_EXISTS": true,
+      "PUBLIC_QTY": 1,
+      "PUBLIC_VISIBLE": true
+    },
+    {
+      "PRODUCT_ID": "nathy-pratas-e-folheados-kit-a-o-verde",
+      "REMOTE_QTY": 1,
+      "PUBLIC_DOC_EXISTS": false,
+      "PUBLIC_QTY": null,
+      "PUBLIC_VISIBLE": false,
+      "SKIP_REASON": "PUBLICATION_INTENT=false"
+    }
+  ]
+}

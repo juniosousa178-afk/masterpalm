@@ -544,8 +544,13 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
         writes.push(() => tx.update(tombRef, patch));
       }
       set(r.stockRef, {...p.stock, stockUpdatedAt: FieldValue.serverTimestamp()});
-      // NO_CONTROL compat: never create draft/dependency/control/grants; update draft/live only if draft existed.
-      if (!legacyCompat || r.draftExists) {
+      // Stock mutation (above) is independent of catalog projection.
+      // NO_CONTROL/legacyCompat: do not invent control/grants/deps; still project draft+live when:
+      // - draft already exists (editorial authority path), OR
+      // - this is a create (valid new product may publish without pre-existing draft).
+      const writeCatalogProjection =
+        !legacyCompat || r.draftExists || (targetIds.has(id) && command.kind === 'create');
+      if (writeCatalogProjection) {
         set(r.draftRef, {...p.draft, updatedAt: FieldValue.serverTimestamp()});
         const live = base.collection('produtos').doc(id);
         if (p.live) set(live, {...p.live, updatedAt: FieldValue.serverTimestamp()}); else remove(live);
@@ -603,11 +608,15 @@ export async function publishStockProduct(db, lojaId, productId, auth) {
     const sref = base.collection('estoque_produtos').doc(productId), dref = base.collection('draft_produtos').doc(productId);
     const [stock, draft, tombstone] = await tx.getAll(sref, dref, base.collection('exclusao_produto').doc(productId));
     if (!stock.exists) throw stockError('failed-precondition', 'Canonical product required');
-    // NO_CONTROL: draft optional — project from authoritative stock + empty editorial defaults.
+    // Draft authoritative when present; when absent, resolveCatalogEditorial uses stock publication flags.
     const editorial = draft.exists ? draft.data() : {};
+    const stockData = {
+      ...stock.data(),
+      ...((tombstone.exists && tombstone.data()?.p === true) ? {pendingSoftDelete: true} : {}),
+    };
     let p;
     try {
-      p = projectCatalog({...stock.data(), ...((tombstone.exists && tombstone.data()?.p === true) ? {pendingSoftDelete: true} : {})}, editorial, productId);
+      p = projectCatalog(stockData, editorial, productId);
     } catch (e) {
       if (e?.code === 'failed-precondition' && String(e.message || '').includes('Invalid canonical stock quantity')) {
         const details = e.details && typeof e.details === 'object' ? e.details : {};
@@ -622,7 +631,8 @@ export async function publishStockProduct(db, lojaId, productId, auth) {
       }
       throw e;
     }
-    if (draft.exists) {
+    // Upsert draft when it already exists, or when live materializes (bootstrap under NO_CONTROL).
+    if (draft.exists || p.live) {
       tx.set(dref, {...p.draft, updatedAt: FieldValue.serverTimestamp()});
     }
     const live = base.collection('produtos').doc(productId);
