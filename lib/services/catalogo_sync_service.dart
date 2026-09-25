@@ -16,7 +16,6 @@ import '../core/produto_variacao_extra.dart';
 import '../core/logger.dart';
 import '../src/blob_fetch_stub.dart' if (dart.library.html) '../src/blob_fetch_web.dart' as blob_fetch;
 import '../models/produto.dart';
-import 'catalog_cache_service.dart';
 import 'stock_catalog_backend_service.dart';
 import 'produto_exclusao_tombstone_service.dart';
 import 'produtos_firestore_service.dart';
@@ -35,6 +34,29 @@ import '../screens/public_catalog/catalog_helpers.dart'
 ///  - draft → lojas/{lojaId}/draft_produtos   (Public Catalog / rascunho)
 ///  - live  → lojas/{lojaId}/produtos         (Catalog Web / site)
 enum SyncTarget { draft, live }
+
+/// Resultado seguro da limpeza de órfãos — cache local vs report de catálogo.
+/// Nunca implica delete remoto de estoque/canónico.
+class OrphanCleanupOutcome {
+  const OrphanCleanupOutcome({
+    required this.serverReconciled,
+    required this.skipped,
+    required this.catalogOrphansReportOnly,
+    required this.localCacheOrphans,
+    required this.localCacheRemoved,
+    this.userMessage,
+  });
+
+  final bool serverReconciled;
+  final bool skipped;
+  final String? userMessage;
+  final List<Map<String, String>> catalogOrphansReportOnly;
+  final List<Map<String, String>> localCacheOrphans;
+  final int localCacheRemoved;
+
+  /// Invariante: limpeza de órfãos nunca apaga remoto.
+  bool get remoteDeletesPerformed => false;
+}
 
 class CatalogoSyncService {
   CatalogoSyncService._();
@@ -1021,70 +1043,185 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
     }
   }
 
-  /// Identifica no Firestore (produtos + draft_produtos) os docs que não existem
-  /// mais no cadastro de estoque (Hive). Retorna lista de {id, nome} para exibição.
+  /// Identifica no Firestore (produtos + draft_produtos) docs que **não** existem
+  /// em `estoque_produtos` (autoridade remota). Nunca usa só a lista Hive incompleta.
+  ///
+  /// Se a reconciliação remota falhar, devolve lista vazia (fail-open para a UI)
+  /// — a limpeza remota nunca deve partir de Hive incompleto.
   static Future<List<Map<String, String>>> identificarProdutosOrfaos({
     required String lojaId,
     required Box<Produto> produtosBox,
   }) async {
-    final validDocIds = <String>{};
-    for (final p in produtosBox.values) {
-      final docId = catalogFirestoreDocId(p);
-      if (docId.isNotEmpty) validDocIds.add(docId);
+    final outcome = await reconcileOrphanCleanupPreview(
+      lojaId: lojaId,
+      produtosBox: produtosBox,
+    );
+    // Report catalog-side orphans (absent from remote stock). UI must not
+    // treat this as authority to delete without the safe cleanup path.
+    return outcome.catalogOrphansReportOnly;
+  }
+
+  /// Pré-visualização segura: servidor é autoridade; Hive nunca decide delete remoto.
+  static Future<OrphanCleanupOutcome> reconcileOrphanCleanupPreview({
+    required String lojaId,
+    required Box<Produto> produtosBox,
+  }) async {
+    Set<String> remoteStockIds;
+    try {
+      remoteStockIds = await fetchAuthoritativeEstoqueProdutoIds(lojaId);
+    } catch (e, st) {
+      debugPrint(
+        '⚠️ [ÓRFÃOS] Reconciliação remota indisponível (type=${e.runtimeType})',
+      );
+      if (kDebugMode) {
+        debugPrint('$st');
+      }
+      return OrphanCleanupOutcome(
+        serverReconciled: false,
+        skipped: true,
+        userMessage:
+            'Estoque atualizado parcialmente. Não foi possível concluir a limpeza do cache agora.',
+        catalogOrphansReportOnly: const [],
+        localCacheOrphans: const [],
+        localCacheRemoved: 0,
+      );
     }
 
-    final base = _db.collection('lojas').doc(lojaId);
-    final orfaos = <Map<String, String>>[];
+    final catalogOrphans = <Map<String, String>>[];
     final seenIds = <String>{};
+    final base = _db.collection('lojas').doc(lojaId);
 
     for (final colName in ['produtos', 'draft_produtos']) {
       final snap = await base.collection(colName).get();
       for (final doc in snap.docs) {
-        if (!validDocIds.contains(doc.id) && !seenIds.contains(doc.id)) {
-          seenIds.add(doc.id);
-          final data = doc.data();
-          final nome = (data['nome'] ?? data['name'] ?? doc.id).toString().trim();
-          orfaos.add({'id': doc.id, 'nome': nome.isEmpty ? doc.id : nome});
-        }
+        if (remoteStockIds.contains(doc.id)) continue;
+        if (seenIds.contains(doc.id)) continue;
+        seenIds.add(doc.id);
+        final data = doc.data();
+        final nome =
+            (data['nome'] ?? data['name'] ?? doc.id).toString().trim();
+        catalogOrphans.add({
+          'id': doc.id,
+          'nome': nome.isEmpty ? doc.id : nome,
+        });
       }
     }
 
-    return orfaos;
+    final localOrphans = <Map<String, String>>[];
+    for (final p in produtosBox.values) {
+      if (p.lojaId.isNotEmpty && p.lojaId != lojaId) continue;
+      final id = p.idFirebase.trim().isNotEmpty
+          ? p.idFirebase.trim()
+          : p.slug.trim();
+      if (id.isEmpty) continue;
+      if (remoteStockIds.contains(id)) continue;
+      localOrphans.add({
+        'id': id,
+        'nome': p.nome.trim().isEmpty ? id : p.nome.trim(),
+        'hiveKey': p.key?.toString() ?? '',
+      });
+    }
+
+    return OrphanCleanupOutcome(
+      serverReconciled: true,
+      skipped: false,
+      userMessage: null,
+      catalogOrphansReportOnly: catalogOrphans,
+      localCacheOrphans: localOrphans,
+      localCacheRemoved: 0,
+    );
   }
 
-  /// Exclui do Firestore os docs órfãos pelos ids retornados em [identificarProdutosOrfaos].
+  /// IDs canónicos em `estoque_produtos` (exclui soft-delete / tombstone full via campo).
+  static Future<Set<String>> fetchAuthoritativeEstoqueProdutoIds(
+    String lojaId,
+  ) async {
+    final ids = <String>{};
+    final col = _db
+        .collection('lojas')
+        .doc(lojaId)
+        .collection('estoque_produtos');
+    QuerySnapshot<Map<String, dynamic>> snap;
+    DocumentSnapshot<Map<String, dynamic>>? last;
+    do {
+      Query<Map<String, dynamic>> q =
+          col.orderBy(FieldPath.documentId).limit(300);
+      if (last != null) q = q.startAfterDocument(last);
+      snap = await q.get();
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        if (data['pendingSoftDelete'] == true) continue;
+        ids.add(doc.id);
+      }
+      if (snap.docs.isNotEmpty) last = snap.docs.last;
+    } while (snap.docs.length >= 300);
+    return ids;
+  }
+
+  /// Limpa **apenas** entradas Hive locais ausentes no servidor.
+  /// Nunca apaga `estoque_produtos`, `produtos` nem `draft_produtos`.
+  static Future<OrphanCleanupOutcome> cleanupLocalCacheOrphansOnly({
+    required String lojaId,
+    required Box<Produto> produtosBox,
+    required List<Map<String, String>> localOrphans,
+  }) async {
+    if (localOrphans.isEmpty) {
+      return OrphanCleanupOutcome(
+        serverReconciled: true,
+        skipped: false,
+        userMessage: 'Nenhum órfão de cache local.',
+        catalogOrphansReportOnly: const [],
+        localCacheOrphans: const [],
+        localCacheRemoved: 0,
+      );
+    }
+
+    // Re-verify against server before any local delete.
+    final remoteIds = await fetchAuthoritativeEstoqueProdutoIds(lojaId);
+    var removed = 0;
+    for (final row in localOrphans) {
+      final id = (row['id'] ?? '').trim();
+      if (id.isEmpty) continue;
+      if (remoteIds.contains(id)) continue; // still on server — keep
+      final matches = produtosBox.values
+          .where(
+            (p) =>
+                (p.lojaId.isEmpty || p.lojaId == lojaId) &&
+                (p.idFirebase == id || p.slug == id),
+          )
+          .toList();
+      for (final p in matches) {
+        await p.delete();
+        removed++;
+      }
+    }
+
+    return OrphanCleanupOutcome(
+      serverReconciled: true,
+      skipped: false,
+      userMessage: removed > 0
+          ? '$removed registro(s) removido(s) do cache local.'
+          : 'Nenhum registro local removido.',
+      catalogOrphansReportOnly: const [],
+      localCacheOrphans: localOrphans,
+      localCacheRemoved: removed,
+    );
+  }
+
+  /// Exclusão remota de órfãos de catálogo a partir de diff local está **desligada**.
+  /// Mantém a guarda de segurança: nunca apaga remoto com base em Hive incompleto.
+  /// Não lança [StateError] para a UI — devolve 0 (skip).
   static Future<int> excluirProdutosOrfaosPorIds({
     required String lojaId,
     required List<String> docIds,
   }) async {
-    if (debugFirestoreOverride == null) {
-      throw StateError('A limpeza de órfãos exige reconciliação no servidor; a lista local pode estar incompleta.');
-    }
-
-    if (docIds.isEmpty) return 0;
-
-    final base = _db.collection('lojas').doc(lojaId);
-    var removidos = 0;
-
-    for (final colName in ['produtos', 'draft_produtos']) {
-      final col = base.collection(colName);
-      for (final id in docIds) {
-        try {
-          await col.doc(id).delete();
-          removidos++;
-          if (kDebugMode) {
-            debugPrint('🗑️ [ÓRFÃOS] Removido: $colName/$id');
-          }
-        } catch (_) {}
-      }
-    }
-
-    if (removidos > 0) {
-      CatalogCacheService.invalidate(lojaId, preview: false);
-      CatalogCacheService.invalidate(lojaId, preview: true);
-    }
-
-    return removidos;
+    // Invariant: REMOTE_PRODUCT_DELETE_FROM_ORPHAN_CLEANUP=false
+    // Invariant: REMOTE_STOCK_WRITE_FROM_ORPHAN_CLEANUP=false
+    debugPrint(
+      'ℹ️ [ÓRFÃOS] Skip delete remoto ($lojaId, ${docIds.length} id(s)): '
+      'limpeza de órfãos não apaga catálogo/estoque remoto.',
+    );
+    return 0;
   }
 
   /// Remove produto por key (quando não temos mais o objeto Produto)
