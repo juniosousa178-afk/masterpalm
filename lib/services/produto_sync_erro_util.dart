@@ -102,6 +102,10 @@ class ProdutoSyncErroUtil {
         return 'falha-remota-sem-enfileirar';
       case ProdutoSyncRemotoStatus.pendenteFila:
         return 'pendente-na-fila';
+      case ProdutoSyncRemotoStatus.conflitoRevisaoEstoque:
+        return 'conflito-revisao-estoque';
+      case ProdutoSyncRemotoStatus.dimensaoExtraOcultaBloqueada:
+        return 'dimensao-extra-oculta-bloqueada';
       case ProdutoSyncRemotoStatus.confirmado:
       case ProdutoSyncRemotoStatus.semMudancas:
         return null;

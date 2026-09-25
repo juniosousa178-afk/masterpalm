@@ -1,5 +1,5 @@
 // Cadastro/fila → protocolo stockCatalogCommand (create/replace/editorial).
-// A revisão CAS vem da intent observada, nunca de uma releitura no save.
+// Mutação de estoque: CAS com revisão observada; se remoto mudou, não enfileira.
 
 import 'dart:convert';
 
@@ -14,6 +14,35 @@ import '../core/produto_variacao_extra.dart';
 import '../models/produto.dart';
 import 'estoque_transaction_service.dart';
 import 'stock_catalog_backend_service.dart';
+
+/// Remoto avançou enquanto o editor estava aberto — operador deve reconfirmar.
+class ProdutoStockRevisionConflictException implements Exception {
+  ProdutoStockRevisionConflictException({
+    required this.observedRevision,
+    required this.remoteRevision,
+  });
+
+  final int observedRevision;
+  final int remoteRevision;
+
+  static const userMessage =
+      'O estoque deste produto foi alterado enquanto você editava. '
+      'Atualizamos os dados. Confira as quantidades novamente antes de salvar.';
+
+  @override
+  String toString() =>
+      'STOCK_REVISION_CONFLICT observed=$observedRevision remote=$remoteRevision';
+}
+
+/// Payload local colapsaria dimensão extra canônica — bloqueia save de estoque.
+class ProdutoHiddenExtraDimensionException implements Exception {
+  static const userMessage =
+      'Este produto possui variações adicionais de estoque. '
+      'Atualize os dados antes de alterar as quantidades.';
+
+  @override
+  String toString() => 'HIDDEN_EXTRA_DIMENSION_CANNOT_BE_DESTROYED';
+}
 
 /// Intent congelada antes do envio — retry/restart reenvia o mesmo payload.
 class ProdutoStockCatalogCadastroIntent {
@@ -203,6 +232,8 @@ class ProdutoStockCatalogCadastroSync {
     required bool forcePushFromCadastro,
     ProdutoFormGradeBaseline? gradeBaseline,
     ProdutoStockCatalogCadastroIntent? frozenIntent,
+    int? remoteRevisionAtSaveTime,
+    Map<String, dynamic>? remoteVariacoesAtSaveTime,
   }) async {
     if (frozenIntent != null) return frozenIntent;
 
@@ -224,11 +255,29 @@ class ProdutoStockCatalogCadastroSync {
     } else if (allowStock) {
       // Mutação de estoque/grade (ou intent pendente): replace CAS.
       // Metadados-only do cadastro caem em editorial e não reescrevem saldo.
-      kind = 'replace';
-      expectedRevision = observedRevisionForSave(
+      final observed = observedRevisionForSave(
         produto: produto,
         gradeBaseline: gradeBaseline,
       );
+      // STALE_STOCK_EDIT_NEVER_QUEUED: remoto mudou → conflito, sem pending.
+      if (remoteRevisionAtSaveTime != null &&
+          remoteRevisionAtSaveTime != observed) {
+        throw ProdutoStockRevisionConflictException(
+          observedRevision: observed,
+          remoteRevision: remoteRevisionAtSaveTime,
+        );
+      }
+      // HIDDEN_EXTRA_DIMENSION_CANNOT_BE_DESTROYED
+      final remoteVar = remoteVariacoesAtSaveTime ?? gradeBaseline?.variacoes;
+      if (remoteVar != null &&
+          produtoFormWouldDestroyHiddenExtraDimension(
+            canonicalVariacoes: remoteVar,
+            uiVariacoes: definition['variacoes'] as Map<String, dynamic>?,
+          )) {
+        throw ProdutoHiddenExtraDimensionException();
+      }
+      kind = 'replace';
+      expectedRevision = observed;
       def = definition;
     } else {
       kind = 'editorial';
@@ -316,11 +365,35 @@ class ProdutoStockCatalogCadastroSync {
   }
 
   static bool isRetryableTransportError(Object error) {
+    if (isStockRevisionConflictError(error)) return false;
+    if (error is ProdutoHiddenExtraDimensionException) return false;
     if (error is FirebaseFunctionsException) {
-      return {'unavailable', 'deadline-exceeded', 'aborted', 'internal'}
+      // aborted = CAS conflict — never blind-retry / never queue stale stock.
+      return {'unavailable', 'deadline-exceeded', 'internal'}
           .contains(error.code);
     }
     return false;
+  }
+
+  static bool isStockRevisionConflictError(Object error) {
+    if (error is ProdutoStockRevisionConflictException) return true;
+    if (error is FirebaseFunctionsException) {
+      if (error.code == 'aborted') return true;
+      final msg = (error.message ?? '').toLowerCase();
+      return msg.contains('revision conflict') ||
+          msg.contains('stock revision');
+    }
+    final text = error.toString().toLowerCase();
+    return text.contains('stock_revision_conflict') ||
+        text.contains('revision conflict');
+  }
+
+  @visibleForTesting
+  static bool staleStockEditMustNeverBeQueued({
+    required int observedRevision,
+    required int remoteRevisionAtSaveTime,
+  }) {
+    return observedRevision != remoteRevisionAtSaveTime;
   }
 
   @visibleForTesting

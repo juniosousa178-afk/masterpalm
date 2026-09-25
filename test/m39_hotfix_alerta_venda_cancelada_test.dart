@@ -199,19 +199,20 @@ void main() {
       expect(msg.toLowerCase(), isNot(contains('r\$')));
     });
 
-    test('ALERTA-8 lida não impede lista; exibido impede re-alerta', () async {
+    test('ALERTA-8 lida no servidor impede re-alerta; prefs também', () async {
       final gate = VendaCanceladaAlertaGate();
       gate.seedBaseline(const []);
       final n = _n(id: 'vx_lida_1', dest: 'v1', lida: true);
-      // "lida" não entra na decisão do gate.
+      // Server lida is authoritative — must not re-alert.
       expect(
         gate.shouldShow(
           notificationId: n.id,
           sessionUid: 'v1',
           destinatarioUid: 'v1',
           tipoName: 'vendaCancelada',
+          serverLida: n.lida,
         ),
-        isTrue,
+        isFalse,
       );
       gate.markShown(n.id);
       await VendaCanceladaAlertaGate.persistDisplayed(
@@ -230,10 +231,10 @@ void main() {
           destinatarioUid: 'v1',
           tipoName: 'vendaCancelada',
           persistedDisplayed: persisted,
+          serverLida: false,
         ),
         isFalse,
       );
-      // Registro continua "existindo" (não apagamos o doc — só gate).
       expect(n.id, isNotEmpty);
       expect(n.lida, isTrue);
     });

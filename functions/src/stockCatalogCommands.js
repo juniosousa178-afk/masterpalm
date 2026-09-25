@@ -5,6 +5,14 @@ import {documentId, storeRef, requireAuthenticated, authorizeStockCommand, autho
 import {isMap, stockError, normalizeStock, projectCatalog, quantity, resolveKey, resolveExtraKey, validateEditorial, inferStockKind, buildCommercialLiveOnlyPatch, commercialFieldsSnapshot, COMMERCIAL_EDITORIAL_FIELDS} from './catalogStockProjection.js';
 import {PRODUCT_VALIDATION_FAILED, REASON, makeIssue, productValidationError, gradeKeyLabel} from './productValidationErrors.js';
 import {ATOMIC_PDV_SALE_FLAG, parseAtomicPdvSale, buildCanonicalEstoqueVendaDoc} from './stockCatalogPdvSale.js';
+import {
+  parseReconciliation,
+  applyPhysicalReconciliation,
+  snapshotStockCells,
+  PHYSICAL_RECONCILIATION_CONFLICT,
+  PHYSICAL_RECONCILIATION_PENDING,
+  PHYSICAL_RECONCILIATION_COMBO,
+} from './stockPhysicalReconciliation.js';
 
 const MAX_PRODUCTS = 25;
 const ordered = value => Array.isArray(value) ? value.map(ordered) : isMap(value)
@@ -17,10 +25,10 @@ function keysOnly(data, allowed) {
   if (!isMap(data) || Object.keys(data).some(k => !allowed.includes(k))) throw stockError('invalid-argument', 'Unknown or protected command field');
 }
 function parseCommand(raw) {
-  keysOnly(raw, ['protocolVersion','lojaId','operationId','kind','items','sourceOperationId','editorial','definition','tombstoneKeys', ATOMIC_PDV_SALE_FLAG, 'sale']);
+  keysOnly(raw, ['protocolVersion','lojaId','operationId','kind','items','sourceOperationId','editorial','definition','tombstoneKeys','reconciliation', ATOMIC_PDV_SALE_FLAG, 'sale']);
   if (raw.protocolVersion !== 1) throw stockError('failed-precondition', 'Unsupported stock protocol');
   documentId(raw.lojaId, 'lojaId'); documentId(raw.operationId, 'operationId');
-  if (!['sale','restock','adjust','restore','editorial','create','replace','delete','undo','tombstoneVariation','clearVariationTombstone'].includes(raw.kind)) {
+  if (!['sale','restock','adjust','restore','editorial','create','replace','delete','undo','tombstoneVariation','clearVariationTombstone','physicalReconciliation'].includes(raw.kind)) {
     throw stockError('invalid-argument', 'Unsupported command');
   }
   if (!Array.isArray(raw.items) || raw.items.length === 0 || raw.items.length > 100) throw stockError('invalid-argument', 'Invalid items');
@@ -32,7 +40,7 @@ function parseCommand(raw) {
       quantity(item.quantity);
       if (raw.kind !== 'adjust' && item.quantity === 0) throw stockError('invalid-argument', 'Quantity must be positive');
     }
-    if (['adjust','replace','delete','undo','tombstoneVariation','clearVariationTombstone'].includes(raw.kind)) quantity(item.expectedRevision);
+    if (['adjust','replace','delete','undo','tombstoneVariation','clearVariationTombstone','physicalReconciliation'].includes(raw.kind)) quantity(item.expectedRevision);
     return {...item, size: item.size ?? '', color: item.color ?? '', extra: item.extra ?? ''};
   });
   if (new Set(items.map(i => i.productId)).size > MAX_PRODUCTS) throw stockError('resource-exhausted', 'Too many affected products');
@@ -46,6 +54,13 @@ function parseCommand(raw) {
       'variacoesExtraTipo','tipoProduto','itensCombo','comboConfig','custoReal','custo','precoCusto']);
     if (raw.items.length !== 1) throw stockError('invalid-argument', 'Single product definition required');
   } else if ('definition' in raw) throw stockError('invalid-argument', 'Definition only allowed for create or CAS replacement');
+  let reconciliation = null;
+  if (raw.kind === 'physicalReconciliation') {
+    if (items.length !== 1) throw stockError('invalid-argument', 'Physical reconciliation requires one product');
+    reconciliation = parseReconciliation(raw.reconciliation);
+  } else if ('reconciliation' in raw) {
+    throw stockError('invalid-argument', 'reconciliation only for physicalReconciliation');
+  }
   let tombstoneKeys = null;
   if (['tombstoneVariation','clearVariationTombstone'].includes(raw.kind)) {
     if (items.length !== 1) throw stockError('invalid-argument', 'Variation tombstone requires one product');
@@ -76,7 +91,7 @@ function parseCommand(raw) {
     if ('sale' in raw) throw stockError('invalid-argument', 'sale requires atomicPdvSale=true');
   }
   if (Buffer.byteLength(JSON.stringify(raw)) > 100000) throw stockError('resource-exhausted', 'Command too large');
-  return {...raw, items, tombstoneKeys, atomicPdvSale, atomicSale};
+  return {...raw, items, tombstoneKeys, atomicPdvSale, atomicSale, reconciliation};
 }
 function technicalSimpleColor(value) {
   const n = String(value ?? '').trim().toLowerCase().replace(/\s+/gu, '');
@@ -142,7 +157,7 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
   requireAuthenticated(auth);
   const command = parseCommand(raw), base = storeRef(db, command.lojaId);
   const hash = fingerprint(command);
-    const permission = command.kind === 'replace' ? 'adjust'
+    const permission = command.kind === 'replace' || command.kind === 'physicalReconciliation' ? 'adjust'
       : command.kind === 'tombstoneVariation' ? 'delete'
       : command.kind === 'clearVariationTombstone' ? 'undo'
       : command.kind;
@@ -265,13 +280,55 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
         : dependency;
       for (const related of (dependencyData.comboIds ?? [])) if (!ids.includes(documentId(related))) ids.push(related);
       let data;
+      let physicalBefore = null;
+      let capturedRawStockKind = null;
       try {
         const rawStock = creating ? newDefinition : {...(stock.data() || {})};
         if (legacyCompat && (rawStock.stockRevision === undefined || rawStock.stockRevision === null)) {
           rawStock.stockRevision = 0;
         }
         // Legacy/NO_CONTROL docs may lack stockKind; infer before normalize (same as migrate planner).
-        if (rawStock.stockKind == null || rawStock.stockKind === '') {
+        // physicalReconciliation: operator structure authorizes AFTER; provisional infer is read-only bookkeeping.
+        const rawStockKind = rawStock.stockKind == null || rawStock.stockKind === ''
+          ? null
+          : rawStock.stockKind;
+        capturedRawStockKind = creating ? (newDefinition?.stockKind ?? null) : rawStockKind;
+        if (command.kind === 'physicalReconciliation') {
+          if (rawStockKind === 'combo' || rawStock.tipoProduto === 'combo' ||
+              (Array.isArray(rawStock.itensCombo) && rawStock.itensCombo.length)) {
+            throw stockError('failed-precondition', PHYSICAL_RECONCILIATION_COMBO);
+          }
+          if (rawStock.pendingSoftDelete) {
+            throw stockError('failed-precondition', PHYSICAL_RECONCILIATION_PENDING);
+          }
+          if (!command.reconciliation?.productStructure && rawStockKind == null) {
+            throw stockError(
+              'failed-precondition',
+              'Estrutura de estoque não definida. Informe se o produto é simples, variação ou grade.',
+            );
+          }
+          const probeKind = rawStockKind ?? (
+            (isMap(rawStock.variacoes) && Object.keys(rawStock.variacoes).length) ||
+            Object.keys(rawStock.estoquePorTamanho || {}).length ||
+            Object.keys(rawStock.estoquePorCor || {}).length
+              ? 'variation'
+              : 'simple'
+          );
+          physicalBefore = {
+            quantidade: quantity(rawStock.quantidade ?? 0),
+            cells: [],
+          };
+          try {
+            physicalBefore.cells = snapshotStockCells(
+              normalizeStock({...rawStock, stockKind: probeKind}),
+            );
+          } catch {
+            physicalBefore.cells = [];
+          }
+          if (rawStockKind == null) {
+            rawStock.stockKind = inferStockKind(rawStock);
+          }
+        } else if (rawStock.stockKind == null || rawStock.stockKind === '') {
           rawStock.stockKind = inferStockKind(rawStock);
         }
         data = normalizeStock(creating ? newDefinition : rawStock); quantity(data.stockRevision);
@@ -297,6 +354,8 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
         beforeHash: fingerprint(stockEffect(data)), originalRevision: data.stockRevision,
         originalStockOperationId: (data.stockOperationId ?? '').toString() || null,
         editorial,
+        rawStockKind: capturedRawStockKind,
+        physicalBefore,
       });
     }
     if (!softSale) comboOrder(records);
@@ -305,6 +364,7 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
       if (ok.size) comboOrder(ok);
     }
     const appliedItems = [];
+    let physicalAudit = null;
     function applyItem(item, expand) {
       const r = records.get(item.productId);
       if (!r || r.softFail || !r.data) throw stockError('failed-precondition', 'Product unavailable');
@@ -312,10 +372,17 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
         const patch = validateEditorial(command.editorial);
         r.editorial = {...r.editorial, ...patch}; r.data = {...r.data, ...patch}; return;
       }
-      if (['adjust','replace','delete','undo','tombstoneVariation','clearVariationTombstone'].includes(command.kind) && item.expectedRevision !== r.originalRevision) {
-        throw stockError('aborted', 'Stock revision conflict');
+      if (['adjust','replace','delete','undo','tombstoneVariation','clearVariationTombstone','physicalReconciliation'].includes(command.kind) && item.expectedRevision !== r.originalRevision) {
+        throw stockError('aborted', command.kind === 'physicalReconciliation'
+          ? PHYSICAL_RECONCILIATION_CONFLICT
+          : 'Stock revision conflict');
       }
       if (command.kind === 'create') {r.editorial = validateEditorial(command.editorial); r.data = {...r.data, ...r.editorial}; return;}
+      if (command.kind === 'physicalReconciliation') {
+        if (r.data.pendingSoftDelete) throw stockError('failed-precondition', PHYSICAL_RECONCILIATION_PENDING);
+        physicalAudit = applyPhysicalReconciliation(r, command.reconciliation, {legacyCompat});
+        return;
+      }
       if (command.kind === 'replace') {
         // No missing field inherits an old grade during explicit schema/count replacement.
         if (r.data.pendingSoftDelete) throw stockError('failed-precondition', 'Restore deleted product before editing');
@@ -447,6 +514,9 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
       } else {
         r.data.stockOperationId = command.operationId;
       }
+      if (physicalAudit && targetIds.has(id)) {
+        physicalAudit.afterRevision = r.data.stockRevision;
+      }
       const p = projectCatalog(r.data, r.editorial, id);
       products.push({productId: id, ...p.stock});
       if (targetIds.has(id) && command.kind === 'delete') set(base.collection('exclusao_produto').doc(id),
@@ -486,6 +556,22 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
       legacyCompat: legacyCompat === true,
       ...(command.kind === 'sale' ? {saleId: command.operationId} : {}),
       ...(command.atomicPdvSale ? {atomicPdvSale: true} : {}),
+      ...(physicalAudit ? {
+        type: physicalAudit.type,
+        source: physicalAudit.source,
+        physicalCountConfirmed: true,
+        beforeQty: physicalAudit.beforeQty,
+        afterQty: physicalAudit.afterQty,
+        delta: physicalAudit.delta,
+        beforeCells: physicalAudit.beforeCells,
+        afterCells: physicalAudit.afterCells,
+        beforeRevision: physicalAudit.beforeRevision,
+        afterRevision: physicalAudit.afterRevision,
+        reason: physicalAudit.reason,
+        ...(physicalAudit.operatorNote ? {operatorNote: physicalAudit.operatorNote} : {}),
+        ...(physicalAudit.NO_CONTROL_TO_CONTROLLED ? {NO_CONTROL_TO_CONTROLLED: true} : {}),
+        ...(physicalAudit.productStructure ? {productStructure: physicalAudit.productStructure} : {}),
+      } : {}),
       createdAt: FieldValue.serverTimestamp()}));
     if (command.atomicPdvSale) {
       // Emulator-only regression hook: abort after in-memory stock apply, before durable writes.
@@ -598,72 +684,134 @@ export function classifyCatalogPublishPreflight(stockData, {productId, name, tom
 
 /**
  * Two-phase bulk publish:
- * A) preflight all (no writes)
+ * A) preflight all (no writes) — skipped when productIds provided (resume)
  * B) publish only PUBLISHABLE — never abort on known blockers
+ *
+ * options:
+ *   prepareOnly: true → return IDs/blockers without writes
+ *   chunkSize: max products to publish this call (default 75)
+ *   completedIds: already published (skip; idempotent resume)
+ *   productIds: explicit list to publish (skips full preflight load)
  */
-export async function publishStockAll(db, lojaId, auth) {
+export async function publishStockAll(db, lojaId, auth, options = {}) {
+  const t0 = Date.now();
   requireAuthenticated(auth);
   const base = storeRef(db, lojaId);
   await runStockTransaction(db, tx => authorizePublish(tx, db, base, auth));
+  const coldAuthMs = Date.now() - t0;
 
-  // PHASE A — collect + classify (no writes)
-  const allIds = [];
-  let last;
-  do {
-    let query = base.collection('estoque_produtos').orderBy('__name__').limit(100);
-    if (last) query = query.startAfter(last);
-    const page = await query.get();
-    for (const item of page.docs) allIds.push(item.id);
-    last = page.docs.length === 100 ? page.docs.at(-1) : null;
-  } while (last);
+  const chunkSize = Number(options.chunkSize) > 0 ? Math.min(200, Number(options.chunkSize)) : 75;
+  const prepareOnly = options.prepareOnly === true;
+  const completedSkip = new Set(
+    Array.isArray(options.completedIds)
+      ? options.completedIds.map((id) => String(id)).filter(Boolean)
+      : [],
+  );
+  const explicitIds = Array.isArray(options.productIds)
+    ? options.productIds.map((id) => String(id)).filter(Boolean)
+    : null;
 
-  const preflight = [];
-  const publishable = [];
-  const blockers = [];
-  for (const id of allIds) {
-    const [stock, draft, tombstone] = await Promise.all([
-      base.collection('estoque_produtos').doc(id).get(),
-      base.collection('draft_produtos').doc(id).get(),
-      base.collection('exclusao_produto').doc(id).get(),
-    ]);
-    if (!stock.exists) {
-      const b = {
-        status: 'BLOCKED_OTHER',
+  let allIds = [];
+  let publishable = [];
+  let blockers = [];
+  let loadProductsMs = 0;
+  let preflightMs = 0;
+
+  if (explicitIds && !prepareOnly) {
+    // Resume path: publish only the given IDs (already classified by client).
+    publishable = explicitIds.filter((id) => !completedSkip.has(id));
+    allIds = [...explicitIds];
+  } else {
+    // PHASE A — collect + classify (no writes)
+    const tLoad = Date.now();
+    let last;
+    do {
+      let query = base.collection('estoque_produtos').orderBy('__name__').limit(100);
+      if (last) query = query.startAfter(last);
+      const page = await query.get();
+      for (const item of page.docs) allIds.push(item.id);
+      last = page.docs.length === 100 ? page.docs.at(-1) : null;
+    } while (last);
+    loadProductsMs = Date.now() - tLoad;
+
+    const tPre = Date.now();
+    for (const id of allIds) {
+      const [stock, draft, tombstone] = await Promise.all([
+        base.collection('estoque_produtos').doc(id).get(),
+        base.collection('draft_produtos').doc(id).get(),
+        base.collection('exclusao_produto').doc(id).get(),
+      ]);
+      if (!stock.exists) {
+        const b = {
+          status: 'BLOCKED_OTHER',
+          productId: id,
+          name: id,
+          reason: 'Canonical product missing',
+          stockKind: null,
+          classification: 'OTHER',
+        };
+        blockers.push(b);
+        continue;
+      }
+      const data = stock.data() || {};
+      const editorial = draft.exists ? draft.data() : {};
+      const nome = editorial.nome || data.nome || id;
+      const classified = classifyCatalogPublishPreflight(data, {
         productId: id,
-        name: id,
-        reason: 'Canonical product missing',
-        stockKind: null,
-        classification: 'OTHER',
-      };
-      preflight.push(b);
-      blockers.push(b);
-      continue;
+        name: nome,
+        tombstoned: tombstone.exists && tombstone.data()?.p === true,
+      });
+      if (classified.status === 'PUBLISHABLE') publishable.push(id);
+      else blockers.push(classified);
     }
-    const data = stock.data() || {};
-    const editorial = draft.exists ? draft.data() : {};
-    const nome = editorial.nome || data.nome || id;
-    const classified = classifyCatalogPublishPreflight(data, {
-      productId: id,
-      name: nome,
-      tombstoned: tombstone.exists && tombstone.data()?.p === true,
-    });
-    preflight.push(classified);
-    if (classified.status === 'PUBLISHABLE') publishable.push(id);
-    else blockers.push(classified);
+    preflightMs = Date.now() - tPre;
   }
 
-  // PHASE B — publish only publishable
-  const completedIds = [];
+  const remainingWork = publishable.filter((id) => !completedSkip.has(id));
+
+  if (prepareOnly) {
+    return {
+      outcome: blockers.length > 0 ? 'SUCCESS_WITH_BLOCKERS' : 'SUCCESS',
+      prepareOnly: true,
+      TOTAL: allIds.length,
+      PUBLISHABLE: publishable.length,
+      PUBLISHED: 0,
+      SKIPPED_BLOCKED: blockers.length,
+      FAILED_UNEXPECTED: 0,
+      publishableIds: publishable,
+      completedIds: [...completedSkip],
+      remainingIds: remainingWork,
+      blockers: blockers.map((b) => ({
+        productId: b.productId,
+        name: b.name,
+        reason: b.reason,
+        stockKind: b.stockKind,
+        classification: b.classification,
+        status: b.status,
+      })),
+      timing: {
+        FUNCTION_COLD_START_MS: coldAuthMs,
+        LOAD_PRODUCTS_MS: loadProductsMs,
+        PREFLIGHT_MS: preflightMs,
+        PUBLISH_MS: 0,
+        TOTAL_MS: Date.now() - t0,
+      },
+    };
+  }
+
+  // PHASE B — publish only a chunk of remaining publishable
+  const chunk = remainingWork.slice(0, chunkSize);
+  const tPub = Date.now();
+  const completedIds = [...completedSkip];
   const failedUnexpected = [];
   let failedId = null;
-  for (let i = 0; i < publishable.length; i++) {
-    const id = publishable[i];
+  for (let i = 0; i < chunk.length; i++) {
+    const id = chunk[i];
     try {
       await publishStockProduct(db, lojaId, id, auth);
       completedIds.push(id);
     } catch (e) {
       const msg = String(e?.message || e);
-      // Known migration/structure failures mid-flight → treat as blocker skip
       if (/Stock migration required|Simple product has variation|Dependency migration|Invalid canonical/i.test(msg)) {
         blockers.push({
           status: 'BLOCKED_OTHER',
@@ -679,25 +827,27 @@ export async function publishStockAll(db, lojaId, auth) {
       failedUnexpected.push({
         productId: id,
         reason: msg,
-        remainingIds: publishable.slice(i + 1),
+        remainingIds: remainingWork.slice(remainingWork.indexOf(id) + 1),
         completedIds: [...completedIds],
       });
       break;
     }
   }
+  const publishMs = Date.now() - tPub;
 
   const remainingIds = failedId
-    ? publishable.slice(publishable.indexOf(failedId) + 1)
-    : [];
+    ? remainingWork.slice(remainingWork.indexOf(failedId) + 1)
+    : remainingWork.slice(chunk.length);
 
-  const TOTAL = allIds.length;
+  const TOTAL = allIds.length || publishable.length + blockers.length;
   const PUBLISHED = completedIds.length;
   const SKIPPED_BLOCKED = blockers.length;
   const FAILED_UNEXPECTED = failedUnexpected.length;
 
   let outcome = 'SUCCESS';
   if (FAILED_UNEXPECTED > 0) outcome = 'FAILED';
-  else if (SKIPPED_BLOCKED > 0) outcome = 'SUCCESS_WITH_BLOCKERS';
+  else if (remainingIds.length === 0 && SKIPPED_BLOCKED > 0) outcome = 'SUCCESS_WITH_BLOCKERS';
+  else if (remainingIds.length > 0) outcome = 'SUCCESS'; // client resumes
 
   return {
     outcome,
@@ -706,6 +856,8 @@ export async function publishStockAll(db, lojaId, auth) {
     SKIPPED_BLOCKED,
     FAILED_UNEXPECTED,
     publishedProductsProcessed: PUBLISHED,
+    chunkSize,
+    chunkPublished: completedIds.length - completedSkip.size,
     blockers: blockers.map((b) => ({
       productId: b.productId,
       name: b.name,
@@ -717,12 +869,20 @@ export async function publishStockAll(db, lojaId, auth) {
     completedIds,
     failedId,
     remainingIds,
+    publishableIds: publishable,
     preflightCounts: {
       PUBLISHABLE: publishable.length,
       BLOCKED_STOCK_MIGRATION: blockers.filter((b) => b.status === 'BLOCKED_STOCK_MIGRATION').length,
       BLOCKED_AMBIGUOUS: blockers.filter((b) => b.status === 'BLOCKED_AMBIGUOUS').length,
       BLOCKED_COMBO: blockers.filter((b) => b.status === 'BLOCKED_COMBO').length,
       BLOCKED_OTHER: blockers.filter((b) => b.status === 'BLOCKED_OTHER').length,
+    },
+    timing: {
+      FUNCTION_COLD_START_MS: coldAuthMs,
+      LOAD_PRODUCTS_MS: loadProductsMs,
+      PREFLIGHT_MS: preflightMs,
+      PUBLISH_MS: publishMs,
+      TOTAL_MS: Date.now() - t0,
     },
   };
 }

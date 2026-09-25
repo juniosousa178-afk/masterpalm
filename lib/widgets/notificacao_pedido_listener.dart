@@ -251,6 +251,7 @@ class _NotificacaoPedidoListenerState extends State<NotificacaoPedidoListener> {
       destinatarioUid: n.destinatarioUid,
       tipoName: n.tipo.name,
       persistedDisplayed: _persistedDisplayed,
+      serverLida: n.lida,
     );
     VendaCanceladaAlertaGate.trace('evaluate', {
       'notification_id': n.id,
@@ -267,6 +268,14 @@ class _NotificacaoPedidoListenerState extends State<NotificacaoPedidoListener> {
       uid: uid,
       notificationId: n.id,
     );
+    // Server-authoritative read — no stock side effect.
+    if (!n.lida) {
+      await NotificacaoVendasService().marcarComoLida(
+        n.id,
+        storeId,
+        lidaPorUid: uid,
+      );
+    }
 
     if (!mounted) return;
     VendaCanceladaAlertaGate.trace('alert_show_start', {

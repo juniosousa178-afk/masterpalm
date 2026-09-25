@@ -293,10 +293,12 @@ class ProdutoExclusaoTombstoneService {
       _keysEstoquePorTamanho(m);
 
   /// `true` se a escrita com `p: true` no Firestore e cache local forem confirmadas.
+  /// Optional [stockAuditSnapshot] is immutable audit evidence only (never restores stock).
   static Future<bool> registrarExclusaoProdutoCompleto({
     required String lojaId,
     required String estoqueDocId,
     String? slug,
+    Map<String, dynamic>? stockAuditSnapshot,
   }) async {
     final l = lojaId.trim();
     final id = estoqueDocId.trim();
@@ -308,18 +310,22 @@ class ProdutoExclusaoTombstoneService {
         await Future<void>.delayed(Duration(milliseconds: 180 * tent));
       }
       try {
+        final payload = <String, dynamic>{
+          'p': true,
+          'v': FieldValue.delete(),
+          'sl': slug,
+          'at': FieldValue.serverTimestamp(),
+        };
+        if (stockAuditSnapshot != null && stockAuditSnapshot.isNotEmpty) {
+          payload['preDeleteStockSnapshot'] = stockAuditSnapshot;
+        }
         await _db
             .collection('lojas')
             .doc(l)
             .collection(FSPaths.exclusaoProdutoCol)
             .doc(id)
             .set(
-              {
-                'p': true,
-                'v': FieldValue.delete(),
-                'sl': slug,
-                'at': FieldValue.serverTimestamp(),
-              },
+              payload,
               SetOptions(merge: true),
             );
         _loja(l).produtoCheio.add(id);

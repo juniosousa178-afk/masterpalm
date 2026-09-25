@@ -49,17 +49,68 @@ String _extraTipoParaCelula(
   String cor,
   String extraValor,
 ) {
-  if (variacoesExtraTipo == null || extraValor.isEmpty) return '';
-  final tm = variacoesExtraTipo[tamanho];
-  if (tm is! Map) return '';
-  final cm = tm[cor];
-  if (cm is! Map) return '';
-  for (final e in cm.entries) {
-    if (ProdutoVariacaoExtra.keysMatch(e.key.toString(), extraValor)) {
-      return e.value?.toString() ?? '';
+  if (extraValor.isEmpty) return '';
+  if (variacoesExtraTipo != null) {
+    final tm = variacoesExtraTipo[tamanho];
+    if (tm is Map) {
+      final cm = tm[cor];
+      if (cm is Map) {
+        for (final e in cm.entries) {
+          if (ProdutoVariacaoExtra.keysMatch(e.key.toString(), extraValor)) {
+            final labeled = (e.value?.toString() ?? '').trim();
+            if (labeled.isNotEmpty) return labeled;
+          }
+        }
+      }
     }
   }
+  // Canonical cells with letter keys and missing metadata → LETRA.
+  return produtoFormInferExtraTipoFromValor(extraValor);
+}
+
+/// Infere tipo extra a partir do valor da célula (ex.: letra única → LETRA).
+String produtoFormInferExtraTipoFromValor(String extraValor) {
+  final v = extraValor.trim();
+  if (v.isEmpty) return '';
+  if (RegExp(r'^[A-Za-z]$').hasMatch(v)) return 'LETRA';
   return '';
+}
+
+Set<String> _extraCellKeysFromVariacoes(Map<String, dynamic> variacoes) {
+  final out = <String>{};
+  for (final te in variacoes.entries) {
+    final tam = te.key.toString();
+    final cores = te.value;
+    if (cores is! Map) continue;
+    for (final ce in cores.entries) {
+      final cor = ce.key.toString();
+      final raw = ce.value;
+      if (raw is! Map) continue;
+      for (final ee in raw.entries) {
+        final ek = ee.key.toString();
+        if (ProdutoVariacaoExtra.isMetaKey(ek)) continue;
+        if (ProdutoVariacaoExtra.isSemExtraMapKey(ek)) continue;
+        out.add('$tam|$cor|$ek');
+      }
+    }
+  }
+  return out;
+}
+
+/// True se [canonicalVariacoes] tem dimensão extra e [uiVariacoes] a colapsa/apaga.
+bool produtoFormWouldDestroyHiddenExtraDimension({
+  required Map<String, dynamic> canonicalVariacoes,
+  required Map<String, dynamic>? uiVariacoes,
+}) {
+  final canonKeys = _extraCellKeysFromVariacoes(canonicalVariacoes);
+  if (canonKeys.isEmpty) return false;
+  if (uiVariacoes == null || uiVariacoes.isEmpty) return true;
+  final uiKeys = _extraCellKeysFromVariacoes(uiVariacoes);
+  if (uiKeys.isEmpty) return true;
+  for (final k in canonKeys) {
+    if (!uiKeys.contains(k)) return true;
+  }
+  return false;
 }
 
 /// Monta linhas a partir de [variacoes] persistidas (mesma regra do formulário).

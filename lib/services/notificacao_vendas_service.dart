@@ -699,15 +699,25 @@ class NotificacaoVendasService {
         .asBroadcastStream();
   }
 
-  /// Marca notificação como lida
-  Future<void> marcarComoLida(String notificacaoId, String storeId) async {
+  /// Marca notificação como lida (servidor autoritativo).
+  Future<void> marcarComoLida(
+    String notificacaoId,
+    String storeId, {
+    String? lidaPorUid,
+  }) async {
     try {
+      final patch = <String, dynamic>{
+        'lida': true,
+        'lidaEm': FieldValue.serverTimestamp(),
+      };
+      final uid = (lidaPorUid ?? '').trim();
+      if (uid.isNotEmpty) patch['lidaPor'] = uid;
       await _db
           .collection('lojas')
           .doc(storeId)
           .collection('notificacoes')
           .doc(notificacaoId)
-          .update({'lida': true});
+          .update(patch);
     } catch (e) {
       logW('⚠️ [NOTIF] Erro ao marcar como lida (type=${e.runtimeType})');
     }
@@ -753,7 +763,11 @@ class NotificacaoVendasService {
           .get();
 
       for (final doc in snapshot.docs) {
-        batch.update(doc.reference, {'lida': true});
+        batch.update(doc.reference, {
+          'lida': true,
+          'lidaEm': FieldValue.serverTimestamp(),
+          'lidaPor': uid,
+        });
       }
 
       await batch.commit();

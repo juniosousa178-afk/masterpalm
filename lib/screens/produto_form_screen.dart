@@ -31,6 +31,7 @@ import '../services/produto_sync_fila_retry_service.dart';
 import '../services/produtos_firestore_service.dart';
 import '../services/produto_imagens_storage_cleanup.dart';
 import '../services/produto_upsert_service.dart';
+import '../services/produto_stock_catalog_cadastro_sync.dart';
 import '../utils/ean13_generator.dart';
 import '../services/loja_id_service.dart';
 import '../services/upload_manager.dart';
@@ -107,8 +108,11 @@ Map<String, double> produtoFormBuildPrecoPorTamanhoFromControllers(
     if (ek.isNotEmpty) {
       tiposAcc.putIfAbsent(chaveTamanho, () => {});
       tiposAcc[chaveTamanho]!.putIfAbsent(corFinal, () => {});
-      final label =
-          extraTipo.isEmpty ? kVariacaoExtraTipoFallback : extraTipo;
+      final label = extraTipo.isEmpty
+          ? (produtoFormInferExtraTipoFromValor(ek).isNotEmpty
+              ? produtoFormInferExtraTipoFromValor(ek)
+              : kVariacaoExtraTipoFallback)
+          : extraTipo;
       tiposAcc[chaveTamanho]![corFinal]![ek] = label;
     }
   }
@@ -2322,6 +2326,19 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
 
       if (!mounted) return;
 
+      if (remoteStatus == ProdutoSyncRemotoStatus.conflitoRevisaoEstoque ||
+          remoteStatus == ProdutoSyncRemotoStatus.dimensaoExtraOcultaBloqueada) {
+        final p = produtoSalvoParaRetorno;
+        await ProdutosFirestoreService.refreshGradeFromEstoqueRemotoAoAbrirForm(
+          produto: p,
+          lojaId: lojaId!,
+        );
+        if (mounted) {
+          _carregarGradeUiFromProduto(p);
+          setState(() {});
+        }
+      }
+
       String? detalheSyncErro;
       if (remoteStatus == ProdutoSyncRemotoStatus.pendenteFila ||
           remoteStatus == ProdutoSyncRemotoStatus.falhaRemota) {
@@ -2355,6 +2372,10 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           ProdutoSyncErroUtil.mensagemCadastroFalhaRemota(
             detalheErro: detalheSyncErro,
           ),
+        ProdutoSyncRemotoStatus.conflitoRevisaoEstoque =>
+          ProdutoStockRevisionConflictException.userMessage,
+        ProdutoSyncRemotoStatus.dimensaoExtraOcultaBloqueada =>
+          ProdutoHiddenExtraDimensionException.userMessage,
         ProdutoSyncRemotoStatus.lojaInvalida =>
           'Produto salvo no aparelho, mas sem contexto de loja para sincronizar com a nuvem.',
         ProdutoSyncRemotoStatus.produtoInvalido =>

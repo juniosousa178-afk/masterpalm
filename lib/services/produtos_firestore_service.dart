@@ -71,6 +71,12 @@ enum ProdutoSyncRemotoStatus {
 
   /// Produto com venda/referência e colisão remota — sem troca automática de ID.
   recuperacaoManualNecessaria,
+
+  /// Estoque remoto mudou durante edição — não enfileira; exige reconfirmação.
+  conflitoRevisaoEstoque,
+
+  /// Dimensão extra canônica não representada na UI — bloqueia save de estoque.
+  dimensaoExtraOcultaBloqueada,
 }
 
 class ProdutosFirestoreService {
@@ -1591,6 +1597,14 @@ class ProdutosFirestoreService {
 
       // Cadastro explícito: mutação canônica via stockCatalogCommand (não write direto).
       if (forcePushFromCadastro) {
+        final remoteRev = docSnap.exists
+            ? parseStockRevisionFromRemote(existingData)
+            : null;
+        Map<String, dynamic>? remoteVar;
+        final rv = existingData?['variacoes'];
+        if (rv is Map) {
+          remoteVar = Map<String, dynamic>.from(rv);
+        }
         final intent =
             await ProdutoStockCatalogCadastroSync.buildOrReuseIntent(
           produto: produto,
@@ -1598,6 +1612,8 @@ class ProdutosFirestoreService {
           documentExists: docSnap.exists,
           forcePushFromCadastro: true,
           gradeBaseline: gradeBaseline,
+          remoteRevisionAtSaveTime: remoteRev,
+          remoteVariacoesAtSaveTime: remoteVar,
         );
         logD(
           '[PRODUTOS-SYNC] cadastro via stockCatalogCommand '
@@ -2069,6 +2085,44 @@ class ProdutosFirestoreService {
       }
       if (e is FormatException) {
         ultimoErroSyncSanitizado = e.message;
+      }
+      if (e is ProdutoStockRevisionConflictException) {
+        ultimoErroSyncSanitizado = ProdutoStockRevisionConflictException.userMessage;
+        logE(
+          '❌ [PRODUTOS-SYNC] Conflito de revisão (não enfileira)',
+          error: e,
+          st: st,
+        );
+        return ProdutoSyncRemotoStatus.conflitoRevisaoEstoque;
+      }
+      if (e is ProdutoHiddenExtraDimensionException) {
+        ultimoErroSyncSanitizado = ProdutoHiddenExtraDimensionException.userMessage;
+        logE(
+          '❌ [PRODUTOS-SYNC] Dimensão extra oculta (não enfileira)',
+          error: e,
+          st: st,
+        );
+        return ProdutoSyncRemotoStatus.dimensaoExtraOcultaBloqueada;
+      }
+      if (ProdutoStockCatalogCadastroSync.isStockRevisionConflictError(e)) {
+        // Race CAS após fetch: limpa pending desta intent e não enfileira.
+        if (hasPendingStockMutation(produto)) {
+          produto.pendingStockOperationId = null;
+          produto.pendingStockBaseRevision = null;
+          if (produto.isInBox) {
+            try {
+              await produto.save();
+            } catch (_) {}
+          }
+        }
+        ultimoErroSyncSanitizado =
+            ProdutoStockRevisionConflictException.userMessage;
+        logE(
+          '❌ [PRODUTOS-SYNC] CAS aborted/revision conflict (não enfileira)',
+          error: e,
+          st: st,
+        );
+        return ProdutoSyncRemotoStatus.conflitoRevisaoEstoque;
       }
       logE(
         '❌ [PRODUTOS-SYNC] Erro ao sincronizar produto (type=${e.runtimeType})'

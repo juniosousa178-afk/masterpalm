@@ -90,6 +90,7 @@ class VendaCanceladaAlertaGate {
     required String destinatarioUid,
     required String tipoName,
     Set<String> persistedDisplayed = const {},
+    bool serverLida = false,
   }) {
     final id = notificationId.trim();
     final uid = sessionUid.trim();
@@ -109,6 +110,12 @@ class VendaCanceladaAlertaGate {
       return false;
     }
     if (id.isEmpty) return false;
+
+    // Server read state is authoritative across sessions/devices.
+    if (serverLida) {
+      trace('skip_server_lida', {'notification_id': id});
+      return false;
+    }
 
     if (sessionShown.contains(id)) {
       trace('dedupe_hit', {

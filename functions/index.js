@@ -5562,11 +5562,21 @@ export const catalogPublishAll = onCall(
   { cors: true, timeoutSeconds: 540, memory: "512MiB" },
   async (request) => {
     try {
-      if (!request.data || Object.keys(request.data).some((k) => k !== "lojaId")) {
-        throw new HttpsError("invalid-argument", "Publish accepts lojaId only");
+      const data = request.data || {};
+      const allowed = new Set(["lojaId", "chunkSize", "completedIds", "prepareOnly", "productIds"]);
+      if (Object.keys(data).some((k) => !allowed.has(k))) {
+        throw new HttpsError("invalid-argument", "Publish accepts lojaId and optional chunk/resume fields");
+      }
+      if (!data.lojaId) {
+        throw new HttpsError("invalid-argument", "Publish requires lojaId");
       }
       const { publishStockAll } = await import("./src/stockCatalogCommands.js");
-      return await publishStockAll(db, request.data.lojaId, request.auth);
+      return await publishStockAll(db, data.lojaId, request.auth, {
+        chunkSize: data.chunkSize,
+        completedIds: data.completedIds,
+        prepareOnly: data.prepareOnly === true,
+        productIds: data.productIds,
+      });
     } catch (error) {
       throw stockCatalogCallableError(error);
     }

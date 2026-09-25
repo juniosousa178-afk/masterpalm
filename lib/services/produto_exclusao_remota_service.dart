@@ -2,8 +2,12 @@
 // Camada única para remoção remota na exclusão de produto (catálogo canônico + estoque + imagens).
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
+import 'package:uuid/uuid.dart';
 
 import '../core/logger.dart';
+import '../core/produto_stock_revision.dart';
 import '../models/produto.dart';
 import 'catalog_cache_service.dart';
 import 'catalogo_sync_service.dart' show CatalogoSyncService, SyncTarget;
@@ -15,6 +19,60 @@ import 'produtos_firestore_service.dart';
 enum ProdutoExclusaoRemotaStatus {
   confirmada,
   pendente,
+}
+
+/// Immutable audit evidence written before tombstone/delete. Never used to restore stock.
+Map<String, dynamic> buildPreDeleteStockAuditSnapshot(Produto produto) {
+  return {
+    'productId': produto.idFirebase.trim().isNotEmpty
+        ? produto.idFirebase.trim()
+        : produto.slug.trim(),
+    'name': produto.nome,
+    'stockKind': produto.variacoes != null && produto.variacoes!.isNotEmpty
+        ? 'variation'
+        : 'simple',
+    'quantity': produto.quantidade,
+    'canonicalCells': produto.variacoes == null
+        ? null
+        : Map<String, dynamic>.from(produto.variacoes!),
+    'estoquePorTamanho': Map<String, int>.from(produto.estoquePorTamanho),
+    'stockRevision': produto.stockRevision,
+    'stockOperationId': produto.confirmedStockOperationId,
+    'operatorUid': FirebaseAuth.instance.currentUser?.uid,
+    'deletedAt': DateTime.now().toUtc().toIso8601String(),
+    'deleteOperationId': const Uuid().v4(),
+  };
+}
+
+@visibleForTesting
+Map<String, dynamic> buildPreDeleteStockAuditSnapshotFromRemote({
+  required String productId,
+  required String name,
+  required Map<String, dynamic> data,
+  String? operatorUid,
+}) {
+  final kind = (data['stockKind'] ?? '').toString().trim();
+  return {
+    'productId': productId,
+    'name': name,
+    'stockKind': kind.isNotEmpty
+        ? kind
+        : ((data['variacoes'] is Map && (data['variacoes'] as Map).isNotEmpty)
+            ? 'variation'
+            : 'simple'),
+    'quantity': (data['quantidade'] as num?)?.toInt() ?? 0,
+    'canonicalCells': data['variacoes'] is Map
+        ? Map<String, dynamic>.from(data['variacoes'] as Map)
+        : null,
+    'estoquePorTamanho': data['estoquePorTamanho'] is Map
+        ? Map<String, dynamic>.from(data['estoquePorTamanho'] as Map)
+        : null,
+    'stockRevision': parseStockRevisionFromRemote(data),
+    'stockOperationId': parseStockOperationIdFromRemote(data),
+    'operatorUid': operatorUid,
+    'deletedAt': DateTime.now().toUtc().toIso8601String(),
+    'deleteOperationId': const Uuid().v4(),
+  };
 }
 
 /// Exclusão remota coerente entre fluxos de estoque (soft delete e v2).
@@ -148,10 +206,30 @@ class ProdutoExclusaoRemotaService {
       return ProdutoExclusaoRemotaStatus.pendente;
     }
 
+    // Prefer remote canonical snapshot; fall back to local product fields.
+    Map<String, dynamic> audit = buildPreDeleteStockAuditSnapshot(produto);
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('lojas')
+          .doc(lojaId)
+          .collection(FSPaths.estoqueProdutosCol)
+          .doc(eid)
+          .get();
+      if (snap.exists) {
+        audit = buildPreDeleteStockAuditSnapshotFromRemote(
+          productId: eid,
+          name: produto.nome,
+          data: Map<String, dynamic>.from(snap.data() ?? {}),
+          operatorUid: FirebaseAuth.instance.currentUser?.uid,
+        );
+      }
+    } catch (_) {}
+
     final okT = await ProdutoExclusaoTombstoneService.registrarExclusaoProdutoCompleto(
       lojaId: lojaId,
       estoqueDocId: eid,
       slug: produto.slug.trim().isNotEmpty ? produto.slug : null,
+      stockAuditSnapshot: audit,
     );
     if (!okT) {
       logE(

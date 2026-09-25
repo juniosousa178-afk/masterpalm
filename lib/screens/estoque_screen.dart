@@ -71,6 +71,7 @@ import '../core/delete_forensic_trace.dart';
 import '../core/produto_untracked_stock_conflict.dart';
 import '../src/file_saver.dart' as file_saver;
 import 'historico_movimentacao_estoque_screen.dart';
+import 'estoque/corrigir_estoque_fisico_sheet.dart';
 import '../services/ai_loja_service.dart';
 import '../services/ia_uso_limite_service.dart';
 import '../services/produto_exclusao_remota_service.dart';
@@ -121,6 +122,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
   int _importAtualizados = 0;
   int _importErros = 0;
   bool _publicando = false;
+  String? _catalogPublishProgressLabel;
   bool _unificando = false;
   bool _excluindoOrfaos = false;
   bool _sincronizandoEstoque = false;
@@ -1402,7 +1404,8 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
 
     final confirmar = await _showConfirmSheet(
       'Excluir ${_produtosSelecionados.length} produto(s)?',
-      'Esta ação não pode ser desfeita. Os produtos serão removidos do estoque, catálogo e Firebase.',
+      'Esta ação não pode ser desfeita. Os produtos serão removidos do estoque, catálogo e Firebase.\n\n'
+          'Produtos com quantidade positiva exigem confirmação explícita — o histórico de estoque será preservado apenas como auditoria.',
       confirmText: 'Excluir',
       confirmColor: _errorColor,
     );
@@ -2440,9 +2443,32 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
       _showSnackBar(kProdutoCadastroDeniedMessage, isError: true);
       return;
     }
+    // Prefer remote qty when available; never decide delete from local cache alone.
+    var qty = p.quantidade;
+    final lojaPreview = await LojaIdService.getWithTimeoutThenSessionFallback(
+      timeout: kIsWeb ? const Duration(seconds: 25) : const Duration(seconds: 10),
+    );
+    final eid = p.idFirebase.trim().isNotEmpty ? p.idFirebase.trim() : p.slug.trim();
+    if (lojaPreview != null && lojaPreview.isNotEmpty && eid.isNotEmpty) {
+      try {
+        final snap = await FirebaseFirestore.instance
+            .collection('lojas')
+            .doc(lojaPreview)
+            .collection('estoque_produtos')
+            .doc(eid)
+            .get();
+        if (snap.exists) {
+          qty = (snap.data()?['quantidade'] as num?)?.toInt() ?? qty;
+        }
+      } catch (_) {}
+    }
+    final warning = qty > 0
+        ? 'Este produto possui $qty unidade(s) em estoque.\n\n'
+            'Esta ação não pode ser desfeita. O produto "${p.nome}" será removido do estoque, catálogo e Firebase.'
+        : 'Esta ação não pode ser desfeita. O produto "${p.nome}" será removido do estoque, catálogo e Firebase.';
     final confirmar = await _showConfirmSheet(
       'Remover Produto?',
-      'Esta ação não pode ser desfeita. O produto "${p.nome}" será removido do estoque, catálogo e Firebase.',
+      warning,
       confirmText: 'Remover',
       confirmColor: _errorColor,
     );
@@ -2451,8 +2477,12 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
 
     setState(() => _publicando = true);
     try {
-      final lojaId = await LojaIdService.getWithTimeoutThenSessionFallback(
-        timeout: kIsWeb ? const Duration(seconds: 25) : const Duration(seconds: 10));
+      final lojaId = lojaPreview ??
+          await LojaIdService.getWithTimeoutThenSessionFallback(
+            timeout: kIsWeb
+                ? const Duration(seconds: 25)
+                : const Duration(seconds: 10),
+          );
       if (lojaId == null || lojaId.isEmpty) {
         _showSnackBar('Nenhuma loja ativa', isError: true);
         return;
@@ -2700,6 +2730,47 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
       return false;
     }
     return true;
+  }
+
+  Future<void> _corrigirEstoqueFisico(Produto p) async {
+    if (!_podeEditarEstoque) {
+      _showSnackBar(kProdutoCadastroDeniedMessage, isError: true);
+      return;
+    }
+    if (hasPendingStockMutation(p)) {
+      _showSnackBar(
+        kPhysicalReconciliationPendingMessage,
+        isError: true,
+      );
+      return;
+    }
+    if (p.ehCombo) {
+      _showSnackBar(
+        kPhysicalReconciliationComboMessage,
+        isError: true,
+      );
+      return;
+    }
+    final lojaId = await LojaIdService.getWithTimeoutThenSessionFallback(
+      timeout: kIsWeb
+          ? const Duration(seconds: 25)
+          : const Duration(seconds: 10),
+    );
+    if (lojaId == null || lojaId.trim().isEmpty) {
+      _showSnackBar('Nenhuma loja ativa', isError: true);
+      return;
+    }
+    if (!mounted) return;
+    final ok = await CorrigirEstoqueFisicoSheet.open(
+      context,
+      produto: p,
+      lojaId: lojaId,
+    );
+    if (!mounted) return;
+    if (ok == true) {
+      setState(() {});
+      _showSnackBar('Estoque corrigido por contagem física');
+    }
   }
 
   Future<void> _ajustarQuantidade(Produto p, int delta) async {
@@ -3335,11 +3406,22 @@ Future<void> _importarProdutos() async {
 
     if (confirmar != true) return;
 
-    setState(() => _publicando = true);
+    setState(() {
+      _publicando = true;
+      _catalogPublishProgressLabel = 'Atualizando catálogo...';
+    });
 
     try {
       final results =
-          await CatalogPublishService.publicarCatalogoCanonicamente();
+          await CatalogPublishService.publicarCatalogoCanonicamente(
+        onProgress: (done, total) {
+          if (!mounted) return;
+          setState(() {
+            _catalogPublishProgressLabel =
+                'Atualizando catálogo: $done de $total';
+          });
+        },
+      );
 
       if (!mounted) return;
 
@@ -3349,6 +3431,7 @@ Future<void> _importarProdutos() async {
           setState(() {
             _publicando = false;
             _catalogoPrecisaAtualizar = false;
+            _catalogPublishProgressLabel = null;
           });
         }
         final published = results['products'] ?? 0;
@@ -3413,12 +3496,22 @@ Future<void> _importarProdutos() async {
       } else {
         final errors = results['errors'] is List ? results['errors'] as List : <dynamic>[];
         _showSnackBar('Erro na publicação: ${errors.join(', ')}', isError: true);
-        if (mounted) setState(() => _publicando = false);
+        if (mounted) {
+          setState(() {
+            _publicando = false;
+            _catalogPublishProgressLabel = null;
+          });
+        }
       }
     } catch (e) {
       if (!mounted) return;
       _showSnackBar("Erro ao publicar: $e", isError: true);
-      if (mounted) setState(() => _publicando = false);
+      if (mounted) {
+        setState(() {
+          _publicando = false;
+          _catalogPublishProgressLabel = null;
+        });
+      }
     }
   }
 
@@ -3617,19 +3710,22 @@ Future<void> _unificarDuplicados() async {
   }
 }
 
-  /// Identifica produtos no Firestore (catálogo web) que não existem mais no
-  /// cadastro de estoque, exibe a lista e só exclui após confirmação.
+  /// Identifica órfãos com autoridade remota e limpa **só cache local** se confirmado.
+  /// Nunca bloqueia a tela de estoque com Bad State; nunca apaga estoque remoto.
   Future<void> _identificarEExcluirOrfaos() async {
     setState(() => _excluindoOrfaos = true);
     try {
       final lojaId = await LojaIdService.getWithTimeoutThenSessionFallback(
-        timeout: kIsWeb ? const Duration(seconds: 25) : const Duration(seconds: 10));
+        timeout: kIsWeb
+            ? const Duration(seconds: 25)
+            : const Duration(seconds: 10),
+      );
       if (lojaId == null) {
         _showSnackBar('Nenhuma loja ativa', isError: true);
         return;
       }
 
-      final orfaos = await CatalogoSyncService.identificarProdutosOrfaos(
+      final preview = await CatalogoSyncService.reconcileOrphanCleanupPreview(
         lojaId: lojaId,
         produtosBox: _box,
       );
@@ -3637,73 +3733,115 @@ Future<void> _unificarDuplicados() async {
       if (!mounted) return;
       setState(() => _excluindoOrfaos = false);
 
-      if (orfaos.isEmpty) {
-        _showSnackBar('Nenhum produto órfão encontrado. O catálogo está sincronizado.');
+      if (preview.skipped || !preview.serverReconciled) {
+        _showSnackBar(
+          preview.userMessage ??
+              'Estoque atualizado parcialmente. Não foi possível concluir a limpeza do cache agora.',
+        );
+        return;
+      }
+
+      final localOrphans = preview.localCacheOrphans;
+      final catalogReport = preview.catalogOrphansReportOnly;
+
+      if (localOrphans.isEmpty && catalogReport.isEmpty) {
+        _showSnackBar(
+          'Nenhum órfão encontrado. Cache local alinhado ao servidor.',
+        );
         return;
       }
 
       final confirmar = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Produtos órfãos no catálogo web'),
+          title: const Text('Limpeza de cache (órfãos)'),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  '${orfaos.length} produto(s) estão no catálogo mas não existem mais no estoque. Deseja excluí-los do catálogo web?',
-                  style: const TextStyle(fontSize: 14),
+                const Text(
+                  'A limpeza remove apenas registros do cache local que o servidor '
+                  'confirma como ausentes. Nada é apagado do estoque remoto.',
+                  style: TextStyle(fontSize: 14),
                 ),
-                const SizedBox(height: 16),
-                ...orfaos.map((o) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(
-                    children: [
-                      Icon(Icons.inventory_2_outlined, size: 18, color: Colors.grey[600]),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          (o['nome'] ?? o['id'] ?? '').toString(),
-                          style: const TextStyle(fontWeight: FontWeight.w500),
-                          overflow: TextOverflow.ellipsis,
+                if (localOrphans.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    '${localOrphans.length} no cache local (podem ser removidos localmente):',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  ...localOrphans.map(
+                    (o) => Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Text((o['nome'] ?? o['id'] ?? '').toString()),
+                    ),
+                  ),
+                ],
+                if (catalogReport.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    '${catalogReport.length} no catálogo web sem estoque canónico '
+                    '(apenas relatório — exclusão remota desligada):',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  ...catalogReport.take(20).map(
+                        (o) => Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: Text(
+                            (o['nome'] ?? o['id'] ?? '').toString(),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[700],
+                            ),
+                          ),
                         ),
                       ),
-                    ],
-                  ),
-                )),
+                  if (catalogReport.length > 20)
+                    Text('… e mais ${catalogReport.length - 20}'),
+                ],
               ],
             ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancelar'),
+              child: const Text('Fechar'),
             ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              style: FilledButton.styleFrom(backgroundColor: Colors.orange),
-              child: const Text('Excluir do catálogo'),
-            ),
+            if (localOrphans.isNotEmpty)
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                style: FilledButton.styleFrom(backgroundColor: Colors.orange),
+                child: const Text('Limpar cache local'),
+              ),
           ],
         ),
       );
 
       if (confirmar != true || !mounted) return;
+      if (localOrphans.isEmpty) return;
 
       setState(() => _excluindoOrfaos = true);
-      final ids = orfaos.map((o) => o['id'] ?? '').where((s) => s.isNotEmpty).toList();
-      await CatalogoSyncService.excluirProdutosOrfaosPorIds(
+      final result = await CatalogoSyncService.cleanupLocalCacheOrphansOnly(
         lojaId: lojaId,
-        docIds: ids,
+        produtosBox: _box,
+        localOrphans: localOrphans,
       );
 
       if (!mounted) return;
-      _showSnackBar('${orfaos.length} produto(s) removido(s) do catálogo web');
+      _showSnackBar(
+        result.userMessage ??
+            '${result.localCacheRemoved} registro(s) removido(s) do cache local',
+      );
       setState(() {});
     } catch (e, st) {
-      logE('[ESTOQUE] Erro ao excluir produtos órfãos', error: e, st: st);
-      if (mounted) _showSnackBar('Erro: $e', isError: true);
+      logE('[ESTOQUE] Erro na limpeza de órfãos', error: e, st: st);
+      if (mounted) {
+        _showSnackBar(
+          'Estoque atualizado parcialmente. Não foi possível concluir a limpeza do cache agora.',
+          isError: true,
+        );
+      }
     } finally {
       if (mounted) setState(() => _excluindoOrfaos = false);
     }
@@ -4274,6 +4412,18 @@ String _formatGradeTexto(Produto p) {
             ),
           ),
           _drawerTile(
+            icon: Icons.inventory_2_outlined,
+            iconColor: const Color(0xFF0EA5E9),
+            label: 'Corrigir estoque físico',
+            subtitle: 'Contagem física com confirmação',
+            onTap: () {
+              Navigator.pop(context);
+              _showSnackBar(
+                'Abra o produto na lista e toque no ícone de estoque físico.',
+              );
+            },
+          ),
+          _drawerTile(
             icon: Icons.receipt_long_outlined,
             iconColor: _primaryColor,
             label: 'Compras — finalizar no estoque',
@@ -4602,8 +4752,8 @@ String _formatGradeTexto(Produto p) {
             icon: Icons.cleaning_services,
             iconColor: Colors.orange,
             label: _excluindoOrfaos
-                ? 'Excluindo órfãos…'
-                : 'Identificar e excluir produtos órfãos',
+                ? 'Limpando cache…'
+                : 'Limpar órfãos do cache local',
             onTap: _excluindoOrfaos
                 ? null
                 : () {
@@ -4878,7 +5028,9 @@ String _formatGradeTexto(Produto p) {
                     )
                   : const Icon(Icons.cloud_upload, color: Colors.white),
               label: Text(
-                _publicando ? 'Publicando...' : 'Atualizar catálogo',
+                _publicando
+                    ? (_catalogPublishProgressLabel ?? 'Publicando...')
+                    : 'Atualizar catálogo',
                 style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
               ),
             ),
@@ -5064,7 +5216,9 @@ String _formatGradeTexto(Produto p) {
                         const CircularProgressIndicator(color: _primaryColor),
                         const SizedBox(height: 16),
                         Text(
-                          _importando ? 'Importando produtos...' : 'Processando...',
+                          _importando
+                              ? 'Importando produtos...'
+                              : (_catalogPublishProgressLabel ?? 'Processando...'),
                           style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
                         ),
                         if (_importando && _importTotal > 0) ...[
@@ -5796,6 +5950,22 @@ String _formatGradeTexto(Produto p) {
                         ),
                         onPressed: () => _abrirForm(produto: p),
                         tooltip: 'Editar',
+                        constraints: const BoxConstraints(),
+                        padding: EdgeInsets.zero,
+                      ),
+                      const SizedBox(height: 4),
+                      IconButton(
+                        icon: Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF0EA5E9).withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(Icons.inventory_2_outlined,
+                              color: Color(0xFF0EA5E9), size: 18),
+                        ),
+                        onPressed: () => _corrigirEstoqueFisico(p),
+                        tooltip: 'Corrigir estoque físico',
                         constraints: const BoxConstraints(),
                         padding: EdgeInsets.zero,
                       ),

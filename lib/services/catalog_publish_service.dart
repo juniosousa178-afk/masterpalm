@@ -284,8 +284,12 @@ class CatalogPublishService {
   /// Usado por Publicar catálogo, Atualizar catálogo e demais botões equivalentes.
   static Future<Map<String, dynamic>> publicarCatalogoCanonicamente({
     String? lojaIdOverride,
+    void Function(int done, int total)? onProgress,
   }) =>
-      publishEverything(lojaIdOverride: lojaIdOverride);
+      publishEverything(
+        lojaIdOverride: lojaIdOverride,
+        onProgress: onProgress,
+      );
 
   @visibleForTesting
   static Map<String, dynamic> mergeDraftComEstoqueCanonicoForTest({
@@ -350,17 +354,26 @@ class CatalogPublishService {
 
   /// Enumera IDs, mas decide publicação/remoção em transação por produto.
   /// O snapshot da enumeração nunca é usado como payload de estoque.
-  static Future<Map<String, dynamic>> promoteAll({String? lojaIdOverride}) async {
+  static Future<Map<String, dynamic>> promoteAll({
+    String? lojaIdOverride,
+    void Function(int done, int total)? onProgress,
+  }) async {
     final lojaId = await _resolveLojaId(lojaIdOverride: lojaIdOverride);
     final base = _db.collection('lojas').doc(lojaId);
     if (debugFirestoreOverride == null) {
-      return StockCatalogBackendService.publishAll(lojaId);
+      return StockCatalogBackendService.publishAllResumable(
+        lojaId,
+        onProgress: onProgress,
+      );
     }
     final draft = await base.collection('draft_produtos').get();
     final live = await base.collection('produtos').get();
     final ids = {...draft.docs.map((d) => d.id), ...live.docs.map((d) => d.id)};
+    var i = 0;
     for (final id in ids) {
       await promoteOne(id, lojaIdOverride: lojaId);
+      i++;
+      onProgress?.call(i, ids.length);
     }
     return {
       'outcome': 'SUCCESS',
@@ -368,6 +381,7 @@ class CatalogPublishService {
       'SKIPPED_BLOCKED': 0,
       'blockers': <dynamic>[],
       'publishedProductsProcessed': ids.length,
+      'CATALOG_PUBLISH_RESUMABLE': true,
     };
   }
 
@@ -443,6 +457,7 @@ class CatalogPublishService {
   /// ✨ Publica TUDO de uma vez (config + payments + produtos + campanhas)
   static Future<Map<String, dynamic>> publishEverything({
     String? lojaIdOverride,
+    void Function(int done, int total)? onProgress,
   }) async {
     final errors = <String>[];
     final results = <String, dynamic>{
@@ -490,12 +505,17 @@ class CatalogPublishService {
       // 3. Publicar produtos (usando método existente)
       try {
         debugPrint('\n📦 [PUBLISH-ALL] Etapa 3/4: Publicando produtos...');
-        final bulk = await promoteAll(lojaIdOverride: lojaId);
+        final bulk = await promoteAll(
+          lojaIdOverride: lojaId,
+          onProgress: onProgress,
+        );
         results['bulk'] = bulk;
         results['products'] = bulk['PUBLISHED'] ?? bulk['publishedProductsProcessed'] ?? 0;
         results['blockers'] = bulk['blockers'] ?? <dynamic>[];
         results['skippedBlocked'] = bulk['SKIPPED_BLOCKED'] ?? 0;
         results['bulkOutcome'] = bulk['outcome'] ?? 'SUCCESS';
+        results['CATALOG_PUBLISH_RESUMABLE'] =
+            bulk['CATALOG_PUBLISH_RESUMABLE'] == true;
         final outcome = '${results['bulkOutcome']}';
         if (outcome == 'FAILED') {
           errors.add('Publicação de produtos falhou inesperadamente');

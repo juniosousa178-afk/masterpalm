@@ -67,6 +67,7 @@ class ProdutoSyncFilaRetryService {
   static bool _precisaRetentativaFila(ProdutoSyncRemotoStatus status) =>
       status == ProdutoSyncRemotoStatus.pendenteFila ||
       status == ProdutoSyncRemotoStatus.falhaRemota;
+  // conflitoRevisaoEstoque / dimensaoExtraOcultaBloqueada: never blind-retry.
 
   /// Erro sanitizado da fila ou do último sync, para mensagem no cadastro.
   static Future<String?> detalheErroAposRetentativa({
