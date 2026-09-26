@@ -7,6 +7,7 @@ import '../models/compra_fornecedor.dart';
 import '../models/compra_fornecedor_constants.dart';
 import '../models/conta_pagar.dart';
 import '../models/conta_pagar_constants.dart';
+import '../financeiro/v2/conta_pagar_remote_mirror.dart';
 import 'compra_fornecedor_hive_store.dart';
 import 'conta_pagar_financeiro_exclusao_service.dart';
 import 'conta_pagar_hive_store.dart';
@@ -204,6 +205,10 @@ abstract final class ContaPagarService {
         atualizadoEm: agora,
       );
       await box.put(id, conta);
+      await ContaPagarRemoteMirrorService.mirrorIfEnabled(
+        storeId: lojaId.trim(),
+        conta: conta,
+      );
       criadas++;
     }
 
@@ -216,7 +221,12 @@ abstract final class ContaPagarService {
   }
 
   static Future<void> salvar(Box<ContaPagar> box, ContaPagar conta) async {
-    await box.put(conta.id, conta.copyWith(atualizadoEm: DateTime.now()));
+    final gravada = conta.copyWith(atualizadoEm: DateTime.now());
+    await box.put(gravada.id, gravada);
+    await ContaPagarRemoteMirrorService.mirrorIfEnabled(
+      storeId: gravada.lojaId,
+      conta: gravada,
+    );
   }
 
   static Future<bool> marcarComoPago({
@@ -248,6 +258,10 @@ abstract final class ContaPagarService {
       atualizadoEm: DateTime.now(),
     );
     await box.put(atualizada.id, atualizada);
+    await ContaPagarRemoteMirrorService.mirrorIfEnabled(
+      storeId: lojaId,
+      conta: atualizada,
+    );
     await _sincronizarCompraPagamento(lojaId, atualizada.compraId);
     return true;
   }

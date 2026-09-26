@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../core/conta_pagar_lancamento_vinculo.dart';
 import '../models/conta_pagar.dart';
 import '../models/conta_pagar_constants.dart';
+import '../financeiro/v2/conta_pagar_remote_mirror.dart';
 import 'conta_pagar_hive_store.dart';
 import 'conta_pagar_service.dart';
 import 'financeiro_firestore_service.dart';
@@ -110,13 +111,15 @@ abstract final class ContaPagarFinanceiroExclusaoService {
       }
     }
 
-    await cpBox.put(
-      conta.id,
-      conta.copyWith(
-        status: ContaPagarStatus.cancelado,
-        lancamentoFinanceiroId: '',
-        atualizadoEm: DateTime.now(),
-      ),
+    final cancelada = conta.copyWith(
+      status: ContaPagarStatus.cancelado,
+      lancamentoFinanceiroId: '',
+      atualizadoEm: DateTime.now(),
+    );
+    await cpBox.put(conta.id, cancelada);
+    await ContaPagarRemoteMirrorService.mirrorIfEnabled(
+      storeId: lid,
+      conta: cancelada,
     );
 
     await ContaPagarService.sincronizarCompraPagamento(lid, conta.compraId);
