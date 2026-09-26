@@ -1,6 +1,8 @@
-// Espelho remoto de contas a pagar — fase 1B.
+// Espelho remoto de contas a pagar — fase 1B, piloto 1C por loja.
 // SHADOW ONLY. Hive continua a autoridade. Não marca pago, não cancela,
 // não cria parcela e não gera lançamento financeiro.
+// A flag global fica falsa. Só a loja piloto, com o documento
+// financial_v2_pilot/payables ligado, grava o espelho.
 //
 // Coleção nova: lojas/{storeId}/contas_pagar/{payableId}
 // Não havia coleção Firestore com este nome (a box Hive é contas_pagar_{lojaId}).
@@ -23,6 +25,11 @@ import 'financial_v2_flags.dart';
 const int kContaPagarMirrorSchemaVersion = 1;
 const String kContaPagarMirrorSource = 'hive_conta_pagar';
 const String kContasPagarMirrorCollection = 'contas_pagar';
+const String kPayablesPilotCollection = 'financial_v2_pilot';
+const String kPayablesPilotDocId = 'payables';
+
+/// O espelho nunca grava de volta no Hive.
+const bool kPayableRemoteToLocalSyncEnabled = false;
 
 abstract final class PayableMirrorMismatchType {
   static const localNotMirrored = 'LOCAL_NOT_MIRRORED';
@@ -43,6 +50,25 @@ enum ContaPagarMirrorWriteKind {
   rejectedStale,
   rejectedTenant,
   rejectedIdentity,
+  failure,
+}
+
+class PayableMirrorDiagnostic {
+  const PayableMirrorDiagnostic({
+    required this.event,
+    required this.storeId,
+    required this.payableId,
+    required this.localUpdatedAt,
+    required this.remoteMirroredAt,
+    required this.result,
+  });
+
+  final String event;
+  final String storeId;
+  final String payableId;
+  final int? localUpdatedAt;
+  final int? remoteMirroredAt;
+  final String result;
 }
 
 class ContaPagarMirrorWriteResult {
@@ -102,6 +128,7 @@ class ContaPagarMirrorComparison {
     required this.mismatched,
     required this.localOnly,
     required this.remoteOnly,
+    this.purchaseInstallmentDuplicateCount = 0,
   });
 
   final String storeId;
@@ -111,6 +138,18 @@ class ContaPagarMirrorComparison {
   final int mismatched;
   final int localOnly;
   final int remoteOnly;
+  final int purchaseInstallmentDuplicateCount;
+
+  int countOf(String mismatchType) =>
+      rows.where((row) => row.mismatchType == mismatchType).length;
+
+  double get localMirroredAmountSum => rows
+      .where((row) => row.localId != null && row.remoteId != null)
+      .fold<double>(0, (sum, row) => sum + (row.localAmount ?? 0));
+
+  double get remoteMirroredAmountSum => rows
+      .where((row) => row.localId != null && row.remoteId != null)
+      .fold<double>(0, (sum, row) => sum + (row.remoteAmount ?? 0));
 }
 
 class ContaPagarMirrorBootstrapPreview {
@@ -132,28 +171,72 @@ class ContaPagarMirrorBootstrapPreview {
 abstract final class ContaPagarRemoteMirrorService {
   static FirebaseFirestore? debugFirestoreOverride;
   static bool? debugEnabledOverride;
+  static String? debugPilotStoreIdOverride;
+  static Future<void> Function()? debugWriteFault;
+  static final List<PayableMirrorDiagnostic> debugDiagnostics = [];
 
   static bool get isEnabled =>
       debugEnabledOverride ?? FinancialV2Flags.payablesRemoteMirrorEnabled;
 
+  static String get pilotStoreId => (debugPilotStoreIdOverride ??
+          FinancialV2Flags.payablesRemoteMirrorPilotStoreId)
+      .trim();
+
   static FirebaseFirestore get _db =>
       debugFirestoreOverride ?? FirebaseFirestore.instance;
+
+  static void debugResetDiagnostics() => debugDiagnostics.clear();
+
+  /// Flag global falsa. Só a loja piloto, e só com o documento remoto ligado.
+  static Future<bool> enabledForStore(String storeId) async {
+    if (debugEnabledOverride != null) return debugEnabledOverride!;
+    if (FinancialV2Flags.payablesRemoteMirrorEnabled) return true;
+    final store = storeId.trim();
+    final pilot = pilotStoreId;
+    if (pilot.isEmpty || store != pilot) return false;
+    try {
+      final snap = await _db
+          .collection('lojas')
+          .doc(store)
+          .collection(kPayablesPilotCollection)
+          .doc(kPayablesPilotDocId)
+          .get();
+      final data = snap.data();
+      if (data == null) return false;
+      final docStore = (data['storeId'] ?? '').toString().trim();
+      if (docStore != store) return false;
+      return data['payablesRemoteMirrorEnabled'] == true;
+    } catch (e) {
+      _record(
+        event: 'PAYABLE_MIRROR_FAILURE',
+        storeId: store,
+        payableId: '',
+        localUpdatedAt: null,
+        remoteMirroredAt: null,
+        result: 'SHADOW_MIRROR_FAILURE',
+      );
+      return false;
+    }
+  }
 
   static Future<ContaPagarMirrorWriteResult> mirrorIfEnabled({
     required String storeId,
     required ContaPagar conta,
   }) async {
-    if (!isEnabled) {
-      return const ContaPagarMirrorWriteResult(
-        ContaPagarMirrorWriteKind.skippedFlagOff,
-      );
-    }
     try {
       return await mirrorUpsert(storeId: storeId, conta: conta);
     } catch (e) {
-      debugPrint('[CP-MIRROR] sombra falhou: $e');
-      return const ContaPagarMirrorWriteResult(
-        ContaPagarMirrorWriteKind.skippedFlagOff,
+      _record(
+        event: 'PAYABLE_MIRROR_FAILURE',
+        storeId: storeId.trim(),
+        payableId: conta.id.trim(),
+        localUpdatedAt: conta.atualizadoEm.millisecondsSinceEpoch,
+        remoteMirroredAt: null,
+        result: 'SHADOW_MIRROR_FAILURE',
+      );
+      return ContaPagarMirrorWriteResult(
+        ContaPagarMirrorWriteKind.failure,
+        remoteId: conta.id.trim(),
       );
     }
   }
@@ -162,13 +245,21 @@ abstract final class ContaPagarRemoteMirrorService {
     required String storeId,
     required ContaPagar conta,
   }) async {
-    if (!isEnabled) {
+    if (!await enabledForStore(storeId)) {
       return const ContaPagarMirrorWriteResult(
         ContaPagarMirrorWriteKind.skippedFlagOff,
       );
     }
+    _record(
+      event: 'PAYABLE_MIRROR_ATTEMPT',
+      storeId: storeId.trim(),
+      payableId: conta.id.trim(),
+      localUpdatedAt: conta.atualizadoEm.millisecondsSinceEpoch,
+      remoteMirroredAt: null,
+      result: 'attempt',
+    );
     final gate = _gate(storeId, conta);
-    if (gate != null) return gate;
+    if (gate != null) return _finish(gate, storeId: storeId, conta: conta);
     final remoteId = payableRemoteDocId(conta.id);
     final ref = _ref(storeId.trim(), remoteId);
     final existing = await ref.get();
@@ -177,43 +268,78 @@ abstract final class ContaPagarRemoteMirrorService {
     if (existing.exists) {
       final data = existing.data() ?? <String, dynamic>{};
       if (_identityConflict(data, storeId.trim(), remoteId)) {
-        return ContaPagarMirrorWriteResult(
-          ContaPagarMirrorWriteKind.rejectedIdentity,
-          remoteId: remoteId,
+        return _finish(
+          ContaPagarMirrorWriteResult(
+            ContaPagarMirrorWriteKind.rejectedIdentity,
+            remoteId: remoteId,
+          ),
+          storeId: storeId,
+          conta: conta,
         );
       }
       if (_isTerminal(data) && _reopensTerminal(data, conta)) {
-        return ContaPagarMirrorWriteResult(
-          ContaPagarMirrorWriteKind.rejectedTerminal,
-          remoteId: remoteId,
+        return _finish(
+          ContaPagarMirrorWriteResult(
+            ContaPagarMirrorWriteKind.rejectedTerminal,
+            remoteId: remoteId,
+          ),
+          storeId: storeId,
+          conta: conta,
+          remoteMirroredAt: _millis(data['localUpdatedAtMs']),
         );
       }
       if (_sameBusiness(data, incoming)) {
-        return ContaPagarMirrorWriteResult(
-          ContaPagarMirrorWriteKind.noChange,
-          remoteId: remoteId,
+        return _finish(
+          ContaPagarMirrorWriteResult(
+            ContaPagarMirrorWriteKind.noChange,
+            remoteId: remoteId,
+          ),
+          storeId: storeId,
+          conta: conta,
+          remoteMirroredAt: _millis(data['localUpdatedAtMs']),
         );
       }
       final remoteMs = _millis(data['localUpdatedAtMs']);
       if (remoteMs != null &&
           conta.atualizadoEm.millisecondsSinceEpoch < remoteMs) {
-        return ContaPagarMirrorWriteResult(
-          ContaPagarMirrorWriteKind.rejectedStale,
-          remoteId: remoteId,
+        return _finish(
+          ContaPagarMirrorWriteResult(
+            ContaPagarMirrorWriteKind.rejectedStale,
+            remoteId: remoteId,
+          ),
+          storeId: storeId,
+          conta: conta,
+          remoteMirroredAt: remoteMs,
         );
       }
       final revision = (_millis(data['mirrorRevision']) ?? 0) + 1;
-      await ref.set(_envelope(conta, remoteId, revision, deletedAt: null));
-      return ContaPagarMirrorWriteResult(
-        ContaPagarMirrorWriteKind.applied,
-        remoteId: remoteId,
+      if (debugWriteFault != null) await debugWriteFault!();
+      final keptDeletedAt = _date(data['deletedAt']);
+      await ref.set(_envelope(
+        conta,
+        remoteId,
+        revision,
+        deletedAt: keptDeletedAt,
+      ));
+      return _finish(
+        ContaPagarMirrorWriteResult(
+          ContaPagarMirrorWriteKind.applied,
+          remoteId: remoteId,
+        ),
+        storeId: storeId,
+        conta: conta,
       );
     }
 
+    if (debugWriteFault != null) await debugWriteFault!();
     await ref.set(_envelope(conta, remoteId, 1, deletedAt: null));
-    return ContaPagarMirrorWriteResult(
-      ContaPagarMirrorWriteKind.applied,
-      remoteId: remoteId,
+    return _finish(
+      ContaPagarMirrorWriteResult(
+        ContaPagarMirrorWriteKind.applied,
+        remoteId: remoteId,
+      ),
+      storeId: storeId,
+      conta: conta,
     );
   }
 
@@ -222,7 +348,7 @@ abstract final class ContaPagarRemoteMirrorService {
     required ContaPagar conta,
     DateTime? deletedAt,
   }) async {
-    if (!isEnabled) {
+    if (!await enabledForStore(storeId)) {
       return const ContaPagarMirrorWriteResult(
         ContaPagarMirrorWriteKind.skippedFlagOff,
       );
@@ -241,6 +367,7 @@ abstract final class ContaPagarRemoteMirrorService {
     final revision = existing.exists
         ? (_millis(existing.data()?['mirrorRevision']) ?? 0) + 1
         : 1;
+    if (debugWriteFault != null) await debugWriteFault!();
     await ref.set(_envelope(
       conta,
       remoteId,
@@ -365,6 +492,7 @@ abstract final class ContaPagarRemoteMirrorService {
       mismatched: rows.where((e) => !e.match).length,
       localOnly: localOnly,
       remoteOnly: remoteOnly,
+      purchaseInstallmentDuplicateCount: _purchaseDuplicates(remotes),
     );
   }
 
@@ -393,7 +521,71 @@ abstract final class ContaPagarRemoteMirrorService {
   }
 
   static Future<void> executeBootstrap() async {
-    throw StateError('Bootstrap de contas a pagar não executa na fase 1B.');
+    throw StateError('Bootstrap de contas a pagar não executa na fase 1C.');
+  }
+
+  static ContaPagarMirrorWriteResult _finish(
+    ContaPagarMirrorWriteResult result, {
+    required String storeId,
+    required ContaPagar conta,
+    int? remoteMirroredAt,
+  }) {
+    final event = switch (result.kind) {
+      ContaPagarMirrorWriteKind.applied => 'PAYABLE_MIRROR_SUCCESS',
+      ContaPagarMirrorWriteKind.noChange => 'PAYABLE_MIRROR_NO_CHANGE',
+      ContaPagarMirrorWriteKind.rejectedStale ||
+      ContaPagarMirrorWriteKind.rejectedTerminal =>
+        'PAYABLE_MIRROR_REJECTED_OLDER',
+      ContaPagarMirrorWriteKind.failure => 'PAYABLE_MIRROR_FAILURE',
+      _ => 'PAYABLE_MIRROR_FAILURE',
+    };
+    _record(
+      event: event,
+      storeId: storeId.trim(),
+      payableId: conta.id.trim(),
+      localUpdatedAt: conta.atualizadoEm.millisecondsSinceEpoch,
+      remoteMirroredAt: remoteMirroredAt,
+      result: result.kind.name,
+    );
+    return result;
+  }
+
+  static void _record({
+    required String event,
+    required String storeId,
+    required String payableId,
+    required int? localUpdatedAt,
+    required int? remoteMirroredAt,
+    required String result,
+  }) {
+    debugDiagnostics.add(PayableMirrorDiagnostic(
+      event: event,
+      storeId: storeId,
+      payableId: payableId,
+      localUpdatedAt: localUpdatedAt,
+      remoteMirroredAt: remoteMirroredAt,
+      result: result,
+    ));
+    debugPrint(
+      '[$event] storeId=$storeId payableId=$payableId '
+      'localUpdatedAt=$localUpdatedAt remoteMirroredAt=$remoteMirroredAt '
+      'result=$result',
+    );
+  }
+
+  static int _purchaseDuplicates(Map<String, Map<String, dynamic>> remotes) {
+    final counts = <String, int>{};
+    for (final data in remotes.values) {
+      final compra = (data['compraId'] ?? '').toString().trim();
+      if (compra.isEmpty) continue;
+      final key = '$compra|${data['parcelaNumero']}';
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
+    var extra = 0;
+    for (final count in counts.values) {
+      if (count > 1) extra += count - 1;
+    }
+    return extra;
   }
 
   static ContaPagarMirrorWriteResult? _gate(String storeId, ContaPagar conta) {

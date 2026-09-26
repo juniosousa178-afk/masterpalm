@@ -10,6 +10,12 @@ abstract final class FinancialV2Flags {
   static const bool financialLedgerReadOnly = true;
 
   static const bool payablesRemoteMirrorEnabled = false;
+
+  /// Piloto 1C: uma loja. Não liga a flag global.
+  /// A escrita remota ainda exige
+  /// lojas/{id}/financial_v2_pilot/payables.payablesRemoteMirrorEnabled=true.
+  static const String payablesRemoteMirrorPilotStoreId =
+      'nathy-pratas-e-folheados';
   static const bool cashFlowEnabled = false;
   static const bool dreEnabled = false;
   static const bool financialAccountsEnabled = false;

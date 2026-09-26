@@ -381,6 +381,76 @@ service cloud.firestore {
       return belongsToStore(lojaId) || isAdminOrSystem();
     }
 
+    // Espelho sombra de contas a pagar (fase 1C). Não é autoridade.
+    function isValidContaPagarMirror(lojaId, payableId) {
+      let d = request.resource.data;
+      return d.keys().hasOnly([
+          'storeId',
+          'payableId',
+          'source',
+          'schemaVersion',
+          'mirroredAt',
+          'mirrorRevision',
+          'localUpdatedAtMs',
+          'mirrorOnly',
+          'authoritative',
+          'deletedAt',
+          'id',
+          'lojaId',
+          'fornecedorId',
+          'fornecedorNome',
+          'compraId',
+          'descricao',
+          'valorTotalCompra',
+          'valorParcela',
+          'parcelaNumero',
+          'parcelaTotal',
+          'dataVencimento',
+          'dataPagamento',
+          'status',
+          'formaPagamento',
+          'observacao',
+          'lancamentoFinanceiroId',
+          'criadoEm',
+          'atualizadoEm',
+          'dataCompra',
+          'idFirebase',
+          'deleted'
+        ])
+        && d.storeId == lojaId
+        && d.lojaId == lojaId
+        && d.payableId == payableId
+        && d.id == payableId
+        && d.source == 'hive_conta_pagar'
+        && d.schemaVersion == 1
+        && d.mirrorOnly == true
+        && d.authoritative == false
+        && d.mirrorRevision is int
+        && d.localUpdatedAtMs is int
+        && d.mirroredAt is timestamp
+        && (d.deletedAt == null || d.deletedAt is timestamp)
+        && d.status is string
+        && d.valorParcela is number
+        && d.valorTotalCompra is number
+        && d.deleted is bool
+        && d.fornecedorId is int
+        && d.parcelaNumero is int
+        && d.parcelaTotal is int;
+    }
+
+    function contaPagarMirrorKeepsTerminal() {
+      return resource.data.deleted != true
+        && resource.data.deletedAt == null
+        && !(
+          resource.data.status in ['pago', 'cancelado']
+          && !(request.resource.data.status in ['pago', 'cancelado'])
+        )
+        && !(
+          resource.data.deletedAt != null
+          && request.resource.data.deletedAt == null
+        );
+    }
+
     // config/fretes público — proíbe gravar token SuperFrete pelo cliente.
     function fretesHasSuperFreteSecretFields(data) {
       return data.keys().hasAny(['superfrete_token', 'superfreteToken', 'apiToken'])
@@ -1124,6 +1194,36 @@ service cloud.firestore {
           && resource.data.lojaId == lojaId;
         allow delete: if canAccessLojaFinanceiro(lojaId)
           && resource.data.lojaId == lojaId;
+      }
+
+      // Contas a pagar — espelho sombra. Hive continua a autoridade.
+      match /contas_pagar/{payableId} {
+        allow read: if canAccessLojaFinanceiro(lojaId)
+          && resource != null
+          && resource.data.storeId == lojaId;
+        allow create: if canAccessLojaFinanceiro(lojaId)
+          && isValidContaPagarMirror(lojaId, payableId);
+        allow update: if canAccessLojaFinanceiro(lojaId)
+          && resource != null
+          && resource.data.storeId == lojaId
+          && isValidContaPagarMirror(lojaId, payableId)
+          && request.resource.data.storeId == resource.data.storeId
+          && request.resource.data.payableId == resource.data.payableId
+          && request.resource.data.lojaId == resource.data.lojaId
+          && request.resource.data.localUpdatedAtMs >= resource.data.localUpdatedAtMs
+          && contaPagarMirrorKeepsTerminal();
+        allow delete: if false;
+      }
+
+      // Liga o espelho só nesta loja. Escrita do interruptor: admin. Cliente só lê.
+      match /financial_v2_pilot/{docId} {
+        allow read: if belongsToStore(lojaId)
+          && resource != null
+          && resource.data.storeId == lojaId;
+        allow create, update: if isAdminOrSystem()
+          && request.resource.data.storeId == lojaId
+          && request.resource.data.payablesRemoteMirrorEnabled is bool;
+        allow delete: if isAdminOrSystem();
       }
 
       // Controle operacional de compras por fornecedor (conferência; sync app).
