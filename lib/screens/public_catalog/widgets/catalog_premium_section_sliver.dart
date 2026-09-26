@@ -66,7 +66,11 @@ Widget buildCatalogPremiumSectionSliver({
                 itemCount: products.length,
                 itemBuilder: (context, index) {
                   final p = products[index];
+                  final productId = safeStr(p['id']).trim().isNotEmpty
+                      ? safeStr(p['id']).trim()
+                      : safeStr(p['slug']).trim();
                   return SizedBox(
+                    key: ValueKey('catalog-product-$productId'),
                     width: cardWidth,
                     child: Padding(
                       padding: const EdgeInsets.only(right: gapBetweenCards),

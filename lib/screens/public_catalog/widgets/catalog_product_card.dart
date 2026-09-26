@@ -476,7 +476,13 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
   }
 
   void _openSelectionModal({bool comprarDirecto = false}) {
-    widget.onProductViewed?.call(widget.id);
+    final opened = _CatalogModalProductSnapshot.capture(widget);
+    final onAdd = widget.onAdd;
+    final navigator = Navigator.of(context);
+    final abrirCarrinho = widget.onAbrirCarrinho;
+    final silentFeedback = widget.onMinimalSilentAddFeedback;
+    final minimalLayout = widget.minimalLayout;
+    widget.onProductViewed?.call(opened.id);
     final urlVal = _prodUrlValue;
     if (urlVal.isNotEmpty) {
       widget.onProductUrlFocus?.call(urlVal);
@@ -486,24 +492,23 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
 
     Widget selectionContent() {
       return CatalogProductSelectionSheet(
-        name: widget.name,
-        price: widget.price,
-        precoPorTamanho: widget.precoPorTamanho,
-        precoOriginal: widget.precoOriginal,
-        emPromocao: widget.emPromocao,
-        imageUrl: widget.imagens.isNotEmpty ? widget.imagens.first : widget.imageUrl,
-        estoquePorTamanho: widget.estoquePorTamanho ?? {},
-        estoquePorCor: widget.estoquePorCor ?? {},
-        variacoes: widget.variacoes,
-        variacoesExtraTipo: widget.variacoesExtraTipo,
-        initialExtraValor: widget.initialCatalogExtraValor,
+        productId: opened.id,
+        name: opened.name,
+        price: opened.price,
+        precoPorTamanho: opened.precoPorTamanho,
+        precoOriginal: opened.precoOriginal,
+        emPromocao: opened.emPromocao,
+        imageUrl: opened.imageUrl,
+        estoquePorTamanho: opened.estoquePorTamanho,
+        estoquePorCor: opened.estoquePorCor,
+        variacoes: opened.variacoes,
+        variacoesExtraTipo: opened.variacoesExtraTipo,
+        initialExtraValor: opened.initialExtraValor,
         onCatalogVariacaoExtraChanged: widget.onCatalogVariacaoExtraChanged,
-        percentualDescontoPix: widget.percentualDescontoPix,
-        mostrarQuantidadeNoCatalogo: widget.mostrarQuantidadeNoCatalogo,
+        percentualDescontoPix: opened.percentualDescontoPix,
+        mostrarQuantidadeNoCatalogo: opened.mostrarQuantidadeNoCatalogo,
         onAddToCart: (tamanho, cor, preco, extraValor, extraTipo) {
-          final img = widget.imagens.isNotEmpty
-              ? widget.imagens.first
-              : widget.imageUrl;
+          if (opened.id.isEmpty) return;
           final ex = extraValor.trim();
           final resumoExtra = ex.isNotEmpty
               ? ProdutoVariacaoExtra.textoResumoExtra(
@@ -513,38 +518,42 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
               : '';
 
           final itemParaCarrinho = {
-            'produtosId': widget.id,
-            'id': widget.id,
-            'nome': widget.name,
+            'produtosId': opened.id,
+            'id': opened.id,
+            'productId': opened.id,
+            'nome': opened.name,
             'preco': preco,
-            'percentualDescontoPix': widget.percentualDescontoPix,
-            'divideSemJuros': widget.divideSemJuros,
-            'maxParcelasSemJuros': widget.maxParcelas,
+            'percentualDescontoPix': opened.percentualDescontoPix,
+            'divideSemJuros': opened.divideSemJuros,
+            'maxParcelasSemJuros': opened.maxParcelas,
             'quantidade': 1,
-            'imageUrl': img,
-            'url_foto': img,
-            'slug': widget.slug,
-            'peso': widget.peso,
-            'tipoEmbalagem': widget.tipoEmbalagem,
+            'imageUrl': opened.imageUrl,
+            'url_foto': opened.imageUrl,
+            'slug': opened.slug,
+            'peso': opened.peso,
+            'tipoEmbalagem': opened.tipoEmbalagem,
             'tamanho': tamanho ?? '',
             'cor': cor ?? '',
+            if (opened.sourceProductUpdatedAt != null)
+              'sourceProductUpdatedAt': opened.sourceProductUpdatedAt,
             if (ex.isNotEmpty) 'extraValor': ex,
             if (extraTipo.trim().isNotEmpty) 'extraTipo': extraTipo.trim(),
             if (resumoExtra.isNotEmpty) 'variacaoExtraResumo': resumoExtra,
           };
+          if (itemParaCarrinho['id'] != opened.id) return;
 
-          final added = widget.onAdd(itemParaCarrinho);
-          Navigator.of(context).pop();
-          if (comprarDirecto && widget.onAbrirCarrinho != null) {
+          final added = onAdd(itemParaCarrinho);
+          navigator.pop();
+          if (comprarDirecto && abrirCarrinho != null) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (!mounted) return;
-              widget.onAbrirCarrinho!();
+              abrirCarrinho();
             });
           } else if (!comprarDirecto &&
               added &&
-              widget.minimalLayout &&
-              widget.onMinimalSilentAddFeedback != null) {
-            widget.onMinimalSilentAddFeedback!();
+              minimalLayout &&
+              silentFeedback != null) {
+            silentFeedback();
           }
         },
       );
@@ -1724,6 +1733,104 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
         ),
       ),
     );
+  }
+}
+
+class _CatalogModalProductSnapshot {
+  const _CatalogModalProductSnapshot({
+    required this.id,
+    required this.name,
+    required this.slug,
+    required this.imageUrl,
+    required this.price,
+    required this.precoOriginal,
+    required this.emPromocao,
+    required this.peso,
+    required this.tipoEmbalagem,
+    required this.percentualDescontoPix,
+    required this.divideSemJuros,
+    required this.maxParcelas,
+    required this.mostrarQuantidadeNoCatalogo,
+    required this.estoquePorTamanho,
+    required this.estoquePorCor,
+    required this.variacoes,
+    required this.variacoesExtraTipo,
+    required this.precoPorTamanho,
+    required this.initialExtraValor,
+    required this.sourceProductUpdatedAt,
+  });
+
+  final String id;
+  final String name;
+  final String slug;
+  final String imageUrl;
+  final double price;
+  final double? precoOriginal;
+  final bool emPromocao;
+  final double peso;
+  final String tipoEmbalagem;
+  final double percentualDescontoPix;
+  final bool divideSemJuros;
+  final int maxParcelas;
+  final bool mostrarQuantidadeNoCatalogo;
+  final Map<String, int> estoquePorTamanho;
+  final Map<String, int> estoquePorCor;
+  final Map<String, dynamic>? variacoes;
+  final Map<String, dynamic>? variacoesExtraTipo;
+  final Map<String, double>? precoPorTamanho;
+  final String? initialExtraValor;
+  final String? sourceProductUpdatedAt;
+
+  static _CatalogModalProductSnapshot capture(CatalogProductCard widget) {
+    final image = widget.imagens.isNotEmpty ? widget.imagens.first : widget.imageUrl;
+    return _CatalogModalProductSnapshot(
+      id: widget.id,
+      name: widget.name,
+      slug: widget.slug,
+      imageUrl: image,
+      price: widget.price,
+      precoOriginal: widget.precoOriginal,
+      emPromocao: widget.emPromocao,
+      peso: widget.peso,
+      tipoEmbalagem: widget.tipoEmbalagem,
+      percentualDescontoPix: widget.percentualDescontoPix,
+      divideSemJuros: widget.divideSemJuros,
+      maxParcelas: widget.maxParcelas,
+      mostrarQuantidadeNoCatalogo: widget.mostrarQuantidadeNoCatalogo,
+      estoquePorTamanho: Map<String, int>.from(widget.estoquePorTamanho ?? const {}),
+      estoquePorCor: Map<String, int>.from(widget.estoquePorCor ?? const {}),
+      variacoes: _cloneStringKeyMap(widget.variacoes),
+      variacoesExtraTipo: _cloneStringKeyMap(widget.variacoesExtraTipo),
+      precoPorTamanho: widget.precoPorTamanho == null
+          ? null
+          : Map<String, double>.from(widget.precoPorTamanho!),
+      initialExtraValor: widget.initialCatalogExtraValor,
+      sourceProductUpdatedAt:
+          _updatedAtLabel(widget.produtoCatalogoMap?['updatedAt']),
+    );
+  }
+
+  static Map<String, dynamic>? _cloneStringKeyMap(Map<String, dynamic>? source) {
+    if (source == null) return null;
+    dynamic clone(dynamic value) {
+      if (value is Map) {
+        return value.map((key, nested) => MapEntry(key.toString(), clone(nested)));
+      }
+      if (value is List) return value.map(clone).toList();
+      return value;
+    }
+    return clone(source) as Map<String, dynamic>;
+  }
+
+  static String? _updatedAtLabel(dynamic raw) {
+    if (raw == null) return null;
+    if (raw is DateTime) return raw.toUtc().toIso8601String();
+    if (raw is String && raw.trim().isNotEmpty) return raw.trim();
+    try {
+      final asDate = (raw as dynamic).toDate();
+      if (asDate is DateTime) return asDate.toUtc().toIso8601String();
+    } catch (_) {}
+    return null;
   }
 }
 

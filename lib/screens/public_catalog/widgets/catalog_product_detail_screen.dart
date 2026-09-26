@@ -1259,6 +1259,7 @@ class _CatalogProductDetailScreenState extends State<CatalogProductDetailScreen>
                           showAddToCartButton: false,
                           showSectionTitle: true,
                           onSelectionsChanged: () => setState(() {}),
+                          productId: widget.id,
                         ),
                       ),
                     ),

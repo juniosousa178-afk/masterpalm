@@ -1,10 +1,19 @@
 // Snapshot imutável de linha do carrinho / pré-pedido do catálogo público.
 // Evita troca silenciosa de produto por lookup ambíguo (produtosId/slug).
 
+import 'package:uuid/uuid.dart';
+
+import '../core/client_build_identity.dart';
 import '../screens/public_catalog/catalog_estoque_helper.dart';
 
 /// Versão do contrato de item gravado no pré-pedido.
 const int catalogCartItemSchemaVersion = 1;
+
+/// Metadado das linhas novas. Carrinhos antigos não precisam deste campo.
+const int catalogCartLineConsistencyVersion = 2;
+
+const String kCatalogCartLineNeedsRefreshMessage =
+    'Um item do seu carrinho precisa ser atualizado. Remova e adicione-o novamente.';
 
 /// Campos copiados do item recém-adicionado ao fundir linha existente no carrinho.
 const _cartLineFieldsRefreshedOnMerge = <String>[
@@ -75,6 +84,50 @@ void freezeCatalogCartLineSnapshotOnAdd(Map<String, dynamic> line) {
   }
 
   line['schemaVersion'] = catalogCartItemSchemaVersion;
+  _stampNewCatalogCartLineProvenance(line);
+}
+
+void _stampNewCatalogCartLineProvenance(Map<String, dynamic> line) {
+  if (line['cartLineConsistencyVersion'] == catalogCartLineConsistencyVersion &&
+      (line['cartLineCreatedAt'] ?? '').toString().trim().isNotEmpty) {
+    return;
+  }
+  final productId = catalogCartLineCanonicalProductId(line);
+  line['cartLineOperationId'] =
+      (line['cartLineOperationId'] ?? const Uuid().v4()).toString();
+  line['sourceProductId'] = productId;
+  line['sourceCatalogBuildId'] = kClientBuildId;
+  line['cartLineCreatedAt'] = DateTime.now().toUtc().toIso8601String();
+  line['cartLineConsistencyVersion'] = catalogCartLineConsistencyVersion;
+}
+
+/// Bloqueia checkout quando a variação explícita não existe no produto.
+/// Não altera preço e não exige proveniência das linhas antigas.
+String? catalogCartVariationIntegrityBlock({
+  required List<Map<String, dynamic>> cartLines,
+  required List<Map<String, dynamic>> catalogProducts,
+}) {
+  for (final line in cartLines) {
+    final combo = line['itensComboComSelecao'];
+    if (combo is List && combo.isNotEmpty) continue;
+    final id = catalogCartLineCanonicalProductId(line);
+    if (id.isEmpty) return kCatalogCartLineNeedsRefreshMessage;
+    final product = findCatalogProductForCartLineStrict(catalogProducts, id);
+    if (product == null) return kCatalogCartLineNeedsRefreshMessage;
+    final tam = (line['tamanho'] ?? '').toString().trim();
+    final cor = (line['cor'] ?? '').toString().trim();
+    final ex =
+        (line['extraValor'] ?? line['variacaoExtra'] ?? '').toString().trim();
+    if (!CatalogEstoqueHelper.canonicalExplicitVariationExists(
+      product,
+      tam,
+      cor,
+      ex,
+    )) {
+      return kCatalogCartLineNeedsRefreshMessage;
+    }
+  }
+  return null;
 }
 
 /// Atualiza a linha já existente no carrinho com dados do último clique (mesma identidade).

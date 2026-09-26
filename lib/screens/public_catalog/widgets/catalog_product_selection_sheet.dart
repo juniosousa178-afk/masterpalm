@@ -21,6 +21,7 @@ class CatalogProductSelectionSheet extends StatelessWidget {
   final bool mostrarQuantidadeNoCatalogo;
   final String? initialExtraValor;
   final void Function(String? value)? onCatalogVariacaoExtraChanged;
+  final String productId;
 
   const CatalogProductSelectionSheet({
     super.key,
@@ -39,6 +40,7 @@ class CatalogProductSelectionSheet extends StatelessWidget {
     this.mostrarQuantidadeNoCatalogo = false,
     this.initialExtraValor,
     this.onCatalogVariacaoExtraChanged,
+    this.productId = '',
   });
 
   @override
@@ -118,6 +120,7 @@ class CatalogProductSelectionSheet extends StatelessWidget {
                 mostrarQuantidadeNoCatalogo: mostrarQuantidadeNoCatalogo,
                 initialExtraValor: initialExtraValor,
                 onCatalogVariacaoExtraChanged: onCatalogVariacaoExtraChanged,
+                productId: productId,
                 showProductSnippet: true,
                 showAddToCartButton: true,
                 showSectionTitle: false,

@@ -3689,6 +3689,14 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                   }
 
                   try {
+                    final cartIntegrity = catalogCartVariationIntegrityBlock(
+                      cartLines: _cart,
+                      catalogProducts: catalogProducts,
+                    );
+                    if (cartIntegrity != null) {
+                      showErr(cartIntegrity);
+                      return;
+                    }
                     final fpWhatsapp = _prePedidoReuseFingerprintFromCheckout(
                       customer: customer,
                       entrega: entrega,
@@ -3951,6 +3959,14 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                     }
                   }
 
+                  final cartIntegrity = catalogCartVariationIntegrityBlock(
+                    cartLines: _cart,
+                    catalogProducts: catalogProducts,
+                  );
+                  if (cartIntegrity != null) {
+                    showErr(cartIntegrity);
+                    return;
+                  }
                   final fpMp = _prePedidoReuseFingerprintFromCheckout(
                     customer: customer,
                     entrega: entrega,

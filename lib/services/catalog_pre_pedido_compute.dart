@@ -101,6 +101,21 @@ CatalogPrePedidoMoneySnapshot computeCatalogPrePedidoMoneySnapshot({
     if (rComboCfg.isNotEmpty) {
       storedItem['comboConfiguravelResumo'] = rComboCfg;
     }
+    if (item['cartLineConsistencyVersion'] == catalogCartLineConsistencyVersion) {
+      for (final key in const [
+        'cartLineOperationId',
+        'sourceProductId',
+        'sourceProductUpdatedAt',
+        'sourceCatalogBuildId',
+        'cartLineCreatedAt',
+        'cartLineConsistencyVersion',
+      ]) {
+        final value = item[key];
+        if (value != null && value.toString().trim().isNotEmpty) {
+          storedItem[key] = value;
+        }
+      }
+    }
     itensList.add(storedItem);
   }
 

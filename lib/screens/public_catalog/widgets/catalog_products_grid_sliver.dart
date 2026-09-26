@@ -78,7 +78,11 @@ Widget buildCatalogProductsGridSliver({
             WidgetsBinding.instance.addPostFrameCallback((_) => cb());
           }
           final p = products[index];
+          final productId = safeStr(p['id']).trim().isNotEmpty
+              ? safeStr(p['id']).trim()
+              : safeStr(p['slug']).trim();
           return RepaintBoundary(
+            key: ValueKey('catalog-product-$productId'),
             child: PublicCatalogProductCard(
               produto: p,
               lojaId: lojaId,

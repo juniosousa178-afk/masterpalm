@@ -51,6 +51,8 @@ class CatalogProductVariationPickBody extends StatefulWidget {
   /// “Escolha uma opção” antes dos chips (detalhe do produto).
   final bool showSectionTitle;
   final VoidCallback? onSelectionsChanged;
+  /// Produto dono deste seletor. Mudou o id: a escolha anterior não vale.
+  final String productId;
 
   const CatalogProductVariationPickBody({
     super.key,
@@ -73,6 +75,7 @@ class CatalogProductVariationPickBody extends StatefulWidget {
     this.showAddToCartButton = true,
     this.showSectionTitle = false,
     this.onSelectionsChanged,
+    this.productId = '',
   });
 
   @override
@@ -86,12 +89,14 @@ class CatalogProductVariationPickBodyState
   String? _corSelecionada;
   String? _extraSelecionado;
   String? _pendingSeedExtra;
+  late String _openedForProductId;
 
   String _fmt2(num v) => v.toStringAsFixed(2).replaceAll('.', ',');
 
   @override
   void initState() {
     super.initState();
+    _openedForProductId = widget.productId;
     final s = widget.initialExtraValor?.trim();
     _pendingSeedExtra = (s != null && s.isNotEmpty) ? s : null;
     _scheduleTryConsumeSeedExtra();
@@ -105,6 +110,15 @@ class CatalogProductVariationPickBodyState
   @override
   void didUpdateWidget(covariant CatalogProductVariationPickBody oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.productId != oldWidget.productId) {
+      setState(() {
+        _tamanhoSelecionado = null;
+        _corSelecionada = null;
+        _extraSelecionado = null;
+        _pendingSeedExtra = null;
+      });
+      return;
+    }
     if (widget.initialExtraValor != oldWidget.initialExtraValor) {
       final s = widget.initialExtraValor?.trim();
       _pendingSeedExtra = (s != null && s.isNotEmpty) ? s : null;
@@ -147,6 +161,10 @@ class CatalogProductVariationPickBodyState
 
   /// Confirma a escolha e chama [CatalogProductVariationPickBody.onPickCommit].
   void commitPickToCart() {
+    if (widget.productId.isNotEmpty &&
+        widget.productId != _openedForProductId) {
+      return;
+    }
     if (!_podeAdicionar) return;
     final ex = (_extraSelecionado ?? '').trim();
     final tipo = ex.isNotEmpty ? _extraTipoParaOpcao(ex) : '';

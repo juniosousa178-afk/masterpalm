@@ -276,15 +276,7 @@ class CatalogEstoqueHelper {
       if (tam.isNotEmpty && variacoes[tam] is Map) {
         final mapa = variacoes[tam] as Map;
         if (c.isNotEmpty) {
-          final cell = _rawCellNoMapa(mapa, c);
-          if (ProdutoVariacaoExtra.celulaTemExtrasNaoVazios(cell)) {
-            if (ex.isEmpty) return 0;
-            final q = ProdutoVariacaoExtra.quantidadeNaCelula(cell, ex);
-            if (q > 0) return q;
-          } else {
-            final q = _qtdCorNoMapa(mapa, c);
-            if (q > 0) return q;
-          }
+          return _qtdVariacaoExplicita(mapa, c, ex);
         }
         return _sumMapValuesNested(mapa);
       }
@@ -292,15 +284,7 @@ class CatalogEstoqueHelper {
           variacoes['sem-tamanho'] is Map) {
         final mapa = variacoes['sem-tamanho'] as Map;
         if (c.isNotEmpty) {
-          final cell = _rawCellNoMapa(mapa, c);
-          if (ProdutoVariacaoExtra.celulaTemExtrasNaoVazios(cell)) {
-            if (ex.isEmpty) return 0;
-            final q = ProdutoVariacaoExtra.quantidadeNaCelula(cell, ex);
-            if (q > 0) return q;
-          } else {
-            final q = _qtdCorNoMapa(mapa, c);
-            if (q > 0) return q;
-          }
+          return _qtdVariacaoExplicita(mapa, c, ex);
         }
         return _sumMapValuesNested(mapa);
       }
@@ -310,18 +294,84 @@ class CatalogEstoqueHelper {
     if (ept is Map && tam.isNotEmpty) {
       final qt = parseQtd(ept[tam]);
       if (qt > 0) {
-        if (epc is Map && c.isNotEmpty) {
+        if (c.isNotEmpty) {
+          if (epc is! Map) return 0;
           final qc = _qtdCorNoMapa(epc, c);
-          if (qc > 0) return qc < qt ? qc : qt;
+          if (qc <= 0) return 0;
+          return qc < qt ? qc : qt;
         }
         return qt;
       }
     }
-    if (epc is Map && c.isNotEmpty) {
-      final qc = _qtdCorNoMapa(epc, c);
-      if (qc > 0) return qc;
+    if (epc is Map && c.isNotEmpty && tam.isEmpty && ex.isEmpty) {
+      return _qtdCorNoMapa(epc, c);
     }
+    if (c.isNotEmpty || ex.isNotEmpty) return 0;
     return parseQtd(p['quantidade']);
+  }
+
+  /// Cor ou extra explícitos exigem a célula canônica. Não soma as outras cores.
+  static int _qtdVariacaoExplicita(Map<dynamic, dynamic> mapa, String cor, String extra) {
+    final cell = _rawCellNoMapa(mapa, cor);
+    if (cell == null) return 0;
+    if (ProdutoVariacaoExtra.celulaTemExtrasNaoVazios(cell)) {
+      if (extra.isEmpty) return 0;
+      return ProdutoVariacaoExtra.quantidadeNaCelula(cell, extra);
+    }
+    if (extra.isNotEmpty) return 0;
+    return _qtdCorNoMapa(mapa, cor);
+  }
+
+  /// A célula pedida existe na grade, mesmo com quantidade zero.
+  static bool canonicalExplicitVariationExists(
+    Map<String, dynamic> p,
+    String tamanho,
+    String cor, [
+    String variacaoExtra = '',
+  ]) {
+    final tam = tamanho.trim();
+    final c = cor.trim();
+    final ex = variacaoExtra.trim();
+    final variacoes = p['variacoes'];
+    if (variacoes is Map && variacoes.isNotEmpty) {
+      Map<dynamic, dynamic>? mapa;
+      if (tam.isNotEmpty && variacoes[tam] is Map) {
+        mapa = variacoes[tam] as Map;
+      } else if ((tam.isEmpty || tam == 'sem-tamanho') &&
+          variacoes['sem-tamanho'] is Map) {
+        mapa = variacoes['sem-tamanho'] as Map;
+      }
+      if (mapa == null) return false;
+      if (c.isEmpty && ex.isEmpty) return true;
+      if (c.isEmpty) return false;
+      final cell = _rawCellNoMapa(mapa, c);
+      if (cell == null) return false;
+      if (ProdutoVariacaoExtra.celulaTemExtrasNaoVazios(cell)) {
+        if (ex.isEmpty || cell is! Map) return false;
+        for (final e in cell.entries) {
+          if (ProdutoVariacaoExtra.keysMatch(e.key.toString(), ex)) {
+            return true;
+          }
+        }
+        return false;
+      }
+      return ex.isEmpty;
+    }
+    final ept = p['estoquePorTamanho'];
+    final epc = p['estoquePorCor'];
+    final hasFlatTam = ept is Map && ept.isNotEmpty;
+    final hasFlatCor = epc is Map && epc.isNotEmpty;
+    if (!hasFlatTam && !hasFlatCor) {
+      return tam.isEmpty && c.isEmpty && ex.isEmpty;
+    }
+    if (tam.isNotEmpty && hasFlatTam && ept[tam] == null && _rawCellNoMapa(ept, tam) == null) {
+      return false;
+    }
+    if (c.isNotEmpty) {
+      if (!hasFlatCor) return false;
+      return _rawCellNoMapa(epc, c) != null;
+    }
+    return ex.isEmpty;
   }
 
   /// Para uma receita **por kit** já resolvida (ex.: seleção do combo configurável),
