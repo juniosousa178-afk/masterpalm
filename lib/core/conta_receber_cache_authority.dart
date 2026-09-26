@@ -175,7 +175,8 @@ ContaReceberOverdueAlertDecision decideContaReceberOverdueAlert({
   if (vencidas.isEmpty && vencendo.isEmpty) {
     return ContaReceberOverdueAlertDecision(
       showDebtAlert: false,
-      showNeutralSyncWarning: !remoteRefreshOk && uncertainOpen,
+      // Uncertain/offline with no trusted overdue: fail silently (no modal).
+      showNeutralSyncWarning: false,
       vencidas: const [],
       vencendo: const [],
       fingerprint: fp,

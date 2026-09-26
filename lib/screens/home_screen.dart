@@ -394,73 +394,49 @@ class _HomeScreenState extends State<HomeScreen>
           'vencendo': decision.vencendo.length,
           'offline': reconcile.offline,
           'showDebt': decision.showDebtAlert,
-          'showNeutral': decision.showNeutralSyncWarning,
         },
       );
 
-      if (decision.showDebtAlert) {
-        if (!gate.shouldShowDebtAlert(decision.fingerprint)) return;
-        final valorTotal = decision.totalPendente;
-        if (!mounted) return;
-        await showDialog<void>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Lembrete de cobrança'),
-            content: Text(
-              'Você tem ${decision.vencidas.length} conta(s) em atraso e '
-              '${decision.vencendo.length} vencendo em até 2 dias.\n\n'
-              'Total pendente: R\$ ${valorTotal.toStringAsFixed(2).replaceAll('.', ',')}.\n'
-              'Esse aviso continuará aparecendo até as contas serem quitadas.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  // SNOOZE_POLICY=same_fingerprint_rest_of_session
-                  gate.snoozeDebtAlert(decision.fingerprint);
-                  Navigator.pop(ctx);
-                },
-                child: const Text('Lembrar depois'),
-              ),
-              FilledButton(
-                onPressed: () {
-                  gate.markDebtAlertShown(decision.fingerprint);
-                  Navigator.pop(ctx);
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const ContasReceberScreen(),
-                    ),
-                  );
-                },
-                child: const Text('Abrir contas a receber'),
-              ),
-            ],
-          ),
-        );
-        gate.markDebtAlertShown(decision.fingerprint);
-        return;
-      }
+      if (!decision.showDebtAlert) return;
+      if (!gate.shouldShowDebtAlert(decision.fingerprint)) return;
 
-      if (decision.showNeutralSyncWarning &&
-          gate.shouldShowNeutralWarning(decision.fingerprint)) {
-        if (!mounted) return;
-        await showDialog<void>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Contas a receber'),
-            content: const Text(
-              'Não foi possível confirmar suas contas a receber agora.\n\n'
-              'Nenhuma cobrança em atraso foi confirmada pelo servidor.',
-            ),
-            actions: [
-              FilledButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('OK'),
-              ),
-            ],
+      final valorTotal = decision.totalPendente;
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Lembrete de cobrança'),
+          content: Text(
+            'Você tem ${decision.vencidas.length} conta(s) em atraso e '
+            '${decision.vencendo.length} vencendo em até 2 dias.\n\n'
+            'Total pendente: R\$ ${valorTotal.toStringAsFixed(2).replaceAll('.', ',')}.\n'
+            'Esse aviso continuará aparecendo até as contas serem quitadas.',
           ),
-        );
-        gate.markNeutralShown(decision.fingerprint);
-      }
+          actions: [
+            TextButton(
+              onPressed: () {
+                // SNOOZE_POLICY=same_fingerprint_rest_of_session
+                gate.snoozeDebtAlert(decision.fingerprint);
+                Navigator.pop(ctx);
+              },
+              child: const Text('Lembrar depois'),
+            ),
+            FilledButton(
+              onPressed: () {
+                gate.markDebtAlertShown(decision.fingerprint);
+                Navigator.pop(ctx);
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const ContasReceberScreen(),
+                  ),
+                );
+              },
+              child: const Text('Abrir contas a receber'),
+            ),
+          ],
+        ),
+      );
+      gate.markDebtAlertShown(decision.fingerprint);
     } catch (_) {
       // Aviso não pode bloquear a Home caso a box não esteja disponível.
     }

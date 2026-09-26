@@ -171,10 +171,56 @@ void main() {
       remoteRefreshOk: false,
     );
     expect(d.showDebtAlert, isFalse);
-    expect(d.showNeutralSyncWarning, isTrue);
+    expect(d.showNeutralSyncWarning, isFalse);
     expect(d.totalPendente, 0);
   });
 
+  test('REMOTE_UNAVAILABLE_UNCERTAIN_CACHE_NO_DIALOG', () {
+    final stale = [
+      staleOpen(docId: 'u1', nome: 'A', valor: 10),
+      staleOpen(docId: 'u2', nome: 'B', valor: 20),
+    ];
+    final d = decideContaReceberOverdueAlert(
+      contas: stale,
+      lojaId: lojaId,
+      remoteRefreshOk: false,
+    );
+    expect(d.showDebtAlert, isFalse);
+    expect(d.showNeutralSyncWarning, isFalse);
+  });
+
+  test('STALE_PAID_CACHE_NO_DIALOG', () {
+    final paid = staleOpen(docId: 'p1', nome: 'Paid', valor: 105.80);
+    stampContaReceberRemoteAuthority(
+      paid,
+      terminalState: ContaReceberRemoteTerminalState.paid,
+    );
+    paid.pago = true;
+    paid.valor = 0;
+    final d = decideContaReceberOverdueAlert(
+      contas: [paid],
+      lojaId: lojaId,
+      remoteRefreshOk: false,
+    );
+    expect(d.showDebtAlert, isFalse);
+    expect(d.showNeutralSyncWarning, isFalse);
+  });
+
+  test('REMOTE_ZERO_OVERDUE_NO_DIALOG', () {
+    final paid = staleOpen(docId: 'z1', nome: 'Z', valor: 0);
+    paid.pago = true;
+    stampContaReceberRemoteAuthority(
+      paid,
+      terminalState: ContaReceberRemoteTerminalState.paid,
+    );
+    final d = decideContaReceberOverdueAlert(
+      contas: [paid],
+      lojaId: lojaId,
+      remoteRefreshOk: true,
+    );
+    expect(d.showDebtAlert, isFalse);
+    expect(d.showNeutralSyncWarning, isFalse);
+  });
   test('REMOTE_TERMINAL_WATERMARK_PRESERVED_OFFLINE blocks resurrect', () {
     final c = staleOpen(docId: 'x', nome: 'X', valor: 50);
     // Corrupt local open but watermark paid.
