@@ -6,6 +6,7 @@ import '../core/conta_pagar_lancamento_vinculo.dart';
 import '../models/conta_pagar.dart';
 import '../models/conta_pagar_constants.dart';
 import '../financeiro/v2/conta_pagar_remote_mirror.dart';
+import '../financeiro/v2/payable_mirror_diagnostic_store.dart';
 import 'conta_pagar_hive_store.dart';
 import 'conta_pagar_service.dart';
 import 'financeiro_firestore_service.dart';
@@ -120,6 +121,7 @@ abstract final class ContaPagarFinanceiroExclusaoService {
     await ContaPagarRemoteMirrorService.mirrorIfEnabled(
       storeId: lid,
       conta: cancelada,
+      action: PayableMirrorAction.cancel,
     );
 
     await ContaPagarService.sincronizarCompraPagamento(lid, conta.compraId);

@@ -28,6 +28,10 @@ class HiveBoxNames {
   /// Contas a pagar (compras parceladas) — por loja.
   static String contasPagar(String lojaId) => 'contas_pagar_$lojaId';
 
+  /// Diagnóstico local do espelho sombra. Não é coleção de negócio.
+  static String payableMirrorDiagnostics(String lojaId) =>
+      'financial_v2_payable_mirror_diagnostics_$lojaId';
+
   /// Lançamentos do módulo financeiro (complementar — por loja).
   static String lancamentosFinanceiros(String lojaId) =>
       'lancamentos_financeiros_$lojaId';

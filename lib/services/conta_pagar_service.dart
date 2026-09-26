@@ -8,6 +8,7 @@ import '../models/compra_fornecedor_constants.dart';
 import '../models/conta_pagar.dart';
 import '../models/conta_pagar_constants.dart';
 import '../financeiro/v2/conta_pagar_remote_mirror.dart';
+import '../financeiro/v2/payable_mirror_diagnostic_store.dart';
 import 'compra_fornecedor_hive_store.dart';
 import 'conta_pagar_financeiro_exclusao_service.dart';
 import 'conta_pagar_hive_store.dart';
@@ -208,6 +209,7 @@ abstract final class ContaPagarService {
       await ContaPagarRemoteMirrorService.mirrorIfEnabled(
         storeId: lojaId.trim(),
         conta: conta,
+        action: PayableMirrorAction.createFromPurchase,
       );
       criadas++;
     }
@@ -226,6 +228,7 @@ abstract final class ContaPagarService {
     await ContaPagarRemoteMirrorService.mirrorIfEnabled(
       storeId: gravada.lojaId,
       conta: gravada,
+      action: PayableMirrorAction.save,
     );
   }
 
@@ -261,6 +264,7 @@ abstract final class ContaPagarService {
     await ContaPagarRemoteMirrorService.mirrorIfEnabled(
       storeId: lojaId,
       conta: atualizada,
+      action: PayableMirrorAction.markPaid,
     );
     await _sincronizarCompraPagamento(lojaId, atualizada.compraId);
     return true;
@@ -295,13 +299,16 @@ abstract final class ContaPagarService {
     final box = await ContaPagarHiveStore.openBox(lojaId);
     if (box == null) return;
 
-    await box.put(
-      conta.id,
-      conta.copyWith(
-        dataVencimento: novaData,
-        status: ContaPagarStatus.pendente,
-        atualizadoEm: DateTime.now(),
-      ),
+    final atualizada = conta.copyWith(
+      dataVencimento: novaData,
+      status: ContaPagarStatus.pendente,
+      atualizadoEm: DateTime.now(),
+    );
+    await box.put(conta.id, atualizada);
+    await ContaPagarRemoteMirrorService.mirrorIfEnabled(
+      storeId: lojaId,
+      conta: atualizada,
+      action: PayableMirrorAction.updateDueDate,
     );
   }
 

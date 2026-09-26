@@ -21,6 +21,7 @@ import 'package:flutter/foundation.dart';
 import '../../models/conta_pagar.dart';
 import '../../models/conta_pagar_constants.dart';
 import 'financial_v2_flags.dart';
+import 'payable_mirror_diagnostic_store.dart';
 
 const int kContaPagarMirrorSchemaVersion = 1;
 const String kContaPagarMirrorSource = 'hive_conta_pagar';
@@ -173,7 +174,10 @@ abstract final class ContaPagarRemoteMirrorService {
   static bool? debugEnabledOverride;
   static String? debugPilotStoreIdOverride;
   static Future<void> Function()? debugWriteFault;
+  static Future<void> Function()? debugFlagReadFault;
   static final List<PayableMirrorDiagnostic> debugDiagnostics = [];
+  static String _action = 'UNSPECIFIED';
+  static String? _flagState;
 
   static bool get isEnabled =>
       debugEnabledOverride ?? FinancialV2Flags.payablesRemoteMirrorEnabled;
@@ -188,13 +192,46 @@ abstract final class ContaPagarRemoteMirrorService {
   static void debugResetDiagnostics() => debugDiagnostics.clear();
 
   /// Flag global falsa. Só a loja piloto, e só com o documento remoto ligado.
-  static Future<bool> enabledForStore(String storeId) async {
-    if (debugEnabledOverride != null) return debugEnabledOverride!;
-    if (FinancialV2Flags.payablesRemoteMirrorEnabled) return true;
+  static Future<bool> enabledForStore(
+    String storeId, {
+    String action = 'UNSPECIFIED',
+    String payableId = '',
+    int? localUpdatedAt,
+  }) async {
+    if (debugEnabledOverride != null) {
+      _flagState = debugEnabledOverride! ? 'enabled' : 'disabled';
+      if (debugEnabledOverride == false) {
+        await _durable(
+          storeId: storeId.trim(),
+          payableId: payableId,
+          action: action,
+          stage: 'gate',
+          result: PayableMirrorDiagnosticResult.skippedFlagFalse,
+          flagState: 'disabled',
+          localUpdatedAt: localUpdatedAt,
+        );
+      }
+      return debugEnabledOverride!;
+    }
+    if (FinancialV2Flags.payablesRemoteMirrorEnabled) {
+      _flagState = 'enabled';
+      return true;
+    }
     final store = storeId.trim();
     final pilot = pilotStoreId;
-    if (pilot.isEmpty || store != pilot) return false;
+    if (pilot.isEmpty || store != pilot) {
+      await _durable(
+        storeId: store,
+        payableId: payableId,
+        action: action,
+        stage: 'gate',
+        result: PayableMirrorDiagnosticResult.skippedStoreMismatch,
+        localUpdatedAt: localUpdatedAt,
+      );
+      return false;
+    }
     try {
+      if (debugFlagReadFault != null) await debugFlagReadFault!();
       final snap = await _db
           .collection('lojas')
           .doc(store)
@@ -202,18 +239,59 @@ abstract final class ContaPagarRemoteMirrorService {
           .doc(kPayablesPilotDocId)
           .get();
       final data = snap.data();
-      if (data == null) return false;
+      if (data == null) {
+        await _durableFlag(
+          storeId: store,
+          payableId: payableId,
+          action: action,
+          localUpdatedAt: localUpdatedAt,
+          flagState: 'missing',
+          followedBy: PayableMirrorDiagnosticResult.skippedFlagFalse,
+        );
+        return false;
+      }
       final docStore = (data['storeId'] ?? '').toString().trim();
-      if (docStore != store) return false;
-      return data['payablesRemoteMirrorEnabled'] == true;
+      if (docStore != store) {
+        await _durableFlag(
+          storeId: store,
+          payableId: payableId,
+          action: action,
+          localUpdatedAt: localUpdatedAt,
+          flagState: 'missing',
+          followedBy: PayableMirrorDiagnosticResult.skippedFlagFalse,
+        );
+        return false;
+      }
+      final enabled = data['payablesRemoteMirrorEnabled'] == true;
+      _flagState = enabled ? 'enabled' : 'disabled';
+      await _durableFlag(
+        storeId: store,
+        payableId: payableId,
+        action: action,
+        localUpdatedAt: localUpdatedAt,
+        flagState: enabled ? 'enabled' : 'disabled',
+        followedBy: enabled
+            ? null
+            : PayableMirrorDiagnosticResult.skippedFlagFalse,
+      );
+      return enabled;
     } catch (e) {
       _record(
         event: 'PAYABLE_MIRROR_FAILURE',
         storeId: store,
-        payableId: '',
-        localUpdatedAt: null,
+        payableId: payableId,
+        localUpdatedAt: localUpdatedAt,
         remoteMirroredAt: null,
         result: 'SHADOW_MIRROR_FAILURE',
+      );
+      await _durableFlag(
+        storeId: store,
+        payableId: payableId,
+        action: action,
+        localUpdatedAt: localUpdatedAt,
+        flagState: 'read-error',
+        followedBy: PayableMirrorDiagnosticResult.flagReadFailed,
+        errorCode: _firebaseCode(e),
       );
       return false;
     }
@@ -222,10 +300,12 @@ abstract final class ContaPagarRemoteMirrorService {
   static Future<ContaPagarMirrorWriteResult> mirrorIfEnabled({
     required String storeId,
     required ContaPagar conta,
+    String action = 'UNSPECIFIED',
   }) async {
     try {
-      return await mirrorUpsert(storeId: storeId, conta: conta);
+      return await mirrorUpsert(storeId: storeId, conta: conta, action: action);
     } catch (e) {
+      final classified = _classifyError(e);
       _record(
         event: 'PAYABLE_MIRROR_FAILURE',
         storeId: storeId.trim(),
@@ -233,6 +313,15 @@ abstract final class ContaPagarRemoteMirrorService {
         localUpdatedAt: conta.atualizadoEm.millisecondsSinceEpoch,
         remoteMirroredAt: null,
         result: 'SHADOW_MIRROR_FAILURE',
+      );
+      await _durable(
+        storeId: storeId,
+        payableId: conta.id,
+        action: action,
+        stage: 'write',
+        result: classified,
+        errorCode: _firebaseCode(e),
+        localUpdatedAt: conta.atualizadoEm.millisecondsSinceEpoch,
       );
       return ContaPagarMirrorWriteResult(
         ContaPagarMirrorWriteKind.failure,
@@ -244,8 +333,15 @@ abstract final class ContaPagarRemoteMirrorService {
   static Future<ContaPagarMirrorWriteResult> mirrorUpsert({
     required String storeId,
     required ContaPagar conta,
+    String action = 'UNSPECIFIED',
   }) async {
-    if (!await enabledForStore(storeId)) {
+    _action = action;
+    if (!await enabledForStore(
+      storeId,
+      action: action,
+      payableId: conta.id,
+      localUpdatedAt: conta.atualizadoEm.millisecondsSinceEpoch,
+    )) {
       return const ContaPagarMirrorWriteResult(
         ContaPagarMirrorWriteKind.skippedFlagOff,
       );
@@ -258,8 +354,16 @@ abstract final class ContaPagarRemoteMirrorService {
       remoteMirroredAt: null,
       result: 'attempt',
     );
+    await _durable(
+      storeId: storeId,
+      payableId: conta.id,
+      action: action,
+      stage: 'write',
+      result: PayableMirrorDiagnosticResult.attempt,
+      localUpdatedAt: conta.atualizadoEm.millisecondsSinceEpoch,
+    );
     final gate = _gate(storeId, conta);
-    if (gate != null) return _finish(gate, storeId: storeId, conta: conta);
+    if (gate != null) return await _finish(gate, storeId: storeId, conta: conta);
     final remoteId = payableRemoteDocId(conta.id);
     final ref = _ref(storeId.trim(), remoteId);
     final existing = await ref.get();
@@ -268,7 +372,7 @@ abstract final class ContaPagarRemoteMirrorService {
     if (existing.exists) {
       final data = existing.data() ?? <String, dynamic>{};
       if (_identityConflict(data, storeId.trim(), remoteId)) {
-        return _finish(
+        return await _finish(
           ContaPagarMirrorWriteResult(
             ContaPagarMirrorWriteKind.rejectedIdentity,
             remoteId: remoteId,
@@ -278,7 +382,7 @@ abstract final class ContaPagarRemoteMirrorService {
         );
       }
       if (_isTerminal(data) && _reopensTerminal(data, conta)) {
-        return _finish(
+        return await _finish(
           ContaPagarMirrorWriteResult(
             ContaPagarMirrorWriteKind.rejectedTerminal,
             remoteId: remoteId,
@@ -289,7 +393,7 @@ abstract final class ContaPagarRemoteMirrorService {
         );
       }
       if (_sameBusiness(data, incoming)) {
-        return _finish(
+        return await _finish(
           ContaPagarMirrorWriteResult(
             ContaPagarMirrorWriteKind.noChange,
             remoteId: remoteId,
@@ -302,7 +406,7 @@ abstract final class ContaPagarRemoteMirrorService {
       final remoteMs = _millis(data['localUpdatedAtMs']);
       if (remoteMs != null &&
           conta.atualizadoEm.millisecondsSinceEpoch < remoteMs) {
-        return _finish(
+        return await _finish(
           ContaPagarMirrorWriteResult(
             ContaPagarMirrorWriteKind.rejectedStale,
             remoteId: remoteId,
@@ -321,7 +425,7 @@ abstract final class ContaPagarRemoteMirrorService {
         revision,
         deletedAt: keptDeletedAt,
       ));
-      return _finish(
+      return await _finish(
         ContaPagarMirrorWriteResult(
           ContaPagarMirrorWriteKind.applied,
           remoteId: remoteId,
@@ -333,7 +437,7 @@ abstract final class ContaPagarRemoteMirrorService {
 
     if (debugWriteFault != null) await debugWriteFault!();
     await ref.set(_envelope(conta, remoteId, 1, deletedAt: null));
-    return _finish(
+    return await _finish(
       ContaPagarMirrorWriteResult(
         ContaPagarMirrorWriteKind.applied,
         remoteId: remoteId,
@@ -347,8 +451,15 @@ abstract final class ContaPagarRemoteMirrorService {
     required String storeId,
     required ContaPagar conta,
     DateTime? deletedAt,
+    String action = 'UNSPECIFIED',
   }) async {
-    if (!await enabledForStore(storeId)) {
+    _action = action;
+    if (!await enabledForStore(
+      storeId,
+      action: action,
+      payableId: conta.id,
+      localUpdatedAt: conta.atualizadoEm.millisecondsSinceEpoch,
+    )) {
       return const ContaPagarMirrorWriteResult(
         ContaPagarMirrorWriteKind.skippedFlagOff,
       );
@@ -524,12 +635,12 @@ abstract final class ContaPagarRemoteMirrorService {
     throw StateError('Bootstrap de contas a pagar não executa na fase 1C.');
   }
 
-  static ContaPagarMirrorWriteResult _finish(
+  static Future<ContaPagarMirrorWriteResult> _finish(
     ContaPagarMirrorWriteResult result, {
     required String storeId,
     required ContaPagar conta,
     int? remoteMirroredAt,
-  }) {
+  }) async {
     final event = switch (result.kind) {
       ContaPagarMirrorWriteKind.applied => 'PAYABLE_MIRROR_SUCCESS',
       ContaPagarMirrorWriteKind.noChange => 'PAYABLE_MIRROR_NO_CHANGE',
@@ -547,7 +658,107 @@ abstract final class ContaPagarRemoteMirrorService {
       remoteMirroredAt: remoteMirroredAt,
       result: result.kind.name,
     );
+    await _durable(
+      storeId: storeId,
+      payableId: conta.id,
+      action: _action,
+      stage: 'write',
+      result: _durableResult(result.kind),
+      flagState: _flagState,
+      localUpdatedAt: conta.atualizadoEm.millisecondsSinceEpoch,
+    );
     return result;
+  }
+
+  static String _durableResult(ContaPagarMirrorWriteKind kind) {
+    return switch (kind) {
+      ContaPagarMirrorWriteKind.applied => PayableMirrorDiagnosticResult.success,
+      ContaPagarMirrorWriteKind.noChange =>
+        PayableMirrorDiagnosticResult.noChange,
+      ContaPagarMirrorWriteKind.rejectedTerminal =>
+        PayableMirrorDiagnosticResult.rejectedTerminal,
+      ContaPagarMirrorWriteKind.rejectedStale =>
+        PayableMirrorDiagnosticResult.rejectedOlder,
+      ContaPagarMirrorWriteKind.rejectedTenant =>
+        PayableMirrorDiagnosticResult.skippedStoreMismatch,
+      _ => PayableMirrorDiagnosticResult.unknownFailure,
+    };
+  }
+
+  static Future<void> _durableFlag({
+    required String storeId,
+    required String payableId,
+    required String action,
+    required int? localUpdatedAt,
+    required String flagState,
+    String? followedBy,
+    String? errorCode,
+  }) async {
+    await _durable(
+      storeId: storeId,
+      payableId: payableId,
+      action: action,
+      stage: 'flag',
+      result: PayableMirrorDiagnosticResult.flagReadAttempt,
+      flagState: flagState,
+      localUpdatedAt: localUpdatedAt,
+    );
+    if (followedBy == null) return;
+    await _durable(
+      storeId: storeId,
+      payableId: payableId,
+      action: action,
+      stage: 'flag',
+      result: followedBy,
+      flagState: flagState,
+      errorCode: errorCode,
+      localUpdatedAt: localUpdatedAt,
+    );
+  }
+
+  static Future<void> _durable({
+    required String storeId,
+    required String payableId,
+    required String action,
+    required String stage,
+    required String result,
+    String? errorCode,
+    String? flagState,
+    int? localUpdatedAt,
+  }) {
+    return PayableMirrorDiagnosticStore.append(
+      storeId: storeId,
+      payableId: payableId,
+      action: action,
+      stage: stage,
+      result: result,
+      errorCode: errorCode,
+      flagState: flagState,
+      localUpdatedAt: localUpdatedAt,
+    );
+  }
+
+  static String? _firebaseCode(Object error) {
+    if (error is FirebaseException) return error.code;
+    return null;
+  }
+
+  static String _classifyError(Object error) {
+    final code = _firebaseCode(error);
+    switch (code) {
+      case 'permission-denied':
+        return PayableMirrorDiagnosticResult.permissionDenied;
+      case 'unauthenticated':
+        return PayableMirrorDiagnosticResult.unauthenticated;
+      case 'unavailable':
+      case 'deadline-exceeded':
+      case 'network-request-failed':
+        return PayableMirrorDiagnosticResult.networkFailure;
+      case 'invalid-argument':
+        return PayableMirrorDiagnosticResult.invalidArgument;
+      default:
+        return PayableMirrorDiagnosticResult.unknownFailure;
+    }
   }
 
   static void _record({

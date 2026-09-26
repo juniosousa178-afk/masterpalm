@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../diagnostics/diagnostics.dart';
+import '../../financeiro/v2/payable_mirror_diagnostic_store.dart';
 import '../../services/loja_id_service.dart';
 
 /// Configurações → Diagnóstico do Sistema
@@ -88,6 +89,28 @@ class _SystemDiagnosticCenterScreenState
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Exportação: $e')),
+      );
+    }
+  }
+
+  Future<void> _exportPayableMirror() async {
+    final storeId = _storeId;
+    if (storeId == null || storeId.isEmpty) return;
+    try {
+      final text = await PayableMirrorDiagnosticStore.exportJson(storeId);
+      await Clipboard.setData(ClipboardData(text: text));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Espelho de contas a pagar copiado. Diagnóstico local, sem gravação remota.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Exportação do espelho: $e')),
       );
     }
   }
@@ -210,6 +233,13 @@ class _SystemDiagnosticCenterScreenState
                     : _exportFiadoHive,
                 icon: const Icon(Icons.account_balance_wallet_outlined),
                 label: const Text('Exportar fiado Hive (RO)'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _storeId == null || _storeId!.isEmpty
+                    ? null
+                    : _exportPayableMirror,
+                icon: const Icon(Icons.receipt_long_outlined),
+                label: const Text('Exportar espelho CP'),
               ),
             ],
           ),
