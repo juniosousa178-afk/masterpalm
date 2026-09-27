@@ -223,14 +223,72 @@ class FinancialOverviewReadModel {
   final bool availableBalanceSupported;
 }
 
+class FinancialDayMovement {
+  const FinancialDayMovement({
+    required this.day,
+    required this.grossSales,
+    required this.receipts,
+    required this.outflows,
+  });
+
+  final DateTime day;
+  final double grossSales;
+  final double receipts;
+  final double outflows;
+}
+
+class FinancialAgingSlice {
+  const FinancialAgingSlice({
+    required this.open,
+    required this.overdue,
+    required this.upcoming,
+    required this.dueWithin7Days,
+  });
+
+  final double open;
+  final double overdue;
+  final double upcoming;
+  final double dueWithin7Days;
+}
+
+class FinancialDashboardRead {
+  const FinancialDashboardRead({
+    required this.overview,
+    required this.days,
+    required this.receivables,
+    required this.payables,
+    required this.includedSaleCount,
+  });
+
+  final FinancialOverviewReadModel overview;
+  final List<FinancialDayMovement> days;
+  final FinancialAgingSlice receivables;
+  final FinancialAgingSlice payables;
+  final int includedSaleCount;
+}
+
+class _DayAcc {
+  double grossSales = 0;
+  double receipts = 0;
+  double outflows = 0;
+}
+
 abstract final class FinancialMetricsCalculator {
-  static FinancialOverviewReadModel overview(FinancialDataSources sources) {
+  static FinancialOverviewReadModel overview(FinancialDataSources sources) =>
+      dashboardRead(sources).overview;
+
+  static FinancialDashboardRead dashboardRead(FinancialDataSources sources) {
     final warnings = <String>{
       FinancialDataQualityWarning.payablesLocalOnly,
       FinancialDataQualityWarning.cardFeeEstimatedOnly,
       FinancialDataQualityWarning.noFinancialAccounts,
       FinancialDataQualityWarning.noOpeningBalance,
     };
+    final days = <DateTime, _DayAcc>{};
+    _DayAcc dayOf(DateTime instant) => days.putIfAbsent(
+          BrazilBusinessDate.dateOnly(instant),
+          () => _DayAcc(),
+        );
 
     final includedSales = <Venda>[
       for (final v in sources.sales)
@@ -251,7 +309,12 @@ abstract final class FinancialMetricsCalculator {
 
     for (final sale in includedSales) {
       grossSales += sale.total;
-      cashFromSaleTenders += _tenderCash(sale);
+      dayOf(sale.data).grossSales += sale.total;
+      final tender = _tenderCash(sale);
+      cashFromSaleTenders += tender;
+      if (tender > kFinancialReadEpsilon) {
+        dayOf(sale.data).receipts += tender;
+      }
       final cost = saleCostRead(sale);
       if (cost.grossProfitAvailable && cost.cogs != null) {
         knownProfit += cost.revenue - cost.cogs!;
@@ -286,6 +349,7 @@ abstract final class FinancialMetricsCalculator {
         final key = _receivablePaymentKey(conta, raw, amount, when);
         if (!paymentKeys.add(key)) continue;
         cashFromReceivablePayments += amount;
+        dayOf(when).receipts += amount;
       }
     }
 
@@ -308,24 +372,32 @@ abstract final class FinancialMetricsCalculator {
         final key = 'entry:${entry.id.trim()}';
         if (!paymentKeys.add(key)) continue;
         if (entry.tipo == FinanceiroTipoLancamento.entradaExtra) {
-          cashFromEntries += entry.valor.abs();
+          final amount = entry.valor.abs();
+          cashFromEntries += amount;
+          dayOf(when).receipts += amount;
         }
         continue;
       }
 
       final tipo = entry.tipo;
       if (tipo == FinanceiroTipoLancamento.entradaExtra) {
-        cashFromEntries += entry.valor.abs();
+        final amount = entry.valor.abs();
+        cashFromEntries += amount;
+        dayOf(when).receipts += amount;
       } else if (tipo == FinanceiroTipoLancamento.ajusteFinanceiro) {
         if (entry.valor >= 0) {
           cashFromEntries += entry.valor;
+          dayOf(when).receipts += entry.valor;
         } else {
-          cashOut += entry.valor.abs();
+          final amount = entry.valor.abs();
+          cashOut += amount;
+          dayOf(when).outflows += amount;
         }
       } else if (tipo == FinanceiroTipoLancamento.compraMercadoria) {
         final v = entry.valor.abs();
         purchaseOut += v;
         cashOut += v;
+        dayOf(when).outflows += v;
       } else if (tipo == FinanceiroTipoLancamento.gastoFixo ||
           tipo == FinanceiroTipoLancamento.gastoVariavel ||
           tipo == FinanceiroTipoLancamento.despesaOperacional ||
@@ -333,62 +405,126 @@ abstract final class FinancialMetricsCalculator {
           tipo == FinanceiroTipoLancamento.pagamentoFuncionario ||
           tipo == FinanceiroTipoLancamento.proLabore ||
           tipo == FinanceiroTipoLancamento.retirada) {
-        cashOut += entry.valor.abs();
+        final amount = entry.valor.abs();
+        cashOut += amount;
+        dayOf(when).outflows += amount;
       } else {
-        cashOut += entry.valor.abs();
+        final amount = entry.valor.abs();
+        cashOut += amount;
+        dayOf(when).outflows += amount;
       }
     }
 
-    var openReceivables = 0.0;
-    var overdue = 0.0;
-    for (final conta in sources.receivables) {
-      if (!contaReceberVisibleAsAuthoritativeOpen(conta)) continue;
-      openReceivables += conta.saldoRestante;
-      if (BrazilBusinessDate.isBeforeDay(conta.dataVencimento, sources.today)) {
-        overdue += conta.saldoRestante;
-      }
-    }
-
-    var openPayables = 0.0;
-    for (final parcela in sources.payables) {
-      if (!parcela.estaAberta) continue;
-      openPayables += parcela.valorParcela;
-    }
+    final receivableAging = _agingReceivables(sources);
+    final payableAging = _agingPayables(sources);
+    final openReceivables = receivableAging.open;
+    final overdue = receivableAging.overdue;
+    final openPayables = payableAging.open;
 
     final inflows = cashFromSaleTenders +
         cashFromReceivablePayments +
         cashFromEntries;
     final card = cardFeeRead(estimated: sources.estimatedCardFee);
+    final movement = days.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
 
-    return FinancialOverviewReadModel(
-      storeId: sources.storeId,
-      periodStart: sources.period.periodStart,
-      periodEnd: sources.period.periodEnd,
-      grossSales: grossSales,
-      cashInflows: inflows,
-      cashOutflows: cashOut,
-      netCashMovement: inflows - cashOut,
-      openReceivables: openReceivables,
-      overdueReceivables: overdue,
-      openPayables: openPayables,
-      payablesAuthority: FinancialAuthority.localOnly,
-      grossProfitKnownAmount: knownProfit,
-      grossProfitIncompleteSaleCount: incomplete,
-      saleCogsSnapshot: knownCogs,
-      cashPurchaseOutflow: purchaseOut,
-      consignmentSettlementCount: consignmentIds.length,
-      deduplicatedConsignmentCount: consignmentIds.length,
-      receivablePaymentCount: paymentKeys.length,
-      deduplicatedReceivablePaymentCount: paymentKeys.length,
-      dataQualityWarnings: warnings.toList()..sort(),
-      actualCardFee: card.actualCardFee,
-      estimatedCardFee: card.estimatedCardFee,
-      cardFeeLabel: card.estimatedCardFee == null ? null : card.label,
-      grossSalesAuthority: FinancialAuthority.derived,
-      cashAuthority: FinancialAuthority.derived,
-      receivablesAuthority: FinancialAuthority.remoteAuthoritative,
-      grossProfitAuthority: FinancialAuthority.derived,
-      availableBalanceSupported: false,
+    return FinancialDashboardRead(
+      includedSaleCount: includedSales.length,
+      days: [
+        for (final entry in movement)
+          FinancialDayMovement(
+            day: entry.key,
+            grossSales: entry.value.grossSales,
+            receipts: entry.value.receipts,
+            outflows: entry.value.outflows,
+          ),
+      ],
+      receivables: receivableAging,
+      payables: payableAging,
+      overview: FinancialOverviewReadModel(
+        storeId: sources.storeId,
+        periodStart: sources.period.periodStart,
+        periodEnd: sources.period.periodEnd,
+        grossSales: grossSales,
+        cashInflows: inflows,
+        cashOutflows: cashOut,
+        netCashMovement: inflows - cashOut,
+        openReceivables: openReceivables,
+        overdueReceivables: overdue,
+        openPayables: openPayables,
+        payablesAuthority: FinancialAuthority.localOnly,
+        grossProfitKnownAmount: knownProfit,
+        grossProfitIncompleteSaleCount: incomplete,
+        saleCogsSnapshot: knownCogs,
+        cashPurchaseOutflow: purchaseOut,
+        consignmentSettlementCount: consignmentIds.length,
+        deduplicatedConsignmentCount: consignmentIds.length,
+        receivablePaymentCount: paymentKeys.length,
+        deduplicatedReceivablePaymentCount: paymentKeys.length,
+        dataQualityWarnings: warnings.toList()..sort(),
+        actualCardFee: card.actualCardFee,
+        estimatedCardFee: card.estimatedCardFee,
+        cardFeeLabel: card.estimatedCardFee == null ? null : card.label,
+        grossSalesAuthority: FinancialAuthority.derived,
+        cashAuthority: FinancialAuthority.derived,
+        receivablesAuthority: FinancialAuthority.remoteAuthoritative,
+        grossProfitAuthority: FinancialAuthority.derived,
+        availableBalanceSupported: false,
+      ),
+    );
+  }
+
+  static FinancialAgingSlice _agingReceivables(FinancialDataSources sources) {
+    var open = 0.0;
+    var overdue = 0.0;
+    var upcoming = 0.0;
+    var dueSoon = 0.0;
+    final today = BrazilBusinessDate.dateOnly(sources.today);
+    final horizon = today.add(const Duration(days: 7));
+    for (final conta in sources.receivables) {
+      if (!contaReceberVisibleAsAuthoritativeOpen(conta)) continue;
+      final saldo = conta.saldoRestante;
+      open += saldo;
+      final due = BrazilBusinessDate.dateOnly(conta.dataVencimento);
+      if (due.isBefore(today)) {
+        overdue += saldo;
+      } else {
+        upcoming += saldo;
+        if (!due.isAfter(horizon)) dueSoon += saldo;
+      }
+    }
+    return FinancialAgingSlice(
+      open: open,
+      overdue: overdue,
+      upcoming: upcoming,
+      dueWithin7Days: dueSoon,
+    );
+  }
+
+  static FinancialAgingSlice _agingPayables(FinancialDataSources sources) {
+    var open = 0.0;
+    var overdue = 0.0;
+    var upcoming = 0.0;
+    var dueSoon = 0.0;
+    final today = BrazilBusinessDate.dateOnly(sources.today);
+    final horizon = today.add(const Duration(days: 7));
+    for (final parcela in sources.payables) {
+      if (!parcela.estaAberta) continue;
+      final saldo = parcela.valorParcela;
+      open += saldo;
+      final due = BrazilBusinessDate.dateOnly(parcela.dataVencimento);
+      if (due.isBefore(today)) {
+        overdue += saldo;
+      } else {
+        upcoming += saldo;
+        if (!due.isAfter(horizon)) dueSoon += saldo;
+      }
+    }
+    return FinancialAgingSlice(
+      open: open,
+      overdue: overdue,
+      upcoming: upcoming,
+      dueWithin7Days: dueSoon,
     );
   }
 

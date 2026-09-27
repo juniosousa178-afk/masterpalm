@@ -240,6 +240,14 @@ class FinanceiroFirestoreService {
     }
   }
 
+  /// Leitura pura do documento. Não grava Hive nem Firestore.
+  static LancamentoFinanceiro? lancamentoFromFirestoreMap(
+    String docId,
+    Map<String, dynamic> data,
+    String lojaIdEsperada,
+  ) =>
+      _lancamentoFromFirestore(docId, data, lojaIdEsperada);
+
   static GastoFixoMensal? _gastoFixoFromFirestore(
     String docId,
     Map<String, dynamic> data,

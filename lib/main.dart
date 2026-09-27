@@ -125,6 +125,8 @@ import 'screens/notas_fiscais_screen.dart';
 import 'screens/contas_receber_screen.dart';
 import 'screens/contas_pagar_screen.dart';
 import 'screens/financeiro/financeiro_screen.dart';
+import 'financeiro/v2/financial_dashboard_gate.dart';
+import 'financeiro/v2/financial_v2_preview_screen.dart';
 import 'screens/relatorio_mais_vendidos_screen.dart';
 import 'screens/relatorio_ranking_clientes_screen.dart';
 import 'screens/relatorio_lucratividade_produto_screen.dart';
@@ -4554,6 +4556,8 @@ class MyApp extends StatelessWidget {
                   FinanceiroScreen(mesInicial: mesInicial),
                 );
               },
+              FinancialV2DashboardGate.previewRoute: (_) =>
+                  const FinancialV2PreviewScreen(),
               '/globo_sorteio': (_) => _planGate(
                     PlanGateFeature.globoSorteio,
                     const GloboSorteioScreenWrapper(),
