@@ -8,6 +8,7 @@ import 'financial_dashboard_gate.dart';
 import 'financial_dashboard_presentation.dart';
 import 'financial_overview_loader.dart';
 import 'financial_v2_dashboard_view.dart';
+import 'financial_v2_operational_hub.dart';
 
 /// Rota interna. Não substitui `/financeiro`.
 class FinancialV2PreviewScreen extends StatefulWidget {
@@ -18,6 +19,7 @@ class FinancialV2PreviewScreen extends StatefulWidget {
     this.debugReads,
     this.debugToday,
     this.internalOnly = true,
+    this.operationalHub = false,
   });
 
   final bool? debugIsAdmin;
@@ -28,6 +30,9 @@ class FinancialV2PreviewScreen extends StatefulWidget {
   /// A rota `/financeiro_v2_preview` continua só para admin/programador.
   /// O piloto da loja chega aqui já autorizado pelo plano do Financeiro.
   final bool internalOnly;
+
+  /// Navegação operacional. A prévia interna continua só com os cartões.
+  final bool operationalHub;
 
   @override
   State<FinancialV2PreviewScreen> createState() =>
@@ -149,22 +154,26 @@ class _FinancialV2PreviewScreenState extends State<FinancialV2PreviewScreen> {
                   ? const Center(
                       child: Text(unavailableValue, style: MpType.body),
                     )
-                  : FinancialV2DashboardView(
-                      data: _data!,
-                      periodKind: _kind,
-                      onPeriod: (kind) {
-                        if (kind == FinancialDashboardPeriodKind.custom) {
-                          _pickCustom();
-                          return;
-                        }
-                        setState(() => _kind = kind);
-                        _reload();
-                      },
-                      onRefresh: _reload,
-                      onOpenReceivables: () =>
-                          Navigator.of(context).pushNamed('/contas_receber'),
-                      onOpenPayables: () =>
-                          Navigator.of(context).pushNamed('/contas_pagar'),
+                  : FinancialV2OperationalHub(
+                      enabled: widget.operationalHub,
+                      storeId: _storeId,
+                      overview: FinancialV2DashboardView(
+                        data: _data!,
+                        periodKind: _kind,
+                        onPeriod: (kind) {
+                          if (kind == FinancialDashboardPeriodKind.custom) {
+                            _pickCustom();
+                            return;
+                          }
+                          setState(() => _kind = kind);
+                          _reload();
+                        },
+                        onRefresh: _reload,
+                        onOpenReceivables: () =>
+                            Navigator.of(context).pushNamed('/contas_receber'),
+                        onOpenPayables: () =>
+                            Navigator.of(context).pushNamed('/contas_pagar'),
+                      ),
                     ),
     );
   }

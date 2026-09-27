@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../screens/financeiro/financeiro_screen.dart';
 import '../../services/loja_id_service.dart';
 import 'financial_dashboard_pilot.dart';
+import 'financial_launch_catalog.dart';
 import 'financial_v2_preview_screen.dart';
 
 /// `/financeiro`. A visão nova só entra se o piloto da loja estiver ligado
@@ -88,6 +89,9 @@ class _FinancialHomeRouteState extends State<FinancialHomeRoute> {
     if (dashboard != null) return dashboard();
     return FinancialV2PreviewScreen(
       internalOnly: false,
+      operationalHub: FinancialV2OperationalPolicy.hubEnabled(
+        showReadOnlyDashboard: pilot.showReadOnlyDashboard,
+      ),
       debugStoreId: _storeId ?? widget.debugStoreId,
     );
   }

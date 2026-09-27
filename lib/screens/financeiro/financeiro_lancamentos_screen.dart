@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 import '../../core/financeiro_lancamento_acao.dart';
 import '../../core/financeiro_lancamento_legacy_resolver.dart';
 import '../../financeiro/financeiro_constants.dart';
+import '../../financeiro/lancamento_lista_filtro.dart';
 import '../../financeiro/lancamento_financeiro_origem_ui.dart';
 import '../../models/conta_receber.dart';
 import '../../models/lancamento_financeiro.dart';
@@ -24,6 +25,10 @@ class FinanceiroLancamentosScreen extends StatefulWidget {
     required this.lojaId,
     this.lancamentoIdInicial,
     this.lancamentoInicial,
+    this.tipoNovo,
+    this.categoriaNova,
+    this.abrirFormularioNovo = false,
+    this.mostrarFiltros = false,
   });
 
   final String lojaId;
@@ -31,6 +36,12 @@ class FinanceiroLancamentosScreen extends StatefulWidget {
   final String? lancamentoIdInicial;
   /// Referência direta (suporta id vazio / chave Hive numérica).
   final LancamentoFinanceiro? lancamentoInicial;
+  /// Só pré-seleciona o tipo do formulário que já existia. Não grava sozinho.
+  final String? tipoNovo;
+  final String? categoriaNova;
+  final bool abrirFormularioNovo;
+  /// Filtros de leitura. A lista sem este parâmetro continua igual.
+  final bool mostrarFiltros;
 
   @override
   State<FinanceiroLancamentosScreen> createState() =>
@@ -48,6 +59,9 @@ class _FinanceiroLancamentosScreenState
   bool _loading = true;
   String? _erro;
   String? _pendenteAbrirId;
+  LancamentoListaRecorte _recorte = LancamentoListaRecorte.todos;
+  String _categoriaFiltro = '';
+  bool _mesAtual = false;
 
   final _moeda = NumberFormat.currency(locale: 'pt_BR', symbol: r'R$');
 
@@ -103,6 +117,10 @@ class _FinanceiroLancamentosScreenState
                 if (mounted) _abrirFormulario(existente: existente);
               });
             }
+          } else if (widget.abrirFormularioNovo) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _abrirFormulario(usarPreset: true);
+            });
           }
         }
       }
@@ -114,6 +132,30 @@ class _FinanceiroLancamentosScreenState
         });
       }
     }
+  }
+
+  List<LancamentoFinanceiro> get _listaVisivel {
+    final base = _listaOrdenada;
+    if (!widget.mostrarFiltros) return base;
+    final agora = DateTime.now();
+    final consulta = LancamentoListaConsulta(
+      recorte: _recorte,
+      categoria: _categoriaFiltro,
+      periodoInicio: _mesAtual ? DateTime(agora.year, agora.month, 1) : null,
+      periodoFimExclusivo:
+          _mesAtual ? DateTime(agora.year, agora.month + 1, 1) : null,
+    );
+    return [
+      for (final item in base)
+        if (consulta.aceita(
+          tipo: item.tipo,
+          valor: item.valor,
+          status: item.status,
+          categoria: item.categoria,
+          data: item.dataEfetivaPagamentoOuLancamento,
+        ))
+          item,
+    ];
   }
 
   List<LancamentoFinanceiro> get _listaOrdenada {
@@ -294,7 +336,10 @@ class _FinanceiroLancamentosScreenState
     );
   }
 
-  Future<void> _abrirFormulario({LancamentoFinanceiro? existente}) async {
+  Future<void> _abrirFormulario({
+    LancamentoFinanceiro? existente,
+    bool usarPreset = false,
+  }) async {
     final box = _box;
     if (box == null) return;
     if (existente != null) {
@@ -325,6 +370,8 @@ class _FinanceiroLancamentosScreenState
         lojaId: widget.lojaId,
         box: box,
         existente: existente,
+        tipoInicial: usarPreset ? widget.tipoNovo : null,
+        categoriaInicial: usarPreset ? widget.categoriaNova : null,
         onSalvar: (l) async {
           await box.put(l.id, l);
           return FinanceiroFirestoreService.upsertLancamento(l);
@@ -591,31 +638,109 @@ class _FinanceiroLancamentosScreenState
           ? const Center(child: CircularProgressIndicator(color: _primary))
           : _erro != null
               ? Center(child: Text(_erro!))
-              : RefreshIndicator(
-                  color: _primary,
-                  onRefresh: _open,
-                  child: _listaOrdenada.isEmpty
-                      ? ListView(
-                          children: const [
-                            SizedBox(height: 120),
-                            Icon(Icons.receipt_long,
-                                size: 56, color: Colors.grey),
-                            SizedBox(height: 12),
-                            Center(
-                              child: Text(
-                                'Nenhum lançamento.\nToque em Novo para adicionar.',
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                          ],
-                        )
-                      : ListView.builder(
-                          padding: const EdgeInsets.fromLTRB(12, 12, 12, 88),
-                          itemCount: _listaOrdenada.length,
-                          itemBuilder: (_, i) => _tileLancamentoLista(_listaOrdenada[i]),
-                        ),
-                ),
+              : widget.mostrarFiltros
+                  ? Column(
+                      children: [
+                        _filtrosBar(),
+                        Expanded(child: _listaRefresh()),
+                      ],
+                    )
+                  : _listaRefresh(),
     );
+  }
+
+  Widget _listaRefresh() {
+    final lista = _listaVisivel;
+    return RefreshIndicator(
+      color: _primary,
+      onRefresh: _open,
+      child: lista.isEmpty
+          ? ListView(
+              children: const [
+                SizedBox(height: 120),
+                Icon(Icons.receipt_long, size: 56, color: Colors.grey),
+                SizedBox(height: 12),
+                Center(
+                  child: Text(
+                    'Nenhum lançamento.\nToque em Novo para adicionar.',
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ],
+            )
+          : ListView.builder(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 88),
+              itemCount: lista.length,
+              itemBuilder: (_, i) => _tileLancamentoLista(lista[i]),
+            ),
+    );
+  }
+
+  Widget _filtrosBar() {
+    return Material(
+      color: Colors.white,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (final recorte in LancamentoListaRecorte.values)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: FilterChip(
+                        label: Text(_rotuloRecorte(recorte)),
+                        selected: _recorte == recorte,
+                        onSelected: (_) => setState(() => _recorte = recorte),
+                      ),
+                    ),
+                  FilterChip(
+                    label: const Text('Mês atual'),
+                    selected: _mesAtual,
+                    onSelected: (value) => setState(() => _mesAtual = value),
+                  ),
+                ],
+              ),
+            ),
+            DropdownButton<String>(
+              isExpanded: true,
+              value: _categoriaFiltro,
+              items: [
+                const DropdownMenuItem(
+                  value: '',
+                  child: Text('Todas as categorias'),
+                ),
+                for (final categoria in kFinanceiroCategoriasPadrao)
+                  DropdownMenuItem(
+                    value: categoria.categoria,
+                    child: Text(categoria.categoria.replaceAll('_', ' ')),
+                  ),
+              ],
+              onChanged: (value) =>
+                  setState(() => _categoriaFiltro = value ?? ''),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _rotuloRecorte(LancamentoListaRecorte recorte) {
+    switch (recorte) {
+      case LancamentoListaRecorte.todos:
+        return 'Todos';
+      case LancamentoListaRecorte.entradas:
+        return 'Entradas';
+      case LancamentoListaRecorte.saidas:
+        return 'Saídas';
+      case LancamentoListaRecorte.pendentes:
+        return 'Pendentes';
+      case LancamentoListaRecorte.pagos:
+        return 'Pagos';
+    }
   }
 }
 
@@ -625,11 +750,15 @@ class _LancamentoFormSheet extends StatefulWidget {
     required this.box,
     required this.onSalvar,
     this.existente,
+    this.tipoInicial,
+    this.categoriaInicial,
   });
 
   final String lojaId;
   final Box<LancamentoFinanceiro> box;
   final LancamentoFinanceiro? existente;
+  final String? tipoInicial;
+  final String? categoriaInicial;
   /// Hive já gravado; retorna se o upsert remoto teve sucesso.
   final Future<bool> Function(LancamentoFinanceiro l) onSalvar;
 
@@ -686,9 +815,11 @@ class _LancamentoFormSheetState extends State<_LancamentoFormSheet> {
     _refExternaCtrl =
         TextEditingController(text: e?.referenciaExterna ?? '');
     _tipo = FinanceiroTipoLancamento.tipoOuPadrao(
-        e?.tipo ?? FinanceiroTipoLancamento.despesaOperacional);
+        e?.tipo ?? widget.tipoInicial ?? FinanceiroTipoLancamento.despesaOperacional);
     _categoria = financeiroCategoriaOuPadrao(
-        e?.categoria.isNotEmpty == true ? e!.categoria : '');
+        e?.categoria.isNotEmpty == true
+            ? e!.categoria
+            : (widget.categoriaInicial ?? ''));
     _status = e?.status ?? FinanceiroStatusLancamento.pago;
     _dataLanc = e?.dataLancamento ?? DateTime.now();
     _dataPag = e?.dataPagamento;
