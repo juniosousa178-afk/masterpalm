@@ -2,6 +2,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
 import '../../design_system/mp_tokens.dart';
+import 'financial_chart_axis.dart';
 import 'financial_dashboard_presentation.dart';
 import 'financial_overview_loader.dart';
 import 'financial_read_model.dart';
@@ -226,68 +227,133 @@ class FinancialV2DashboardView extends StatelessWidget {
               height: 220,
               child: points == null
                   ? const Center(child: Text(unavailableValue, style: MpType.body))
-                  : BarChart(
-                      BarChartData(
-                        gridData: const FlGridData(show: false),
-                        borderData: FlBorderData(show: false),
-                        groupsSpace: 12,
-                        barGroups: [
-                          for (var i = 0; i < points.length; i++)
-                            BarChartGroupData(
-                              x: i,
-                              barsSpace: 4,
-                              barRods: [
-                                BarChartRodData(
-                                  toY: points[i].primary,
-                                  color: primaryColor,
-                                  width: 8,
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                BarChartRodData(
-                                  toY: points[i].secondary,
-                                  color: secondaryColor,
-                                  width: 8,
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                              ],
-                            ),
-                        ],
-                        titlesData: FlTitlesData(
-                          topTitles: const AxisTitles(
-                            sideTitles: SideTitles(showTitles: false),
-                          ),
-                          rightTitles: const AxisTitles(
-                            sideTitles: SideTitles(showTitles: false),
-                          ),
-                          leftTitles: const AxisTitles(
-                            sideTitles: SideTitles(
-                              showTitles: true,
-                              reservedSize: 36,
-                            ),
-                          ),
-                          bottomTitles: AxisTitles(
-                            sideTitles: SideTitles(
-                              showTitles: true,
-                              getTitlesWidget: (value, meta) {
-                                final i = value.toInt();
-                                if (i < 0 || i >= points.length) {
-                                  return const SizedBox.shrink();
-                                }
-                                if (points.length > 12 && i % 2 != 0) {
-                                  return const SizedBox.shrink();
-                                }
-                                return Text(
-                                  points[i].label,
-                                  style: const TextStyle(fontSize: 10),
-                                );
-                              },
-                            ),
-                          ),
-                        ),
-                      ),
+                  : _bars(
+                      context,
+                      points: points,
+                      primary: primary,
+                      secondary: secondary,
+                      primaryColor: primaryColor,
+                      secondaryColor: secondaryColor,
                     ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _bars(
+    BuildContext context, {
+    required List<FinancialChartPoint> points,
+    required String primary,
+    required String secondary,
+    required Color primaryColor,
+    required Color secondaryColor,
+  }) {
+    final magnitudes = <double>[
+      for (final point in points) ...[point.primary, point.secondary],
+    ];
+    var peak = 0.0;
+    for (final value in magnitudes) {
+      if (value.abs() > peak) peak = value.abs();
+    }
+    final reserved = chartYAxisReservedWidth([
+      ...magnitudes,
+      peak <= 0 ? 0 : peak * 1.08,
+    ]);
+    final width = MediaQuery.sizeOf(context).width;
+    final labelStep = points.length <= 8
+        ? 1
+        : width < 500
+            ? (points.length / 5).ceil().clamp(1, points.length)
+            : points.length > 12
+                ? 2
+                : 1;
+    final names = [primary, secondary];
+    return BarChart(
+      BarChartData(
+        gridData: const FlGridData(show: false),
+        borderData: FlBorderData(show: false),
+        groupsSpace: 12,
+        maxY: peak <= 0 ? 1 : peak * 1.08,
+        barTouchData: BarTouchData(
+          touchTooltipData: BarTouchTooltipData(
+            fitInsideHorizontally: true,
+            fitInsideVertically: true,
+            maxContentWidth: 168,
+            getTooltipItem: (group, groupIndex, rod, rodIndex) {
+              final name = rodIndex >= 0 && rodIndex < names.length
+                  ? names[rodIndex]
+                  : '';
+              return BarTooltipItem(
+                '$name\n${formatBrlKnown(rod.toY)}',
+                const TextStyle(color: Colors.white, fontSize: 12),
+              );
+            },
+          ),
+        ),
+        barGroups: [
+          for (var i = 0; i < points.length; i++)
+            BarChartGroupData(
+              x: i,
+              barsSpace: 4,
+              barRods: [
+                BarChartRodData(
+                  toY: points[i].primary,
+                  color: primaryColor,
+                  width: 8,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                BarChartRodData(
+                  toY: points[i].secondary,
+                  color: secondaryColor,
+                  width: 8,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ],
+            ),
+        ],
+        titlesData: FlTitlesData(
+          topTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+          rightTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: reserved,
+              interval: peak <= 0 ? 1 : peak,
+              getTitlesWidget: (value, meta) {
+                return Text(
+                  compactChartAxisLabel(value),
+                  style: chartAxisLabelStyle,
+                  maxLines: 1,
+                );
+              },
+            ),
+          ),
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 22,
+              getTitlesWidget: (value, meta) {
+                final i = value.toInt();
+                if (i < 0 || i >= points.length) {
+                  return const SizedBox.shrink();
+                }
+                if (i % labelStep != 0 && i != points.length - 1) {
+                  return const SizedBox.shrink();
+                }
+                return Text(
+                  points[i].label,
+                  style: chartAxisLabelStyle,
+                  maxLines: 1,
+                );
+              },
+            ),
+          ),
         ),
       ),
     );

@@ -126,6 +126,7 @@ import 'screens/contas_receber_screen.dart';
 import 'screens/contas_pagar_screen.dart';
 import 'screens/financeiro/financeiro_screen.dart';
 import 'financeiro/v2/financial_dashboard_gate.dart';
+import 'financeiro/v2/financial_home_route.dart';
 import 'financeiro/v2/financial_v2_preview_screen.dart';
 import 'screens/relatorio_mais_vendidos_screen.dart';
 import 'screens/relatorio_ranking_clientes_screen.dart';
@@ -4553,7 +4554,7 @@ class MyApp extends StatelessWidget {
                 }
                 return _planGate(
                   PlanGateFeature.financeiroLancamentos,
-                  FinanceiroScreen(mesInicial: mesInicial),
+                  FinancialHomeRoute(mesInicial: mesInicial),
                 );
               },
               FinancialV2DashboardGate.previewRoute: (_) =>

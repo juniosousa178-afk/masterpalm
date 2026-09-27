@@ -17,12 +17,17 @@ class FinancialV2PreviewScreen extends StatefulWidget {
     this.debugStoreId,
     this.debugReads,
     this.debugToday,
+    this.internalOnly = true,
   });
 
   final bool? debugIsAdmin;
   final String? debugStoreId;
   final FinancialPeriodReads? debugReads;
   final DateTime? debugToday;
+
+  /// A rota `/financeiro_v2_preview` continua só para admin/programador.
+  /// O piloto da loja chega aqui já autorizado pelo plano do Financeiro.
+  final bool internalOnly;
 
   @override
   State<FinancialV2PreviewScreen> createState() =>
@@ -38,6 +43,7 @@ class _FinancialV2PreviewScreenState extends State<FinancialV2PreviewScreen> {
   bool _loading = true;
   bool _allowed = false;
   String? _storeId;
+  int _loadTicket = 0;
 
   @override
   void initState() {
@@ -49,7 +55,9 @@ class _FinancialV2PreviewScreenState extends State<FinancialV2PreviewScreen> {
       widget.debugToday ?? BrazilBusinessDate.dateOnly(DateTime.now());
 
   Future<void> _bootstrap() async {
-    final admin = widget.debugIsAdmin ?? await _sessionAdmin();
+    final admin = widget.internalOnly
+        ? (widget.debugIsAdmin ?? await _sessionAdmin())
+        : true;
     if (!FinancialV2DashboardGate.previewAllowed(admin)) {
       if (!mounted) return;
       setState(() {
@@ -79,6 +87,7 @@ class _FinancialV2PreviewScreenState extends State<FinancialV2PreviewScreen> {
       setState(() => _loading = false);
       return;
     }
+    final ticket = ++_loadTicket;
     setState(() => _loading = true);
     final reads = widget.debugReads ?? FirestoreFinancialPeriodReads();
     final data = await _loader.load(
@@ -92,7 +101,7 @@ class _FinancialV2PreviewScreenState extends State<FinancialV2PreviewScreen> {
       today: _today,
       reads: reads,
     );
-    if (!mounted) return;
+    if (!mounted || ticket != _loadTicket) return;
     setState(() {
       _data = data;
       _loading = false;

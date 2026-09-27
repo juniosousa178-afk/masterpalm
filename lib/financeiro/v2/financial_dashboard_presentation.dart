@@ -2,6 +2,9 @@ import 'financial_read_model.dart';
 import 'financial_warnings.dart';
 import 'brazil_business_date.dart';
 
+const receiptsGreaterThanSalesExplanation =
+    'Recebimentos podem incluir valores de vendas realizadas em períodos anteriores, como baixas de fiado.';
+
 enum FinancialDashboardPeriodKind { today, last7Days, currentMonth, custom }
 
 enum FinancialCardTone { neutral, outflow, attention }
@@ -140,6 +143,11 @@ FinancialDashboardCards presentFinancialDashboard({
     incomplete: overview.grossProfitIncompleteSaleCount,
     knownAmount: overview.grossProfitKnownAmount,
   );
+  final receiptsAboveSales = salesAvailable &&
+      receiptsKnown &&
+      overview.cashInflows > overview.grossSales + kFinancialReadEpsilon;
+  const receiptsTooltip =
+      'Dinheiro, Pix e cartão recebidos, mais o que foi de fato pago do fiado. Fiado em aberto não entra.';
 
   return FinancialDashboardCards(
     faturamento: FinancialCardModel(
@@ -153,10 +161,13 @@ FinancialDashboardCards presentFinancialDashboard({
     recebimentos: FinancialCardModel(
       id: 'recebimentos',
       title: 'Recebimentos',
-      tooltip:
-          'Dinheiro, Pix e cartão recebidos, mais o que foi de fato pago do fiado. Fiado em aberto não entra.',
+      tooltip: receiptsAboveSales
+          ? '$receiptsTooltip $receiptsGreaterThanSalesExplanation'
+          : receiptsTooltip,
       tone: FinancialCardTone.neutral,
       valueText: receiptsKnown ? formatBrlKnown(overview.cashInflows) : null,
+      footnote:
+          receiptsAboveSales ? receiptsGreaterThanSalesExplanation : null,
     ),
     saidas: FinancialCardModel(
       id: 'saidas',
