@@ -236,8 +236,13 @@ abstract final class FinancialLaunchCatalog {
   }
 }
 
-/// O hub só aparece no ramo em que o piloto só leitura já está ligado.
+/// O hub só navega. O painel só leitura não grava, mesmo com o hub ligado.
 abstract final class FinancialV2OperationalPolicy {
-  static bool hubEnabled({required bool showReadOnlyDashboard}) =>
-      showReadOnlyDashboard;
+  static const int directFinancialWrites = 0;
+
+  static bool hubEnabled({
+    required bool showReadOnlyDashboard,
+    required bool operationalHubEnabled,
+  }) =>
+      showReadOnlyDashboard && operationalHubEnabled;
 }

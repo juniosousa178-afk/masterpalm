@@ -1,10 +1,15 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 /// Piloto da visão financeira por loja. Não usa a flag do espelho de contas a pagar.
+///
+/// `readOnly` no documento é o alias legado de [dashboardReadOnly]: os cartões
+/// e os gráficos não gravam. `operationalHubEnabled` só libera navegação para
+/// telas que já gravam. Ausente ou falso mantém o painel sem o hub.
 class FinancialDashboardPilot {
   const FinancialDashboardPilot({
     required this.enabled,
     required this.readOnly,
+    this.operationalHubEnabled = false,
   });
 
   static const disabled = FinancialDashboardPilot(enabled: false, readOnly: true);
@@ -12,9 +17,18 @@ class FinancialDashboardPilot {
   static const documentId = 'dashboard';
 
   final bool enabled;
+
+  /// Alias persistido de dashboardReadOnly. O painel não grava.
   final bool readOnly;
 
+  /// Navegação para módulos operacionais existentes. Não é um writer novo.
+  final bool operationalHubEnabled;
+
+  bool get dashboardReadOnly => readOnly;
+
   bool get showReadOnlyDashboard => enabled && readOnly;
+
+  bool get showOperationalHub => showReadOnlyDashboard && operationalHubEnabled;
 }
 
 /// Documento ausente, loja diferente ou leitura que não é só de leitura
@@ -28,9 +42,22 @@ FinancialDashboardPilot financialDashboardPilotFromMap({
   final docStore = (data['storeId'] ?? '').toString().trim();
   if (docStore != expected) return FinancialDashboardPilot.disabled;
   final enabled = data['financialV2Enabled'] == true;
-  final readOnly = data['readOnly'] == true;
-  if (!enabled || !readOnly) return FinancialDashboardPilot.disabled;
-  return const FinancialDashboardPilot(enabled: true, readOnly: true);
+  final hasDashboardReadOnly = data.containsKey('dashboardReadOnly');
+  final hasLegacyReadOnly = data.containsKey('readOnly');
+  if (hasDashboardReadOnly &&
+      hasLegacyReadOnly &&
+      ((data['dashboardReadOnly'] == true) != (data['readOnly'] == true))) {
+    return FinancialDashboardPilot.disabled;
+  }
+  final dashboardReadOnly = hasDashboardReadOnly
+      ? data['dashboardReadOnly'] == true
+      : data['readOnly'] == true;
+  if (!enabled || !dashboardReadOnly) return FinancialDashboardPilot.disabled;
+  return FinancialDashboardPilot(
+    enabled: true,
+    readOnly: true,
+    operationalHubEnabled: data['operationalHubEnabled'] == true,
+  );
 }
 
 Future<FinancialDashboardPilot> readFinancialDashboardPilot({

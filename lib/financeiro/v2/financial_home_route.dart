@@ -91,6 +91,7 @@ class _FinancialHomeRouteState extends State<FinancialHomeRoute> {
       internalOnly: false,
       operationalHub: FinancialV2OperationalPolicy.hubEnabled(
         showReadOnlyDashboard: pilot.showReadOnlyDashboard,
+        operationalHubEnabled: pilot.operationalHubEnabled,
       ),
       debugStoreId: _storeId ?? widget.debugStoreId,
     );

@@ -253,15 +253,75 @@ void main() {
   });
 
   test('hub stays off unless the read-only pilot is on', () {
+    expect(FinancialV2OperationalPolicy.directFinancialWrites, 0);
     expect(
-      FinancialV2OperationalPolicy.hubEnabled(showReadOnlyDashboard: false),
+      FinancialV2OperationalPolicy.hubEnabled(
+        showReadOnlyDashboard: false,
+        operationalHubEnabled: true,
+      ),
       isFalse,
     );
     expect(
-      FinancialV2OperationalPolicy.hubEnabled(showReadOnlyDashboard: true),
+      FinancialV2OperationalPolicy.hubEnabled(
+        showReadOnlyDashboard: true,
+        operationalHubEnabled: false,
+      ),
+      isFalse,
+    );
+    expect(
+      FinancialV2OperationalPolicy.hubEnabled(
+        showReadOnlyDashboard: true,
+        operationalHubEnabled: true,
+      ),
       isTrue,
     );
     expect(FinancialDashboardPilot.disabled.showReadOnlyDashboard, isFalse);
+    expect(FinancialDashboardPilot.disabled.showOperationalHub, isFalse);
+
+    const nathy = 'nathy-pratas-e-folheados';
+    final legacy = financialDashboardPilotFromMap(
+      storeId: nathy,
+      data: {
+        'storeId': nathy,
+        'financialV2Enabled': true,
+        'readOnly': true,
+      },
+    );
+    expect(legacy.dashboardReadOnly, isTrue);
+    expect(legacy.showOperationalHub, isFalse);
+
+    final released = financialDashboardPilotFromMap(
+      storeId: nathy,
+      data: {
+        'storeId': nathy,
+        'financialV2Enabled': true,
+        'readOnly': true,
+        'dashboardReadOnly': true,
+        'operationalHubEnabled': true,
+      },
+    );
+    expect(released.dashboardReadOnly, isTrue);
+    expect(released.showOperationalHub, isTrue);
+
+    final mir = financialDashboardPilotFromMap(
+      storeId: 'mirjoias',
+      data: null,
+    );
+    expect(mir.showReadOnlyDashboard, isFalse);
+    expect(mir.showOperationalHub, isFalse);
+
+    final disagreed = financialDashboardPilotFromMap(
+      storeId: nathy,
+      data: {
+        'storeId': nathy,
+        'financialV2Enabled': true,
+        'readOnly': true,
+        'dashboardReadOnly': false,
+        'operationalHubEnabled': true,
+      },
+    );
+    expect(disagreed.showReadOnlyDashboard, isFalse);
+    expect(disagreed.showOperationalHub, isFalse);
   });
 
   testWidgets('disabled pilot keeps the old financeiro screen', (tester) async {
@@ -303,6 +363,9 @@ void main() {
     await _pumpHubPreview(tester, const Size(1280, 900));
     expect(find.text('Visão financeira'), findsOneWidget);
     expect(find.text(financialNewLaunchLabel), findsOneWidget);
+    final button = tester.getSize(find.byKey(const Key('financial-v2-new-launch')));
+    expect(button.height, lessThan(64));
+    expect(button.width, lessThan(420));
     expect(find.text('Faturamento'), findsOneWidget);
     expect(find.text('Lucro bruto'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -374,6 +437,7 @@ void main() {
     expect(list.abrirFormularioNovo, isFalse);
     expect(list.tipoNovo, isNull);
     await _popRoute(tester);
+    expect(find.text(financialNewLaunchLabel), findsOneWidget);
 
     await _tapShortcut(tester, 'receber');
     expect(find.text('rota-contas-receber'), findsOneWidget);
