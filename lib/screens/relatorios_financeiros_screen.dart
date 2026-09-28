@@ -27,6 +27,7 @@ import '../services/ai_loja_service.dart';
 import '../services/ia_uso_limite_service.dart';
 import '../services/loja_id_service.dart';
 import '../core/venda_metrics_filter.dart';
+import '../financeiro/v2/financial_dashboard_pilot.dart';
 import '../financeiro/v2/financial_dre.dart';
 import 'financeiro/dre_report_screen.dart';
 import '../core/financeiro_relatorio_taxas.dart';
@@ -54,6 +55,7 @@ class _RelatoriosFinanceirosScreenState
   String _usuarioLogado = '';
   String _tipoUsuario = 'vendedor';
   String _lojaId = '';
+  bool _dreHabilitada = false;
   bool _isAdmin = false;
 
   // Filtros
@@ -129,6 +131,12 @@ class _RelatoriosFinanceirosScreenState
           '';
       if (_lojaId.isEmpty) {
         throw Exception('Loja não encontrada. Faça login novamente.');
+      }
+      try {
+        final pilot = await FirestoreFinancialDashboardPilotSource().read(_lojaId);
+        _dreHabilitada = pilot.showDre;
+      } catch (_) {
+        _dreHabilitada = false;
       }
 
       try {
@@ -624,7 +632,7 @@ class _RelatoriosFinanceirosScreenState
           backgroundColor: _cardColor,
           title: const Text('Financeiro & Metas'),
           actions: [
-            if (FinancialDrePolicy.showEntry(storeId: _lojaId))
+            if (FinancialDrePolicy.showEntry(tenantDreEnabled: _dreHabilitada))
               TextButton(
                 key: const Key('financial-dre-entry'),
                 onPressed: () {

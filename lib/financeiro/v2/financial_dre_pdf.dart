@@ -35,6 +35,8 @@ String _pdfText(String value) {
       .replaceAll('•', '-');
 }
 
+bool get drePdfIsA4Portrait => PdfPageFormat.a4.height > PdfPageFormat.a4.width;
+
 Future<Uint8List> buildDrePdf(DreStatement statement) {
   final plan = DrePdfDocumentPlan.fromStatement(statement);
   final doc = pw.Document();

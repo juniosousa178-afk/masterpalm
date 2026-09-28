@@ -400,6 +400,8 @@ Venda? vendaFromRemoteRead({
     pagamentoCartao: _double(data['pagamentoCartao']) ?? 0,
     taxas: _double(data['taxas']) ?? 0,
     custoProdutos: _double(data['custoProdutos']) ?? 0,
+    desconto: _double(data['desconto']) ?? 0,
+    descontoValor: _double(data['descontoValor']) ?? 0,
     lojaId: storeId.trim(),
     idFirebase: docId,
     cancelada: data['cancelada'] == true,

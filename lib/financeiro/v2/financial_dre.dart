@@ -11,8 +11,6 @@ import 'brazil_business_date.dart';
 import 'financial_month.dart';
 import 'financial_read_model.dart';
 
-const String kDrePreviewStoreId = 'nathy-pratas-e-folheados';
-
 /// A DRE global continua desligada. O preview é só da loja piloto.
 abstract final class FinancialDrePolicy {
   static const bool readOnly = true;
@@ -35,9 +33,8 @@ abstract final class FinancialDrePolicy {
   static const bool screenPrintPdfSameTotals = true;
   static const bool periodSelectorReusesFinancialHistory = true;
 
-  static bool showEntry({required String storeId}) {
-    return storeId.trim() == kDrePreviewStoreId;
-  }
+  /// A loja entra pela flag remota `dreEnabled`, não pelo id fixo.
+  static bool showEntry({required bool tenantDreEnabled}) => tenantDreEnabled;
 }
 
 enum DreValueState { known, unavailable }
@@ -509,6 +506,12 @@ abstract final class FinancialDreRead {
       expenseValue = DreValue.known(
         _money(operatingLines.fold(0.0, (s, e) => s + e.amount)),
       );
+      notes.add(
+        'Este resultado considera as despesas registradas no MasterPalm. Despesas não lançadas não podem ser incluídas.',
+      );
+    }
+    if (cogsComplete && missingCogs == 0 && cogsValue.isKnown) {
+      notes.add('CMV histórico completo.');
     }
 
     final DreValue operatingResult;
@@ -534,7 +537,7 @@ abstract final class FinancialDreRead {
         'Taxas de cartão estimadas (${formatDreMoney(input.estimatedCardFee!)}): ESTIMATIVA, fora do resultado.',
       );
     } else {
-      notes.add('Taxas de cartão não registradas.');
+      notes.add('Taxas de cartão reais não confirmadas no período.');
     }
     notes.add(
       'Tributos não incluídos: não há valor contábil confirmado no período.',
@@ -653,7 +656,9 @@ abstract final class DrePresentation {
           emphasis: false,
         ),
       DreRenderRow(
-        label: '(-) DESPESAS OPERACIONAIS',
+        label: statement.operatingExpenses.isKnown
+            ? '(-) DESPESAS OPERACIONAIS REGISTRADAS'
+            : '(-) DESPESAS OPERACIONAIS',
         amount: money(statement.operatingExpenses),
         emphasis: false,
       ),

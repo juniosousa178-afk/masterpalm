@@ -10,6 +10,7 @@ class FinancialDashboardPilot {
     required this.enabled,
     required this.readOnly,
     this.operationalHubEnabled = false,
+    this.dreEnabled = false,
   });
 
   static const disabled = FinancialDashboardPilot(enabled: false, readOnly: true);
@@ -24,11 +25,16 @@ class FinancialDashboardPilot {
   /// Navegação para módulos operacionais existentes. Não é um writer novo.
   final bool operationalHubEnabled;
 
+  /// DRE somente leitura. Ausente ou falso esconde o atalho e a rota.
+  final bool dreEnabled;
+
   bool get dashboardReadOnly => readOnly;
 
   bool get showReadOnlyDashboard => enabled && readOnly;
 
   bool get showOperationalHub => showReadOnlyDashboard && operationalHubEnabled;
+
+  bool get showDre => showReadOnlyDashboard && dreEnabled;
 }
 
 /// Documento ausente, loja diferente ou leitura que não é só de leitura
@@ -57,6 +63,7 @@ FinancialDashboardPilot financialDashboardPilotFromMap({
     enabled: true,
     readOnly: true,
     operationalHubEnabled: data['operationalHubEnabled'] == true,
+    dreEnabled: data['dreEnabled'] == true,
   );
 }
 

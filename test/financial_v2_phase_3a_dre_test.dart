@@ -3,8 +3,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:master_palm/financeiro/financeiro_constants.dart';
+import 'package:master_palm/financeiro/v2/financial_dashboard_pilot.dart';
 import 'package:master_palm/financeiro/v2/financial_dre.dart';
 import 'package:master_palm/financeiro/v2/financial_dre_pdf.dart';
+import 'package:master_palm/financeiro/v2/financial_historical_firestore_source.dart';
 import 'package:master_palm/financeiro/v2/financial_launch_catalog.dart';
 import 'package:master_palm/financeiro/v2/financial_month.dart';
 import 'package:master_palm/financeiro/v2/financial_v2_flags.dart';
@@ -440,6 +442,14 @@ void main() {
     expect(statement.operatingExpenses.amount, isNull);
     expect(statement.operatingResult.amount, isNull);
     expect(statement.usedHistoricalRevenue, isTrue);
+    final rows = DrePresentation.rows(statement);
+    expect(rows.map((row) => row.amount), contains('Indisponível'));
+    expect(
+      rows
+          .where((row) => row.label.contains('CMV') || row.label.contains('RESULTADO'))
+          .map((row) => row.amount),
+      isNot(contains(r'R$ 0,00')),
+    );
   });
 
   test('mês corrente ignora fechamento', () {
@@ -497,10 +507,34 @@ void main() {
     expect(read(period: may, entries: [entry]).operatingExpenses.amount, 49.9);
   });
 
-  test('preview da DRE é só da Nathy e o flag global continua falso', () {
+  test('a DRE segue a flag da loja e o flag global continua falso', () {
     expect(FinancialV2Flags.dreEnabled, isFalse);
-    expect(FinancialDrePolicy.showEntry(storeId: nathy), isTrue);
-    expect(FinancialDrePolicy.showEntry(storeId: mir), isFalse);
+    const nathyPilot = FinancialDashboardPilot(
+      enabled: true,
+      readOnly: true,
+      operationalHubEnabled: true,
+      dreEnabled: true,
+    );
+    const mirPilot = FinancialDashboardPilot(enabled: false, readOnly: true);
+    expect(FinancialDrePolicy.showEntry(tenantDreEnabled: nathyPilot.showDre), isTrue);
+    expect(FinancialDrePolicy.showEntry(tenantDreEnabled: mirPilot.showDre), isFalse);
+    expect(
+      financialDashboardPilotFromMap(
+        storeId: nathy,
+        data: {
+          'storeId': nathy,
+          'financialV2Enabled': true,
+          'readOnly': true,
+          'operationalHubEnabled': true,
+          'dreEnabled': true,
+        },
+      ).showDre,
+      isTrue,
+    );
+    expect(
+      financialDashboardPilotFromMap(storeId: mir, data: null).dreEnabled,
+      isFalse,
+    );
     expect(FinancialDrePolicy.readOnly, isTrue);
     expect(FinancialDrePolicy.financialWrites, 0);
     expect(FinancialDrePolicy.ledgerWrites, 0);
@@ -535,5 +569,92 @@ void main() {
     expect(find.byType(TextField), findsNothing);
     expect(find.byIcon(Icons.edit), findsNothing);
     expect(find.text('Fechar'), findsOneWidget);
+  });
+
+  test('desconto vem só do snapshot gravado na venda', () {
+    final parsed = vendaFromRemoteRead(
+      docId: 'venda-1',
+      storeId: nathy,
+      data: {
+        'total': 148.86,
+        'desconto': 5,
+        'descontoValor': 7.835,
+        'preco': 156.7,
+        'custoProdutos': 60.9,
+        'data': DateTime.utc(2026, 9, 25, 18),
+        'lojaId': nathy,
+        'pagamentoPix': 148.86,
+      },
+    );
+    expect(parsed, isNotNull);
+    final statement = read(sales: [parsed!]);
+    expect(statement.discounts.amount, 7.84);
+    expect(statement.grossRevenue.amount, 156.70);
+    final withoutAmount = venda(
+      total: 100,
+      custo: 40,
+    );
+    withoutAmount.desconto = 5;
+    final ignored = read(sales: [withoutAmount]);
+    expect(ignored.discounts.amount, 0);
+    expect(ignored.grossRevenue.amount, 100);
+  });
+
+  test('setembro fecha a fórmula e o PDF usa o mesmo modelo', () async {
+    final statement = read(
+      sales: [
+        venda(total: 4928.84, custo: 1701.36, descontoValor: 215.73),
+      ],
+    );
+    expect(statement.grossRevenue.amount, 5144.57);
+    expect(statement.discounts.amount, 215.73);
+    expect(statement.netRevenue.amount, 4928.84);
+    expect(statement.cogs.amount, 1701.36);
+    expect(statement.grossProfit.amount, 3227.48);
+    expect(statement.operatingExpenses.amount, 0);
+    expect(statement.operatingResult.amount, 3227.48);
+    expect(statement.operatingResultLabel, 'RESULTADO OPERACIONAL');
+    expect(statement.salesWithMissingCogs, 0);
+    expect(
+      statement.qualityNotes,
+      contains(
+        'Este resultado considera as despesas registradas no MasterPalm. Despesas não lançadas não podem ser incluídas.',
+      ),
+    );
+    expect(statement.qualityNotes, contains('CMV histórico completo.'));
+    final screen = DrePresentation.rows(statement);
+    final plan = DrePdfDocumentPlan.fromStatement(statement);
+    expect(plan.fingerprint, DrePresentation.fingerprint(statement));
+    expect(
+      screen.map((row) => row.label).join(' '),
+      isNot(contains('LUCRO LÍQUIDO')),
+    );
+    expect(screen.map((row) => row.amount), contains(r'R$ 3.227,48'));
+    expect(screen.map((row) => row.label), contains('(-) DESPESAS OPERACIONAIS REGISTRADAS'));
+    expect(drePdfIsA4Portrait, isTrue);
+    final bytes = await buildDrePdf(statement);
+    expect(bytes, isNotEmpty);
+  });
+
+  testWidgets('rota direta respeita a flag da loja', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        routes: {
+          '/relatorios_financeiros': (_) => const Scaffold(
+                body: Text('relatorios-fallback'),
+              ),
+        },
+        home: DreReportScreen(
+          storeId: mir,
+          debugPilot: const FinancialDashboardPilot(
+            enabled: false,
+            readOnly: true,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('relatorios-fallback'), findsOneWidget);
+    expect(find.byKey(const Key('dre-print')), findsNothing);
   });
 }

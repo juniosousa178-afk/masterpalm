@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../financeiro/v2/financial_dashboard_pilot.dart';
 import '../../financeiro/v2/financial_dre.dart';
 import '../../financeiro/v2/financial_dre_pdf.dart';
 import '../../financeiro/v2/financial_historical_firestore_source.dart';
@@ -17,12 +18,14 @@ class DreReportScreen extends StatefulWidget {
     this.storeName = '',
     this.previewStatement,
     this.now,
+    this.debugPilot,
   });
 
   final String? storeId;
   final String storeName;
   final DreStatement? previewStatement;
   final DateTime? now;
+  final FinancialDashboardPilot? debugPilot;
 
   @override
   State<DreReportScreen> createState() => _DreReportScreenState();
@@ -86,12 +89,19 @@ class _DreReportScreenState extends State<DreReportScreen> {
             '';
       }
       if (!mounted) return;
-      if (!FinancialDrePolicy.showEntry(storeId: store)) {
+      final pilot = widget.debugPilot ??
+          await FirestoreFinancialDashboardPilotSource().read(store);
+      if (!mounted) return;
+      if (!FinancialDrePolicy.showEntry(tenantDreEnabled: pilot.showDre)) {
         setState(() {
           _storeId = store;
           _loading = false;
           _statement = null;
-          _error = 'DRE disponível somente no piloto da loja.';
+          _error = null;
+        });
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          Navigator.of(context).pushReplacementNamed('/relatorios_financeiros');
         });
         return;
       }
