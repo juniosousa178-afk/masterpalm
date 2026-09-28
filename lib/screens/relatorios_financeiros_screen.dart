@@ -27,6 +27,8 @@ import '../services/ai_loja_service.dart';
 import '../services/ia_uso_limite_service.dart';
 import '../services/loja_id_service.dart';
 import '../core/venda_metrics_filter.dart';
+import '../financeiro/v2/financial_dre.dart';
+import 'financeiro/dre_report_screen.dart';
 import '../core/financeiro_relatorio_taxas.dart';
 import '../widgets/app_help_icon_button.dart';
 import '../financeiro/v2/financial_historical_firestore_source.dart';
@@ -622,6 +624,21 @@ class _RelatoriosFinanceirosScreenState
           backgroundColor: _cardColor,
           title: const Text('Financeiro & Metas'),
           actions: [
+            if (FinancialDrePolicy.showEntry(storeId: _lojaId))
+              TextButton(
+                key: const Key('financial-dre-entry'),
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => DreReportScreen(
+                        storeId: _lojaId,
+                        storeName: _nomeLojaRelatorio,
+                      ),
+                    ),
+                  );
+                },
+                child: const Text('DRE'),
+              ),
             const AppHelpIconButton(),
             if (_isAdmin)
               IconButton(

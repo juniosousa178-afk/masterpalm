@@ -17,6 +17,8 @@ abstract final class FinancialV2Flags {
   static const String payablesRemoteMirrorPilotStoreId =
       'nathy-pratas-e-folheados';
   static const bool cashFlowEnabled = false;
+
+  /// DRE global desligada. O preview da fase 3A é só da loja piloto.
   static const bool dreEnabled = false;
   static const bool financialAccountsEnabled = false;
   static const bool cardReceivablesEnabled = false;

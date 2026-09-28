@@ -32,6 +32,14 @@ abstract class FinancialHistoricalRemoteSource {
     required FinancialMonth month,
   });
 
+  /// Lançamentos do intervalo, sem filtrar pela data de pagamento.
+  /// A DRE classifica pela competência. Não grava.
+  Future<List<LancamentoFinanceiro>> loadLaunchesInUtcRange({
+    required String storeId,
+    required DateTime startUtcInclusive,
+    required DateTime endExclusiveUtc,
+  });
+
   Future<FechamentoMensal?> loadClosure({
     required String storeId,
     required FinancialMonth month,
@@ -179,6 +187,36 @@ class FirestoreFinancialHistoricalSource
       if (!month.containsInstant(launch.dataEfetivaPagamentoOuLancamento)) {
         continue;
       }
+      parsed.putIfAbsent(launch.id, () => launch);
+    }
+    return parsed.values.toList();
+  }
+
+  @override
+  Future<List<LancamentoFinanceiro>> loadLaunchesInUtcRange({
+    required String storeId,
+    required DateTime startUtcInclusive,
+    required DateTime endExclusiveUtc,
+  }) async {
+    final col = _collection(storeId, 'lancamentos_financeiros');
+    final start = Timestamp.fromDate(startUtcInclusive);
+    final end = Timestamp.fromDate(endExclusiveUtc);
+    final byLaunch = await col
+        .where('dataLancamento', isGreaterThanOrEqualTo: start)
+        .where('dataLancamento', isLessThan: end)
+        .get();
+    final byPayment = await col
+        .where('dataPagamento', isGreaterThanOrEqualTo: start)
+        .where('dataPagamento', isLessThan: end)
+        .get();
+    final parsed = <String, LancamentoFinanceiro>{};
+    for (final doc in [...byLaunch.docs, ...byPayment.docs]) {
+      final launch = lancamentoFromRemoteRead(
+        docId: doc.id,
+        data: doc.data(),
+        storeId: storeId,
+      );
+      if (launch == null) continue;
       parsed.putIfAbsent(launch.id, () => launch);
     }
     return parsed.values.toList();

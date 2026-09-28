@@ -78,6 +78,7 @@ import 'screens/visualizar_permissoes_screen.dart';
 import 'screens/catalago_screen.dart';
 import 'screens/cadastro_catalogo_screen.dart';
 import 'screens/relatorio_financeiro_screen.dart';
+import 'screens/financeiro/dre_report_screen.dart';
 import 'screens/relatorios_financeiros_screen.dart';
 import 'screens/public_catalog_screen.dart';
 import 'screens/public_catalog/catalog_url_query_codec.dart';
@@ -4406,6 +4407,13 @@ class MyApp extends StatelessWidget {
                     ScopeRouteGate(
                       allow: AccessScopeService.canSeeFinanceiroMetasLoja,
                       child: const RelatoriosFinanceirosScreen(),
+                    ),
+                  ),
+              '/relatorios_financeiros/dre': (_) => _planGate(
+                    PlanGateFeature.relatoriosFinanceirosHub,
+                    ScopeRouteGate(
+                      allow: AccessScopeService.canSeeFinanceiroMetasLoja,
+                      child: const DreReportScreen(),
                     ),
                   ),
               '/relatorio_mais_vendidos': (ctx) => _lojaIdRouteGated(

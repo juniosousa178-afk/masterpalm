@@ -7,5 +7,6 @@ export 'financial_dashboard_gate.dart';
 export 'financial_dashboard_presentation.dart';
 export 'financial_overview_loader.dart';
 export 'financial_read_model.dart';
+export 'financial_dre.dart';
 export 'financial_v2_flags.dart';
 export 'financial_warnings.dart';
