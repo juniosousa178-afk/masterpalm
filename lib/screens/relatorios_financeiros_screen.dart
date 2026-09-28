@@ -29,6 +29,10 @@ import '../services/loja_id_service.dart';
 import '../core/venda_metrics_filter.dart';
 import '../core/financeiro_relatorio_taxas.dart';
 import '../widgets/app_help_icon_button.dart';
+import '../financeiro/v2/financial_historical_firestore_source.dart';
+import '../financeiro/v2/financial_historical_visibility.dart';
+import '../financeiro/v2/financial_month.dart';
+import '../financeiro/v2/financial_month_selector.dart';
 
 class RelatoriosFinanceirosScreen extends StatefulWidget {
   const RelatoriosFinanceirosScreen({super.key});
@@ -54,6 +58,13 @@ class _RelatoriosFinanceirosScreenState
   String _filtroTempo = 'mes';
   DateTime? _dataInicio;
   DateTime? _dataFim;
+  FinancialMonth? _mesNavegacao;
+  FinancialMonthRange? _faixaMeses;
+  FechamentoMensal? _fechamentoRemoto;
+  List<Venda> _vendasRemotasLeitura = const [];
+  FinancialYearVisibility? _totaisAno;
+  bool _leituraRemotaFalhou = false;
+  FinancialHistoricalSource _fonteRelatorio = FinancialHistoricalSource.localOnly;
   String _filtroVendedor = 'GERAL';
 
   // Dados
@@ -186,6 +197,7 @@ class _RelatoriosFinanceirosScreenState
         }
       } catch (_) {}
       await _carregarTaxasConfig();
+      await _lerHistoricoRemoto(atualizarFaixa: true);
       _aplicarFiltros();
       _carregarMetaAtual();
 
@@ -207,7 +219,12 @@ class _RelatoriosFinanceirosScreenState
   }
 
   void _aplicarFiltros() {
-    _vendasFiltradas = _todasVendas.where((v) {
+    final base = mergeVendasForDisplay(
+      storeId: _lojaId,
+      local: _todasVendas,
+      remote: _vendasRemotasLeitura,
+    ).visible;
+    _vendasFiltradas = base.where((v) {
       if (!incluirVendaEmMetricas(v)) return false;
       if (_filtroVendedor != 'GERAL') {
         final vendedor = v.vendedor.trim().toLowerCase();
@@ -252,7 +269,7 @@ class _RelatoriosFinanceirosScreenState
 
   /// Snapshot da loja (todos vendedores) quando o filtro é exatamente um mês passado completo.
   FechamentoMensal? get _snapshotMesHistoricoSeAplica {
-    if (_fechamentosBox == null || _lojaId.isEmpty) return null;
+    if (_lojaId.isEmpty) return null;
     if (_filtroVendedor != 'GERAL') return null;
     final ini = _dataInicio;
     final fim = _dataFim;
@@ -260,20 +277,48 @@ class _RelatoriosFinanceirosScreenState
     if (!_datasCorrespondemMesCivilInteiro(ini, fim)) return null;
     final ano = ini.year;
     final mes = ini.month;
-    if (!FechamentoService.mesEhAnteriorAoCorrente(ano, mes)) return null;
-    final f = FechamentoService.obterFechamentoSalvoParaMes(
-      _fechamentosBox!,
-      _lojaId,
-      ano,
-      mes,
-    );
-    if (f == null || !f.isInBox) return null;
-    return f;
+    final agora = DateTime.now();
+    if (!periodIsCompletePastMonth(start: ini, end: fim, now: agora)) {
+      return null;
+    }
+    if (_fechamentosBox != null) {
+      final f = FechamentoService.obterFechamentoSalvoParaMes(
+        _fechamentosBox!,
+        _lojaId,
+        ano,
+        mes,
+      );
+      if (f != null && f.isInBox) return f;
+    }
+    final remoto = _fechamentoRemoto;
+    if (remoto != null &&
+        remoto.lojaId.trim() == _lojaId.trim() &&
+        remoto.ano == ano &&
+        remoto.mes == mes) {
+      return remoto;
+    }
+    return null;
   }
 
   // =================== CÁLCULOS FINANCEIROS ===================
 
+  FinancialYearVisibility? get _anoAplicavel {
+    final ano = _totaisAno;
+    if (_filtroTempo != 'ano' || ano == null || !ano.available) return null;
+    return ano;
+  }
+
+  bool get _historicoIndisponivel {
+    if (!_leituraRemotaFalhou) return false;
+    if (_snapshotMesHistoricoSeAplica != null) return false;
+    if (_anoAplicavel != null) return false;
+    if (_vendasFiltradas.isNotEmpty) return false;
+    return true;
+  }
+
   double get _totalVendido {
+    final ano = _anoAplicavel;
+    if (ano != null) return ano.vendaTotal ?? 0;
     final s = _snapshotMesHistoricoSeAplica;
     if (s != null) return s.vendaTotal;
     return _vendasFiltradas.fold(0.0, (x, v) => x + (v.total));
@@ -284,6 +329,8 @@ class _RelatoriosFinanceirosScreenState
   double get _ticketMedio => _qtdVendas > 0 ? _totalVendido / _qtdVendas : 0;
 
   double get _totalTaxas {
+    final ano = _anoAplicavel;
+    if (ano != null) return ano.taxasTotal ?? 0;
     final s = _snapshotMesHistoricoSeAplica;
     if (s != null) return s.taxasTotal;
     double taxas = 0;
@@ -294,12 +341,16 @@ class _RelatoriosFinanceirosScreenState
   }
 
   double get _custoProdutos {
+    final ano = _anoAplicavel;
+    if (ano != null) return ano.custoTotal ?? 0;
     final s = _snapshotMesHistoricoSeAplica;
     if (s != null) return s.custoTotal;
     return _vendasFiltradas.fold(0.0, (x, v) => x + (v.custoProdutos));
   }
 
   double get _lucroEstimado {
+    final ano = _anoAplicavel;
+    if (ano != null) return ano.lucroTotal ?? 0;
     final s = _snapshotMesHistoricoSeAplica;
     if (s != null) return s.lucroTotal;
     return _vendasFiltradas.fold(
@@ -311,18 +362,24 @@ class _RelatoriosFinanceirosScreenState
 
   /// Totais por forma de pagamento (Dinheiro, Pix, Cartão) – discriminados
   double get _totalDinheiro {
+    final ano = _anoAplicavel;
+    if (ano != null) return ano.totalDinheiro ?? 0;
     final s = _snapshotMesHistoricoSeAplica;
     if (s != null) return s.totalDinheiro;
     return _vendasFiltradas.fold(0.0, (x, v) => x + _valorPorForma(v, 'dinheiro'));
   }
 
   double get _totalPix {
+    final ano = _anoAplicavel;
+    if (ano != null) return ano.totalPix ?? 0;
     final s = _snapshotMesHistoricoSeAplica;
     if (s != null) return s.totalPix;
     return _vendasFiltradas.fold(0.0, (x, v) => x + _valorPorForma(v, 'pix'));
   }
 
   double get _totalCartao {
+    final ano = _anoAplicavel;
+    if (ano != null) return ano.totalCartao ?? 0;
     final s = _snapshotMesHistoricoSeAplica;
     if (s != null) return s.totalCartao;
     return _vendasFiltradas.fold(0.0, (x, v) => x + _valorPorForma(v, 'cartao'));
@@ -525,6 +582,9 @@ class _RelatoriosFinanceirosScreenState
   // =================== FORMATAÇÃO ===================
 
   String _fmt(double valor) => NumberFormat('#,##0.00', 'pt_BR').format(valor);
+
+  String _txtValor(double valor) =>
+      _historicoIndisponivel ? 'Indisponível' : 'R\$ ${_fmt(valor)}';
   String _fmtData(DateTime data) => DateFormat('dd/MM/yyyy').format(data);
 
   // =================== BUILD ===================
@@ -1090,6 +1150,15 @@ class _RelatoriosFinanceirosScreenState
           const Text('Período',
               style: TextStyle(color: Colors.white70, fontSize: 12)),
           const SizedBox(height: 8),
+          FinancialMonthSelector(
+            selected: _mesExibido,
+            range: _faixaMeses,
+            dark: true,
+            enabled: !_leituraRemotaFalhou,
+            labelOverride: _rotuloPeriodoSelecionado,
+            onChanged: _definirMesHistorico,
+          ),
+          const SizedBox(height: 8),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -1111,20 +1180,20 @@ class _RelatoriosFinanceirosScreenState
                   child: _buildBotaoData(
                       'De:',
                       _dataInicio,
-                      (d) => setState(() {
-                            _dataInicio = d;
-                            _aplicarFiltros();
-                          })),
+                      (d) {
+                        setState(() => _dataInicio = d);
+                        _recarregarHistorico();
+                      }),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: _buildBotaoData(
                       'Até:',
                       _dataFim,
-                      (d) => setState(() {
-                            _dataFim = d;
-                            _aplicarFiltros();
-                          })),
+                      (d) {
+                        setState(() => _dataFim = d);
+                        _recarregarHistorico();
+                      }),
                 ),
               ],
             ),
@@ -1168,13 +1237,15 @@ class _RelatoriosFinanceirosScreenState
           _dataFim = DateTime(agora.year, agora.month, agora.day, 23, 59, 59);
           break;
         case 'mes':
-          _dataInicio = DateTime(agora.year, agora.month, 1);
-          _dataFim = DateTime(agora.year, agora.month + 1, 0, 23, 59, 59);
+          _mesNavegacao = FinancialMonth.fromClock(agora);
+          _dataInicio = _mesNavegacao!.start;
+          _dataFim = _mesNavegacao!.endInclusive;
           break;
         case 'mes_anterior':
           final ref = DateTime(agora.year, agora.month - 1, 1);
-          _dataInicio = ref;
-          _dataFim = DateTime(ref.year, ref.month + 1, 0, 23, 59, 59);
+          _mesNavegacao = FinancialMonth(ref.year, ref.month);
+          _dataInicio = _mesNavegacao!.start;
+          _dataFim = _mesNavegacao!.endInclusive;
           break;
         case 'ano':
           _dataInicio = DateTime(agora.year, 1, 1);
@@ -1185,6 +1256,205 @@ class _RelatoriosFinanceirosScreenState
       }
       _aplicarFiltros();
     });
+    _recarregarHistorico();
+  }
+
+  FinancialMonth get _mesExibido =>
+      _mesNavegacao ?? FinancialMonth.fromClock(DateTime.now());
+
+  String? get _rotuloPeriodoSelecionado {
+    switch (_filtroTempo) {
+      case 'hoje':
+        return 'Hoje';
+      case 'semana':
+        return 'Esta semana';
+      case 'ano':
+        return 'Ano ${_dataInicio?.year ?? DateTime.now().year}';
+      case 'personalizado':
+        return 'Personalizado';
+      default:
+        return null;
+    }
+  }
+
+  void _definirMesHistorico(FinancialMonth month) {
+    setState(() {
+      _filtroTempo = 'mes_historico';
+      _mesNavegacao = month;
+      _dataInicio = month.start;
+      _dataFim = month.endInclusive;
+      _aplicarFiltros();
+    });
+    _recarregarHistorico();
+  }
+
+  Future<void> _recarregarHistorico() async {
+    await _lerHistoricoRemoto();
+    if (!mounted) return;
+    setState(_aplicarFiltros);
+  }
+
+  Future<void> _lerHistoricoRemoto({bool atualizarFaixa = false}) async {
+    _fechamentoRemoto = null;
+    _vendasRemotasLeitura = const [];
+    _totaisAno = null;
+    _leituraRemotaFalhou = false;
+    if (_lojaId.isEmpty) return;
+    final inicio = _dataInicio;
+    final fim = _dataFim;
+    if (inicio == null || fim == null) return;
+    final agora = DateTime.now();
+    try {
+      final source = FinancialHistoricalSources.current;
+      if (atualizarFaixa) _faixaMeses = null;
+      _faixaMeses ??= await source.loadRange(storeId: _lojaId, now: agora);
+      if (_filtroTempo == 'ano') {
+        await _lerAno(source, agora);
+        _fonteRelatorio = _totaisAno?.source ??
+            FinancialHistoricalSource.unavailable;
+        return;
+      }
+      final mesCivil = periodIsCompletePastMonth(
+        start: inicio,
+        end: fim,
+        now: agora,
+      );
+      if (mesCivil) {
+        final month = FinancialMonth(inicio.year, inicio.month);
+        _mesNavegacao = month;
+        final closure = await source.loadClosure(
+          storeId: _lojaId,
+          month: month,
+        );
+        if (closure != null) {
+          _fechamentoRemoto = closure;
+          _fonteRelatorio = FinancialHistoricalSource.monthlyClosure;
+          return;
+        }
+        _vendasRemotasLeitura = await source.loadSales(
+          storeId: _lojaId,
+          startUtcInclusive: month.startUtcInclusive,
+          endExclusiveUtc: month.endExclusiveUtc,
+        );
+        _fonteRelatorio = FinancialHistoricalSource.remoteRaw;
+        return;
+      }
+      final startUtc = DateTime.utc(inicio.year, inicio.month, inicio.day, 3);
+      final endUtc = DateTime.utc(fim.year, fim.month, fim.day + 1, 3);
+      _vendasRemotasLeitura = await source.loadSales(
+        storeId: _lojaId,
+        startUtcInclusive: startUtc,
+        endExclusiveUtc: endUtc,
+      );
+      _fonteRelatorio = FinancialHistoricalSource.liveRemote;
+    } catch (_) {
+      _leituraRemotaFalhou = true;
+      _fechamentoRemoto = null;
+      _vendasRemotasLeitura = const [];
+      _totaisAno = null;
+      _fonteRelatorio = FinancialHistoricalSource.unavailable;
+    }
+    debugPrint('[FIN-HIST] fonte=${_fonteRelatorio.name}');
+  }
+
+  Future<void> _lerAno(
+    FinancialHistoricalRemoteSource source,
+    DateTime agora,
+  ) async {
+    final year = _dataInicio?.year ?? agora.year;
+    final closures = await source.loadClosuresForYear(
+      storeId: _lojaId,
+      year: year,
+    );
+    final current = FinancialMonth.fromClock(agora);
+    final liveRemote = year == current.year
+        ? await source.loadSales(
+            storeId: _lojaId,
+            startUtcInclusive: current.startUtcInclusive,
+            endExclusiveUtc: current.endExclusiveUtc,
+          )
+        : const <Venda>[];
+    final liveMerged = mergeVendasForDisplay(
+      storeId: _lojaId,
+      local: _todasVendas
+          .where((v) => v.data.year == current.year && v.data.month == current.month)
+          .toList(),
+      remote: liveRemote,
+    ).visible;
+    final live = _somarVendasVivas(liveMerged);
+    final earliest = _faixaMeses?.earliest ?? current;
+    final yearView = resolveYearVisibility(
+      year: year,
+      now: agora,
+      earliest: earliest,
+      closures: closures,
+      storeId: _lojaId,
+      currentMonthLive: live,
+      remoteFailed: false,
+    );
+    if (yearView.needsSingleRawFallback) {
+      final pastEnd = current.startUtcInclusive;
+      final pastStart = DateTime.utc(year, 1, 1, 3);
+      final raw = await source.loadSales(
+        storeId: _lojaId,
+        startUtcInclusive: pastStart,
+        endExclusiveUtc: pastEnd,
+      );
+      final rawMerged = mergeVendasForDisplay(
+        storeId: _lojaId,
+        local: _todasVendas
+            .where((v) => v.data.year == year && v.data.isBefore(current.start))
+            .toList(),
+        remote: raw,
+      ).visible;
+      final past = _somarVendasVivas(rawMerged);
+      _totaisAno = FinancialYearVisibility(
+        available: true,
+        vendaTotal: past.vendaTotal + live.vendaTotal,
+        taxasTotal: past.taxasTotal + live.taxasTotal,
+        custoTotal: past.custoTotal + live.custoTotal,
+        lucroTotal: past.lucroTotal + live.lucroTotal,
+        totalDinheiro: past.totalDinheiro + live.totalDinheiro,
+        totalPix: past.totalPix + live.totalPix,
+        totalCartao: past.totalCartao + live.totalCartao,
+        historyVisible: true,
+        currentMonthUsesLiveData: year == agora.year,
+        doubleCounted: false,
+        needsSingleRawFallback: false,
+        source: FinancialHistoricalSource.remoteRaw,
+      );
+      return;
+    }
+    _totaisAno = yearView;
+  }
+
+  FinancialClosureTotals _somarVendasVivas(List<Venda> vendas) {
+    var venda = 0.0;
+    var taxas = 0.0;
+    var custo = 0.0;
+    var lucro = 0.0;
+    var dinheiro = 0.0;
+    var pix = 0.0;
+    var cartao = 0.0;
+    for (final v in vendas) {
+      if (!incluirVendaEmMetricas(v)) continue;
+      venda += v.total;
+      taxas += FinanceiroRelatorioTaxas.taxasParaVenda(v, _taxasCfg);
+      custo += v.custoProdutos;
+      lucro += FinanceiroRelatorioTaxas.lucroOperacionalVenda(v, _taxasCfg);
+      dinheiro += _valorPorForma(v, 'dinheiro');
+      pix += _valorPorForma(v, 'pix');
+      cartao += _valorPorForma(v, 'cartao');
+    }
+    return FinancialClosureTotals(
+      vendaTotal: venda,
+      taxasTotal: taxas,
+      custoTotal: custo,
+      lucroTotal: lucro,
+      totalDinheiro: dinheiro,
+      totalPix: pix,
+      totalCartao: cartao,
+    );
   }
 
   Widget _buildBotaoData(
@@ -1478,14 +1748,14 @@ class _RelatoriosFinanceirosScreenState
             Expanded(
                 child: _buildCardMetrica(
                     'Total Vendido',
-                    'R\$ ${_fmt(_totalVendido)}',
+                    _txtValor(_totalVendido),
                     Icons.shopping_cart,
                     _successColor)),
             const SizedBox(width: 12),
             Expanded(
                 child: _buildCardMetrica(
                     'Taxas operacionais (config/gravadas)',
-                    'R\$ ${_fmt(_totalTaxas)}',
+                    _txtValor(_totalTaxas),
                     Icons.receipt_long,
                     _warningColor)),
           ],
@@ -1496,14 +1766,14 @@ class _RelatoriosFinanceirosScreenState
             Expanded(
                 child: _buildCardMetrica(
                     'Custo Produtos',
-                    'R\$ ${_fmt(_custoProdutos)}',
+                    _txtValor(_custoProdutos),
                     Icons.inventory_2,
                     Colors.orange)),
             const SizedBox(width: 12),
             Expanded(
                 child: _buildCardMetrica(
                     'Lucro operacional de vendas',
-                    'R\$ ${_fmt(_lucroEstimado)}',
+                    _txtValor(_lucroEstimado),
                     Icons.trending_up,
                     _lucroEstimado >= 0 ? _successColor : _dangerColor)),
           ],

@@ -10,6 +10,10 @@ import '../../core/financeiro_lancamento_legacy_resolver.dart';
 import '../../financeiro/financeiro_constants.dart';
 import '../../financeiro/lancamento_lista_filtro.dart';
 import '../../financeiro/lancamento_financeiro_origem_ui.dart';
+import '../../financeiro/v2/financial_historical_firestore_source.dart';
+import '../../financeiro/v2/financial_historical_visibility.dart';
+import '../../financeiro/v2/financial_month.dart';
+import '../../financeiro/v2/financial_month_selector.dart';
 import '../../models/conta_receber.dart';
 import '../../models/lancamento_financeiro.dart';
 import '../../services/conta_receber_service.dart';
@@ -61,7 +65,11 @@ class _FinanceiroLancamentosScreenState
   String? _pendenteAbrirId;
   LancamentoListaRecorte _recorte = LancamentoListaRecorte.todos;
   String _categoriaFiltro = '';
-  bool _mesAtual = false;
+  FinancialMonth? _mes;
+  FinancialMonthRange? _faixa;
+  List<LancamentoFinanceiro> _remotos = const [];
+  bool _remotoIndisponivel = false;
+  bool _lendoRemoto = false;
 
   final _moeda = NumberFormat.currency(locale: 'pt_BR', symbol: r'R$');
 
@@ -90,6 +98,7 @@ class _FinanceiroLancamentosScreenState
       } catch (_) {
         _contasReceberCache = [];
       }
+      await _lerRemoto(atualizarLoading: false, atualizarFaixa: true);
       if (mounted) {
         setState(() => _loading = false);
         final inicial = widget.lancamentoInicial;
@@ -134,16 +143,73 @@ class _FinanceiroLancamentosScreenState
     }
   }
 
+  FinancialMonth get _mesSelecionado =>
+      _mes ?? FinancialMonth.fromClock(DateTime.now());
+
+  FinancialLaunchMergeResult get _mergeAtual => mergeLaunchesForDisplay(
+        storeId: widget.lojaId,
+        month: _mesSelecionado,
+        local: _box?.values.toList() ?? const <LancamentoFinanceiro>[],
+        remote: _remotos,
+      );
+
+  Future<void> _lerRemoto({
+    required bool atualizarLoading,
+    bool atualizarFaixa = false,
+  }) async {
+    _lendoRemoto = true;
+    final month = _mesSelecionado;
+    try {
+      final source = FinancialHistoricalSources.current;
+      final range = atualizarFaixa || _faixa == null
+          ? await source.loadRange(
+              storeId: widget.lojaId,
+              now: DateTime.now(),
+            )
+          : _faixa!;
+      final launches = await source.loadLaunches(
+        storeId: widget.lojaId,
+        month: month,
+      );
+      if (!mounted) return;
+      setState(() {
+        _faixa = range;
+        _remotos = launches;
+        _remotoIndisponivel = false;
+        _lendoRemoto = false;
+        if (atualizarLoading) _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _remotos = const [];
+        _remotoIndisponivel = true;
+        _lendoRemoto = false;
+        if (atualizarLoading) _loading = false;
+      });
+    }
+  }
+
+  Future<void> _trocarMes(FinancialMonth month) async {
+    setState(() => _mes = month);
+    await _lerRemoto(atualizarLoading: false);
+  }
+
+  String get _textoListaVazia {
+    if (_lendoRemoto) return 'Carregando lançamentos...';
+    if (_mergeAtual.visible.isEmpty) {
+      if (_remotoIndisponivel) return 'Histórico remoto indisponível.';
+      return _mesSelecionado.emptyManualLaunchMessage;
+    }
+    return 'Nenhum lançamento neste filtro.';
+  }
+
   List<LancamentoFinanceiro> get _listaVisivel {
-    final base = _listaOrdenada;
+    final base = _mergeAtual.visible;
     if (!widget.mostrarFiltros) return base;
-    final agora = DateTime.now();
     final consulta = LancamentoListaConsulta(
       recorte: _recorte,
       categoria: _categoriaFiltro,
-      periodoInicio: _mesAtual ? DateTime(agora.year, agora.month, 1) : null,
-      periodoFimExclusivo:
-          _mesAtual ? DateTime(agora.year, agora.month + 1, 1) : null,
     );
     return [
       for (final item in base)
@@ -156,17 +222,6 @@ class _FinanceiroLancamentosScreenState
         ))
           item,
     ];
-  }
-
-  List<LancamentoFinanceiro> get _listaOrdenada {
-    if (_box == null) return [];
-    final list = _box!.values
-        .where((l) => l.lojaId == widget.lojaId)
-        .toList()
-      ..sort((a, b) =>
-          b.dataEfetivaPagamentoOuLancamento
-              .compareTo(a.dataEfetivaPagamentoOuLancamento));
-    return list;
   }
 
   FinanceiroLancamentoAcaoInfo _acao(LancamentoFinanceiro l) =>
@@ -638,14 +693,26 @@ class _FinanceiroLancamentosScreenState
           ? const Center(child: CircularProgressIndicator(color: _primary))
           : _erro != null
               ? Center(child: Text(_erro!))
-              : widget.mostrarFiltros
-                  ? Column(
-                      children: [
-                        _filtrosBar(),
-                        Expanded(child: _listaRefresh()),
-                      ],
-                    )
-                  : _listaRefresh(),
+              : Column(
+                  children: [
+                    FinancialMonthSelector(
+                      selected: _mesSelecionado,
+                      range: _faixa,
+                      enabled: !_remotoIndisponivel,
+                      onChanged: _trocarMes,
+                    ),
+                    if (_remotoIndisponivel)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 16),
+                        child: Text(
+                          'Histórico remoto indisponível.',
+                          key: Key('financial-history-unavailable'),
+                        ),
+                      ),
+                    if (widget.mostrarFiltros) _filtrosBar(),
+                    Expanded(child: _listaRefresh()),
+                  ],
+                ),
     );
   }
 
@@ -656,13 +723,14 @@ class _FinanceiroLancamentosScreenState
       onRefresh: _open,
       child: lista.isEmpty
           ? ListView(
-              children: const [
-                SizedBox(height: 120),
-                Icon(Icons.receipt_long, size: 56, color: Colors.grey),
-                SizedBox(height: 12),
+              children: [
+                const SizedBox(height: 120),
+                const Icon(Icons.receipt_long, size: 56, color: Colors.grey),
+                const SizedBox(height: 12),
                 Center(
                   child: Text(
-                    'Nenhum lançamento.\nToque em Novo para adicionar.',
+                    _textoListaVazia,
+                    key: const Key('financial-launch-empty'),
                     textAlign: TextAlign.center,
                   ),
                 ),
@@ -697,11 +765,6 @@ class _FinanceiroLancamentosScreenState
                         onSelected: (_) => setState(() => _recorte = recorte),
                       ),
                     ),
-                  FilterChip(
-                    label: const Text('Mês atual'),
-                    selected: _mesAtual,
-                    onSelected: (value) => setState(() => _mesAtual = value),
-                  ),
                 ],
               ),
             ),
