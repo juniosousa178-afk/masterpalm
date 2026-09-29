@@ -56,6 +56,16 @@ class _DreReportScreenState extends State<DreReportScreen> {
     _storeName = widget.storeName.trim().isEmpty
         ? (widget.previewStatement?.storeName ?? '')
         : widget.storeName.trim();
+    final pilot = widget.debugPilot;
+    if (pilot != null &&
+        !FinancialDrePolicy.showEntry(tenantDreEnabled: pilot.showDre)) {
+      _statement = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        Navigator.of(context).pushReplacementNamed('/relatorios_financeiros');
+      });
+      return;
+    }
     if (_statement == null) {
       _load();
     }

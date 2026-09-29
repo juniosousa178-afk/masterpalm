@@ -29,7 +29,7 @@ import '../services/loja_id_service.dart';
 import '../core/venda_metrics_filter.dart';
 import '../financeiro/v2/financial_dashboard_pilot.dart';
 import '../financeiro/v2/financial_dre.dart';
-import 'financeiro/dre_report_screen.dart';
+import 'financeiro/dre_menu_entry.dart';
 import '../core/financeiro_relatorio_taxas.dart';
 import '../widgets/app_help_icon_button.dart';
 import '../financeiro/v2/financial_historical_firestore_source.dart';
@@ -38,7 +38,17 @@ import '../financeiro/v2/financial_month.dart';
 import '../financeiro/v2/financial_month_selector.dart';
 
 class RelatoriosFinanceirosScreen extends StatefulWidget {
-  const RelatoriosFinanceirosScreen({super.key});
+  const RelatoriosFinanceirosScreen({
+    super.key,
+    this.debugPilot,
+    this.debugSkipDataLoad = false,
+  });
+
+  /// Só testes. Em produção a flag vem do documento da loja.
+  final FinancialDashboardPilot? debugPilot;
+
+  /// Só testes. Não abre Hive nem Firestore.
+  final bool debugSkipDataLoad;
 
   @override
   State<RelatoriosFinanceirosScreen> createState() =>
@@ -99,8 +109,18 @@ class _RelatoriosFinanceirosScreenState
   @override
   void initState() {
     super.initState();
+    if (widget.debugSkipDataLoad) {
+      _carregando = false;
+      _dreHabilitada = widget.debugPilot?.showDre ?? false;
+      _lojaId = 'debug-store';
+      return;
+    }
     _inicializarFiltrosPadrao();
     _carregarDados();
+  }
+
+  void _abrirDre() {
+    Navigator.of(context).pushNamed<void>('/relatorios_financeiros/dre');
   }
 
   void _inicializarFiltrosPadrao() {
@@ -132,12 +152,18 @@ class _RelatoriosFinanceirosScreenState
       if (_lojaId.isEmpty) {
         throw Exception('Loja não encontrada. Faça login novamente.');
       }
-      try {
-        final pilot = await FirestoreFinancialDashboardPilotSource().read(_lojaId);
-        _dreHabilitada = pilot.showDre;
-      } catch (_) {
-        _dreHabilitada = false;
+      if (widget.debugPilot != null) {
+        _dreHabilitada = widget.debugPilot!.showDre;
+      } else {
+        try {
+          final pilot =
+              await FirestoreFinancialDashboardPilotSource().read(_lojaId);
+          _dreHabilitada = pilot.showDre;
+        } catch (_) {
+          _dreHabilitada = false;
+        }
       }
+      if (mounted) setState(() {});
 
       try {
         final cfg = Hive.isBoxOpen('config')
@@ -632,21 +658,6 @@ class _RelatoriosFinanceirosScreenState
           backgroundColor: _cardColor,
           title: const Text('Financeiro & Metas'),
           actions: [
-            if (FinancialDrePolicy.showEntry(tenantDreEnabled: _dreHabilitada))
-              TextButton(
-                key: const Key('financial-dre-entry'),
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => DreReportScreen(
-                        storeId: _lojaId,
-                        storeName: _nomeLojaRelatorio,
-                      ),
-                    ),
-                  );
-                },
-                child: const Text('DRE'),
-              ),
             const AppHelpIconButton(),
             if (_isAdmin)
               IconButton(
@@ -676,12 +687,26 @@ class _RelatoriosFinanceirosScreenState
         body: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: kMaxContentWidth),
-            child: _carregando
-                ? const Center(
-                    child: CircularProgressIndicator(color: _primaryColor))
-                : _erro.isNotEmpty
-                    ? _buildErro()
-                    : _buildConteudo(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (FinancialDrePolicy.showEntry(tenantDreEnabled: _dreHabilitada))
+                  FinancialDreMenuTile(onPressed: _abrirDre),
+                Expanded(
+                  child: widget.debugSkipDataLoad
+                      ? const SizedBox.shrink()
+                      : _carregando
+                          ? const Center(
+                              child: CircularProgressIndicator(
+                                color: _primaryColor,
+                              ),
+                            )
+                          : _erro.isNotEmpty
+                              ? _buildErro()
+                              : _buildConteudo(),
+                ),
+              ],
+            ),
           ),
         ),
         floatingActionButton: FloatingActionButton(

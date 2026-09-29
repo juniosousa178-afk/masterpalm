@@ -1,6 +1,9 @@
 // Fase 3A — DRE somente leitura. Não grava Firestore, Hive nem ledger.
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:master_palm/financeiro/financeiro_constants.dart';
 import 'package:master_palm/financeiro/v2/financial_dashboard_pilot.dart';
@@ -12,7 +15,9 @@ import 'package:master_palm/financeiro/v2/financial_month.dart';
 import 'package:master_palm/financeiro/v2/financial_v2_flags.dart';
 import 'package:master_palm/models/lancamento_financeiro.dart';
 import 'package:master_palm/models/venda.dart';
+import 'package:master_palm/screens/financeiro/dre_menu_entry.dart';
 import 'package:master_palm/screens/financeiro/dre_report_screen.dart';
+import 'package:master_palm/screens/relatorios_financeiros_screen.dart';
 
 void main() {
   const nathy = 'nathy-pratas-e-folheados';
@@ -634,6 +639,217 @@ void main() {
     expect(drePdfIsA4Portrait, isTrue);
     final bytes = await buildDrePdf(statement);
     expect(bytes, isNotEmpty);
+  });
+
+  double _channel(double value) {
+    final s = value.clamp(0, 1).toDouble();
+    return s <= 0.04045 ? s / 12.92 : math.pow((s + 0.055) / 1.055, 2.4).toDouble();
+  }
+
+  double _contrast(Color foreground, Color background) {
+    final a = 0.2126 * _channel(foreground.r) +
+        0.7152 * _channel(foreground.g) +
+        0.0722 * _channel(foreground.b);
+    final b = 0.2126 * _channel(background.r) +
+        0.7152 * _channel(background.g) +
+        0.0722 * _channel(background.b);
+    final lighter = math.max(a, b);
+    final darker = math.min(a, b);
+    return (lighter + 0.05) / (darker + 0.05);
+  }
+
+  Future<void> pumpReports(
+    WidgetTester tester,
+    FinancialDashboardPilot pilot, {
+    ThemeData? theme,
+    Size? surface,
+  }) async {
+    if (surface != null) {
+      await tester.binding.setSurfaceSize(surface);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+    }
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: theme ??
+            ThemeData(
+              brightness: Brightness.light,
+              colorScheme: const ColorScheme.light(
+                primary: Color(0xFF000000),
+                surface: Color(0xFFF5F5F5),
+              ),
+              appBarTheme: const AppBarTheme(
+                backgroundColor: Color(0xFF12121A),
+                foregroundColor: Colors.white,
+              ),
+            ),
+        routes: {
+          '/relatorios_financeiros/dre': (_) => Scaffold(
+                appBar: AppBar(title: const Text('dre-opened')),
+                body: const Text('dre-body'),
+              ),
+        },
+        home: RelatoriosFinanceirosScreen(
+          debugPilot: pilot,
+          debugSkipDataLoad: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  void expectDreEntryReadable(WidgetTester tester) {
+    expect(find.text(FinancialDreMenuTile.label), findsOneWidget);
+    expect(find.byKey(const Key('financial-dre-entry')), findsOneWidget);
+    final text = find.text(FinancialDreMenuTile.label);
+    final style = text.evaluate().single.widget as Text;
+    final material = find
+        .ancestor(
+          of: find.byKey(const Key('financial-dre-entry')),
+          matching: find.byType(Material),
+        )
+        .evaluate()
+        .first
+        .widget as Material;
+    final background = material.color ?? const Color(0xFF12121A);
+    expect(background, const Color(0xFF12121A));
+    expect(_contrast(style.style?.color ?? Colors.white, background), greaterThanOrEqualTo(4.5));
+    final icon = find
+        .descendant(
+          of: find.byKey(const Key('financial-dre-entry')),
+          matching: find.byIcon(Icons.assessment_outlined),
+        )
+        .evaluate()
+        .single
+        .widget as Icon;
+    expect(_contrast(icon.color ?? const Color(0xFF00A8FF), background), greaterThanOrEqualTo(3));
+    final paragraph = find
+        .text(FinancialDreMenuTile.label)
+        .evaluate()
+        .single
+        .renderObject as RenderParagraph;
+    expect(paragraph.didExceedMaxLines, isFalse);
+    expect(tester.takeException(), isNull);
+  }
+
+  const nathyDrePilot = FinancialDashboardPilot(
+    enabled: true,
+    readOnly: true,
+    operationalHubEnabled: true,
+    dreEnabled: true,
+  );
+
+  testWidgets('Nathy vê o atalho da DRE mesmo com a flag global falsa', (
+    tester,
+  ) async {
+    expect(FinancialV2Flags.dreEnabled, isFalse);
+    await pumpReports(
+      tester,
+      const FinancialDashboardPilot(
+        enabled: true,
+        readOnly: true,
+        operationalHubEnabled: true,
+        dreEnabled: true,
+      ),
+    );
+    expectDreEntryReadable(tester);
+    await tester.tap(find.byKey(const Key('financial-dre-entry')));
+    await tester.pumpAndSettle();
+    expect(find.text('dre-opened'), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.text(FinancialDreMenuTile.label), findsOneWidget);
+    expect(find.text('dre-opened'), findsNothing);
+  });
+
+  testWidgets('atalho da DRE permanece legível no tema escuro', (tester) async {
+    await pumpReports(
+      tester,
+      nathyDrePilot,
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        colorScheme: const ColorScheme.dark(
+          primary: Color(0xFF6366F1),
+          surface: Color(0xFF1E1E1E),
+        ),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF1E1E1E),
+          foregroundColor: Colors.white,
+        ),
+      ),
+    );
+    expectDreEntryReadable(tester);
+  });
+
+  testWidgets('atalho da DRE cabe no celular e no desktop', (tester) async {
+    await pumpReports(
+      tester,
+      nathyDrePilot,
+      surface: const Size(390, 844),
+    );
+    expectDreEntryReadable(tester);
+    final mobile = tester.getRect(find.text(FinancialDreMenuTile.label));
+    expect(mobile.left, greaterThanOrEqualTo(0));
+    expect(mobile.right, lessThanOrEqualTo(390));
+
+    await pumpReports(
+      tester,
+      nathyDrePilot,
+      surface: const Size(1280, 900),
+    );
+    expectDreEntryReadable(tester);
+    final desktop = tester.getRect(find.text(FinancialDreMenuTile.label));
+    expect(desktop.left, greaterThanOrEqualTo(0));
+    expect(desktop.right, lessThanOrEqualTo(1280));
+  });
+
+  testWidgets('Mir e flag remota falsa escondem o atalho da DRE', (
+    tester,
+  ) async {
+    await pumpReports(
+      tester,
+      const FinancialDashboardPilot(enabled: false, readOnly: true),
+    );
+    expect(find.text(FinancialDreMenuTile.label), findsNothing);
+    expect(find.byKey(const Key('financial-dre-entry')), findsNothing);
+
+    await pumpReports(
+      tester,
+      const FinancialDashboardPilot(
+        enabled: true,
+        readOnly: true,
+        operationalHubEnabled: true,
+        dreEnabled: false,
+      ),
+    );
+    expect(find.byKey(const Key('financial-dre-entry')), findsNothing);
+  });
+
+  testWidgets('rota direta da Nathy permanece aberta', (tester) async {
+    final statement = read(sales: [venda(total: 100, custo: 40)]);
+    await tester.pumpWidget(
+      MaterialApp(
+        routes: {
+          '/relatorios_financeiros': (_) =>
+              const Scaffold(body: Text('relatorios-fallback')),
+        },
+        home: DreReportScreen(
+          storeId: nathy,
+          storeName: 'Nathy Pratas',
+          previewStatement: statement,
+          now: now,
+          debugPilot: const FinancialDashboardPilot(
+            enabled: true,
+            readOnly: true,
+            operationalHubEnabled: true,
+            dreEnabled: true,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('dre-print')), findsOneWidget);
+    expect(find.text('relatorios-fallback'), findsNothing);
+    expect(find.textContaining('LUCRO LÍQUIDO'), findsNothing);
   });
 
   testWidgets('rota direta respeita a flag da loja', (tester) async {
