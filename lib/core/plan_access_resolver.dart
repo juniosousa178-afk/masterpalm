@@ -32,30 +32,54 @@ abstract final class PlanAccessResolver {
     return true;
   }
 
-  static Future<PlanAccessTier> currentTier() async {
+  static Future<PlanGateSnapshot> currentSnapshot() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
-      return PlanAccessTier.freeLimited;
+      return const PlanGateSnapshot(
+        tier: PlanAccessTier.freeLimited,
+        accountStatus: 'blocked',
+      );
     }
     if (!await enforcePlanGateForCurrentUser()) {
-      return PlanAccessTier.lifetime;
+      return const PlanGateSnapshot(tier: PlanAccessTier.lifetime);
     }
     final email = (user.email ?? '').trim().toLowerCase();
     final access = await PlanosService().resolveEffectivePlanAccess(
       uid: user.uid,
       email: email,
     );
-    if (access != null) {
-      return access.effectiveTier;
+    if (access == null) {
+      return const PlanGateSnapshot(tier: PlanAccessTier.freeLimited);
     }
-    return PlanAccessTier.freeLimited;
+    return PlanGateSnapshot(
+      tier: access.effectiveTier,
+      accountStatus: access.effectiveStatus,
+    );
+  }
+
+  static Future<PlanAccessTier> currentTier() async {
+    return (await currentSnapshot()).tier;
   }
 
   static Future<bool> allows(PlanGateFeature feature) async {
     if (!await enforcePlanGateForCurrentUser()) {
       return true;
     }
-    final tier = await currentTier();
-    return PlanMatrix.allows(tier, feature);
+    final snap = await currentSnapshot();
+    return PlanMatrix.allows(
+      snap.tier,
+      feature,
+      accountStatus: snap.accountStatus,
+    );
   }
+}
+
+class PlanGateSnapshot {
+  const PlanGateSnapshot({
+    required this.tier,
+    this.accountStatus,
+  });
+
+  final PlanAccessTier tier;
+  final String? accountStatus;
 }

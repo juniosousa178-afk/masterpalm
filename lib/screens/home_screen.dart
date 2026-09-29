@@ -132,6 +132,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   String _usuario = '';
   String _tipo = 'vendedor';
+  String? _menuAccountStatus;
   /// Identidade canónica (fail-closed: sem scope = não-admin).
   AccessScopeIdentity? _scopeIdentity;
 
@@ -474,8 +475,13 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Future<PlanAccessTier> _resolveMenuPlanTier() async {
-    if (_tipo != 'admin') return PlanAccessTier.lifetime;
-    return PlanAccessResolver.currentTier();
+    if (_tipo != 'admin') {
+      _menuAccountStatus = null;
+      return PlanAccessTier.lifetime;
+    }
+    final snap = await PlanAccessResolver.currentSnapshot();
+    _menuAccountStatus = snap.accountStatus;
+    return snap.tier;
   }
 
   @override
@@ -1576,7 +1582,11 @@ class _HomeScreenState extends State<HomeScreen>
   }) {
     if (applyPlanGate &&
         planFeature != null &&
-        !PlanMatrix.allows(menuPlanTier, planFeature)) {
+        !PlanMatrix.allows(
+          menuPlanTier,
+          planFeature,
+          accountStatus: _menuAccountStatus,
+        )) {
       return _buildLockedPlanMenuTile(
         label,
         icon,
@@ -2584,6 +2594,7 @@ class _HomeScreenState extends State<HomeScreen>
       permissoes: combinadas,
       planTier: menuPlanTier,
       applyPlanGate: applyPlanGate,
+      accountStatus: _menuAccountStatus,
       consignmentModuleEnabled: _lojaIdInterno.trim().isNotEmpty &&
           await ConsignmentFeatureFlag.isEnabled(_lojaIdInterno),
     );

@@ -224,7 +224,46 @@ abstract final class PlanMatrix {
     }
   }
 
-  static bool allows(PlanAccessTier tier, PlanGateFeature f) {
+  /// Pré-pedidos do catálogo. Todos os planos operacionais; conta bloqueada não.
+  static bool canUsePreOrders(
+    PlanAccessTier tier, {
+    String? accountStatus,
+  }) {
+    if (_accountBlocksPreOrders(accountStatus)) return false;
+    switch (tier) {
+      case PlanAccessTier.freeLimited:
+      case PlanAccessTier.basic:
+      case PlanAccessTier.intermediate:
+      case PlanAccessTier.pro:
+      case PlanAccessTier.trialFull:
+      case PlanAccessTier.lifetime:
+        return true;
+    }
+  }
+
+  static bool _accountBlocksPreOrders(String? accountStatus) {
+    switch ((accountStatus ?? '').trim().toLowerCase()) {
+      case 'blocked':
+      case 'expired':
+      case 'suspended':
+      case 'suspensa':
+      case 'cancelada':
+      case 'cancelled':
+      case 'canceled':
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  static bool allows(
+    PlanAccessTier tier,
+    PlanGateFeature f, {
+    String? accountStatus,
+  }) {
+    if (f == PlanGateFeature.pedidosPrePedidos) {
+      return canUsePreOrders(tier, accountStatus: accountStatus);
+    }
     if (tier == PlanAccessTier.lifetime || tier == PlanAccessTier.trialFull) {
       return true;
     }
@@ -277,7 +316,6 @@ abstract final class PlanMatrix {
     switch (f) {
       case PlanGateFeature.fornecedores:
       case PlanGateFeature.precificacao:
-      case PlanGateFeature.pedidosPrePedidos:
       case PlanGateFeature.relatorioFinanceiroDetalhado:
       case PlanGateFeature.financeiroLancamentos:
       case PlanGateFeature.insights:
@@ -300,8 +338,9 @@ abstract final class PlanMatrix {
     switch (f) {
       case PlanGateFeature.fornecedores:
       case PlanGateFeature.precificacao:
+        return 'Disponível a partir do plano Intermediário: compras e precificação.';
       case PlanGateFeature.pedidosPrePedidos:
-        return 'Disponível a partir do plano Intermediário: compras, precificação e pedidos.';
+        return 'Pré-pedidos indisponíveis para esta conta.';
       case PlanGateFeature.relatorioFinanceiroDetalhado:
       case PlanGateFeature.financeiroLancamentos:
       case PlanGateFeature.insights:

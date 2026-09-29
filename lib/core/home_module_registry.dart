@@ -13,6 +13,7 @@ class HomeModuleAccessContext {
     required this.permissoes,
     required this.planTier,
     required this.applyPlanGate,
+    this.accountStatus,
     this.consignmentModuleEnabled = false,
   });
 
@@ -20,6 +21,7 @@ class HomeModuleAccessContext {
   final Map<String, bool> permissoes;
   final PlanAccessTier planTier;
   final bool applyPlanGate;
+  final String? accountStatus;
   final bool consignmentModuleEnabled;
 
   bool get isAdminOrProgramador =>
@@ -507,7 +509,11 @@ abstract final class HomeModuleRegistry {
   /// Bloqueado por plano (ainda visível, abre /planos).
   static bool isPlanLocked(AppModuleDefinition m, HomeModuleAccessContext ctx) {
     if (!ctx.applyPlanGate || m.planFeature == null) return false;
-    return !PlanMatrix.allows(ctx.planTier, m.planFeature!);
+    return !PlanMatrix.allows(
+      ctx.planTier,
+      m.planFeature!,
+      accountStatus: ctx.accountStatus,
+    );
   }
 
   /// Rotas com mais de um id no registry (deve ser vazio).
