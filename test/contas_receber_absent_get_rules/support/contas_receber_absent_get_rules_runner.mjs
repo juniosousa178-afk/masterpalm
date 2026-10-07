@@ -35,7 +35,8 @@ if (!PROJECT_ID.startsWith("demo-")) {
 const [host, portStr] = emulatorHost.split(":");
 const port = Number(portStr || "8080");
 const newRules = readFileSync(join(repoRoot, "firestore.rules"), "utf8");
-const oldRules = execFileSync("git", ["show", "HEAD:firestore.rules"], {
+const BASELINE_COMMIT = "739ee56a07fe8b5040dd4b6ac36d0e35764f0966";
+const oldRules = execFileSync("git", ["show", `${BASELINE_COMMIT}:firestore.rules`], {
   cwd: repoRoot,
   encoding: "utf8",
 });
