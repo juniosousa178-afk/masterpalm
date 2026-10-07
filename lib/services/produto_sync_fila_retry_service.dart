@@ -24,6 +24,7 @@ class ProdutoSyncFilaRetryService {
     bool forcePushFromCadastro = false,
     bool enqueueOnFailure = true,
     ProdutoFormGradeBaseline? gradeBaseline,
+    bool permitirReplaceEstoque = true,
     CatalogoSyncAttemptContext? catalogoDiagContext,
     CatalogoLiveInlinePolicy catalogoLiveInlinePolicy =
         CatalogoLiveInlinePolicy.executar,
@@ -38,6 +39,7 @@ class ProdutoSyncFilaRetryService {
           : 'produto_sync_fila_retry.primeira',
       enqueueOnFailure: enqueueOnFailure,
       gradeBaseline: gradeBaseline,
+      permitirReplaceEstoque: permitirReplaceEstoque,
       catalogoDiagContext: catalogoDiagContext,
       catalogoLiveInlinePolicy: catalogoLiveInlinePolicy,
     );
@@ -59,6 +61,7 @@ class ProdutoSyncFilaRetryService {
           : 'produto_sync_fila_retry.segunda',
       enqueueOnFailure: enqueueOnFailure,
       gradeBaseline: gradeBaseline,
+      permitirReplaceEstoque: permitirReplaceEstoque,
       catalogoDiagContext: catalogoDiagContext,
       catalogoLiveInlinePolicy: catalogoLiveInlinePolicy,
     );

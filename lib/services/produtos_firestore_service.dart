@@ -1276,6 +1276,51 @@ class ProdutosFirestoreService {
     }
   }
 
+  /// Conflito CAS real: lê o estoque canônico e adota revisão + grade no cache local.
+  /// Não escreve no Firestore.
+  static Future<bool> adotarEstoqueCanonicoRemotoAposConflito({
+    required Produto produto,
+    required String lojaId,
+  }) async {
+    final storeId = lojaId.trim();
+    final produtoId = produto.idFirebase.trim().isNotEmpty
+        ? produto.idFirebase.trim()
+        : produto.slug.trim();
+    if (storeId.isEmpty || produtoId.isEmpty) return false;
+
+    try {
+      final snap = await _db
+          .collection('lojas')
+          .doc(storeId)
+          .collection(FSPaths.estoqueProdutosCol)
+          .doc(produtoId)
+          .get();
+      if (!snap.exists) return false;
+      final data = Map<String, dynamic>.from(snap.data() ?? {});
+      produto.pendingStockOperationId = null;
+      produto.pendingStockBaseRevision = null;
+      ProdutoRemoteSyncGuard.applyingRemoteToHive = true;
+      try {
+        final applied = applyAuthoritativeRemoteStockToProduto(
+          produto,
+          remote: data,
+          updateQuantity: true,
+        );
+        if (!applied) return false;
+        if (produto.isInBox) await produto.save();
+      } finally {
+        ProdutoRemoteSyncGuard.applyingRemoteToHive = false;
+      }
+      return true;
+    } catch (e) {
+      logW(
+        '[FORM_CONFLICT_RELOAD] falha produtoId=$produtoId ${e.runtimeType}',
+        tag: 'FORM_CONFLICT_RELOAD',
+      );
+      return false;
+    }
+  }
+
   /// Após save confirmado em estoque_produtos, alinha Hive com o doc remoto canônico.
   static Future<ProdutoRehydratePosSaveResult>
   rehydrateProdutoConfirmadoFromEstoqueRemoto(
@@ -1399,6 +1444,7 @@ class ProdutosFirestoreService {
     String? writeOrigin,
     bool enqueueOnFailure = true,
     ProdutoFormGradeBaseline? gradeBaseline,
+    bool permitirReplaceEstoque = true,
     CatalogoSyncAttemptContext? catalogoDiagContext,
     CatalogoLiveInlinePolicy catalogoLiveInlinePolicy =
         CatalogoLiveInlinePolicy.executar,
@@ -1614,6 +1660,7 @@ class ProdutosFirestoreService {
           gradeBaseline: gradeBaseline,
           remoteRevisionAtSaveTime: remoteRev,
           remoteVariacoesAtSaveTime: remoteVar,
+          permitirReplaceEstoque: permitirReplaceEstoque,
         );
         logD(
           '[PRODUTOS-SYNC] cadastro via stockCatalogCommand '

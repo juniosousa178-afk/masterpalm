@@ -371,6 +371,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
   }
 
   void _carregarGradeUiFromProduto(Produto p) {
+    _quantidade.text = '${p.quantidade}';
     final hydration = produtoFormHydrateGradeRows(p);
     _legadoEstoqueSemVariacoesCadastradas = false;
     _gradeHidratadaDeLegado = false;
@@ -979,7 +980,10 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       if (!mounted || widget.produto == null) return;
       BootPerfLog.fotoStart('persist_start');
       try {
-        await _persistirProdutoAtual(widget.produto!, mostrarSnackSucesso: false);
+        await _persistirEditorialSemEstoque(
+          widget.produto!,
+          mostrarSnackSucesso: false,
+        );
       } finally {
         BootPerfLog.fotoEnd('persist_done');
       }
@@ -1334,7 +1338,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       setState(() => _imagens.add(url!));
       if (widget.produto != null) {
         try {
-          await _persistirProdutoAtual(widget.produto!);
+          await _persistirEditorialSemEstoque(widget.produto!);
         } on TimeoutException catch (e) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -1355,92 +1359,31 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     }
   }
 
-  /// Aplica estado atual do formulário ao produto e sincroniza Hive + Firestore.
-  /// Chamado ao salvar ou quando editar foto/variação (auto-persist).
-  /// [mostrarSnackSucesso]: false em auto-save frequente (reordenação) para não spammar.
-  Future<void> _persistirProdutoAtual(Produto p, {bool mostrarSnackSucesso = true}) async {
-    if (lojaId == null) return;
+  /// Foto, URL e reordenacao: persiste so editorial.
+  /// A grade em edicao fica nos controllers ate o Salvar explicito.
+  Future<void> _persistirEditorialSemEstoque(
+    Produto p, {
+    bool mostrarSnackSucesso = false,
+  }) async {
+    if (lojaId == null || _salvando) return;
     final imagensAntesPersist = List<String>.from(p.imagens);
+    final quantidadeCanonico = p.quantidade;
+    final variacoesCanonico = p.variacoes == null
+        ? null
+        : Map<String, dynamic>.from(p.variacoes!);
+    final extraCanonico = p.variacoesExtraTipo == null
+        ? null
+        : Map<String, dynamic>.from(p.variacoesExtraTipo!);
+    final estoqueCanonico = Map<String, int>.from(p.estoquePorTamanho);
+    final tamanhosCanonico = List<String>.from(p.tamanhos);
+    final coresCanonico = List<String>.from(p.cores);
     try {
-      final qtdGeral = int.tryParse(_quantidade.text) ?? 0;
-      final custo = MoedaInputFormatter.parse(_custo.text);
       final preco = MoedaInputFormatter.parse(_preco.text);
-      final merged = produtoFormMergeVariacoesGrade(_variacaoControllers);
-      final Set<String> tamanhosSet = {};
-      final Set<String> coresSet = {};
-      int quantidadeTotalVariacoes = 0;
-      for (final c in _variacaoControllers) {
-        final tamanho = (c['tamanho']?.text ?? '').trim();
-        final cor = (c['cor']?.text ?? '').trim();
-        final qStr = (c['qtd']?.text ?? '').trim();
-        if (qStr.isEmpty || (tamanho.isEmpty && cor.isEmpty)) continue;
-        final qtd = int.tryParse(qStr) ?? 0;
-        if (qtd <= 0) continue;
-        if (tamanho.isNotEmpty) tamanhosSet.add(tamanho);
-        if (cor.isNotEmpty) coresSet.add(cor);
-        quantidadeTotalVariacoes += qtd;
-      }
-      var variacoesMapResolved = merged.variacoes;
-      var variacoesExtraResolved = merged.variacoesExtraTipo;
-      var tamanhosList = tamanhosSet.toList();
-      final Map<String, int> estoqueMapaUi = {};
-      for (final t in variacoesMapResolved.keys) {
-        if (t == 'sem-tamanho') continue;
-        final m = variacoesMapResolved[t] as Map<String, dynamic>;
-        var sum = 0;
-        for (final v in m.values) {
-          sum += ProdutoVariacaoExtra.somarCelula(v);
-        }
-        estoqueMapaUi[t] = sum;
-      }
-      final gradeResolved = _resolverGradeParaSave(
-        variacoesMap: variacoesMapResolved,
-        variacoesExtraTipo: variacoesExtraResolved,
-        estoqueMapa: estoqueMapaUi,
-        tamanhosList: tamanhosList,
-      );
-      variacoesMapResolved = gradeResolved.variacoes;
-      variacoesExtraResolved = gradeResolved.variacoesExtraTipo;
-      final estoqueMapa = Map<String, int>.from(gradeResolved.estoquePorTamanho);
-      tamanhosList = List<String>.from(gradeResolved.tamanhos);
-      if (gradeResolved.preservedFromBaseline) {
-        for (final t in variacoesMapResolved.keys) {
-          if (t == 'sem-tamanho') continue;
-          final m = variacoesMapResolved[t];
-          if (m is! Map) continue;
-          for (final ce in m.entries) {
-            final cor = ce.key.toString();
-            if (cor.isNotEmpty && cor != 'sem-cor') coresSet.add(cor);
-          }
-          tamanhosSet.add(t.toString());
-        }
-      }
-      int quantidadeFinal =
-          variacoesMapResolved.isEmpty ? qtdGeral : quantidadeTotalVariacoes;
-      if (gradeResolved.preservedFromBaseline && variacoesMapResolved.isNotEmpty) {
-        quantidadeFinal = 0;
-        for (final tm in variacoesMapResolved.values) {
-          if (tm is Map) {
-            for (final cell in tm.values) {
-              quantidadeFinal += ProdutoVariacaoExtra.somarCelula(cell);
-            }
-          }
-        }
-      }
-      final List<String> coresList = coresSet.toList();
-      final percentualDescontoPix = (double.tryParse(_percentualDescontoPix.text.trim()) ?? 0.0).clamp(0.0, 100.0);
-      final maxParcelasSemJuros = (int.tryParse(_maxParcelasSemJuros.text.trim()) ?? 12).clamp(1, 24);
-      final categoriaPrincipal = canonicalizeCategoria(_categoria.text.trim());
-      final subcategoriaPrincipal =
-          canonicalizeCategoria(_subcategoria.text.trim());
-      final categoriasExtras = _extrasSemPrincipal(
-        _categoriasExtrasSelecionadas,
-        categoriaPrincipal,
-      );
-      final subcategoriasExtras = _extrasSemPrincipal(
-        _subcategoriasExtrasSelecionadas,
-        subcategoriaPrincipal,
-      );
+      final percentualDescontoPix =
+          (double.tryParse(_percentualDescontoPix.text.trim()) ?? 0.0)
+              .clamp(0.0, 100.0);
+      final maxParcelasSemJuros =
+          (int.tryParse(_maxParcelasSemJuros.text.trim()) ?? 12).clamp(1, 24);
       double? percentualPromo;
       double? valorPromo;
       if (_emPromocao) {
@@ -1452,119 +1395,71 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       }
       p
         ..nome = capitalizeWords(_nome.text.trim())
-        ..quantidade = quantidadeFinal
-        ..custoReal = custo
+        ..descricao = _descricao.text.trim()
+        ..imagens = List<String>.from(_imagensParaPersistir)
         ..precoFinal = preco
         ..precoUnitario = preco
-        ..categoria = categoriaPrincipal
-        ..subcategoria = subcategoriaPrincipal
-        ..categoriasExtras = categoriasExtras
-        ..subcategoriasExtras = subcategoriasExtras
-        ..descricao = _descricao.text.trim()
-        ..imagens = List.from(_imagensParaPersistir)
         ..publicadoNoCatalogo = _publicar
         ..divideSemJuros = _divideSemJuros
         ..percentualDescontoPix = percentualDescontoPix
         ..maxParcelasSemJuros = maxParcelasSemJuros
-        ..slug = p.slug.isNotEmpty ? p.slug : '${lojaId!}-${gerarSlug(_nome.text.trim())}'
-        ..tamanhos = tamanhosList
-        ..estoquePorTamanho = estoqueMapa
-        ..lojaId = p.lojaId.isNotEmpty ? p.lojaId : lojaId!
         ..emPromocao = _emPromocao
         ..percentualPromo = percentualPromo
         ..valorPromo = valorPromo
         ..dataInicioPromo = _dataInicioPromo
         ..dataFimPromo = _dataFimPromo
         ..peso = _pesoGramasParaSalvar(pesoAnterior: p.peso)
-        ..codigoBarras = _codigoBarras.text.trim()
-        ..tipoEmbalagem = _tipoEmbalagem
-        ..cores = coresList
-        ..marketplaces = _marketplacesSelecionados.toList()
-        ..variacoes =
-            variacoesMapResolved.isNotEmpty ? variacoesMapResolved : null
-        ..variacoesExtraTipo = variacoesMapResolved.isNotEmpty
-            ? variacoesExtraResolved
-            : null
-        ..estoqueMinimo = int.tryParse(_estoqueMinimo.text) ?? 0
-        ..fornecedor = _fornecedor.text.trim()
-        ..custoEditadoNoCadastro = true;
-      final precoPorTamanhoMap =
-          produtoFormBuildPrecoPorTamanhoFromControllers(_precoPorTamanhoCtrl);
-      p.precoPorTamanho = precoPorTamanhoMap.isNotEmpty ? precoPorTamanhoMap : null;
-      if (variacoesMapResolved.isNotEmpty) p.recalcularQuantidadeTotal();
-      if (!await _tentarTombstoneVarRemovidaSessaoSeNecessario(
-        pBase: p,
-        variacoesMap: Map<String, dynamic>.from(variacoesMapResolved),
-        estoqueMapa: estoqueMapa,
-      )) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text(
-                'Não foi possível confirmar a remoção da variação na nuvem. Verifique a conexão e tente de novo.',
-              ),
-              backgroundColor: Colors.red.shade700,
-            ),
-          );
-        }
-        return;
-      }
-      p.updatedAt = DateTime.now();
+        ..quantidade = quantidadeCanonico
+        ..variacoes = variacoesCanonico
+        ..variacoesExtraTipo = extraCanonico
+        ..estoquePorTamanho = estoqueCanonico
+        ..tamanhos = tamanhosCanonico
+        ..cores = coresCanonico;
       await p.save();
-      await _liberarTombstonesVarAtivasPosSave(
-        p,
-        variacoesMapResolved,
-        estoqueMapa,
-      );
-      _syncTombSessaoBaselineAposSalvarVariacoes(
-        variacoesMapResolved,
-        estoqueMapa,
-      );
       final catalogoDiagPersist = await CatalogoSyncAttemptContext.capture(
-        origin: 'produto_form.persistir_atual',
+        origin: 'produto_form.editorial_sem_estoque',
         sessionStoreIdHint: lojaId,
       );
       final remoteStatusPersist = await ProdutosFirestoreService.syncProdutoComStatus(
         p,
         lojaId: lojaId,
         forcePushFromCadastro: true,
-        writeOrigin: 'produto_form.persistir_atual',
+        permitirReplaceEstoque: false,
+        writeOrigin: 'produto_form.editorial_sem_estoque',
         gradeBaseline: _gradeBaseline,
         catalogoDiagContext: catalogoDiagPersist,
         catalogoLiveInlinePolicy:
             CatalogoLiveInlinePolicy.ignorarPorquePosSaveCanonico,
-      ).timeout(const Duration(seconds: 45), onTimeout: () => throw TimeoutException('Sincronização demorou muito'));
-      final rehydratePersist =
-          await ProdutoCadastroPosSaveService.executarAposEstoqueRemotoOk(
-        produto: p,
-        lojaId: lojaId!,
-        remoteStatus: remoteStatusPersist,
-        gradeBaseline: _gradeBaseline,
-        catalogoDiagContext: catalogoDiagPersist,
+      ).timeout(
+        const Duration(seconds: 45),
+        onTimeout: () => throw TimeoutException('Sincronizacao demorou muito'),
       );
+      p
+        ..quantidade = quantidadeCanonico
+        ..variacoes = variacoesCanonico
+        ..variacoesExtraTipo = extraCanonico
+        ..estoquePorTamanho = estoqueCanonico
+        ..tamanhos = tamanhosCanonico
+        ..cores = coresCanonico;
+      if (p.isInBox) await p.save();
+      if (remoteStatusPersist == ProdutoSyncRemotoStatus.confirmado ||
+          remoteStatusPersist == ProdutoSyncRemotoStatus.semMudancas) {
+        await ProdutoCadastroPosSaveService.executarAposEstoqueRemotoOk(
+          produto: p,
+          lojaId: lojaId!,
+          remoteStatus: remoteStatusPersist,
+          gradeBaseline: _gradeBaseline,
+          catalogoDiagContext: catalogoDiagPersist,
+        );
+      }
       await ProdutoImagensStorageCleanup.apagarUrlsRemovidasGerenciadas(
         anteriores: imagensAntesPersist,
         atuais: List<String>.from(p.imagens),
         lojaId: lojaId!,
       );
       if (mounted && mostrarSnackSucesso) {
-        final falhas = ProdutosFirestoreService.falhasCanonicalDoAttempt(
-          catalogoDiagPersist.attemptId,
-        );
-        final msg = falhas.isNotEmpty
-            ? ProdutoSyncErroUtil.mensagemCadastroFalhaParcialCatalogo(
-                falhas: falhas,
-                avisoRehydrate: rehydratePersist?.aviso,
-              )
-            : ProdutoSyncErroUtil.mensagemCadastroConfirmado(
-                publicar: _publicar,
-                avisoRehydrate: rehydratePersist?.aviso,
-              );
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(msg),
-            backgroundColor: falhas.isNotEmpty ? Colors.orange : null,
-          ),
+          const SnackBar(content: Text('Imagem atualizada.')),
         );
       }
     } on TimeoutException catch (e) {
@@ -1572,7 +1467,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Salvo no aparelho; a nuvem demorou demais (${e.message ?? 'timeout'}). Verifique a conexão e salve de novo.',
+              'Imagem salva no aparelho; a nuvem demorou demais (${e.message ?? 'timeout'}).',
             ),
             backgroundColor: Colors.orange,
           ),
@@ -1582,17 +1477,14 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              mostrarSnackSucesso
-                  ? 'Erro ao salvar alterações: $e'
-                  : 'Falha ao sincronizar (ordem das imagens): $e',
-            ),
+            content: Text('Falha ao sincronizar a imagem: $e'),
             backgroundColor: Colors.red.shade700,
           ),
         );
       }
     }
   }
+
 
   Future<void> _sugerirDescricaoComIa() async {
     final nome = _nome.text.trim();
@@ -1883,6 +1775,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     }
 
     setState(() => _salvando = true);
+    _debouncePersistImagens?.cancel();
 
       late final Produto produtoSalvoParaRetorno;
       var remoteStatus = ProdutoSyncRemotoStatus.confirmado;
@@ -2329,14 +2222,25 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       if (remoteStatus == ProdutoSyncRemotoStatus.conflitoRevisaoEstoque ||
           remoteStatus == ProdutoSyncRemotoStatus.dimensaoExtraOcultaBloqueada) {
         final p = produtoSalvoParaRetorno;
-        await ProdutosFirestoreService.refreshGradeFromEstoqueRemotoAoAbrirForm(
+        await ProdutosFirestoreService.adotarEstoqueCanonicoRemotoAposConflito(
           produto: p,
           lojaId: lojaId!,
         );
         if (mounted) {
           _carregarGradeUiFromProduto(p);
           setState(() {});
+          final mensagem = remoteStatus ==
+                  ProdutoSyncRemotoStatus.conflitoRevisaoEstoque
+              ? ProdutoStockRevisionConflictException.userMessage
+              : ProdutoHiddenExtraDimensionException.userMessage;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(mensagem),
+              backgroundColor: Colors.orange,
+            ),
+          );
         }
+        return;
       }
 
       String? detalheSyncErro;
@@ -2400,12 +2304,20 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
 
       final corMensagem = sucessoPleno ? null : Colors.orange;
 
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(mensagemSalvar),
           backgroundColor: corMensagem,
         ),
       );
+
+      if (remoteStatus == ProdutoSyncRemotoStatus.confirmado ||
+          remoteStatus == ProdutoSyncRemotoStatus.semMudancas) {
+        _gradeBaseline =
+            ProdutoFormGradeBaseline.capture(produtoSalvoParaRetorno);
+        _initTombSessaoBaseline(produtoSalvoParaRetorno);
+      }
 
       Navigator.pop(
         context,
@@ -2905,9 +2817,6 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                                         }
                                         _initPrecoPorTamanhoControllers();
                                       });
-                                      if (widget.produto != null) {
-                                        await _persistirProdutoAtual(widget.produto!);
-                                      }
                                     },
                                   ),
                                 ],
@@ -2989,9 +2898,6 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                               });
                               _initPrecoPorTamanhoControllers();
                             });
-                            if (widget.produto != null) {
-                              await _persistirProdutoAtual(widget.produto!);
-                            }
                           },
                         ),
                       ),

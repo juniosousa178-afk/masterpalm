@@ -234,16 +234,20 @@ class ProdutoStockCatalogCadastroSync {
     ProdutoStockCatalogCadastroIntent? frozenIntent,
     int? remoteRevisionAtSaveTime,
     Map<String, dynamic>? remoteVariacoesAtSaveTime,
+    /// Save explícito da grade. Foto/debounce e rascunho local passam false
+    /// e nunca geram replace, mesmo se o objeto local já divergiu da baseline.
+    bool permitirReplaceEstoque = true,
   }) async {
     if (frozenIntent != null) return frozenIntent;
 
     final editorial = buildEditorial(produto);
     final definition = buildDefinition(produto);
-    final allowStock = allowStockMutationCommand(
-      forcePushFromCadastro: forcePushFromCadastro,
-      produto: produto,
-      gradeBaseline: gradeBaseline,
-    );
+    final allowStock = permitirReplaceEstoque &&
+        allowStockMutationCommand(
+          forcePushFromCadastro: forcePushFromCadastro,
+          produto: produto,
+          gradeBaseline: gradeBaseline,
+        );
 
     late final String kind;
     int? expectedRevision;
