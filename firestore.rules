@@ -1170,8 +1170,16 @@ service cloud.firestore {
       }
 
       // Contas a receber / fiado — sync Hive ↔ Firestore (app MasterPalm).
+      // GET de documento ausente: o mesmo membro da loja precisa receber
+      // exists=false para publicar a conta e seguir na baixa. Lista e
+      // documento existente continuam exigindo lojaId embutido igual ao path.
       match /contas_receber/{contaId} {
-        allow read: if canAccessLojaFinanceiro(lojaId)
+        allow get: if canAccessLojaFinanceiro(lojaId)
+          && (
+            !exists(/databases/$(database)/documents/lojas/$(lojaId)/contas_receber/$(contaId))
+            || resource.data.lojaId == lojaId
+          );
+        allow list: if canAccessLojaFinanceiro(lojaId)
           && resource != null
           && resource.data.lojaId == lojaId;
         allow create: if canAccessLojaFinanceiro(lojaId)
