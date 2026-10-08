@@ -111,10 +111,10 @@ class EstoqueService {
           produtoIdsDebitadosNaVenda: {pid},
         );
       } else {
-        await ComboKitStockService.aplicarPisoEstoqueComboAposDevolucao(
+        await ComboKitStockService.reprojetarCombosAposDevolucao(
           lojaId: lojaId,
           produtosBox: produtosBox,
-          produtoIdsQueAfetamCombo: {pid},
+          produtoIdsDevolvidos: {pid},
         );
       }
     } catch (e, st) {

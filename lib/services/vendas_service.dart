@@ -1464,12 +1464,18 @@ class VendasService {
     );
 
     if (teveDevolucao) {
-      final pisoResults =
-          await ComboKitStockService.aplicarPisoEstoqueComboAposDevolucao(
+      await ComboKitStockService.reprojetarCombosAposDevolucao(
         lojaId: lojaId,
         produtosBox: produtosBox,
+        produtoIdsDevolvidos: {
+          for (final m in itensAssinados)
+            if (((m['quantidade'] as num?)?.toInt() ?? 0) > 0)
+              (m['productId'] ?? m['produtosId'] ?? m['id'] ?? '')
+                  .toString()
+                  .trim(),
+        },
+        produtoIdsJaProjetados: resultados.map((r) => r.produtoId).toSet(),
       );
-      resultados = [...resultados, ...pisoResults];
     }
     if (teveBaixaLinha) {
       final tetoResults = await ComboKitStockService
@@ -3482,41 +3488,18 @@ class VendasService {
       }
     }
 
-    final vendaIdLog = (venda.idFirebase ?? '').trim().isNotEmpty
-        ? venda.idFirebase!.trim()
-        : 'hive_${venda.key}';
-    var pisoResults = <EstoqueTransactionResult>[];
-    try {
-      pisoResults =
-          await ComboKitStockService.aplicarPisoEstoqueComboAposDevolucao(
-        lojaId: lojaId,
-        produtosBox: produtosBox,
-      );
-      for (final r in pisoResults) {
-        final q = r.quantidadeDebitada.abs();
-        if (q <= 0) continue;
-        MovimentacaoEstoqueService.registrar(
-          lojaId: lojaId,
-          produtoId: r.produtoId,
-          produtoNome: r.produtoNome,
-          tipo: 'entrada',
-          quantidade: q,
-          motivo: 'Devolução (ajuste kit combo)',
-          usuario: 'App',
-          vendaId: vendaIdLog,
-        ).catchError((_) {});
-      }
-    } catch (e) {
-      debugPrint(
-        '⚠️ [COMBO_PISO] Falha ao sincronizar estoque do combo após devolução: $e',
-      );
-    }
+    final idsDevolvidos = devolucaoResults.map((r) => r.produtoId).toSet();
+    await ComboKitStockService.reprojetarCombosAposDevolucao(
+      lojaId: lojaId,
+      produtosBox: produtosBox,
+      produtoIdsDevolvidos: idsDevolvidos,
+      produtoIdsJaProjetados: idsDevolvidos,
+    );
 
     await CatalogoWebAposEstoqueService.sincronizarAposResultadosTransacao(
       lojaId: lojaId,
       produtosBox: produtosBox,
       resultadosPrincipais: devolucaoResults,
-      resultadosComboExtra: pisoResults,
     );
 
     final vkContas = hiveKeyOrNull(venda.key);
@@ -3664,31 +3647,12 @@ class VendasService {
     );
     if (itensDevolucaoExclusao.isNotEmpty) {
       try {
-        final results = await _devolverEstoqueComLogsCombo(
+        devolucaoResultsExclusao = await _devolverEstoqueComLogsCombo(
           lojaId: lojaId,
           vendaId: vendaId,
           itens: itensDevolucaoExclusao,
           estornoOrigemCatalogo: estornoOrigem,
         );
-        devolucaoResultsExclusao = results;
-        DeleteForensicTraceStore.stage(DeleteTraceStage.localHiveApplyStart);
-        try {
-          for (final r in results) {
-            await EstoqueTransactionService.atualizarHiveAposTransacao(
-              produtosBox: produtosBox,
-              lojaId: lojaId,
-              result: r,
-            );
-          }
-          DeleteForensicTraceStore.stage(DeleteTraceStage.localHiveApplySuccess);
-        } catch (e, st) {
-          DeleteForensicTraceStore.captureError(
-            DeleteTraceStage.localHiveApplyError,
-            e,
-            st,
-          );
-          rethrow;
-        }
       } catch (e, st) {
         debugPrint(
           '[VENDA_DELETE] devolucao_estoque_falhou vendaId=$vendaId erro=$e',
@@ -3698,9 +3662,36 @@ class VendasService {
           DeleteTraceStage.deleteAbort,
           e,
           st,
-          extra: {'substage': 'devolver_ou_hive'},
+          extra: {'substage': 'devolver'},
         );
         Error.throwWithStackTrace(e, st);
+      }
+      DeleteForensicTraceStore.stage(DeleteTraceStage.localHiveApplyStart);
+      try {
+        for (final r in devolucaoResultsExclusao) {
+          await EstoqueTransactionService.atualizarHiveAposTransacao(
+            produtosBox: produtosBox,
+            lojaId: lojaId,
+            result: r,
+          );
+        }
+        DeleteForensicTraceStore.stage(DeleteTraceStage.localHiveApplySuccess);
+      } catch (e, st) {
+        DeleteForensicTraceStore.captureError(
+          DeleteTraceStage.localHiveApplyError,
+          e,
+          st,
+        );
+        DeleteForensicTraceStore.captureError(
+          DeleteTraceStage.deleteAbort,
+          e,
+          st,
+          extra: {'substage': 'hive_pos_estorno'},
+        );
+        Error.throwWithStackTrace(
+          VendaExclusaoAposEstornoException(etapa: 'hive_local', cause: e),
+          st,
+        );
       }
     } else if (venda.itens != null && venda.itens!.isNotEmpty) {
       debugPrint(
@@ -3719,40 +3710,14 @@ class VendasService {
       throw err;
     }
 
-    var pisoResultsExclusao = <EstoqueTransactionResult>[];
-    try {
-      pisoResultsExclusao =
-          await ComboKitStockService.aplicarPisoEstoqueComboAposDevolucao(
-        lojaId: lojaId,
-        produtosBox: produtosBox,
-      );
-      for (final r in pisoResultsExclusao) {
-        final q = r.quantidadeDebitada.abs();
-        if (q <= 0) continue;
-        await MovimentacaoEstoqueService.registrar(
-          lojaId: lojaId,
-          produtoId: r.produtoId,
-          produtoNome: r.produtoNome,
-          tipo: 'entrada',
-          quantidade: q,
-          motivo: 'Devolução (ajuste kit combo)',
-          usuario: 'App',
-          vendaId: vendaId,
-        );
-      }
-    } catch (e, st) {
-      debugPrint(
-        '[VENDA_DELETE] devolucao_estoque_falhou vendaId=$vendaId (piso combo / mov.) erro=$e',
-      );
-      debugPrint('[VENDA_DELETE] exclusao_abortada_por_estoque');
-      DeleteForensicTraceStore.captureError(
-        DeleteTraceStage.deleteAbort,
-        e,
-        st,
-        extra: {'substage': 'piso_combo'},
-      );
-      Error.throwWithStackTrace(e, st);
-    }
+    final idsDevolvidos =
+        devolucaoResultsExclusao.map((r) => r.produtoId).toSet();
+    await ComboKitStockService.reprojetarCombosAposDevolucao(
+      lojaId: lojaId,
+      produtosBox: produtosBox,
+      produtoIdsDevolvidos: idsDevolvidos,
+      produtoIdsJaProjetados: idsDevolvidos,
+    );
 
     DeleteForensicTraceStore.stage(DeleteTraceStage.remoteRefreshStart);
     try {
@@ -3760,7 +3725,6 @@ class VendasService {
         lojaId: lojaId,
         produtosBox: produtosBox,
         resultadosPrincipais: devolucaoResultsExclusao,
-        resultadosComboExtra: pisoResultsExclusao,
       );
       DeleteForensicTraceStore.stage(DeleteTraceStage.remoteRefreshSuccess);
     } catch (e, st) {
@@ -3778,7 +3742,10 @@ class VendasService {
         st,
         extra: {'substage': 'catalog_sync'},
       );
-      Error.throwWithStackTrace(e, st);
+      Error.throwWithStackTrace(
+        VendaExclusaoAposEstornoException(etapa: 'catalogo', cause: e),
+        st,
+      );
     }
 
     debugPrint('[VENDA_DELETE] devolucao_estoque_sucesso vendaId=$vendaId');

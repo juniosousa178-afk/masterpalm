@@ -2,15 +2,18 @@
 
 import 'dart:math' show min;
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
 import '../core/dart_error_unwrap.dart';
 import '../core/logger.dart';
+import '../core/produto_effective_stock.dart';
 import '../core/produto_variacao_extra.dart';
 import '../models/produto.dart';
 import 'estoque_transaction_service.dart';
+import 'firestore_paths.dart';
 import 'produto_exclusao_tombstone_service.dart';
 import 'produtos_firestore_service.dart';
 import 'sync_queue_service.dart';
@@ -19,6 +22,10 @@ import 'venda_estoque_remoto_prep_service.dart';
 /// Após venda de componentes avulsos (ou combo), garante que a quantidade do SKU combo
 /// não exceda o que os componentes ainda permitem montar.
 class ComboKitStockService {
+  static FirebaseFirestore get _db =>
+      ProdutosFirestoreService.debugFirestoreOverride ??
+      FirebaseFirestore.instance;
+
   static Produto? _resolverComponente(
     Map<String, dynamic> comboItem,
     Box<Produto> produtosBox,
@@ -435,91 +442,65 @@ class ComboKitStockService {
     return false;
   }
 
-  /// Após devolução de componentes (ou combo), sobe [Produto.quantidade] do SKU combo até o teto [K]
-  /// montável — espelho inverso de [aplicarTetoEstoqueComboAposBaixa].
+  /// Após devolução de estoque: alinha no Hive, a partir de `estoque_produtos`, só os combos
+  /// cujo SKU ou receita referencia [produtoIdsDevolvidos].
   ///
-  /// Se [produtoIdsQueAfetamCombo] for `null`, percorre todos os combos elegíveis (legado).
-  /// Se for não vazio, ajusta apenas combos cuja receita ou SKU referencia algum desses ids.
-  static Future<List<EstoqueTransactionResult>> aplicarPisoEstoqueComboAposDevolucao({
+  /// Somente leitura remota: o servidor recalcula combos fixos dependentes na própria transação
+  /// do restore. Nunca credita combo nem usa a API de estorno de venda (que exige a operação
+  /// original). Combos em [produtoIdsJaProjetados] já vieram na resposta do restore. Falhas
+  /// são registradas e não interrompem o chamador. Retorna quantos combos eram relevantes.
+  static Future<int> reprojetarCombosAposDevolucao({
     required String lojaId,
     required Box<Produto> produtosBox,
-    Set<String>? produtoIdsQueAfetamCombo,
+    required Set<String> produtoIdsDevolvidos,
+    Set<String> produtoIdsJaProjetados = const {},
   }) async {
-    final norm = produtoIdsQueAfetamCombo
-        ?.map((e) => e.trim())
+    final ids = produtoIdsDevolvidos
+        .map((e) => e.trim())
         .where((e) => e.isNotEmpty)
         .toSet();
+    if (ids.isEmpty) return 0;
+    final jaProjetados = produtoIdsJaProjetados.map((e) => e.trim()).toSet();
 
-    late final Iterable<Produto> combosAlvo;
-    if (norm == null) {
-      combosAlvo = produtosBox.values;
-    } else if (norm.isEmpty) {
-      debugPrint('[COMBO_PISO] produtoIdsQueAfetamCombo vazio; sem ajuste de piso.');
-      return [];
-    } else {
-      final filtrados = combosAfetadosPorProductIdsDebitados(
+    final List<Produto> relevantes;
+    try {
+      relevantes = combosAfetadosPorProductIdsDebitados(
         lojaId: lojaId,
         produtosBox: produtosBox,
-        debitedIds: norm,
+        debitedIds: ids,
       );
-      if (filtrados.isEmpty) {
-        debugPrint(
-          '[COMBO_PISO] Nenhum combo referencia os productIds (${norm.length} id(s)); sem ajuste de piso.',
-        );
-        return [];
-      }
-      combosAlvo = filtrados;
-    }
-
-    final ajustes = <Map<String, dynamic>>[];
-
-    for (final combo in combosAlvo) {
-      if (combo.lojaId != lojaId || !combo.ehCombo) continue;
-
-      if (combo.usaVariacoes || combo.estoquePorTamanho.isNotEmpty) {
-        continue;
-      }
-
-      if (combo.temComboConfigEfetivo) {
-        continue;
-      }
-
-      final k = maxKitsMontaveis(combo, produtosBox, lojaId);
-      if (combo.quantidade >= k) continue;
-
-      final delta = k - combo.quantidade;
-      if (delta <= 0) continue;
-
+    } catch (e) {
       debugPrint(
-        '[COMBO_PISO] ${combo.nome}: quantidade combo=${combo.quantidade} → teto montável K=$k '
-        '(crédito de $delta no SKU combo)',
+        '[COMBO_PISO] seleção de combos relacionados falhou (type=${e.runtimeType})',
       );
-
-      ajustes.add({
-        'nome': combo.nome,
-        'quantidade': delta,
-        'tamanho': '',
-        'cor': '',
-        if (combo.idFirebase.trim().isNotEmpty) 'productId': combo.idFirebase,
-        if (combo.slug.trim().isNotEmpty) 'slug': combo.slug,
-      });
+      return 0;
     }
 
-    if (ajustes.isEmpty) return [];
-
-    final results = await EstoqueTransactionService.devolverEstoqueTransactionBatch(
-      lojaId: lojaId,
-      itens: ajustes,
-      vendaIdParaIdempotencia: null,
+    for (final combo in relevantes) {
+      final docId = combo.idFirebase.trim();
+      if (docId.isEmpty || jaProjetados.contains(docId)) continue;
+      try {
+        final snap = await _db
+            .collection('lojas')
+            .doc(lojaId)
+            .collection(FSPaths.estoqueProdutosCol)
+            .doc(docId)
+            .get();
+        final data = snap.data();
+        if (!snap.exists || data == null) continue;
+        if (applyAuthoritativeRemoteStockToProduto(combo, remote: data) &&
+            combo.isInBox) {
+          await combo.save();
+        }
+      } catch (e) {
+        debugPrint(
+          '[COMBO_PISO] reprojeção do combo $docId ignorada (type=${e.runtimeType})',
+        );
+      }
+    }
+    debugPrint(
+      '[COMBO_PISO] combos relacionados=${relevantes.length} ids_devolvidos=${ids.length}',
     );
-
-    for (final result in results) {
-      await EstoqueTransactionService.atualizarHiveAposTransacao(
-        produtosBox: produtosBox,
-        lojaId: lojaId,
-        result: result,
-      );
-    }
-    return results;
+    return relevantes.length;
   }
 }

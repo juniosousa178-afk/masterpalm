@@ -48,6 +48,7 @@ import 'redefinir_senha_cliente_loja_screen.dart';
 import '../services/ai_loja_service.dart';
 import '../services/ia_uso_limite_service.dart';
 import '../services/soft_delete_service.dart';
+import '../services/estoque_transaction_service.dart';
 import '../main.dart' show scaffoldMessengerKey;
 import '../utils/store_screen_route_observer.dart';
 
@@ -2006,7 +2007,11 @@ class _ClientesScreenState extends State<ClientesScreen>
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao excluir venda: $e')),
+          SnackBar(
+            content: Text(
+              EstoqueTransactionService.mensagemUsuarioFalhaDevolucaoEstoque(e),
+            ),
+          ),
         );
       }
     }

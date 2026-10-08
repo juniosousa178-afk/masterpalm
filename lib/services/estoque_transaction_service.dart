@@ -67,6 +67,25 @@ class EstoqueRestoreSourceUnresolvedException implements Exception {
       'candidates=${candidatesTried.join(',')})';
 }
 
+/// Falha na exclusão de venda **depois** do restore de estoque confirmado
+/// (aplicado ou `alreadyApplied`). Repetir a exclusão não devolve estoque de novo.
+class VendaExclusaoAposEstornoException implements Exception {
+  VendaExclusaoAposEstornoException({required this.etapa, this.cause});
+
+  /// `hive_local`, `catalogo` ou `tombstone`.
+  final String etapa;
+  final Object? cause;
+
+  static const userMessage =
+      'Não foi possível concluir a exclusão da venda. O estoque já foi '
+      'devolvido com segurança. Tente novamente após atualizar o app.';
+
+  @override
+  String toString() =>
+      'VendaExclusaoAposEstornoException(etapa=$etapa '
+      'causeType=${cause?.runtimeType})';
+}
+
 /// Resultado da baixa de estoque via transação
 class EstoqueTransactionResult {
   final String produtoId;
@@ -2452,13 +2471,20 @@ class EstoqueTransactionService {
     if (error is EstoqueRestoreSourceUnresolvedException) {
       return EstoqueRestoreSourceUnresolvedException.userMessage;
     }
+    final code = active?.shortCode;
+    if (error is VendaExclusaoAposEstornoException) {
+      var msg = VendaExclusaoAposEstornoException.userMessage;
+      if (code != null && code.isNotEmpty) {
+        msg = '$msg\n\nCódigo de diagnóstico: $code';
+      }
+      return msg;
+    }
     final raw = error.toString();
     if (raw.contains('Applied sale required')) {
       return EstoqueRestoreSourceUnresolvedException.userMessage;
     }
     var msg = 'Não foi possível devolver o estoque desta venda. '
         'A exclusão foi cancelada para proteger o estoque.';
-    final code = active?.shortCode;
     if (code != null && code.isNotEmpty && !msg.contains(code)) {
       msg = '$msg\n\nCódigo de diagnóstico: $code';
     }

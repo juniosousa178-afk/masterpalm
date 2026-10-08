@@ -375,14 +375,6 @@ class SoftDeleteService {
     );
     DiagnosticTraceService.stage(DiagnosticStages.deleteStart);
 
-    debugPrint('[VENDA-DELETE] etapa=remover_contas_start lojaId=$lojaId vendaKey=$key');
-    await VendasService.removerContasReceberVinculadasAVenda(
-      lojaId: lojaId,
-      vendaKey: hiveKeyOrNull(key),
-      vendaIdFirebase: VendasService.idVendaEstavelParaVinculo(venda),
-    );
-    debugPrint('[VENDA-DELETE] etapa=remover_contas_ok');
-
     debugPrint('[VENDA-DELETE] etapa=devolver_estoque_start');
     final produtosBox =
         await Hive.openBox<Produto>(HiveBoxNames.produtos(lojaId));
@@ -419,7 +411,8 @@ class SoftDeleteService {
         stageName: DiagnosticStages.deleteAbort,
       );
       // Preserve raw forensic log; surface operational message to callers.
-      final wrapped = e is EstoqueRestoreSourceUnresolvedException
+      final wrapped = e is EstoqueRestoreSourceUnresolvedException ||
+              e is VendaExclusaoAposEstornoException
           ? e
           : (e.toString().contains('Applied sale required')
               ? EstoqueRestoreSourceUnresolvedException(cause: e)
@@ -430,6 +423,15 @@ class SoftDeleteService {
       rethrow;
     }
     debugPrint('[VENDA-DELETE] etapa=devolver_estoque_ok');
+
+    // Só após o estorno confirmado: se o estorno falhar, o título continua aberto.
+    debugPrint('[VENDA-DELETE] etapa=remover_contas_start lojaId=$lojaId vendaKey=$key');
+    await VendasService.removerContasReceberVinculadasAVenda(
+      lojaId: lojaId,
+      vendaKey: hiveKeyOrNull(key),
+      vendaIdFirebase: VendasService.idVendaEstavelParaVinculo(venda),
+    );
+    debugPrint('[VENDA-DELETE] etapa=remover_contas_ok');
 
     DeleteForensicTraceStore.stage(DeleteTraceStage.saleSoftDeleteStart);
     try {
@@ -446,7 +448,10 @@ class SoftDeleteService {
         extra: {'substage': 'tombstone'},
       );
       DeleteForensicTraceStore.endActive(aborted: true);
-      rethrow;
+      Error.throwWithStackTrace(
+        VendaExclusaoAposEstornoException(etapa: 'tombstone', cause: e),
+        st,
+      );
     }
 
     final idFb = (venda.idFirebase ?? '').trim();
