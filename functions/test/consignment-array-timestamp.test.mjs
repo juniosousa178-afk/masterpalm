@@ -191,6 +191,24 @@ test('distinct issue operation after issue is blocked', async () => {
   );
 });
 
+test('issue is tenant-isolated: non-member and other-store caller write nothing', async () => {
+  const {db, base, lojaId} = seedStore();
+  const id = await createDraft(db, lojaId, MIR_PRICES);
+  const other = db.collection('lojas').doc('arrts_other');
+  db.seed(other, {ownerUid: 'intruder'});
+  db.seed(other.collection('consignment_control').doc('state'), {protocolVersion: 1, moduleEnabled: true});
+  const snapshot = db.snapshot();
+
+  await assert.rejects(
+    executeConsignmentCommand(db, cmd(lojaId, 'issue', `issue_${id}`, {}, id), {uid: 'intruder'}),
+    e => e.consignmentCode === CODES.AUTH,
+  );
+  await assert.rejects(executeConsignmentCommand(db, cmd('arrts_other', 'issue', `issue_${id}`, {}, id), {uid: 'intruder'}));
+  assert.deepEqual(db.snapshot(), snapshot);
+  assert.equal(consignment(db, base, id).status, 'DRAFT');
+  for (const p of Object.keys(MIR_PRICES)) assert.equal(stock(db, base, p).quantidade, 1);
+});
+
 test('issue request hash does not depend on wall clock', async () => {
   const hashes = [];
   for (let i = 0; i < 2; i++) {
