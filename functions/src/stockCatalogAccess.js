@@ -11,7 +11,7 @@ export const INACTIVE_COMPAT_ALLOWED_KINDS = Object.freeze(['sale', 'restore']);
  * Never implies ACTIVE protocol, grants, or migration.
  */
 export const NO_CONTROL_EDITORIAL_KINDS = Object.freeze(['editorial']);
-export const NO_CONTROL_STOCK_EDIT_KINDS = Object.freeze(['replace', 'create']);
+export const NO_CONTROL_STOCK_EDIT_KINDS = Object.freeze(['replace', 'create', 'physicalReconciliation']);
 export const NO_CONTROL_PUBLISH_PERMISSION = 'publish';
 
 export function documentId(value, label = 'id') {

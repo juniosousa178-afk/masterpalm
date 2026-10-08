@@ -38,7 +38,7 @@ export function gradeKeyLabel({size = '', color = '', extra = ''} = {}) {
 export function userMessageForReason(reasonCode, {requestedQty, availableQty} = {}) {
   switch (reasonCode) {
     case REASON.INSUFFICIENT_STOCK:
-      return `Estoque insuficiente. Disponível: ${availableQty ?? 0}. Solicitado: ${requestedQty ?? 0}.`;
+      return 'Estoque insuficiente. Atualize a quantidade e tente novamente.';
     case REASON.ZERO_STOCK:
       return 'Este produto está sem estoque disponível.';
     case REASON.VARIATION_REQUIRED:
@@ -60,7 +60,7 @@ export function userMessageForReason(reasonCode, {requestedQty, availableQty} = 
     case REASON.INVALID_STOCK_STATE:
       return 'O estoque deste produto precisa ser atualizado antes de continuar.';
     case REASON.STOCK_CONFLICT:
-      return 'Há um conflito de estoque neste produto. Tente novamente.';
+      return 'O estoque deste produto foi alterado. Atualizamos os dados; confira e tente novamente.';
     case REASON.COMBO_NOT_SUPPORTED:
       return 'Produtos do tipo combo ainda não são suportados nesta operação.';
     case REASON.PRODUCT_NOT_FOUND:
