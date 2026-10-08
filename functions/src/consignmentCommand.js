@@ -1,5 +1,5 @@
 /** Server-authoritative consignment commands. Isolated from stockCatalogCommand and PDV sales. */
-import {FieldValue} from 'firebase-admin/firestore';
+import {FieldValue, Timestamp} from 'firebase-admin/firestore';
 import {
   documentId, storeRef, requireAuthenticated,
 } from './stockCatalogAccess.js';
@@ -594,7 +594,8 @@ async function issueConsignment(tx, base, command, uid) {
     additions: [{
       additionId: command.operationId,
       kind: 'INITIAL',
-      createdAt: FieldValue.serverTimestamp(),
+      // Firestore rejects transform sentinels inside array elements.
+      createdAt: Timestamp.now(),
       createdBy: uid,
       lines: frozen.map(l => ({
         lineId: l.lineId,
@@ -768,7 +769,8 @@ async function addItemsToConsignment(tx, base, command, uid) {
   additions.push({
     additionId,
     kind: data.status === STATUS.DRAFT ? 'DRAFT_ADD' : 'ADDITION',
-    createdAt: FieldValue.serverTimestamp(),
+    // Firestore rejects transform sentinels inside array elements.
+    createdAt: Timestamp.now(),
     createdBy: uid,
     lines: stamped.map(l => additionHistoryLine(l, stockMetaByProduct.get(l.productId))),
   });

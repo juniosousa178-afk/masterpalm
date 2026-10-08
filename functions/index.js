@@ -11,7 +11,7 @@ import { setGlobalOptions } from "firebase-functions/v2";
 import { defineSecret } from "firebase-functions/params";
 import crypto from "node:crypto";
 import {executeConsignmentCommand} from "./src/consignmentCommand.js";
-import {mapConsignmentHttp} from "./src/consignmentProtocol.js";
+import {mapConsignmentHttp, describeUnclassifiedConsignmentError} from "./src/consignmentProtocol.js";
 
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
@@ -5492,8 +5492,14 @@ export const onSiteConfigUpdated = onDocumentWritten(
   }
 );
 
-function consignmentCallableError(error) {
+function consignmentCallableError(error, raw) {
   const mapped = mapConsignmentHttp(error);
+  if (mapped.details?.consignmentCode === "SERVER") {
+    console.error(
+      "[consignmentCommand] unclassified_error",
+      JSON.stringify(describeUnclassifiedConsignmentError(error, raw)),
+    );
+  }
   return new HttpsError(mapped.http, mapped.message, mapped.details);
 }
 export const consignmentCommand = onCall(
@@ -5502,7 +5508,7 @@ export const consignmentCommand = onCall(
     try {
       return await executeConsignmentCommand(db, request.data, request.auth);
     } catch (error) {
-      throw consignmentCallableError(error);
+      throw consignmentCallableError(error, request.data);
     }
   },
 );

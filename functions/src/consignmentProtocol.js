@@ -102,6 +102,34 @@ export function mapConsignmentHttp(error) {
   return {http: 'internal', message: 'SERVER', details: {consignmentCode: CODES.SERVER}};
 }
 
+function sanitizeLogText(value, max = 300) {
+  return String(value ?? '')
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[email]')
+    .replace(/\d[\d.\-/ ]{5,}\d/g, '[digits]')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, max);
+}
+
+/**
+ * Safe log fields for errors mapped to SERVER. Never includes payload, auth, names or line data.
+ */
+export function describeUnclassifiedConsignmentError(error, raw) {
+  const operation = typeof raw?.operation === 'string' && OPERATIONS.includes(raw.operation) ? raw.operation : 'unknown';
+  const code = error?.code;
+  const frame = String(error?.stack ?? '').split('\n').slice(1)
+    .map(l => l.match(/([\w.-]+\.m?js):(\d+):\d+/))
+    .find(Boolean);
+  return {
+    action: operation,
+    errorName: sanitizeLogText(error?.name || error?.constructor?.name || 'Error', 60),
+    errorCode: typeof code === 'number' || typeof code === 'string' ? sanitizeLogText(code, 60) : null,
+    consignmentCode: typeof error?.consignmentCode === 'string' ? error.consignmentCode : null,
+    message: sanitizeLogText(error?.message),
+    at: frame ? `${frame[1]}:${frame[2]}` : null,
+  };
+}
+
 const ordered = value => Array.isArray(value) ? value.map(ordered) : isMap(value)
   ? Object.fromEntries(Object.keys(value).sort().map(k => [k, ordered(value[k])])) : value;
 export const requestFingerprint = value =>
