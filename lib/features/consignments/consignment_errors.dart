@@ -132,6 +132,9 @@ class ConsignmentException implements Exception {
       case 'RESOURCE_EXHAUSTED':
       case 'resource-exhausted':
         return consignmentProductLimitMessage;
+      case 'SERVER':
+      case 'internal':
+        return 'Falha no servidor ao processar o consignado. Tente novamente em instantes.';
       case 'unauthenticated':
       case 'permission-denied':
       case 'AUTH':

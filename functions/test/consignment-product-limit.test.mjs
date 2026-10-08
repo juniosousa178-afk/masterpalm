@@ -120,6 +120,31 @@ test('addItems of more units of an existing product is still allowed at the limi
   assert.equal(consignment(db, base, id).totalItemsSent, 26);
 });
 
+test('extra variations of a product already in the consignment do not consume a slot', async () => {
+  const {db, base, lojaId} = seedStore(24, 2);
+  db.seed(base.collection('estoque_produtos').doc('VAR'), {
+    lojaId, stockKind: 'variation', stockRevision: 0, quantidade: 6,
+    variacoes: {P: {'sem-cor': 2}, M: {'sem-cor': 2}, G: {'sem-cor': 2}},
+  });
+  db.seed(base.collection('draft_produtos').doc('VAR'), {nome: 'Produto VAR', publicadoNoCatalogo: true, preco: 10});
+  db.seed(base.collection('stock_catalog_dependencies').doc('VAR'), {comboIds: []});
+  const cell = size => ({...line('VAR'), variationKey: {size, color: 'sem-cor', extra: ''}});
+  const id = `c_${++seq}`;
+  await executeConsignmentCommand(db, cmd(lojaId, 'createDraft', `draft_${id}`, {
+    resellerId: 'r1', notes: '', lines: [...ids(24).map(line), cell('P'), cell('M')],
+  }, id), owner);
+  await executeConsignmentCommand(db, cmd(lojaId, 'issue', `issue_${id}`, {}, id), owner);
+  await executeConsignmentCommand(db, cmd(lojaId, 'addItems', `add_${id}`, {
+    expectedRevision: consignment(db, base, id).revision, lines: [cell('G')],
+  }, id), owner);
+  const doc = consignment(db, base, id);
+  assert.equal(doc.status, 'ISSUED');
+  assert.equal(new Set(doc.lines.map(l => l.productId)).size, 25);
+  assert.equal(doc.lines.length, 27);
+  const v = stock(db, base, 'VAR');
+  assert.deepEqual([v.variacoes.P['sem-cor'], v.variacoes.M['sem-cor'], v.variacoes.G['sem-cor']], [1, 1, 1]);
+});
+
 test('issuing a legacy draft above the limit fails with the specific code and no writes', async () => {
   const {db, base, lojaId} = seedStore(32);
   const id = await createDraft(db, lojaId, ids(25));

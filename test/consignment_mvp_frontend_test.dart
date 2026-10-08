@@ -65,6 +65,14 @@ void main() {
       );
     });
 
+    test('server failures never show raw protocol codes', () {
+      final e = ConsignmentException.fromCallable('internal', 'SERVER', {'consignmentCode': 'SERVER'});
+      for (final raw in ['SERVER', 'RESOURCE_EXHAUSTED', 'CONSIGNMENT_PRODUCT_LIMIT', 'internal']) {
+        expect(e.message.contains(raw), isFalse);
+      }
+      expect(e.message, contains('Falha no servidor'));
+    });
+
     test('create draft add simple, variation, remove, edit qty', () {
       final lines = <ConsignmentDraftLine>[
         ConsignmentDraftLine(
