@@ -22,6 +22,7 @@ void main() {
     test('VENDA-PERF-2 Sync/campanha são secundários (não bloqueiam política)', () {
       expect(isSecondaryPostPersistWork('sync_begin'), isTrue);
       expect(isSecondaryPostPersistWork('campaign'), isTrue);
+      expect(isSecondaryPostPersistWork('catalog_projection'), isTrue);
       expect(isSecondaryPostPersistWork('hive_ok'), isFalse);
     });
 

@@ -21,6 +21,7 @@ bool isSecondaryPostPersistWork(String stage) {
     case 'sync_warning':
     case 'campaign':
     case 'sale_intent_complete':
+    case 'catalog_projection':
       return true;
     default:
       return false;

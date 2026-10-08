@@ -15,6 +15,20 @@ import 'estoque_transaction_service.dart';
 class CatalogoWebAposEstoqueService {
   CatalogoWebAposEstoqueService._();
 
+  /// Somente testes. Roda antes de `saveEditorial` do mesmo produto.
+  @visibleForTesting
+  static Future<void> Function(String productId)? debugBeforeEditorial;
+
+  /// Somente testes. Roda antes de `catalogPublishOne` do mesmo produto.
+  @visibleForTesting
+  static Future<void> Function(String productId)? debugBeforePublish;
+
+  @visibleForTesting
+  static void debugClearHooks() {
+    debugBeforeEditorial = null;
+    debugBeforePublish = null;
+  }
+
   /// IDs canônicos a partir dos resultados da transação de estoque.
   static Set<String> _idsDeResultados(List<EstoqueTransactionResult> results) {
     return ComboKitStockService.produtoIdsDeResultadosBaixa(results);
@@ -81,6 +95,8 @@ class CatalogoWebAposEstoqueService {
           continue;
         }
 
+        final beforeEditorial = debugBeforeEditorial;
+        if (beforeEditorial != null) await beforeEditorial(pid);
         await CatalogoSyncService.syncProduto(
           p,
           target: SyncTarget.draft,
@@ -88,6 +104,8 @@ class CatalogoWebAposEstoqueService {
         );
 
         final docId = CatalogoSyncService.catalogFirestoreDocId(p);
+        final beforePublish = debugBeforePublish;
+        if (beforePublish != null) await beforePublish(pid);
         await CatalogPublishService.promoteOne(docId, lojaIdOverride: li);
       } catch (e, st) {
         logE(

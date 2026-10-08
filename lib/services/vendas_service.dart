@@ -2372,12 +2372,8 @@ class VendasService {
             ComboKitStockService.produtoIdsDeResultadosBaixa(txResults),
       );
 
-      await CatalogoWebAposEstoqueService.sincronizarAposResultadosTransacao(
-        lojaId: lojaEfetiva,
-        produtosBox: produtosBox,
-        resultadosPrincipais: txResults,
-        resultadosComboExtra: txResultsComboCap,
-      );
+      // Projeção editorial/publicação do catálogo não é autoridade da venda.
+      // Ela roda depois de onLocalPersistUiReady para não segurar a UI.
 
       // 3.1) Histórico de movimentação – registra saída por item (não bloqueia)
       for (final result in txResults) {
@@ -2888,6 +2884,24 @@ class VendasService {
           '[VENDAS-SERVICE] sale intent complete best-effort falhou: $e',
         );
       }
+    }
+
+    // Catálogo web é projeção. Falha aqui não desfaz estoque, venda nem journal.
+    try {
+      debugPrint('[M39-VENDA-PERF] stage=catalog_projection_after_ui');
+      await CatalogoWebAposEstoqueService.sincronizarAposResultadosTransacao(
+        lojaId: lojaEfetiva,
+        produtosBox: produtosBox,
+        resultadosPrincipais: txResults,
+        resultadosComboExtra: txResultsComboCap,
+      );
+    } catch (e, st) {
+      logE(
+        '[VENDAS-SERVICE] projeção de catálogo pós-UI falhou; venda mantida '
+        '(type=${e.runtimeType})',
+        error: e,
+        st: st,
+      );
     }
 
     // 9) histórico do cliente (não aborta venda se HiveList falhar no web)
