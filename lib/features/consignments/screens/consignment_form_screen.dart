@@ -120,6 +120,10 @@ class _ConsignmentFormScreenState extends State<ConsignmentFormScreen> {
     );
     if (line == null) return;
     if (!mounted) return;
+    if (consignmentExceedsProductLimit([..._lines.map((l) => l.productId), line.productId])) {
+      _toast(const ConsignmentException('CONSIGNMENT_PRODUCT_LIMIT', consignmentProductLimitMessage));
+      return;
+    }
     setState(() => ConsignmentDraftMutator.addOrMerge(_lines, line));
   }
 
@@ -131,6 +135,10 @@ class _ConsignmentFormScreenState extends State<ConsignmentFormScreen> {
     }
     if (_lines.isEmpty) {
       _toast(const ConsignmentException('INVALID_ARGUMENT', 'Adicione ao menos um produto.'));
+      return;
+    }
+    if (consignmentExceedsProductLimit(_lines.map((l) => l.productId))) {
+      _toast(const ConsignmentException('CONSIGNMENT_PRODUCT_LIMIT', consignmentProductLimitMessage));
       return;
     }
     final total = consignmentDraftTotalQty(_lines);
@@ -285,6 +293,11 @@ class _ConsignmentFormScreenState extends State<ConsignmentFormScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text('Itens: ${consignmentDraftTotalQty(_lines)}'),
+                        Text(
+                          'Produtos diferentes: '
+                          '${consignmentDistinctProductCount(_lines.map((l) => l.productId))}'
+                          '/$kConsignmentMaxProducts',
+                        ),
                         Text('Total potencial: ${consignmentMoney.format(potential.gross)}'),
                         Text('Comissão: ${consignmentMoney.format(potential.commission)}'),
                       ],

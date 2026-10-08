@@ -6,6 +6,7 @@ import '../consignment_errors.dart';
 import '../consignment_models.dart';
 import '../consignment_service.dart';
 import '../consignment_ui.dart';
+import '../consignment_validation.dart';
 import '../reports/consignment_report_actions.dart';
 import '../reports/screens/consignment_reports_hub_screen.dart';
 import 'consignment_add_items_screen.dart';
@@ -287,6 +288,13 @@ class _ConsignmentDetailsScreenState extends State<ConsignmentDetailsScreen> {
                         if (c.isDraft)
                           FilledButton(
                             onPressed: () async {
+                              if (consignmentExceedsProductLimit(
+                                  c.lines.map((l) => '${l['productId'] ?? ''}'))) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text(consignmentProductLimitMessage)),
+                                );
+                                return;
+                              }
                               final total = c.totalItemsSent;
                               final ok = await showDialog<bool>(
                                 context: context,

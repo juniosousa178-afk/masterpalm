@@ -6,6 +6,7 @@ import {
 import {
   CONSIGNMENT_SCHEMA_VERSION, STATUS, COMMISSION, CODES, consignmentError, requestFingerprint,
   keysOnly, money, lineAmounts, quantityPositive, quantityNonNegative, optionalString, parseCommand,
+  MAX_PRODUCTS_PER_CONSIGNMENT,
 } from './consignmentProtocol.js';
 import {
   classifyConsignmentProduct, parseVariationSelector, variationIdentity,
@@ -177,6 +178,16 @@ function uniqueLines(lines) {
   const ids = parsed.map(l => l.lineId);
   if (new Set(ids).size !== ids.length) throw consignmentError(CODES.INVALID_ARGUMENT, 'Duplicate consignment lines');
   return parsed;
+}
+
+function assertProductLimit(lines) {
+  const distinct = new Set(lines.map(l => l?.productId)).size;
+  if (distinct > MAX_PRODUCTS_PER_CONSIGNMENT) {
+    throw consignmentError(
+      CODES.CONSIGNMENT_PRODUCT_LIMIT,
+      `Consignment has ${distinct} distinct products; limit is ${MAX_PRODUCTS_PER_CONSIGNMENT}`,
+    );
+  }
 }
 
 async function snapshotLines(tx, base, lines) {
@@ -472,6 +483,7 @@ async function createDraft(tx, base, command, uid) {
   const resellerId = documentId(command.payload.resellerId, 'resellerId');
   const reseller = await readReseller(tx, base, resellerId, command.lojaId);
   const parsedLines = uniqueLines(command.payload.lines ?? []);
+  assertProductLimit(parsedLines);
   const {lines} = parsedLines.length ? await snapshotLines(tx, base, parsedLines) : {lines: []};
   const ref = consignmentRef(base, consignmentId);
   const existing = await tx.get(ref);
@@ -528,6 +540,7 @@ async function updateDraft(tx, base, command, uid) {
   if (command.payload.notes !== undefined) patch.notes = optionalString(command.payload.notes, 'notes');
   if (command.payload.lines !== undefined) {
     const parsedLines = uniqueLines(command.payload.lines);
+    assertProductLimit(parsedLines);
     const {lines} = parsedLines.length ? await snapshotLines(tx, base, parsedLines) : {lines: []};
     Object.assign(patch, {lines, ...draftTotals(lines)});
   }
@@ -564,6 +577,7 @@ async function issueConsignment(tx, base, command, uid) {
   if (data.status !== STATUS.DRAFT) throw consignmentError(CODES.FAILED_PRECONDITION, 'Only draft consignments can be issued');
   const lines = Array.isArray(data.lines) ? data.lines : [];
   if (!lines.length) throw consignmentError(CODES.INVALID_ARGUMENT, 'Cannot issue empty consignment');
+  assertProductLimit(lines);
   await readReseller(tx, base, data.resellerId, command.lojaId);
   const records = await loadConsignmentStockRecords(tx, base, lines.map(l => l.productId));
   const frozen = [];
@@ -715,6 +729,7 @@ async function addItemsToConsignment(tx, base, command, uid) {
   if (existingLines.length + parsed.length > MAX_LINES) {
     throw consignmentError(CODES.RESOURCE_EXHAUSTED, 'Too many consignment lines');
   }
+  assertProductLimit([...existingLines, ...parsed]);
   const {lines: snapshotted, records} = await snapshotLines(tx, base, parsed);
   const stockMetaByProduct = new Map();
   for (const [id, record] of records) {

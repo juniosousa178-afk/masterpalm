@@ -1,3 +1,5 @@
+import 'consignment_validation.dart';
+
 class ConsignmentProductIssue {
   const ConsignmentProductIssue({
     required this.productId,
@@ -126,6 +128,10 @@ class ConsignmentException implements Exception {
         return 'Vendido + devolvido deve ser igual ao enviado em todas as linhas.';
       case 'IDEMPOTENCY_CONFLICT':
         return 'Operação duplicada com dados diferentes. Recarregue e tente de novo.';
+      case 'CONSIGNMENT_PRODUCT_LIMIT':
+      case 'RESOURCE_EXHAUSTED':
+      case 'resource-exhausted':
+        return consignmentProductLimitMessage;
       case 'unauthenticated':
       case 'permission-denied':
       case 'AUTH':

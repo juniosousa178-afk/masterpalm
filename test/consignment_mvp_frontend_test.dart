@@ -40,6 +40,31 @@ void main() {
       );
     });
 
+    test('product limit counts distinct products, not lines or variations', () {
+      final ids = [for (var i = 0; i < 25; i++) 'p$i'];
+      expect(kConsignmentMaxProducts, 25);
+      expect(consignmentDistinctProductCount([...ids, 'p0', 'p1', '']), 25);
+      expect(consignmentExceedsProductLimit(ids), isFalse);
+      expect(consignmentExceedsProductLimit([...ids, 'p0']), isFalse);
+      expect(consignmentExceedsProductLimit([...ids, 'p25']), isTrue);
+    });
+
+    test('resource-exhausted maps to the Portuguese product limit message', () {
+      for (final code in ['CONSIGNMENT_PRODUCT_LIMIT', 'RESOURCE_EXHAUSTED']) {
+        final e = ConsignmentException.fromCallable(
+          'resource-exhausted',
+          code,
+          {'consignmentCode': code},
+        );
+        expect(e.message, consignmentProductLimitMessage);
+        expect(e.message.contains(code), isFalse);
+      }
+      expect(
+        ConsignmentException.fromCallable('resource-exhausted', 'x', null).message,
+        consignmentProductLimitMessage,
+      );
+    });
+
     test('create draft add simple, variation, remove, edit qty', () {
       final lines = <ConsignmentDraftLine>[
         ConsignmentDraftLine(

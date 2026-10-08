@@ -6,6 +6,8 @@ import {isMap} from './catalogStockProjection.js';
 export const CONSIGNMENT_PROTOCOL_VERSION = 1;
 export const CONSIGNMENT_SCHEMA_VERSION = 1;
 export const MAX_LINES = 50;
+// Issue and settlement touch every distinct product in one stock transaction (consignmentStock MAX_PRODUCTS).
+export const MAX_PRODUCTS_PER_CONSIGNMENT = 25;
 
 export const STATUS = Object.freeze({
   DRAFT: 'DRAFT',
@@ -31,6 +33,7 @@ export const CODES = Object.freeze({
   CONSIGNMENT_ALREADY_SETTLED: 'CONSIGNMENT_ALREADY_SETTLED',
   CONSIGNMENT_CANCELLED: 'CONSIGNMENT_CANCELLED',
   CONSIGNMENT_REVISION_CONFLICT: 'CONSIGNMENT_REVISION_CONFLICT',
+  CONSIGNMENT_PRODUCT_LIMIT: 'CONSIGNMENT_PRODUCT_LIMIT',
   INVALID_SETTLEMENT_TOTAL: 'INVALID_SETTLEMENT_TOTAL',
   IDEMPOTENCY_CONFLICT: 'IDEMPOTENCY_CONFLICT',
   AUTH: 'AUTH',
@@ -54,6 +57,7 @@ const HTTP_BY_CODE = Object.freeze({
   [CODES.CONSIGNMENT_ALREADY_SETTLED]: 'failed-precondition',
   [CODES.CONSIGNMENT_CANCELLED]: 'failed-precondition',
   [CODES.CONSIGNMENT_REVISION_CONFLICT]: 'aborted',
+  [CODES.CONSIGNMENT_PRODUCT_LIMIT]: 'resource-exhausted',
   [CODES.INVALID_SETTLEMENT_TOTAL]: 'failed-precondition',
   [CODES.IDEMPOTENCY_CONFLICT]: 'already-exists',
   [CODES.AUTH]: 'permission-denied',

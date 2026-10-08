@@ -36,7 +36,22 @@ class _ConsignmentAddItemsScreenState extends State<ConsignmentAddItemsScreen> {
     );
     if (line == null) return;
     if (!mounted) return;
+    if (consignmentExceedsProductLimit([..._productIdsAfterAdd(), line.productId])) {
+      _showLimit();
+      return;
+    }
     setState(() => ConsignmentDraftMutator.addOrMerge(_lines, line));
+  }
+
+  Iterable<String> _productIdsAfterAdd() => [
+        ...widget.doc.lines.map((l) => '${l['productId'] ?? ''}'),
+        ..._lines.map((l) => l.productId),
+      ];
+
+  void _showLimit() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text(consignmentProductLimitMessage)),
+    );
   }
 
   Future<void> _submit() async {
@@ -45,6 +60,10 @@ class _ConsignmentAddItemsScreenState extends State<ConsignmentAddItemsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Adicione ao menos um produto.')),
       );
+      return;
+    }
+    if (consignmentExceedsProductLimit(_productIdsAfterAdd())) {
+      _showLimit();
       return;
     }
     final total = consignmentDraftTotalQty(_lines);
