@@ -11,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:master_palm/core/delete_forensic_trace.dart';
 import 'package:master_palm/core/hive_box_names.dart';
+import 'package:master_palm/core/loja_ativa_resolver.dart';
 import 'package:master_palm/core/produto_untracked_stock_conflict.dart';
 import 'package:master_palm/core/venda_exclusao_tombstone.dart';
 import 'package:master_palm/models/cliente.dart';
@@ -23,6 +24,7 @@ import 'package:master_palm/services/catalogo_sync_service.dart';
 import 'package:master_palm/services/combo_kit_stock_service.dart';
 import 'package:master_palm/services/conta_receber_firestore_service.dart';
 import 'package:master_palm/services/conta_receber_service.dart';
+import 'package:master_palm/services/estoque_service.dart';
 import 'package:master_palm/services/estoque_transaction_service.dart';
 import 'package:master_palm/services/firestore_paths.dart';
 import 'package:master_palm/services/produto_exclusao_tombstone_service.dart';
@@ -883,6 +885,98 @@ void main() {
           .get();
       expect(lancamentos.docs, isEmpty);
       expect(await lixeiraCom(saleId), 1);
+    });
+  });
+
+  group('Edição de venda e devolução manual — sem crédito de combo', () {
+    setUp(() {
+      LojaAtivaResolver.debugResolveOverride =
+          ({String origem = 'app'}) async => _store;
+      EstoqueTransactionService.debugFirestoreOverride = fs;
+      EstoqueService.debugFirestoreOverride = fs;
+    });
+
+    tearDown(() {
+      LojaAtivaResolver.debugResolveOverride = null;
+      EstoqueService.debugFirestoreOverride = null;
+    });
+
+    test('editar venda devolvendo componente não credita combo remoto',
+        () async {
+      await seedSimples('comp-ed', qtd: 10);
+      await seedSimples('comp-ed-outro', qtd: 50);
+      await seedCombo('kit-ed', componentes: ['comp-ed'], qtdCanonica: 2, hiveQtd: 7);
+      await seedCombo('kit-ed-outro',
+          componentes: ['comp-ed-outro'], qtdCanonica: 1, hiveQtd: 9);
+      final venda = await seedVenda(
+        idFirebase: '0000000a-0000-4000-8000-0000000000ed',
+        total: 30,
+        itens: [
+          VendaItem(
+            produtoNome: 'comp-ed',
+            quantidade: 3,
+            precoUnitario: 10,
+            productId: 'comp-ed',
+            lojaId: _store,
+          ),
+        ],
+      );
+      venda.pagamentoDinheiro = 30;
+      await venda.save();
+
+      await VendasService.editarVendaMulti(
+        vendaOriginal: venda,
+        produtosBox: produtosBox,
+        clientesBox: clientesBox,
+        vendasBox: vendasBox,
+        clienteNome: venda.clienteNome,
+        itens: [
+          VendaItem(
+            produtoNome: 'comp-ed',
+            quantidade: 1,
+            precoUnitario: 10,
+            productId: 'comp-ed',
+            lojaId: _store,
+          ),
+        ],
+        dinheiro: 10,
+        lojaId: _store,
+      );
+
+      expect(await qtdCanonica('comp-ed'), 12);
+      expect(await qtdCanonica('kit-ed'), 2,
+          reason: 'piso legado creditaria o combo até K=12');
+      expect(hive('kit-ed')!.quantidade, 2);
+      expect(await qtdCanonica('kit-ed-outro'), 1);
+      expect(hive('kit-ed-outro')!.quantidade, 9);
+      expect(backend.restoreCalls, 0);
+    });
+
+    test('devolução manual de componente não credita combo remoto', () async {
+      await seedSimples('comp-man', qtd: 10);
+      await seedSimples('comp-man-outro', qtd: 50);
+      await seedCombo('kit-man', componentes: ['comp-man'], qtdCanonica: 2, hiveQtd: 7);
+      await seedCombo('kit-man-outro',
+          componentes: ['comp-man-outro'], qtdCanonica: 1, hiveQtd: 9);
+
+      final r = await EstoqueService.atualizarEstoque(
+        produtosBox: produtosBox,
+        lojaId: _store,
+        produtoId: 'comp-man',
+        tamanho: '',
+        cor: '',
+        quantidade: 2,
+        operacao: 'devolucao',
+      );
+
+      expect(r.sucesso, isTrue, reason: r.mensagem);
+      expect(await qtdCanonica('comp-man'), 12);
+      expect(await qtdCanonica('kit-man'), 2,
+          reason: 'piso legado creditaria o combo até K=12');
+      expect(hive('kit-man')!.quantidade, 2);
+      expect(await qtdCanonica('kit-man-outro'), 1);
+      expect(hive('kit-man-outro')!.quantidade, 9);
+      expect(backend.restoreCalls, 0);
     });
   });
 
