@@ -359,6 +359,63 @@ test('29b concurrent addItems after a stale read conflicts with return', async (
   assert.equal(stockQty(db, base, 'A'), 8);
 });
 
+// Firestore serializes conflicting transactions; each pair is exercised in both commit orders
+// with the losing client holding the view it read before the winner committed.
+test('race: return vs settlement, both orders', async () => {
+  const {db, base, lojaId} = seedStore();
+  const a = await issue(db, lojaId, [line('A', 2)]);
+  const viewA = consignment(db, base, a);
+  await returnItems(db, lojaId, a, [returnRow(viewA.lines[0], 1)], {base, expectedRevision: viewA.revision});
+  await denied(executeConsignmentCommand(db, cmd(lojaId, 'settle', `settle_${a}`, {
+    lines: settleRows(viewA, () => [2, 0]),
+  }, a), owner), CODES.INVALID_SETTLEMENT_TOTAL);
+  assert.equal(consignment(db, base, a).status, 'ISSUED');
+  assert.equal(stockQty(db, base, 'A'), 9);
+
+  const b = await issue(db, lojaId, [line('B', 2)]);
+  const viewB = consignment(db, base, b);
+  await executeConsignmentCommand(db, cmd(lojaId, 'settle', `settle_${b}`, {
+    lines: settleRows(viewB, () => [1, 1]),
+  }, b), owner);
+  await denied(returnItems(db, lojaId, b, [returnRow(viewB.lines[0], 1)], {base, expectedRevision: viewB.revision}),
+    CODES.CONSIGNMENT_ALREADY_SETTLED);
+  assert.equal(stockQty(db, base, 'B'), 9, 'only the settlement return applied');
+  assert.equal(consignment(db, base, b).withdrawals, undefined);
+});
+
+test('race: return vs addItems, both orders', async () => {
+  const {db, base, lojaId} = seedStore();
+  const id = await issue(db, lojaId, [line('A', 2)]);
+  const view = consignment(db, base, id);
+  await returnItems(db, lojaId, id, [returnRow(view.lines[0], 1)], {base, expectedRevision: view.revision});
+  await denied(executeConsignmentCommand(db, cmd(lojaId, 'addItems', `add_${id}`, {
+    expectedRevision: view.revision, lines: [line('B', 1)],
+  }, id), owner), CODES.CONSIGNMENT_REVISION_CONFLICT);
+  assert.equal(stockQty(db, base, 'B'), 10);
+  assert.equal(consignment(db, base, id).additions.length, 1);
+  assert.equal(consignment(db, base, id).withdrawals.length, 1);
+});
+
+test('race: return vs cancel, both orders', async () => {
+  const {db, base, lojaId} = seedStore();
+  const id = await issue(db, lojaId, [line('A', 2)]);
+  const view = consignment(db, base, id);
+  await returnItems(db, lojaId, id, [returnRow(view.lines[0], 1)], {base, expectedRevision: view.revision});
+  await denied(executeConsignmentCommand(db, cmd(lojaId, 'cancelDraft', `cancel_${id}`, {}, id), owner),
+    CODES.CONSIGNMENT_ALREADY_ISSUED);
+  assert.equal(consignment(db, base, id).status, 'ISSUED');
+
+  const draftId = `c_draft_race_${++seq}`;
+  await executeConsignmentCommand(db, cmd(lojaId, 'createDraft', `d_${draftId}`, {
+    resellerId: 'maria', notes: '', lines: [line('C', 1)],
+  }, draftId), owner);
+  const draftView = consignment(db, base, draftId);
+  await executeConsignmentCommand(db, cmd(lojaId, 'cancelDraft', `cancel_${draftId}`, {}, draftId), owner);
+  await denied(returnItems(db, lojaId, draftId, [returnRow(draftView.lines[0], 1)], {base, expectedRevision: draftView.revision}),
+    CODES.CONSIGNMENT_CANCELLED);
+  assert.equal(stockQty(db, base, 'C'), 10);
+});
+
 test('30 cross-tenant denied', async () => {
   const {db, lojaId} = seedStore();
   const foreignId = `foreign_${++seq}`;
@@ -434,4 +491,24 @@ test('31 capacity: RETURN_WRITES_1 / 10 / 50 within transaction budget', async (
   assert.ok(fifty <= MAX_TRANSACTION_WRITE_UNITS);
   assert.ok(60 * WRITE_UNITS_PER_STOCK_RECORD + fixed <= MAX_TRANSACTION_WRITE_UNITS, 'combo fan-out cap still fits');
   console.log(`RETURN_WRITES_1=${one} RETURN_WRITES_10=${ten} RETURN_WRITES_50=${fifty}`);
+});
+
+test('31b capacity: worst combo fan-out (60 stock records) measured within budget', async () => {
+  const {db, base, lojaId} = seedStore({ids: []});
+  const combos = Array.from({length: 59}, (_, i) => `K${i}`);
+  seedProduct(db, base, 'P', {quantidade: 10, stockKind: 'simple', comboIds: combos});
+  for (const k of combos) {
+    seedProduct(db, base, k, {
+      quantidade: 10, stockKind: 'combo', tipoProduto: 'combo', itensCombo: [{productId: 'P', quantidade: 1}],
+    });
+  }
+  const id = await issue(db, lojaId, [line('P', 2)]);
+  const doc = consignment(db, base, id);
+  await returnItems(db, lojaId, id, [returnRow(doc.lines[0], 1)], {base});
+  const units = db.lastCommit.writes + db.lastCommit.transforms;
+  assert.equal(units, 60 * WRITE_UNITS_PER_STOCK_RECORD + FIXED_WRITE_UNITS.returnItems);
+  assert.ok(units <= MAX_TRANSACTION_WRITE_UNITS);
+  assert.equal(stockQty(db, base, 'P'), 9);
+  assert.equal(stockQty(db, base, 'K0'), 9);
+  console.log(`RETURN_WRITES_WORST_COMBO_FANOUT=${units}`);
 });
