@@ -89,6 +89,51 @@ class ConsignmentDraftLine {
       };
 }
 
+int _lineInt(Map<String, dynamic> line, String key) {
+  final v = line[key];
+  if (v is num) return v.toInt();
+  return int.tryParse('${v ?? ''}') ?? 0;
+}
+
+/// Pieces taken back by the store before settlement (append-only server field).
+int consignmentLineWithdrawn(Map<String, dynamic> line) {
+  final w = _lineInt(line, 'qtyWithdrawn');
+  return w < 0 ? 0 : w;
+}
+
+/// Pieces of the line still in the settlement universe (sent minus withdrawn).
+int consignmentLineOutstanding(Map<String, dynamic> line) {
+  final o = _lineInt(line, 'qtySent') - consignmentLineWithdrawn(line);
+  return o < 0 ? 0 : o;
+}
+
+double consignmentLineUnitPrice(Map<String, dynamic> line) {
+  final v = line['unitSalePriceSnapshot'];
+  if (v is num) return v.toDouble();
+  return double.tryParse('${v ?? ''}') ?? 0;
+}
+
+class ConsignmentReturnLine {
+  const ConsignmentReturnLine({
+    required this.lineId,
+    required this.productId,
+    required this.variationKey,
+    required this.qty,
+  });
+
+  final String lineId;
+  final String productId;
+  final ConsignmentVariationKey variationKey;
+  final int qty;
+
+  Map<String, dynamic> toPayload() => {
+        'lineId': lineId,
+        'productId': productId,
+        'variationKey': variationKey.toMap(),
+        'qty': qty,
+      };
+}
+
 class ConsignmentDoc {
   const ConsignmentDoc({
     required this.id,
@@ -110,6 +155,7 @@ class ConsignmentDoc {
     this.createdAt,
     this.revision = 1,
     this.additions = const [],
+    this.withdrawals = const [],
     this.isDeleted = false,
   });
 
@@ -120,6 +166,8 @@ class ConsignmentDoc {
   final String status;
   final List<Map<String, dynamic>> lines;
   final List<Map<String, dynamic>> additions;
+  /// Append-only "retiradas antes do acerto" movements.
+  final List<Map<String, dynamic>> withdrawals;
   final int totalItemsSent;
   final int totalItemsSold;
   final int totalItemsReturned;
@@ -141,6 +189,30 @@ class ConsignmentDoc {
   bool get isCancelled => status == 'CANCELLED';
   bool get canAddItems => isDraft || isIssued;
   bool get canDelete => isCancelled && !isDeleted;
+  bool get canReturnItems => isIssued && !isDeleted && totalItemsOutstanding > 0;
+  bool get hasWithdrawals => withdrawals.isNotEmpty || totalItemsWithdrawn > 0;
+
+  int get totalItemsWithdrawn =>
+      lines.fold(0, (s, l) => s + consignmentLineWithdrawn(l));
+
+  int get totalItemsOutstanding =>
+      lines.fold(0, (s, l) => s + consignmentLineOutstanding(l));
+
+  double get outstandingGrossAmount {
+    final cents = lines.fold<int>(
+      0,
+      (s, l) => s + (consignmentLineOutstanding(l) * consignmentLineUnitPrice(l) * 100).round(),
+    );
+    return cents / 100;
+  }
+
+  double get withdrawnGrossAmount {
+    final cents = lines.fold<int>(
+      0,
+      (s, l) => s + (consignmentLineWithdrawn(l) * consignmentLineUnitPrice(l) * 100).round(),
+    );
+    return cents / 100;
+  }
 
   /// Consolidated qty by productId + variation identity (ignores addition lot suffix).
   List<Map<String, dynamic>> get consolidatedLines {
@@ -151,10 +223,14 @@ class ConsignmentDoc {
       final key = '$productId::${vk.size}\u001e${vk.color}\u001e${vk.extra}';
       final existing = map[key];
       final qty = (line['qtySent'] is num) ? (line['qtySent'] as num).toInt() : 0;
+      final withdrawn = consignmentLineWithdrawn(line);
       if (existing == null) {
-        map[key] = Map<String, dynamic>.from(line)..['qtySent'] = qty;
+        map[key] = Map<String, dynamic>.from(line)
+          ..['qtySent'] = qty
+          ..['qtyWithdrawn'] = withdrawn;
       } else {
         existing['qtySent'] = ((existing['qtySent'] as num?)?.toInt() ?? 0) + qty;
+        existing['qtyWithdrawn'] = consignmentLineWithdrawn(existing) + withdrawn;
       }
     }
     return map.values.toList();
@@ -191,6 +267,12 @@ class ConsignmentDoc {
           : const [],
       additions: (data['additions'] is List)
           ? (data['additions'] as List)
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList()
+          : const [],
+      withdrawals: (data['withdrawals'] is List)
+          ? (data['withdrawals'] as List)
               .whereType<Map>()
               .map((e) => Map<String, dynamic>.from(e))
               .toList()

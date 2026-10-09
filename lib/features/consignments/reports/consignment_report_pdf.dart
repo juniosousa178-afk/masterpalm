@@ -247,6 +247,54 @@ class ConsignmentReportPdfBuilder {
               ],
             ),
           ),
+          ..._withdrawalsSection(doc),
+    ];
+  }
+
+  /// Only rendered when the store took pieces back before settlement; original lines stay above.
+  static List<pw.Widget> _withdrawalsSection(ConsignmentDoc doc) {
+    final rows = ConsignmentReportAggregator.withdrawalsOf(doc);
+    if (rows.isEmpty) return const [];
+    final pieces = rows.fold<int>(0, (s, r) => s + r.qty);
+    final total = rows.fold<double>(0, (s, r) => s + r.total);
+    return [
+      pw.SizedBox(height: 14),
+      pw.Text('RETIRADAS ANTES DO ACERTO',
+          style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
+      pw.SizedBox(height: 6),
+      pw.TableHelper.fromTextArray(
+        headers: ['Data', 'Código', 'Produto', 'Variação', 'Qtd', 'Unit.', 'Total'],
+        headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
+        cellStyle: const pw.TextStyle(fontSize: 8),
+        headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
+        cellAlignments: {
+          4: pw.Alignment.center,
+          5: pw.Alignment.centerRight,
+          6: pw.Alignment.centerRight,
+        },
+        data: [
+          for (final r in rows)
+            [
+              r.date == null ? '-' : _date.format(r.date!.toLocal()),
+              r.productCode.isEmpty ? '-' : r.productCode,
+              r.productName,
+              r.variationLabel.isEmpty ? '-' : r.variationLabel,
+              '${r.qty}',
+              _money.format(r.unitPrice),
+              _money.format(r.total),
+            ],
+        ],
+      ),
+      pw.SizedBox(height: 6),
+      pw.Text('TOTAL RETIRADO: $pieces ${pieces == 1 ? 'peça' : 'peças'} · ${_money.format(total)}',
+          style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10)),
+      if (doc.isIssued)
+        pw.Text(
+          'COM A REVENDEDORA: ${doc.totalItemsOutstanding} peças · ${_money.format(doc.outstandingGrossAmount)}',
+          style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10),
+        ),
+      pw.Text('Peças retiradas voltaram ao estoque da loja e não entram no acerto da revendedora.',
+          style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
     ];
   }
 
@@ -435,6 +483,7 @@ class ConsignmentReportPdfBuilder {
                 ],
             ],
           ),
+          ..._withdrawalsSection(doc),
           pw.SizedBox(height: 12),
           _settlementSummary(doc, pending),
           _signatures(
@@ -460,6 +509,8 @@ class ConsignmentReportPdfBuilder {
                 pw.Text('RESUMO DO ACERTO', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11)),
                 pw.SizedBox(height: 4),
                 pw.Text('Peças enviadas: ${doc.totalItemsSent}'),
+                if (doc.totalItemsWithdrawn > 0)
+                  pw.Text('Peças retiradas antes do acerto: ${doc.totalItemsWithdrawn}'),
                 pw.Text('Peças vendidas: ${doc.totalItemsSold}'),
                 pw.Text('Peças devolvidas: ${doc.totalItemsReturned}'),
                 pw.Text('Peças pendentes: $pending'),

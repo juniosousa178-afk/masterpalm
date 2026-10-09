@@ -198,7 +198,10 @@ class _ConsignmentListScreenState extends State<ConsignmentListScreen> {
                                     : null,
                                 title: Text(c.resellerName),
                                 subtitle: Text(
-                                  '${c.totalItemsSent} pç · ${consignmentMoney.format(c.potentialGrossAmount)}',
+                                  c.isIssued && c.hasWithdrawals
+                                      ? '${c.totalItemsOutstanding} pç com a revendedora · '
+                                          '${consignmentMoney.format(c.outstandingGrossAmount)}'
+                                      : '${c.totalItemsSent} pç · ${consignmentMoney.format(c.potentialGrossAmount)}',
                                 ),
                                 trailing: ConsignmentStatusChip(c.status),
                                 onTap: _selecting

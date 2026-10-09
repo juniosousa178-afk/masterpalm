@@ -6,7 +6,7 @@ import {
 import {
   CONSIGNMENT_SCHEMA_VERSION, STATUS, COMMISSION, CODES, consignmentError, requestFingerprint,
   keysOnly, money, lineAmounts, quantityPositive, quantityNonNegative, optionalString, parseCommand,
-  MAX_DISTINCT_PRODUCTS_PER_CONSIGNMENT, MAX_TRANSACTION_WRITE_UNITS, MAX_LINES,
+  MAX_DISTINCT_PRODUCTS_PER_CONSIGNMENT, MAX_TRANSACTION_WRITE_UNITS, MAX_LINES, RETURN_REASON,
 } from './consignmentProtocol.js';
 import {
   classifyConsignmentProduct, parseVariationSelector, variationIdentity,
@@ -189,8 +189,8 @@ function assertProductLimit(lines) {
 }
 
 // Non-stock write units per operation (document write + serverTimestamp transform each):
-// issue/addItems = consignment + audit + operation; settle adds sale and finance (3 timestamps each).
-export const FIXED_WRITE_UNITS = Object.freeze({issue: 6, addItems: 6, settle: 14});
+// issue/addItems/returnItems = consignment + audit + operation; settle adds sale and finance (3 timestamps each).
+export const FIXED_WRITE_UNITS = Object.freeze({issue: 6, addItems: 6, returnItems: 6, settle: 14});
 
 function assertWriteBudget(persisted, operation) {
   if ((persisted.units ?? 0) + FIXED_WRITE_UNITS[operation] > MAX_TRANSACTION_WRITE_UNITS) {
@@ -394,6 +394,7 @@ export async function executeConsignmentInTransaction(tx, db, raw, auth) {
     case 'settle': result = await settleConsignment(tx, base, command, uid); break;
     case 'addItems': result = await addItemsToConsignment(tx, base, command, uid); break;
     case 'deleteCancelled': result = await deleteCancelledConsignment(tx, base, command, uid); break;
+    case 'returnItems': result = await returnItemsBeforeSettlement(tx, base, command, uid); break;
     default: throw consignmentError(CODES.INVALID_ARGUMENT, 'Unsupported consignment operation');
   }
   tx.create(opRef(base, command.operationId), {
@@ -482,6 +483,45 @@ function draftTotals(lines) {
     potentialGrossAmount: lines.reduce((sum, l) => sum + l.potentialGrossAmount, 0),
     potentialCommissionAmount: lines.reduce((sum, l) => sum + l.potentialCommissionAmount, 0),
     potentialNetAmount: lines.reduce((sum, l) => sum + l.potentialNetAmount, 0),
+  };
+}
+
+function lineWithdrawn(line) {
+  const n = line?.qtyWithdrawn;
+  return Number.isSafeInteger(n) && n > 0 ? n : 0;
+}
+
+/** Pieces of the line that were not withdrawn before settlement (the settlement universe). */
+function lineOutstanding(line) {
+  return Math.max(0, quantityNonNegative(line?.qtySent ?? 0) - lineWithdrawn(line));
+}
+
+function hasWithdrawals(data) {
+  return Array.isArray(data?.withdrawals) && data.withdrawals.length > 0;
+}
+
+// Original totals (totalItemsSent, potential*) stay untouched; these track withdrawn vs outstanding.
+function withdrawalTotals(lines) {
+  let withdrawn = 0, outstanding = 0, withdrawnGross = 0, outGross = 0, outCommission = 0, outNet = 0;
+  for (const l of lines) {
+    const w = lineWithdrawn(l);
+    const o = lineOutstanding(l);
+    const wa = lineAmounts(w, l.unitSalePriceSnapshot, l.commissionType, l.commissionValueSnapshot);
+    const oa = lineAmounts(o, l.unitSalePriceSnapshot, l.commissionType, l.commissionValueSnapshot);
+    withdrawn += w;
+    outstanding += o;
+    withdrawnGross += Math.round(wa.lineGrossAmount * 100);
+    outGross += Math.round(oa.lineGrossAmount * 100);
+    outCommission += Math.round(oa.lineCommissionAmount * 100);
+    outNet += Math.round(oa.lineNetAmount * 100);
+  }
+  return {
+    totalItemsWithdrawn: withdrawn,
+    withdrawnGrossAmount: fromCentsSafe(withdrawnGross),
+    totalItemsOutstanding: outstanding,
+    outstandingGrossAmount: fromCentsSafe(outGross),
+    outstandingCommissionAmount: fromCentsSafe(outCommission),
+    outstandingNetAmount: fromCentsSafe(outNet),
   };
 }
 
@@ -840,6 +880,7 @@ async function addItemsToConsignment(tx, base, command, uid) {
     grossSoldAmount: data.grossSoldAmount || 0,
     commissionAmount: data.commissionAmount || 0,
     netAmount: data.netAmount || 0,
+    ...(hasWithdrawals(data) ? withdrawalTotals(mergedLines) : {}),
     revision: newRevision,
     lastAdditionId: additionId,
     updatedAt: FieldValue.serverTimestamp(),
@@ -873,6 +914,158 @@ async function addItemsToConsignment(tx, base, command, uid) {
   };
 }
 
+function parseReturnRows(rows) {
+  if (!Array.isArray(rows) || !rows.length || rows.length > MAX_LINES) {
+    throw consignmentError(CODES.INVALID_ARGUMENT, 'lines required');
+  }
+  const seen = new Set();
+  return rows.map(raw => {
+    keysOnly(raw, ['lineId', 'productId', 'variationKey', 'qty']);
+    if (typeof raw.lineId !== 'string' || !raw.lineId || raw.lineId.length > 1500) {
+      throw consignmentError(CODES.INVALID_ARGUMENT, 'lineId required');
+    }
+    if (seen.has(raw.lineId)) throw consignmentError(CODES.INVALID_ARGUMENT, 'Duplicate return line');
+    seen.add(raw.lineId);
+    return {
+      lineId: raw.lineId,
+      productId: documentId(raw.productId, 'productId'),
+      variationKey: parseVariationSelector(raw.variationKey),
+      qty: quantityPositive(raw.qty),
+    };
+  });
+}
+
+/**
+ * Merchant takes pieces back from an ISSUED consignment before settlement.
+ * Append-only: qtySent and issue/addition history are never rewritten; no sale or finance is created.
+ */
+async function returnItemsBeforeSettlement(tx, base, command, uid) {
+  keysOnly(command.payload, ['lines', 'expectedRevision', 'reason']);
+  if (command.payload.reason !== undefined && command.payload.reason !== RETURN_REASON) {
+    throw consignmentError(CODES.INVALID_ARGUMENT, 'Unsupported return reason');
+  }
+  const {ref, data} = await loadDraft(tx, base, command);
+  if (data.isDeleted === true) throw consignmentError(CODES.FAILED_PRECONDITION, 'Consignment was deleted');
+  if (data.status === STATUS.SETTLED) {
+    throw consignmentError(CODES.CONSIGNMENT_ALREADY_SETTLED, 'Esta consignação já foi acertada.');
+  }
+  if (data.status === STATUS.CANCELLED) {
+    throw consignmentError(CODES.CONSIGNMENT_CANCELLED, 'Esta consignação está cancelada.');
+  }
+  if (data.status !== STATUS.ISSUED) {
+    throw consignmentError(CODES.FAILED_PRECONDITION, 'Only issued consignments can return items before settlement');
+  }
+  if (command.payload.expectedRevision === undefined || command.payload.expectedRevision === null) {
+    throw consignmentError(CODES.INVALID_ARGUMENT, 'expectedRevision required');
+  }
+  const expectedRevision = quantityNonNegative(command.payload.expectedRevision);
+  const currentRevision = quantityNonNegative(data.revision ?? 1);
+  if (expectedRevision !== currentRevision) {
+    throw consignmentError(CODES.CONSIGNMENT_REVISION_CONFLICT, 'Consignment was updated; refresh and try again');
+  }
+  const rows = parseReturnRows(command.payload.lines);
+  const lines = (Array.isArray(data.lines) ? data.lines : []).map(l => ({...l}));
+  const byId = new Map(lines.map(l => [l.lineId, l]));
+  const plan = [];
+  for (const row of rows) {
+    const line = byId.get(row.lineId);
+    if (!line) throw consignmentError(CODES.INVALID_ARGUMENT, 'Unknown consignment line');
+    if (line.productId !== row.productId) {
+      throw consignmentError(CODES.INVALID_ARGUMENT, 'Return product does not match consignment line');
+    }
+    if (variationIdentity(line.variationKey) !== variationIdentity(row.variationKey)) {
+      throw consignmentError(CODES.INVALID_ARGUMENT, 'Return variation does not match consignment line');
+    }
+    const before = lineOutstanding(line);
+    if (row.qty > before) {
+      throw consignmentError(CODES.RETURN_EXCEEDS_OUTSTANDING, 'Return quantity exceeds pieces still with the reseller');
+    }
+    plan.push({line, qty: row.qty, before});
+  }
+
+  const records = await loadConsignmentStockRecords(tx, base, plan.map(p => p.line.productId));
+  const revisionBefore = new Map();
+  for (const [id, record] of records) revisionBefore.set(id, quantity(record.data.stockRevision ?? 0));
+  for (const p of plan) {
+    const record = records.get(p.line.productId);
+    const classified = classifyConsignmentProduct(record.data);
+    if (classified.kind !== p.line.productType) {
+      throw consignmentError(CODES.PRODUCT_STATE_UNSAFE, 'Product type changed after issue');
+    }
+    record.data = applyExactConsignmentDelta(
+      record.data, p.line.productType, parseVariationSelector(p.line.variationKey), p.qty,
+    );
+  }
+  const persisted = persistConsignmentStock(tx, base, records, command.operationId, 1);
+  assertWriteBudget(persisted, 'returnItems');
+  for (const write of persisted.writes) write();
+
+  for (const p of plan) p.line.qtyWithdrawn = lineWithdrawn(p.line) + p.qty;
+  const withdrawalId = command.operationId;
+  const withdrawal = {
+    withdrawalId,
+    kind: 'WITHDRAWAL',
+    reason: RETURN_REASON,
+    // Firestore rejects transform sentinels inside array elements.
+    createdAt: Timestamp.now(),
+    createdBy: uid,
+    lines: plan.map(p => ({
+      lineId: p.line.lineId,
+      productId: p.line.productId,
+      productCodeSnapshot: p.line.productCodeSnapshot || '',
+      productNameSnapshot: p.line.productNameSnapshot || p.line.productId,
+      productType: p.line.productType,
+      variationKey: parseVariationSelector(p.line.variationKey),
+      variationSnapshot: p.line.variationSnapshot ?? null,
+      qtyWithdrawn: p.qty,
+      qtyOutstandingBefore: p.before,
+      qtyOutstandingAfter: p.before - p.qty,
+      unitSalePriceSnapshot: p.line.unitSalePriceSnapshot,
+      commissionType: p.line.commissionType,
+      commissionValueSnapshot: p.line.commissionValueSnapshot,
+      stockRevisionBefore: revisionBefore.get(p.line.productId) ?? null,
+      stockRevisionAfter: quantity(records.get(p.line.productId).data.stockRevision ?? 0),
+    })),
+  };
+  const totals = withdrawalTotals(lines);
+  const newRevision = currentRevision + 1;
+  tx.update(ref, {
+    lines,
+    withdrawals: [...(Array.isArray(data.withdrawals) ? data.withdrawals : []), withdrawal],
+    ...totals,
+    revision: newRevision,
+    lastWithdrawalId: withdrawalId,
+    updatedAt: FieldValue.serverTimestamp(),
+    updatedBy: uid,
+  });
+  tx.create(base.collection('consignment_audit').doc(command.operationId), {
+    type: 'CONSIGNMENT_RETURN_BEFORE_SETTLEMENT',
+    storeId: command.lojaId,
+    consignmentId: command.consignmentId,
+    operationId: command.operationId,
+    withdrawalId,
+    reason: RETURN_REASON,
+    actorUid: uid,
+    timestamp: FieldValue.serverTimestamp(),
+    affectedProducts: persisted.affected,
+    returnedItems: plan.reduce((sum, p) => sum + p.qty, 0),
+    saleId: null,
+    financeId: null,
+  });
+  return {
+    consignmentId: command.consignmentId,
+    status: STATUS.ISSUED,
+    revision: newRevision,
+    withdrawalId,
+    withdrawnLines: plan.map(p => ({lineId: p.line.lineId, qtyWithdrawn: p.qty, qtyOutstandingAfter: p.before - p.qty})),
+    updatedTotals: totals,
+    products: persisted.products,
+    affected: persisted.affected,
+    saleCreated: false,
+    financeCreated: false,
+  };
+}
+
 async function settleConsignment(tx, base, command, uid) {
   keysOnly(command.payload, ['lines']);
   const {ref, data} = await loadDraft(tx, base, command);
@@ -901,8 +1094,9 @@ async function settleConsignment(tx, base, command, uid) {
     byKey.delete(key);
     const qtySold = quantityNonNegative(row.qtySold);
     const qtyReturned = quantityNonNegative(row.qtyReturned);
-    if (qtySold + qtyReturned !== issued.qtySent) {
-      throw consignmentError(CODES.INVALID_SETTLEMENT_TOTAL, 'qtySold + qtyReturned must equal qtySent');
+    // Withdrawn pieces already went back to stock; they are neither sold nor returned here.
+    if (qtySold + qtyReturned !== lineOutstanding(issued)) {
+      throw consignmentError(CODES.INVALID_SETTLEMENT_TOTAL, 'qtySold + qtyReturned must equal qtySent minus qtyWithdrawn');
     }
     const amounts = lineAmounts(qtySold, issued.unitSalePriceSnapshot, issued.commissionType, issued.commissionValueSnapshot);
     settledLines.push({

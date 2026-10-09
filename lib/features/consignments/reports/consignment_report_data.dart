@@ -100,6 +100,7 @@ class ConsignmentReportLineView {
     required this.commissionType,
     required this.commissionValue,
     this.imageUrl = '',
+    this.qtyWithdrawn = 0,
   });
 
   final String productId;
@@ -117,9 +118,11 @@ class ConsignmentReportLineView {
   final String commissionType;
   final double commissionValue;
   final String imageUrl;
+  /// Taken back by the store before settlement; never counted as sold, returned or pending.
+  final int qtyWithdrawn;
 
   int get qtyPending {
-    final p = qtySent - qtySold - qtyReturned;
+    final p = qtySent - qtyWithdrawn - qtySold - qtyReturned;
     return p < 0 ? 0 : p;
   }
 
@@ -127,6 +130,38 @@ class ConsignmentReportLineView {
 }
 
 double _money(num v) => (v * 100).round() / 100;
+
+class ConsignmentWithdrawalRow {
+  const ConsignmentWithdrawalRow({
+    required this.date,
+    required this.productName,
+    required this.productCode,
+    required this.variationLabel,
+    required this.qty,
+    required this.unitPrice,
+    required this.total,
+  });
+
+  final DateTime? date;
+  final String productName;
+  final String productCode;
+  final String variationLabel;
+  final int qty;
+  final double unitPrice;
+  final double total;
+}
+
+DateTime? consignmentReportTimestamp(dynamic v) {
+  if (v == null) return null;
+  if (v is DateTime) return v;
+  try {
+    final seconds = v.seconds;
+    if (seconds is int) {
+      return DateTime.fromMillisecondsSinceEpoch(seconds * 1000, isUtc: true);
+    }
+  } catch (_) {}
+  return DateTime.tryParse(v.toString());
+}
 
 String consignmentReportVariationLabel(Map<String, dynamic> line) {
   final vk = ConsignmentVariationKey.fromMap(line['variationKey']);
@@ -233,9 +268,35 @@ class ConsignmentReportAggregator {
             commissionType: type,
             commissionValue: cval,
             imageUrl: m.imageUrl,
+            qtyWithdrawn: consignmentLineWithdrawn(line),
           );
         }()
     ];
+  }
+
+  /// Rows of the append-only "retiradas antes do acerto" history, oldest first.
+  static List<ConsignmentWithdrawalRow> withdrawalsOf(ConsignmentDoc doc) {
+    final rows = <ConsignmentWithdrawalRow>[];
+    for (final w in doc.withdrawals) {
+      final when = consignmentReportTimestamp(w['createdAt']);
+      final rawLines = w['lines'] is List ? (w['lines'] as List).whereType<Map>() : const <Map>[];
+      for (final raw in rawLines) {
+        final l = Map<String, dynamic>.from(raw);
+        final qty = (l['qtyWithdrawn'] is num) ? (l['qtyWithdrawn'] as num).toInt() : 0;
+        if (qty <= 0) continue;
+        final unit = consignmentLineUnitPrice(l);
+        rows.add(ConsignmentWithdrawalRow(
+          date: when,
+          productName: (l['productNameSnapshot'] ?? l['productId'] ?? '').toString(),
+          productCode: (l['productCodeSnapshot'] ?? '').toString(),
+          variationLabel: consignmentReportVariationLabel(l),
+          qty: qty,
+          unitPrice: unit,
+          total: _money(qty * unit),
+        ));
+      }
+    }
+    return rows;
   }
 
   /// Lines for a single addition batch receipt (uses qtyAdded when present).
@@ -285,7 +346,7 @@ class ConsignmentReportAggregator {
 
   static Map<String, dynamic> resellerRollup(List<ConsignmentDoc> docs) {
     var consignments = 0;
-    var sent = 0, sold = 0, returned = 0;
+    var sent = 0, sold = 0, returned = 0, withdrawn = 0;
     var consigned = 0.0, gross = 0.0, commission = 0.0, net = 0.0;
     DateTime? lastSettle;
     var hasIssued = false;
@@ -296,6 +357,7 @@ class ConsignmentReportAggregator {
       sent += d.totalItemsSent;
       sold += d.totalItemsSold;
       returned += d.totalItemsReturned;
+      withdrawn += d.totalItemsWithdrawn;
       consigned += d.potentialGrossAmount;
       gross += d.grossSoldAmount;
       commission += d.commissionAmount;
@@ -309,7 +371,7 @@ class ConsignmentReportAggregator {
         }
       }
     }
-    final pending = sent - sold - returned;
+    final pending = sent - withdrawn - sold - returned;
     String status;
     if (hasIssued && hasSettled) {
       status = 'Misto';

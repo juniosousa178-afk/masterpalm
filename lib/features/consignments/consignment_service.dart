@@ -30,10 +30,12 @@ class ConsignmentService {
   static bool _issueInFlight = false;
   static bool _settleInFlight = false;
   static bool _addItemsInFlight = false;
+  static bool _returnItemsInFlight = false;
 
   static bool get issueInFlight => _issueInFlight;
   static bool get settleInFlight => _settleInFlight;
   static bool get addItemsInFlight => _addItemsInFlight;
+  static bool get returnItemsInFlight => _returnItemsInFlight;
 
   static FirebaseFirestore get _db =>
       debugFirestore ?? FirebaseFirestore.instance;
@@ -255,6 +257,45 @@ class ConsignmentService {
       );
     } finally {
       _addItemsInFlight = false;
+    }
+  }
+
+  static String newReturnOperationId(String consignmentId) =>
+      'consignment_return_${consignmentId}_${newId()}';
+
+  /// Store takes pieces back before settlement. Reuse [operationId] on retry so the
+  /// server replays instead of applying twice.
+  static Future<Map<String, dynamic>> returnItems({
+    required String lojaId,
+    required String consignmentId,
+    required int expectedRevision,
+    required List<ConsignmentReturnLine> lines,
+    required String operationId,
+  }) async {
+    if (_returnItemsInFlight) {
+      throw const ConsignmentException(
+          'IN_FLIGHT', 'Aguarde a confirmação da retirada.');
+    }
+    if (lines.isEmpty || lines.any((l) => l.qty <= 0)) {
+      throw const ConsignmentException(
+          'INVALID_ARGUMENT', 'Informe a quantidade a retirar.');
+    }
+    _returnItemsInFlight = true;
+    try {
+      return await command(
+        lojaId: lojaId,
+        operation: 'returnItems',
+        operationId: operationId.trim(),
+        consignmentId: consignmentId,
+        payload: {
+          'expectedRevision': expectedRevision,
+          'reason': 'MERCHANT_RETRIEVAL_BEFORE_SETTLEMENT',
+          'lines': lines.map((e) => e.toPayload()).toList(),
+        },
+        requireOnline: true,
+      );
+    } finally {
+      _returnItemsInFlight = false;
     }
   }
 

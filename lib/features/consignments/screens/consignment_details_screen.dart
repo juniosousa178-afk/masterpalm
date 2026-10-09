@@ -10,6 +10,7 @@ import '../consignment_validation.dart';
 import '../reports/consignment_report_actions.dart';
 import '../reports/screens/consignment_reports_hub_screen.dart';
 import 'consignment_add_items_screen.dart';
+import 'consignment_return_items_screen.dart';
 import 'consignment_settle_screen.dart';
 
 const consignmentDeleteConfirmMessage =
@@ -107,6 +108,54 @@ class _ConsignmentDetailsScreenState extends State<ConsignmentDetailsScreen> {
       ),
     );
     if (ok == true) await _load();
+  }
+
+  Future<void> _openReturnItems(ConsignmentDoc c) async {
+    final ok = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ConsignmentReturnItemsScreen(lojaId: widget.lojaId, doc: c),
+      ),
+    );
+    if (ok == true) await _load();
+  }
+
+  Future<void> _openEditMenu(ConsignmentDoc c) async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              key: const Key('consignment_edit_add'),
+              leading: const Icon(Icons.add),
+              title: const Text('Adicionar peças'),
+              onTap: () => Navigator.pop(ctx, 'add'),
+            ),
+            ListTile(
+              key: const Key('consignment_edit_return'),
+              leading: const Icon(Icons.assignment_return_outlined),
+              title: const Text('Retirar peças'),
+              subtitle: const Text('Devolve ao estoque antes do acerto'),
+              enabled: c.canReturnItems,
+              onTap: () => Navigator.pop(ctx, 'return'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted) return;
+    if (choice == 'add') await _openAddItems(c);
+    if (choice == 'return') await _openReturnItems(c);
+  }
+
+  String _withdrawalLineLabel(Map l) {
+    final name = '${l['productNameSnapshot'] ?? l['productId']}';
+    final vk = ConsignmentVariationKey.fromMap(l['variationKey']);
+    final variation = vk.isEmpty ? '' : ' · ${vk.size}/${vk.color}';
+    final qty = (l['qtyWithdrawn'] is num) ? (l['qtyWithdrawn'] as num).toInt() : 0;
+    return '$name$variation -$qty';
   }
 
   Future<void> _cancel(ConsignmentDoc c) async {
@@ -229,13 +278,15 @@ class _ConsignmentDetailsScreenState extends State<ConsignmentDetailsScreen> {
                               title: Text(_lineTitle(line)),
                               subtitle: Text(
                                 'Enviado ${line['qtySent']} · '
-                                '${consignmentMoney.format((line['unitSalePriceSnapshot'] as num?)?.toDouble() ?? 0)}',
+                                '${consignmentMoney.format((line['unitSalePriceSnapshot'] as num?)?.toDouble() ?? 0)}'
+                                '${consignmentLineWithdrawn(line) > 0 ? ' · Retirado ${consignmentLineWithdrawn(line)}'
+                                    '${c.isIssued ? ' · Com ${c.resellerName}: ${consignmentLineOutstanding(line)}' : ''}' : ''}',
                               ),
                             ),
                           ),
                         if (c.additions.isNotEmpty) ...[
                           const SizedBox(height: 20),
-                          Text('Histórico de retiradas', style: MpType.section),
+                          Text('Histórico de envios', style: MpType.section),
                           const SizedBox(height: 8),
                           for (final raw in c.additions)
                             Card(
@@ -278,9 +329,47 @@ class _ConsignmentDetailsScreenState extends State<ConsignmentDetailsScreen> {
                               ),
                             ),
                         ],
+                        if (c.withdrawals.isNotEmpty) ...[
+                          const SizedBox(height: 20),
+                          Text('Retiradas antes do acerto', style: MpType.section),
+                          const SizedBox(height: 8),
+                          for (final raw in c.withdrawals)
+                            Card(
+                              key: Key('consignment_withdrawal_${raw['withdrawalId'] ?? ''}'),
+                              child: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '${_additionDate(raw)} — Devolvido ao estoque',
+                                      style: MpType.body.copyWith(fontWeight: FontWeight.w600),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    for (final l in ((raw['lines'] is List)
+                                        ? (raw['lines'] as List).whereType<Map>()
+                                        : const <Map>[]))
+                                      Text(_withdrawalLineLabel(l), style: MpType.caption),
+                                  ],
+                                ),
+                              ),
+                            ),
+                        ],
                         const SizedBox(height: 12),
                         Text('Total de peças enviadas: ${c.totalItemsSent}'),
                         Text('Valor total consignado: ${consignmentMoney.format(c.potentialGrossAmount)}'),
+                        if (c.hasWithdrawals) ...[
+                          Text(
+                            'Retiradas antes do acerto: ${c.totalItemsWithdrawn} '
+                            '(${consignmentMoney.format(c.withdrawnGrossAmount)})',
+                          ),
+                          if (c.isIssued)
+                            Text(
+                              'Com a revendedora: ${c.totalItemsOutstanding} peças · '
+                              '${consignmentMoney.format(c.outstandingGrossAmount)}',
+                              key: const Key('consignment_outstanding_total'),
+                            ),
+                        ],
                         if (c.isSettled) ...[
                           Text('Vendido: ${c.totalItemsSold}'),
                           Text('Devolvido: ${c.totalItemsReturned}'),
@@ -289,7 +378,15 @@ class _ConsignmentDetailsScreenState extends State<ConsignmentDetailsScreen> {
                           Text('Líquido: ${consignmentMoney.format(c.netAmount)}'),
                         ],
                         const SizedBox(height: 24),
-                        if (c.canAddItems) ...[
+                        if (c.isIssued && !c.isDeleted) ...[
+                          FilledButton.icon(
+                            key: const Key('consignment_edit'),
+                            onPressed: () => _openEditMenu(c),
+                            icon: const Icon(Icons.edit_outlined),
+                            label: const Text('Editar consignado'),
+                          ),
+                          const SizedBox(height: 8),
+                        ] else if (c.canAddItems) ...[
                           FilledButton.icon(
                             onPressed: () => _openAddItems(c),
                             icon: const Icon(Icons.add),

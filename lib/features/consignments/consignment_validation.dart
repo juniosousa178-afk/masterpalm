@@ -50,13 +50,46 @@ class ConsignmentSettlementLineInput {
     return int.tryParse('$v') ?? 0;
   }
 
+  int get qtyWithdrawn => consignmentLineWithdrawn(line);
+
+  /// Pieces the reseller still has to account for (withdrawn pieces are excluded).
+  int get qtyToSettle => consignmentLineOutstanding(line);
+
   int get qtyReturned {
-    final r = qtySent - qtySold;
+    final r = qtyToSettle - qtySold;
     return r < 0 ? 0 : r;
   }
 
-  bool get isValid => qtySold >= 0 && qtyReturned >= 0 && qtySold + qtyReturned == qtySent;
+  bool get isValid =>
+      qtySold >= 0 && qtyReturned >= 0 && qtySold + qtyReturned == qtyToSettle;
 }
+
+/// Over-return and non-positive quantities are rejected before any command is sent.
+String? consignmentReturnQtyError(Map<String, dynamic> line, int qty) {
+  if (qty <= 0) return 'Informe a quantidade a retirar.';
+  final outstanding = consignmentLineOutstanding(line);
+  if (qty > outstanding) {
+    return 'Quantidade maior que as peças com a revendedora ($outstanding).';
+  }
+  return null;
+}
+
+String consignmentReturnConfirmMessage({
+  required String resellerName,
+  required int totalPieces,
+}) {
+  final name = resellerName.trim().isEmpty ? 'da revendedora' : 'de ${resellerName.trim()}';
+  if (totalPieces == 1) {
+    return 'Retirar esta peça do consignado $name e devolvê-la ao estoque?\n\n'
+        'Ela não entrará no acerto da revendedora e ficará disponível no estoque da loja.';
+  }
+  return 'Retirar estas $totalPieces peças do consignado $name e devolvê-las ao estoque?\n\n'
+      'Elas não entrarão no acerto da revendedora e ficarão disponíveis no estoque da loja.';
+}
+
+String consignmentReturnSuccessMessage(int totalPieces) => totalPieces == 1
+    ? 'Peça devolvida ao estoque e retirada do consignado.'
+    : 'Peças devolvidas ao estoque e retiradas do consignado.';
 
 bool consignmentSettlementIsValid(List<ConsignmentSettlementLineInput> lines) {
   if (lines.isEmpty) return false;

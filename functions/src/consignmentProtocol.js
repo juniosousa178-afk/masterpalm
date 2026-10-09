@@ -43,6 +43,7 @@ export const CODES = Object.freeze({
   CONSIGNMENT_PRODUCT_LIMIT: 'CONSIGNMENT_PRODUCT_LIMIT',
   CONSIGNMENT_DELETE_NOT_ALLOWED: 'CONSIGNMENT_DELETE_NOT_ALLOWED',
   INVALID_SETTLEMENT_TOTAL: 'INVALID_SETTLEMENT_TOTAL',
+  RETURN_EXCEEDS_OUTSTANDING: 'RETURN_EXCEEDS_OUTSTANDING',
   IDEMPOTENCY_CONFLICT: 'IDEMPOTENCY_CONFLICT',
   AUTH: 'AUTH',
   RESELLER_PERMISSION: 'RESELLER_PERMISSION',
@@ -68,6 +69,7 @@ const HTTP_BY_CODE = Object.freeze({
   [CODES.CONSIGNMENT_PRODUCT_LIMIT]: 'resource-exhausted',
   [CODES.CONSIGNMENT_DELETE_NOT_ALLOWED]: 'failed-precondition',
   [CODES.INVALID_SETTLEMENT_TOTAL]: 'failed-precondition',
+  [CODES.RETURN_EXCEEDS_OUTSTANDING]: 'failed-precondition',
   [CODES.IDEMPOTENCY_CONFLICT]: 'already-exists',
   [CODES.AUTH]: 'permission-denied',
   [CODES.RESELLER_PERMISSION]: 'permission-denied',
@@ -215,8 +217,10 @@ export function optionalString(value, label, max = 2000) {
 
 export const OPERATIONS = Object.freeze([
   'createDraft', 'updateDraft', 'issue', 'settle', 'cancelDraft', 'createReseller', 'updateReseller',
-  'listEligibleProducts', 'addItems', 'deleteCancelled',
+  'listEligibleProducts', 'addItems', 'deleteCancelled', 'returnItems',
 ]);
+
+export const RETURN_REASON = 'MERCHANT_RETRIEVAL_BEFORE_SETTLEMENT';
 
 export function parseCommand(raw) {
   keysOnly(raw, ['protocolVersion','lojaId','operation','operationId','consignmentId','payload']);

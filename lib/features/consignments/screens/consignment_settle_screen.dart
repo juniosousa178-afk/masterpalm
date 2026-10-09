@@ -185,7 +185,7 @@ class _ConsignmentSettleScreenState extends State<ConsignmentSettleScreen> {
               : ListView(
                   padding: const EdgeInsets.all(16),
                   children: [
-                    for (final line in _lines)
+                    for (final line in _lines.where((l) => l.qtyToSettle > 0))
                       Card(
                         child: Padding(
                           padding: const EdgeInsets.all(12),
@@ -195,15 +195,19 @@ class _ConsignmentSettleScreenState extends State<ConsignmentSettleScreen> {
                               Text('${line.line['productNameSnapshot'] ?? line.line['productId']}',
                                   style: MpType.body),
                               Text('Enviado: ${line.qtySent}'),
+                              if (line.qtyWithdrawn > 0) ...[
+                                Text('Retirado antes do acerto: ${line.qtyWithdrawn}'),
+                                Text('Com a revendedora: ${line.qtyToSettle}'),
+                              ],
                               Row(
                                 children: [
                                   const Text('Vendido'),
                                   Expanded(
                                     child: Slider(
                                       min: 0,
-                                      max: line.qtySent.toDouble(),
-                                      divisions: line.qtySent == 0 ? 1 : line.qtySent,
-                                      value: line.qtySold.clamp(0, line.qtySent).toDouble(),
+                                      max: line.qtyToSettle.toDouble(),
+                                      divisions: line.qtyToSettle,
+                                      value: line.qtySold.clamp(0, line.qtyToSettle).toDouble(),
                                       label: '${line.qtySold}',
                                       onChanged: (v) => setState(() => line.qtySold = v.round()),
                                     ),

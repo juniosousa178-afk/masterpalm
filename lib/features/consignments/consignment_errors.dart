@@ -127,7 +127,10 @@ class ConsignmentException implements Exception {
       case 'STOCK_CONFLICT':
         return 'O estoque deste produto foi alterado. Atualizamos os dados; confira e tente novamente.';
       case 'INVALID_SETTLEMENT_TOTAL':
-        return 'Vendido + devolvido deve ser igual ao enviado em todas as linhas.';
+        return 'Vendido + devolvido deve ser igual às peças com a revendedora em todas as linhas. '
+            'Atualize a tela e tente novamente.';
+      case 'RETURN_EXCEEDS_OUTSTANDING':
+        return 'Quantidade maior que as peças com a revendedora. Atualize a tela e tente novamente.';
       case 'IDEMPOTENCY_CONFLICT':
         return 'Operação duplicada com dados diferentes. Recarregue e tente de novo.';
       case 'CONSIGNMENT_PRODUCT_LIMIT':
