@@ -132,14 +132,6 @@ class ConsignmentReportPdfBuilder {
   }) async {
     final logo = await _logo(store.logoUrl);
     final photos = await _photos(lines);
-    final models = lines.length;
-    final pieces = lines.fold<int>(0, (s, l) => s + l.qtySent);
-    final total = lines.fold<double>(0, (s, l) => s + l.lineConsignedValue);
-    final commissionHints = lines
-        .map((l) => consignmentReportCommissionLabel(l.commissionType, l.commissionValue))
-        .where((e) => e.isNotEmpty)
-        .toSet()
-        .toList();
 
     final pdf = pw.Document(title: 'Pedido consignação ${doc.id}');
     pdf.addPage(
@@ -150,7 +142,42 @@ class ConsignmentReportPdfBuilder {
         build: (ctx) => [
           _storeHeader(store, logo),
           pw.SizedBox(height: 12),
-          pw.Text('RELATÓRIO DE CONSIGNAÇÃO / PEDIDO',
+          ..._orderBody(
+            title: 'RELATÓRIO DE CONSIGNAÇÃO / PEDIDO',
+            doc: doc,
+            lines: lines,
+            photos: photos,
+            reseller: reseller,
+          ),
+          _signatures(
+            declaration:
+                'Declaro que recebi as peças relacionadas acima nas quantidades e condições descritas neste documento.',
+          ),
+          ..._deliveryHistory(doc),
+        ],
+      ),
+    );
+    return pdf.save();
+  }
+
+  /// Body of the single order report (identification, items table and totals box).
+  static List<pw.Widget> _orderBody({
+    required String title,
+    required ConsignmentDoc doc,
+    required List<ConsignmentReportLineView> lines,
+    required Map<String, pw.ImageProvider?> photos,
+    ConsignmentReseller? reseller,
+  }) {
+    final models = lines.length;
+    final pieces = lines.fold<int>(0, (s, l) => s + l.qtySent);
+    final total = lines.fold<double>(0, (s, l) => s + l.lineConsignedValue);
+    final commissionHints = lines
+        .map((l) => consignmentReportCommissionLabel(l.commissionType, l.commissionValue))
+        .where((e) => e.isNotEmpty)
+        .toSet()
+        .toList();
+    return [
+          pw.Text(title,
               style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 8),
           pw.Text('Nº ${doc.id}', style: const pw.TextStyle(fontSize: 10)),
@@ -220,10 +247,11 @@ class ConsignmentReportPdfBuilder {
               ],
             ),
           ),
-          _signatures(
-            declaration:
-                'Declaro que recebi as peças relacionadas acima nas quantidades e condições descritas neste documento.',
-          ),
+    ];
+  }
+
+  static List<pw.Widget> _deliveryHistory(ConsignmentDoc doc) {
+    return [
           if (doc.additions.isNotEmpty) ...[
             pw.SizedBox(height: 18),
             pw.Text('HISTÓRICO DE ENTREGAS',
@@ -252,10 +280,7 @@ class ConsignmentReportPdfBuilder {
                 );
               }(),
           ],
-        ],
-      ),
-    );
-    return pdf.save();
+    ];
   }
 
   static Future<Uint8List> buildAdditionPdf({
@@ -411,7 +436,19 @@ class ConsignmentReportPdfBuilder {
             ],
           ),
           pw.SizedBox(height: 12),
-          pw.Container(
+          _settlementSummary(doc, pending),
+          _signatures(
+            declaration:
+                'Declaro estar de acordo com as quantidades, vendas, devoluções, comissão e valores apresentados neste acerto.',
+          ),
+        ],
+      ),
+    );
+    return pdf.save();
+  }
+
+  static pw.Widget _settlementSummary(ConsignmentDoc doc, int pending) {
+    return pw.Container(
             padding: const pw.EdgeInsets.all(10),
             decoration: pw.BoxDecoration(
               border: pw.Border.all(color: PdfColors.grey500),
@@ -441,10 +478,149 @@ class ConsignmentReportPdfBuilder {
                 ],
               ],
             ),
+          );
+  }
+
+  /// Several consignments of the same reseller in one PDF: cover, one independent section per
+  /// consignment (each starting on a new page, same body as the single order report) and a
+  /// general summary. Sections are never merged or deduplicated.
+  static Future<Uint8List> buildCombinedPdf({
+    required ConsignmentStoreProfile store,
+    required List<ConsignmentCombinedSection> sections,
+    ConsignmentReseller? reseller,
+    DateTime? generatedAt,
+  }) async {
+    final logo = await _logo(store.logoUrl);
+    final photos = await _photos(sections.expand((s) => s.lines));
+    final summary = ConsignmentCombinedReportPlanner.summarize(sections);
+    final first = sections.first.doc;
+    final when = generatedAt ?? DateTime.now();
+    final n = sections.length;
+    const margin = pw.EdgeInsets.fromLTRB(28, 28, 28, 36);
+    pw.Widget footer(pw.Context ctx) =>
+        pw.Text(_footer(store, ctx), style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600));
+    pw.Widget bold(String text, {double size = 10}) =>
+        pw.Text(text, style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: size));
+    const small = pw.TextStyle(fontSize: 10);
+
+    final pdf = pw.Document(title: 'Relatório consolidado de consignações');
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: margin,
+        footer: footer,
+        build: (ctx) => [
+          _storeHeader(store, logo),
+          pw.SizedBox(height: 12),
+          bold('RELATÓRIO CONSOLIDADO DE CONSIGNAÇÕES', size: 14),
+          pw.SizedBox(height: 8),
+          pw.Text('Revendedor: ${first.resellerName}', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
+          if ((reseller?.phone ?? '').isNotEmpty) pw.Text('Telefone: ${reseller!.phone}', style: small),
+          pw.Text('ID revendedor: ${first.resellerId}', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
+          pw.Text('Emissão: ${_dateTime.format(when)}', style: small),
+          pw.SizedBox(height: 10),
+          pw.Container(
+            padding: const pw.EdgeInsets.all(10),
+            decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey400), color: PdfColors.grey50),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                bold('CONSIGNAÇÕES SELECIONADAS: $n'),
+                bold('TOTAL DE PEÇAS: ${summary.piecesSent}'),
+                bold('VALOR TOTAL CONSIGNADO: ${_money.format(summary.consignedValue)}', size: 11),
+                if (summary.settledCount > 0)
+                  pw.Text('Comissão (consignações acertadas): ${_money.format(summary.commission)}', style: small),
+              ],
+            ),
+          ),
+          pw.SizedBox(height: 12),
+          pw.TableHelper.fromTextArray(
+            headers: ['#', 'Consignação', 'Data', 'Status', 'Peças', 'Valor consignado'],
+            headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
+            cellStyle: const pw.TextStyle(fontSize: 8),
+            headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
+            cellAlignments: {0: pw.Alignment.center, 4: pw.Alignment.center, 5: pw.Alignment.centerRight},
+            data: [
+              for (var i = 0; i < n; i++)
+                [
+                  '${i + 1}',
+                  sections[i].doc.id,
+                  () {
+                    final d = sections[i].doc.issuedAt ?? sections[i].doc.createdAt;
+                    return d == null ? '-' : _date.format(d.toLocal());
+                  }(),
+                  consignmentStatusLabel(sections[i].doc.status),
+                  '${sections[i].pieces}',
+                  _money.format(sections[i].consignedValue),
+                ],
+            ],
+          ),
+        ],
+      ),
+    );
+    for (var i = 0; i < n; i++) {
+      final s = sections[i];
+      pdf.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          margin: margin,
+          footer: footer,
+          build: (ctx) => [
+            ..._orderBody(
+              title: 'CONSIGNAÇÃO ${i + 1} DE $n',
+              doc: s.doc,
+              lines: s.lines,
+              photos: photos,
+              reseller: reseller,
+            ),
+            if (s.doc.isSettled) ...[
+              pw.SizedBox(height: 12),
+              _settlementSummary(s.doc, s.pending),
+            ],
+            ..._deliveryHistory(s.doc),
+          ],
+        ),
+      );
+    }
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: margin,
+        footer: footer,
+        build: (ctx) => [
+          bold('RESUMO GERAL', size: 14),
+          pw.SizedBox(height: 4),
+          pw.Text('Revendedor: ${first.resellerName}', style: small),
+          pw.SizedBox(height: 10),
+          pw.Container(
+            padding: const pw.EdgeInsets.all(10),
+            decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey500), color: PdfColors.grey50),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                bold('Consignações selecionadas: ${summary.consignments}'),
+                for (final e in summary.byStatus.entries)
+                  pw.Text('${consignmentStatusLabel(e.key)}: ${e.value}', style: small),
+                pw.SizedBox(height: 4),
+                pw.Text('Total de modelos (linhas): ${summary.models}', style: small),
+                bold('Total de peças enviadas: ${summary.piecesSent}'),
+                bold('Valor total consignado: ${_money.format(summary.consignedValue)}', size: 11),
+                if (summary.settledCount > 0) ...[
+                  pw.SizedBox(height: 6),
+                  bold('Consignações acertadas (${summary.settledCount})'),
+                  pw.Text('Peças vendidas: ${summary.piecesSold}', style: small),
+                  pw.Text('Peças devolvidas: ${summary.piecesReturned}', style: small),
+                  pw.Text('Valor bruto vendido: ${_money.format(summary.grossSold)}', style: small),
+                  pw.Text('Comissão: ${_money.format(summary.commission)}', style: small),
+                  pw.Text('Valor líquido da loja: ${_money.format(summary.net)}', style: small),
+                ],
+                pw.Text('Peças pendentes: ${summary.piecesPending}', style: small),
+              ],
+            ),
           ),
           _signatures(
             declaration:
-                'Declaro estar de acordo com as quantidades, vendas, devoluções, comissão e valores apresentados neste acerto.',
+                'Declaro que recebi as peças relacionadas nas consignações deste relatório, nas quantidades e condições descritas.',
           ),
         ],
       ),

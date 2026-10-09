@@ -50,6 +50,34 @@ class ConsignmentReportActions {
     );
   }
 
+  /// One PDF with several consignments of the same reseller. Throws
+  /// [ConsignmentCombinedSelectionException] before any read when the selection is invalid.
+  static Future<Uint8List> buildCombinedBytes({
+    required String lojaId,
+    required List<ConsignmentDoc> docs,
+    ConsignmentReseller? reseller,
+    DateTime? generatedAt,
+  }) async {
+    final error = ConsignmentCombinedReportPlanner.validateSelection(lojaId: lojaId, docs: docs);
+    if (error != null) throw ConsignmentCombinedSelectionException(error);
+    final ordered = ConsignmentCombinedReportPlanner.order(docs);
+    final store = await ConsignmentReportDataService.loadStoreProfile(lojaId);
+    final meta = await ConsignmentReportDataService.loadProductMeta(
+      lojaId: lojaId,
+      productIds: ordered.expand((d) => d.lines).map((e) => (e['productId'] ?? '').toString()),
+    );
+    final sections = [
+      for (final d in ordered)
+        ConsignmentCombinedSection(doc: d, lines: ConsignmentReportAggregator.linesOf(d, meta: meta)),
+    ];
+    return ConsignmentReportPdfBuilder.buildCombinedPdf(
+      store: store,
+      sections: sections,
+      reseller: reseller,
+      generatedAt: generatedAt,
+    );
+  }
+
   static Future<Uint8List> buildGeneralBytes({
     required String lojaId,
     required ConsignmentReportDateRange range,

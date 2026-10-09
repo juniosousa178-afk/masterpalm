@@ -11,7 +11,9 @@ import '../consignment_ui.dart';
 import 'consignment_form_screen.dart';
 import 'consignment_details_screen.dart';
 import 'consignment_reseller_history_screen.dart';
+import '../reports/consignment_report_data.dart';
 import '../reports/screens/consignment_reports_hub_screen.dart';
+import '../reports/widgets/consignment_combined_print_bar.dart';
 
 class ConsignmentListScreen extends StatefulWidget {
   const ConsignmentListScreen({super.key});
@@ -25,6 +27,36 @@ class _ConsignmentListScreenState extends State<ConsignmentListScreen> {
   bool _loading = true;
   bool _enabled = false;
   String? _error;
+  Stream<List<ConsignmentDoc>>? _stream;
+  bool _selecting = false;
+  final Set<String> _selected = {};
+  List<ConsignmentDoc> _latest = const [];
+
+  void _toggleSelecting() {
+    setState(() {
+      _selecting = !_selecting;
+      _selected.clear();
+    });
+  }
+
+  void _toggle(ConsignmentDoc c) {
+    if (!ConsignmentCombinedReportPlanner.canSelect(c)) return;
+    setState(() {
+      if (!_selected.remove(c.id)) _selected.add(c.id);
+    });
+  }
+
+  void _syncLatest(List<ConsignmentDoc> items) {
+    if (identical(items, _latest)) return;
+    _latest = items;
+    if (!_selecting || _selected.isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() => _selected.removeWhere(
+            (id) => !items.any((c) => c.id == id && ConsignmentCombinedReportPlanner.canSelect(c)),
+          ));
+    });
+  }
 
   @override
   void initState() {
@@ -57,9 +89,23 @@ class _ConsignmentListScreenState extends State<ConsignmentListScreen> {
     return Scaffold(
       backgroundColor: MpColors.background,
       appBar: AppBar(
-        title: const Text('Consignados'),
+        title: Text(_selecting ? 'Selecionar consignações' : 'Consignados'),
         actions: [
           if (_enabled && _lojaId != null)
+            _selecting
+                ? IconButton(
+                    key: const Key('consignment_select_mode'),
+                    tooltip: 'Cancelar seleção',
+                    icon: const Icon(Icons.close),
+                    onPressed: _toggleSelecting,
+                  )
+                : TextButton.icon(
+                    key: const Key('consignment_select_mode'),
+                    onPressed: _toggleSelecting,
+                    icon: const Icon(Icons.checklist),
+                    label: const Text('Selecionar'),
+                  ),
+          if (_enabled && _lojaId != null && !_selecting)
             IconButton(
               tooltip: 'Relatórios',
               icon: const Icon(Icons.summarize_outlined),
@@ -70,7 +116,7 @@ class _ConsignmentListScreenState extends State<ConsignmentListScreen> {
                 ),
               ),
             ),
-          if (_enabled && _lojaId != null)
+          if (_enabled && _lojaId != null && !_selecting)
             IconButton(
               tooltip: 'Histórico por revendedor',
               icon: const Icon(Icons.people_outline),
@@ -84,7 +130,13 @@ class _ConsignmentListScreenState extends State<ConsignmentListScreen> {
           const AppHelpIconButton(),
         ],
       ),
-      floatingActionButton: _enabled && _lojaId != null
+      bottomNavigationBar: _selecting && _lojaId != null
+          ? ConsignmentCombinedPrintBar(
+              lojaId: _lojaId!,
+              selected: _latest.where((c) => _selected.contains(c.id)).toList(),
+            )
+          : null,
+      floatingActionButton: _enabled && _lojaId != null && !_selecting
           ? FloatingActionButton.extended(
               onPressed: () => Navigator.push(
                 context,
@@ -111,7 +163,7 @@ class _ConsignmentListScreenState extends State<ConsignmentListScreen> {
               : _error != null
                   ? Center(child: Text(_error!))
                   : StreamBuilder<List<ConsignmentDoc>>(
-                      stream: ConsignmentService.watchConsignments(_lojaId!),
+                      stream: _stream ??= ConsignmentService.watchConsignments(_lojaId!),
                       builder: (context, snap) {
                         if (snap.hasError) {
                           return Center(
@@ -123,6 +175,7 @@ class _ConsignmentListScreenState extends State<ConsignmentListScreen> {
                           return const Center(child: CircularProgressIndicator());
                         }
                         final items = snap.data!;
+                        _syncLatest(items);
                         if (items.isEmpty) {
                           return const Center(
                             child: Text('Nenhuma consignação ainda.'),
@@ -136,12 +189,21 @@ class _ConsignmentListScreenState extends State<ConsignmentListScreen> {
                             final c = items[i];
                             return Card(
                               child: ListTile(
+                                leading: _selecting
+                                    ? ConsignmentSelectCheckbox(
+                                        doc: c,
+                                        selected: _selected.contains(c.id),
+                                        onChanged: (_) => _toggle(c),
+                                      )
+                                    : null,
                                 title: Text(c.resellerName),
                                 subtitle: Text(
                                   '${c.totalItemsSent} pç · ${consignmentMoney.format(c.potentialGrossAmount)}',
                                 ),
                                 trailing: ConsignmentStatusChip(c.status),
-                                onTap: () => Navigator.push(
+                                onTap: _selecting
+                                    ? () => _toggle(c)
+                                    : () => Navigator.push(
                                   context,
                                   MaterialPageRoute(
                                     builder: (_) => ConsignmentDetailsScreen(

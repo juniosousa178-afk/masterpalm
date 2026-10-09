@@ -1,0 +1,22 @@
+{
+  "order_DRAFT": {
+    "pages": 1,
+    "text": "Loja Teste · MasterPalm · <now> · Página 1 de 1 Loja Teste CNPJ/CPF: 00.000.000/0001-00 Tel: 1100000000 WhatsApp: 1100000001 Instagram: @lojateste Rua Teste, 1 RELATÓRIO DE CONSIGNAÇÃO / PEDIDO Nº cons-DRAFT Data: 01/09/2026 09:15 Status: Rascunho Revendedor: Maria Telefone: 1100000002 ID revendedor: r1 Observação: Entrega na loja Foto Código Produto Variação Qtd Unit. Total Sem foto AN32SM Anel Solitario 10 R$ 100,00 R$ 1.000,00 Sem foto BR10 Brinco Gota Tamanho: 17 · Cor: Dourado 5 R$ 100,00 R$ 500,00 TOTAL DE MODELOS: 2 TOTAL DE PEÇAS: 15 VALOR TOTAL CONSIGNADO: R$ 1.500,00 Comissão cadastrada: 20% Declaro que recebi as peças relacionadas acima nas quantidades e condições descritas neste documento. Responsável pela loja Revendedor HISTÓRICO DE ENTREGAS Envio inicial · Anel Solitario=10 Acréscimo · Brinco Gota=5"
+  },
+  "order_ISSUED": {
+    "pages": 1,
+    "text": "Loja Teste · MasterPalm · <now> · Página 1 de 1 Loja Teste CNPJ/CPF: 00.000.000/0001-00 Tel: 1100000000 WhatsApp: 1100000001 Instagram: @lojateste Rua Teste, 1 RELATÓRIO DE CONSIGNAÇÃO / PEDIDO Nº cons-ISSUED Data: 01/09/2026 09:15 Status: Em consignação Revendedor: Maria Telefone: 1100000002 ID revendedor: r1 Observação: Entrega na loja Foto Código Produto Variação Qtd Unit. Total Sem foto AN32SM Anel Solitario 10 R$ 100,00 R$ 1.000,00 Sem foto BR10 Brinco Gota Tamanho: 17 · Cor: Dourado 5 R$ 100,00 R$ 500,00 TOTAL DE MODELOS: 2 TOTAL DE PEÇAS: 15 VALOR TOTAL CONSIGNADO: R$ 1.500,00 Comissão cadastrada: 20% Declaro que recebi as peças relacionadas acima nas quantidades e condições descritas neste documento. Responsável pela loja Revendedor HISTÓRICO DE ENTREGAS Envio inicial · Anel Solitario=10 Acréscimo · Brinco Gota=5"
+  },
+  "order_SETTLED": {
+    "pages": 1,
+    "text": "Loja Teste · MasterPalm · <now> · Página 1 de 1 Loja Teste CNPJ/CPF: 00.000.000/0001-00 Tel: 1100000000 WhatsApp: 1100000001 Instagram: @lojateste Rua Teste, 1 RELATÓRIO DE CONSIGNAÇÃO / PEDIDO Nº cons-SETTLED Data: 01/09/2026 09:15 Status: Acertado Revendedor: Maria Telefone: 1100000002 ID revendedor: r1 Observação: Entrega na loja Foto Código Produto Variação Qtd Unit. Total Sem foto AN32SM Anel Solitario 10 R$ 100,00 R$ 1.000,00 Sem foto BR10 Brinco Gota Tamanho: 17 · Cor: Dourado 5 R$ 100,00 R$ 500,00 TOTAL DE MODELOS: 2 TOTAL DE PEÇAS: 15 VALOR TOTAL CONSIGNADO: R$ 1.500,00 Comissão cadastrada: 20% Declaro que recebi as peças relacionadas acima nas quantidades e condições descritas neste documento. Responsável pela loja Revendedor HISTÓRICO DE ENTREGAS Envio inicial · Anel Solitario=10 Acréscimo · Brinco Gota=5"
+  },
+  "settlement_SETTLED": {
+    "pages": 2,
+    "text": "Loja Teste · MasterPalm · <now> · Página 1 de 2 Loja Teste CNPJ/CPF: 00.000.000/0001-00 Tel: 1100000000 WhatsApp: 1100000001 Instagram: @lojateste Rua Teste, 1 RELATÓRIO DE ACERTO DE CONSIGNAÇÃO Acerto / Consignação nº cons-SETTLED Data do envio: 01/09/2026 09:15 Data do acerto: 30/09/2026 18:00 Revendedor: Maria Telefone: 1100000002 Status: Acertado Observações: Entrega na loja Foto Código Produto Var. Env Vend Dev Pend Unit. Total vend. Comissão Líquido Sem foto AN32SM Anel Solitario 10 7 3 0 R$ 100,00 R$ 700,00 R$ 140,00 R$ 560,00 Sem foto BR10 Brinco Gota Tamanho: 17 · Cor: Dourado 5 0 0 5 R$ 100,00 R$ 0,00 R$ 0,00 R$ 0,00 RESUMO DO ACERTO Peças enviadas: 15 Peças vendidas: 7 Peças devolvidas: 3 Peças pendentes: 5 Valor bruto vendido: R$ 700,00 Comissão: R$ 140,00 Valor líquido da loja: R$ 560,00 Forma de pagamento: Consignação Data do pagamento: 30/09/2026 Valor recebido: R$ 560,00 Saldo pendente: R$ 0,00 Loja Teste · MasterPalm · <now> · Página 2 de 2 STATUS DO ACERTO: PAGO Declaro estar de acordo com as quantidades, vendas, devoluções, comissão e valores apresentados neste acerto. Responsável pela loja Revendedor"
+  },
+  "addition_ISSUED": {
+    "pages": 1,
+    "text": "Loja Teste · MasterPalm · <now> · Página 1 de 1 Loja Teste CNPJ/CPF: 00.000.000/0001-00 Tel: 1100000000 WhatsApp: 1100000001 Instagram: @lojateste Rua Teste, 1 COMPROVANTE DE ACRÉSCIMO DE CONSIGNAÇÃO Consignação: cons-ISSUED Acréscimo: add1 Data: 10/09/2026 14:00 Revendedor: Maria Telefone: 1100000002 Produto Variação Qtd Unit. Total Brinco Gota 5 R$ 100,00 R$ 500,00 TOTAL DE PEÇAS: 5 VALOR DESTE ACRÉSCIMO: R$ 500,00 Declaro que recebi as peças deste acréscimo nas quantidades e condições descritas neste documento. Responsável pela loja Revendedor"
+  }
+}

@@ -368,6 +368,143 @@ class ConsignmentReportAggregator {
   }
 }
 
+const consignmentCombinedMinSelectionMessage =
+    'Selecione pelo menos 2 consignações para imprimir juntas.';
+const consignmentCombinedSameCustomerMessage =
+    'Selecione consignações da mesma cliente para imprimir juntas.';
+const consignmentCombinedSameStoreMessage =
+    'Selecione consignações desta loja para imprimir juntas.';
+const consignmentCombinedUnsupportedStatusMessage =
+    'Consignações canceladas não entram no relatório consolidado.';
+
+class ConsignmentCombinedSelectionException implements Exception {
+  const ConsignmentCombinedSelectionException(this.message);
+  final String message;
+  @override
+  String toString() => message;
+}
+
+/// One consignment inside the combined PDF: its own lines, never merged with other sections.
+class ConsignmentCombinedSection {
+  const ConsignmentCombinedSection({required this.doc, required this.lines});
+  final ConsignmentDoc doc;
+  final List<ConsignmentReportLineView> lines;
+
+  int get pieces => lines.fold<int>(0, (s, l) => s + l.qtySent);
+  int get pending => lines.fold<int>(0, (s, l) => s + l.qtyPending);
+  double get consignedValue => _money(lines.fold<double>(0, (s, l) => s + l.lineConsignedValue));
+}
+
+class ConsignmentCombinedSummary {
+  const ConsignmentCombinedSummary({
+    required this.consignments,
+    required this.models,
+    required this.piecesSent,
+    required this.piecesSold,
+    required this.piecesReturned,
+    required this.piecesPending,
+    required this.consignedValue,
+    required this.settledCount,
+    required this.grossSold,
+    required this.commission,
+    required this.net,
+    required this.byStatus,
+  });
+
+  final int consignments;
+  final int models;
+  final int piecesSent;
+  final int piecesSold;
+  final int piecesReturned;
+  final int piecesPending;
+  final double consignedValue;
+  final int settledCount;
+  final double grossSold;
+  final double commission;
+  final double net;
+  final Map<String, int> byStatus;
+}
+
+/// Pure rules for printing several consignments of one reseller in one PDF. No I/O, no writes.
+class ConsignmentCombinedReportPlanner {
+  ConsignmentCombinedReportPlanner._();
+
+  /// Same statuses that already offer the single "Relatório do pedido".
+  static const supportedStatuses = <String>{'DRAFT', 'ISSUED', 'SETTLED'};
+
+  static bool canSelect(ConsignmentDoc doc) =>
+      supportedStatuses.contains(doc.status) && !doc.isDeleted;
+
+  /// Returns a user message when the selection cannot be printed together, otherwise null.
+  static String? validateSelection({
+    required String lojaId,
+    required List<ConsignmentDoc> docs,
+  }) {
+    if (docs.map((d) => d.id).toSet().length < 2) return consignmentCombinedMinSelectionMessage;
+    if (docs.any((d) => d.storeId.isNotEmpty && d.storeId != lojaId)) {
+      return consignmentCombinedSameStoreMessage;
+    }
+    if (docs.any((d) => !canSelect(d))) return consignmentCombinedUnsupportedStatusMessage;
+    final resellers = docs.map((d) => d.resellerId.trim()).toSet();
+    if (resellers.length != 1 || resellers.single.isEmpty) {
+      return consignmentCombinedSameCustomerMessage;
+    }
+    return null;
+  }
+
+  /// Oldest first (issue date, else creation date); ties and undated records by id.
+  static List<ConsignmentDoc> order(Iterable<ConsignmentDoc> docs) {
+    final seen = <String>{};
+    final list = [for (final d in docs) if (seen.add(d.id)) d];
+    list.sort((a, b) {
+      final da = a.issuedAt ?? a.createdAt;
+      final db = b.issuedAt ?? b.createdAt;
+      if (da != null && db != null && da != db) return da.compareTo(db);
+      if (da == null && db != null) return 1;
+      if (da != null && db == null) return -1;
+      return a.id.compareTo(b.id);
+    });
+    return list;
+  }
+
+  /// Sums each section with the same contracts as the single reports: order totals from the
+  /// report lines, settlement amounts from the persisted consignment totals.
+  static ConsignmentCombinedSummary summarize(List<ConsignmentCombinedSection> sections) {
+    var models = 0, sent = 0, sold = 0, returned = 0, pending = 0, settled = 0;
+    var consigned = 0.0, gross = 0.0, commission = 0.0, net = 0.0;
+    final byStatus = <String, int>{};
+    for (final s in sections) {
+      models += s.lines.length;
+      sent += s.pieces;
+      pending += s.pending;
+      consigned += s.consignedValue;
+      sold += s.doc.totalItemsSold;
+      returned += s.doc.totalItemsReturned;
+      byStatus[s.doc.status] = (byStatus[s.doc.status] ?? 0) + 1;
+      if (s.doc.isSettled) {
+        settled += 1;
+        gross += s.doc.grossSoldAmount;
+        commission += s.doc.commissionAmount;
+        net += s.doc.netAmount;
+      }
+    }
+    return ConsignmentCombinedSummary(
+      consignments: sections.length,
+      models: models,
+      piecesSent: sent,
+      piecesSold: sold,
+      piecesReturned: returned,
+      piecesPending: pending,
+      consignedValue: _money(consigned),
+      settledCount: settled,
+      grossSold: _money(gross),
+      commission: _money(commission),
+      net: _money(net),
+      byStatus: byStatus,
+    );
+  }
+}
+
 class ConsignmentReportDataService {
   ConsignmentReportDataService._();
 
@@ -515,6 +652,12 @@ class ConsignmentReportDataService {
     final name = sanitizeFileName(doc.resellerName);
     final short = sanitizeFileName(additionId.length > 12 ? additionId.substring(0, 12) : additionId);
     return 'Acrescimo_Consignacao_${name}_${short}_$day.pdf';
+  }
+
+  /// Display name only: never phone, CPF or other identifiers.
+  static String combinedFileName(String resellerName, {DateTime? now}) {
+    final day = DateFormat('yyyy-MM-dd').format(now ?? DateTime.now());
+    return 'consignacoes_${sanitizeFileName(resellerName)}_$day.pdf';
   }
 
   static String generalFileName({DateTime? now}) {

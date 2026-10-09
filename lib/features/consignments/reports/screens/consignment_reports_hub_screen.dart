@@ -446,3 +446,39 @@ Future<void> openConsignmentReportPreview({
     ),
   );
 }
+
+/// Opens one combined PDF for several consignments of the same reseller (read-only).
+/// Shows the validation message instead of generating anything when the selection is invalid.
+Future<void> openCombinedConsignmentReportPreview({
+  required BuildContext context,
+  required String lojaId,
+  required List<ConsignmentDoc> docs,
+}) async {
+  final error = ConsignmentCombinedReportPlanner.validateSelection(lojaId: lojaId, docs: docs);
+  if (error != null) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+    return;
+  }
+  final first = docs.first;
+  ConsignmentReseller? reseller;
+  try {
+    final list = await ConsignmentService.watchResellers(lojaId).first;
+    reseller = list.where((r) => r.resellerId == first.resellerId).firstOrNull;
+  } catch (_) {}
+  final bytes = ConsignmentReportActions.buildCombinedBytes(
+    lojaId: lojaId,
+    docs: docs,
+    reseller: reseller,
+  );
+  if (!context.mounted) return;
+  await Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (_) => ConsignmentReportPreviewScreen(
+        title: 'Relatório consolidado',
+        fileName: ConsignmentReportDataService.combinedFileName(first.resellerName),
+        bytesFuture: bytes,
+      ),
+    ),
+  );
+}
