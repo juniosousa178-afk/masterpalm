@@ -40,6 +40,7 @@ import {
   getCallableIdentifier,
 } from "./src/rateLimiter.js";
 import { processMpWebhook } from "./src/mpWebhookHandler.js";
+import { resolverCampanhaAtiva } from "./src/campanhaSorteioGate.js";
 import {
   verifyMpCatalogWebhookNotification,
   MP_WEBHOOK_CATALOG_SIGNATURE_HTTP_STATUS,
@@ -5368,10 +5369,46 @@ export const gerarCupomNumeroSorte = onRequest(
         pedidoOrigem: pedidoId,
       };
 
-      // Gerar número da sorte
-      const numeroSorte = gerarNumeroSorte();
+      // Número da sorte só com exatamente 1 campanha válida e participação gravada.
+      let numeroSorte = null;
+      try {
+        const gate = await resolverCampanhaAtiva(db, {
+          colLojas: COLLECTION_LOJAS,
+          lojaId,
+          agora: new Date(),
+        });
+        const minimo = Number(gate.campanha?.data?.valorMinimo ?? 0);
+        if (gate.status === 'ativa' && Number(valorPedido || 0) >= minimo) {
+          const partCol = gate.campanha.ref.collection('participantes');
+          const dup = await partCol.where('pedidoId', '==', String(pedidoId)).limit(1).get();
+          if (!dup.empty) {
+            numeroSorte = String(dup.docs[0].data()?.numeroSorte || '') || null;
+          } else {
+            const novo = gerarNumeroSorte();
+            await partCol.add({
+              clienteId: clienteId,
+              numeroSorte: novo,
+              pedidoId: String(pedidoId),
+              vendaId: String(pedidoId),
+              campanhaId: gate.campanha.id,
+              clienteNome: clienteNome,
+              clienteEmail: clienteEmail,
+              dataParticipacao: FieldValue.serverTimestamp(),
+              sorteado: false,
+              status: 'valido',
+              origem: 'gerarCupomNumeroSorte',
+            });
+            numeroSorte = novo;
+          }
+        } else {
+          console.log('[CUPOM] sem número da sorte', { lojaId, gate: gate.status });
+        }
+      } catch (campErr) {
+        console.error('Erro ao registrar na campanha (sem número da sorte):', campErr?.message);
+        numeroSorte = null;
+      }
 
-      // Adicionar cupom e número ao documento do cliente
+      // Adicionar cupom (e número, se houver sorteio válido) ao documento do cliente
       const clienteRef = db
         .collection(COLLECTION_LOJAS)
         .doc(lojaId)
@@ -5382,41 +5419,12 @@ export const gerarCupomNumeroSorte = onRequest(
         cupons: FieldValue.arrayUnion(cupom),
         pedidos: FieldValue.arrayUnion({
           id: pedidoId,
-          numeroSorte: numeroSorte,
+          ...(numeroSorte ? { numeroSorte } : {}),
           data: new Date().toLocaleDateString('pt-BR'),
           valor: valorPedido || 0,
           status: 'Confirmado'
         })
       });
-
-      // Registrar número da sorte na campanha ativa (coleção canônica: campanhas_sorteio)
-      try {
-        const agora = new Date();
-        const campanhasSnapshot = await db
-          .collection(COLLECTION_LOJAS)
-          .doc(lojaId)
-          .collection('campanhas_sorteio')
-          .where('ativa', '==', true)
-          .where('dataInicio', '<=', agora)
-          .where('dataFim', '>=', agora)
-          .limit(1)
-          .get();
-
-        if (!campanhasSnapshot.empty) {
-          const campanhaDoc = campanhasSnapshot.docs[0];
-          await campanhaDoc.ref.collection('participantes').add({
-            clienteId: clienteId,
-            numeroSorte: numeroSorte,
-            pedidoId: pedidoId,
-            clienteNome: clienteNome,
-            clienteEmail: clienteEmail,
-            data: nowTs
-          });
-        }
-      } catch (campErr) {
-        console.error('Erro ao registrar na campanha:', campErr);
-        // Continuar mesmo se houver erro na campanha
-      }
 
       const response = {
         success: true,
@@ -5424,7 +5432,9 @@ export const gerarCupomNumeroSorte = onRequest(
         numeroSorte: numeroSorte,
         clienteEmail: clienteEmail,
         clienteTelefone: clienteTelefone,
-        message: 'Cupom e número da sorte gerados com sucesso!'
+        message: numeroSorte
+          ? 'Cupom e número da sorte gerados com sucesso!'
+          : 'Cupom gerado com sucesso!'
       };
 
       await saveIdempotency("gerarCupomNumeroSorte", idemKey, response);

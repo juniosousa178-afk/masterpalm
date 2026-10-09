@@ -2979,7 +2979,9 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
       if (mounted) {
         if (posPagamentoOk) {
           _showModernSnackBar(
-            'Pedido confirmado e venda registrada! Número da sorte enviado por email e WhatsApp.',
+            PosPagamentoService.ultimaNotificacaoComNumeroSorte
+                ? 'Pedido confirmado e venda registrada! Número da sorte enviado por email e WhatsApp.'
+                : 'Pedido confirmado e venda registrada!',
           );
         } else {
           final detalhe = PosPagamentoService.ultimaFalhaProcessamento ?? '';

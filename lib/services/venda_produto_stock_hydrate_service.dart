@@ -9,6 +9,7 @@ import '../core/produto_effective_stock.dart';
 import '../core/produto_estoque_grade_snapshot.dart';
 import '../core/produto_sale_variation_picker.dart';
 import '../core/produto_stock_revision.dart';
+import '../core/produto_variacao_extra.dart';
 import '../models/produto.dart';
 import 'firestore_paths.dart';
 import 'produtos_firestore_service.dart';
@@ -31,6 +32,7 @@ class SaleVariationRouteResult {
     this.remote,
     this.options = const [],
     this.effectiveKindWire = 'simple',
+    this.canonicalUnavailable = false,
   });
 
   final SaleVariationRouteDecision decision;
@@ -38,6 +40,9 @@ class SaleVariationRouteResult {
   final Map<String, dynamic>? remote;
   final List<ProdutoSaleVariationOption> options;
   final String effectiveKindWire;
+
+  /// Leitura de `estoque_produtos` falhou — sem verdade canônica para vender.
+  final bool canonicalUnavailable;
 }
 
 class VendaProdutoStockHydrateService {
@@ -114,7 +119,14 @@ class VendaProdutoStockHydrateService {
       try {
         remote = await _readRemote(lojaId: li, docId: docId);
       } catch (_) {
-        remote = null;
+        // Hive pode estar sem grade (ou stale): vender como simple contra a qty
+        // agregada seria ambíguo. A baixa exige servidor de qualquer forma.
+        return SaleVariationRouteResult(
+          decision: SaleVariationRouteDecision.failClosed,
+          produto: produto,
+          effectiveKindWire: effectiveStockKindFromProduto(produto).wire,
+          canonicalUnavailable: true,
+        );
       }
     }
 
@@ -140,10 +152,15 @@ class VendaProdutoStockHydrateService {
         : effectiveStockKindFromProduto(produto);
     final options = produtoSaleVariationPickerOptions(produto);
     final hasReal = produtoHasVariationIdentities(produto) ||
+        ProdutoVariacaoExtra.produtoTemEixoExtraVisivel(produto.variacoes) ||
         (remote != null &&
-            _hasRealVariationIdentity(
-              effectiveCanonicalCellsFromRemote(remote),
-            ));
+            (_hasRealVariationIdentity(
+                  effectiveCanonicalCellsFromRemote(remote),
+                ) ||
+                (remote['variacoes'] is Map &&
+                    ProdutoVariacaoExtra.produtoTemEixoExtraVisivel(
+                      Map<String, dynamic>.from(remote['variacoes'] as Map),
+                    ))));
 
     if (kind == EffectiveStockKind.variation ||
         kind == EffectiveStockKind.grade ||

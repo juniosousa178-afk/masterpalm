@@ -7,6 +7,7 @@ import 'dart:math' as math;
 
 import '../core/logger.dart';
 import '../core/safe_cast.dart';
+import '../services/campanha_sorteio_gate.dart';
 
 /// Widget de banner para exibir campanhas ativas no topo do catálogo
 class CampanhaBannerWidget extends StatefulWidget {
@@ -68,40 +69,16 @@ class _CampanhaBannerWidgetState extends State<CampanhaBannerWidget> {
 
       logD('?? [BANNER] Total de campanhas: ${snapshot.docs.length}');
 
-      final now = DateTime.now();
-      final campanhasAtivas = <Map<String, dynamic>>[];
-
-      for (final doc in snapshot.docs) {
-        final data = asMap(doc.data());
-        data['id'] = doc.id;
-
-        // Verificar se está ativa (campo booleano ou status string)
-        final isAtiva = asBool(data['ativa'], defaultValue: false) ||
-                        asString(data['status']) == 'aberta' ||
-                        asString(data['status']) == 'ativa';
-
-        if (!isAtiva) {
-          logD('   ?? ${doc.id}: não está ativa');
-          continue;
-        }
-
-        // Verificar período (Timestamp, DateTime, String, int)
-        final dataInicio = asDateTime(data['dataInicio']);
-        final dataFim = asDateTime(data['dataFim']);
-
-        final dentroDoInicio = dataInicio == null ||
-                               dataInicio.isBefore(now) ||
-                               dataInicio.isAtSameMomentAs(now);
-        final dentroDoFim = dataFim == null || dataFim.isAfter(now);
-
-        logD('   ?? ${doc.id}: ativa=$isAtiva, inicio=$dataInicio, fim=$dataFim');
-        logD('      dentroDoInicio=$dentroDoInicio, dentroDoFim=$dentroDoFim');
-
-        if (dentroDoInicio && dentroDoFim) {
-          campanhasAtivas.add(asMapDeep(data));
-          logD('   ? Campanha ativa: ${data['nome'] ?? doc.id}');
-        }
-      }
+      // Mesma regra do gate de sorteio: só exibe se houver exatamente 1 válida.
+      final gate = CampanhaSorteioGate.avaliar(
+        [for (final d in snapshot.docs) (id: d.id, data: asMap(d.data()))],
+        lojaId: widget.lojaId.trim(),
+        agora: DateTime.now(),
+      );
+      final campanhasAtivas = <Map<String, dynamic>>[
+        if (gate.permiteSorteio)
+          asMapDeep({...gate.campanha!, 'id': gate.campanhaId}),
+      ];
 
       // Ordenar por dataFim (campanhas que terminam primeiro aparecem primeiro)
       campanhasAtivas.sort((a, b) {

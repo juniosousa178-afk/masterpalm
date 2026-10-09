@@ -3883,8 +3883,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                 'Você ganhou um cupom de $cupomDesconto% de desconto:\n'
                                 '📌 *$cupomCodigo*\n'
                                 '${cupomValidade.isNotEmpty ? 'Válido até $cupomValidade\n\n' : ''}'
-                                '🎰 *Seu número da sorte:* $numeroSorte\n'
-                                'Boa sorte! 🍀';
+                                '${numeroSorte.isNotEmpty ? '🎰 *Seu número da sorte:* $numeroSorte\nBoa sorte! 🍀' : ''}';
 
                             await _openWhatsappSimple(
                                 whatsappVendedor, msg + cupomMsg);

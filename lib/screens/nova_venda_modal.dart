@@ -483,6 +483,10 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       'Não foi possível carregar as variações deste produto. '
       'Atualize os dados e tente novamente.';
 
+  static const _kEstoqueCanonicoIndisponivelMsg =
+      'Não foi possível confirmar o estoque deste produto agora. '
+      'Verifique a conexão e tente novamente.';
+
   Future<void> _aplicarProdutoNaLinhaAposRotaVenda({
     required int index,
     required Produto produtoBase,
@@ -496,7 +500,13 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
     if (route.decision == SaleVariationRouteDecision.failClosed) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text(_kFailClosedVariacaoMsg)),
+          SnackBar(
+            content: Text(
+              route.canonicalUnavailable
+                  ? _kEstoqueCanonicoIndisponivelMsg
+                  : _kFailClosedVariacaoMsg,
+            ),
+          ),
         );
       }
       return;

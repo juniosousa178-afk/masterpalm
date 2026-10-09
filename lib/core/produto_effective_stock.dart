@@ -113,6 +113,13 @@ EffectiveStockKind effectiveStockKindFromRemote(Map<String, dynamic> remote) {
   if (_hasRealVariationIdentity(positiveMap.isNotEmpty ? positiveMap : cells)) {
     return EffectiveStockKind.variation;
   }
+  final vars = remote['variacoes'];
+  if (vars is Map &&
+      ProdutoVariacaoExtra.produtoTemEixoExtraVisivel(
+        Map<String, dynamic>.from(vars),
+      )) {
+    return EffectiveStockKind.variation;
+  }
   return EffectiveStockKind.simple;
 }
 
@@ -121,6 +128,9 @@ EffectiveStockKind effectiveStockKindFromProduto(Produto p) {
   final snap = ProdutoEstoqueGradeSnapshot.fromProduto(p);
   final norm = normalizeSemCorAliasCells(snap.cells);
   if (_hasRealVariationIdentity(norm)) return EffectiveStockKind.variation;
+  if (ProdutoVariacaoExtra.produtoTemEixoExtraVisivel(p.variacoes)) {
+    return EffectiveStockKind.variation;
+  }
   return EffectiveStockKind.simple;
 }
 
@@ -208,7 +218,7 @@ bool applyAuthoritativeRemoteStockToProduto(
     }
   } else if (kind == EffectiveStockKind.variation ||
       kind == EffectiveStockKind.grade) {
-    _applyNormalizedCellsToProdutoGrade(local, cells);
+    _applyNormalizedCellsToProdutoGrade(local, cells, remote: remote);
   }
 
   final serverAt = parseFirestoreStockUpdatedAtField(remote);
@@ -232,16 +242,18 @@ bool applyRemoteVariationStructureForSaleUi(
     return false;
   }
   if (cells.isEmpty) return false;
-  _applyNormalizedCellsToProdutoGrade(local, cells);
+  _applyNormalizedCellsToProdutoGrade(local, cells, remote: remote);
   return true;
 }
 
 void _applyNormalizedCellsToProdutoGrade(
   Produto local,
-  Map<String, int> cells,
-) {
+  Map<String, int> cells, {
+  Map<String, dynamic>? remote,
+}) {
   final vars = <String, dynamic>{};
   final ept = <String, int>{};
+  var usedExtraCells = false;
   for (final e in cells.entries) {
     if (e.value < 0) continue;
     final parts = e.key.split('|');
@@ -249,13 +261,54 @@ void _applyNormalizedCellsToProdutoGrade(
     final cor = parts.length > 1 ? parts[1] : 'sem-cor';
     vars.putIfAbsent(tam, () => <String, dynamic>{});
     final inner = vars[tam] as Map<String, dynamic>;
-    inner[cor] = e.value;
+    // Célula com 3º nível (letra/modelo): `cells` só tem a soma; manter o mapa
+    // canônico remoto, senão o picker perde as letras (qty total continua certa).
+    final extraCell = _remoteExtraCellMatchingSum(remote, tam, cor, e.value);
+    if (extraCell != null) {
+      inner[cor] = extraCell;
+      usedExtraCells = true;
+    } else {
+      inner[cor] = e.value;
+    }
     ept[tam] = (ept[tam] ?? 0) + e.value;
   }
   if (vars.isNotEmpty) {
     local.variacoes = vars;
     local.estoquePorTamanho = ept;
+    if (usedExtraCells) {
+      final tipo = remote?['variacoesExtraTipo'];
+      if (tipo is Map && tipo.isNotEmpty) {
+        local.variacoesExtraTipo = _deepCopyDynamicMap(
+          Map<String, dynamic>.from(tipo),
+        );
+      }
+    }
   }
+}
+
+Map<String, dynamic>? _remoteExtraCellMatchingSum(
+  Map<String, dynamic>? remote,
+  String tam,
+  String cor,
+  int expectedSum,
+) {
+  final vars = remote?['variacoes'];
+  if (vars is! Map) return null;
+  final byCor = vars[tam];
+  if (byCor is! Map) return null;
+  final cell = byCor[cor];
+  if (cell is! Map || !ProdutoVariacaoExtra.celulaTemExtrasNaoVazios(cell)) {
+    return null;
+  }
+  final out = <String, dynamic>{};
+  cell.forEach((k, v) {
+    final key = k.toString();
+    out[key] = ProdutoVariacaoExtra.isMetaKey(key)
+        ? v
+        : ProdutoVariacaoExtra.valorFirestoreComoInt(v);
+  });
+  if (ProdutoVariacaoExtra.somarCelula(out) != expectedSum) return null;
+  return out;
 }
 
 /// Snapshot imutável dos campos de estoque (diagnóstico / comparação).

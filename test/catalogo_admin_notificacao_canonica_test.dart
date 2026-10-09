@@ -3,6 +3,7 @@
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:master_palm/services/campaign_engine_service.dart';
+import 'package:master_palm/services/campanha_sorteio_gate.dart';
 import 'package:master_palm/services/pos_pagamento_service.dart';
 
 const _lojaId = 'loja-notif-can';
@@ -31,6 +32,7 @@ void main() {
   tearDown(() {
     PosPagamentoService.debugBuscarParticipacaoOverride = null;
     PosPagamentoService.debugFirestoreOverride = null;
+    CampanhaSorteioGate.resetForTests();
   });
 
   group('M3.6.4 NOTIF — número canônico PosPagamento', () {
@@ -53,7 +55,8 @@ void main() {
       expect(r.numero, _numeroCanonico);
     });
 
-    test('NOTIF-8: fluxo legado sem Engine gera número novo', () async {
+    test('NOTIF-8: sem participação e sem campanha válida não gera número', () async {
+      CampanhaSorteioGate.debugFirestoreOverride = FakeFirebaseFirestore();
       PosPagamentoService.debugBuscarParticipacaoOverride =
           ({required lojaId, required vendaId}) async => null;
 
@@ -64,7 +67,8 @@ void main() {
       );
 
       expect(r.canonico, isFalse);
-      expect(r.numero, matches(RegExp(r'^\d{5}$')));
+      expect(r.numero, isNull);
+      expect(r.incluirNaNotificacao, isFalse);
     });
 
     test('NOTIF-6: vendas distintas não colapsam número', () async {

@@ -23,6 +23,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../core/logger.dart';
 
 import '../models/venda.dart';
+import 'campanha_sorteio_gate.dart';
 import 'email_service.dart';
 
 /// Modelo de participação em campanha
@@ -233,21 +234,16 @@ class CampaignEngineService {
         }
       }
 
-      // 2. Buscar campanha ativa
-      final campanha = await _getCampanhaAtiva(lojaId);
-      if (campanha == null) {
-        logD('ℹ️ [CampaignEngine] Nenhuma campanha ativa');
+      // 2. Gate autoritativo: exatamente 1 campanha válida da loja.
+      final gate = await CampanhaSorteioGate.resolver(
+        lojaId: lojaId,
+        agora: DateTime.now(),
+      );
+      if (!gate.permiteSorteio) {
+        logD('ℹ️ [CampaignEngine] Sem campanha válida (${gate.status.name})');
         return ParticipacaoResult.semCampanha();
       }
-
-      final campanhaId = campanha['id']?.toString().trim() ?? '';
-      if (campanhaId.isEmpty) {
-        logW('⚠️ [CampaignEngine] Campanha ativa sem id resolvível');
-        return ParticipacaoResult(
-          sucesso: false,
-          erro: 'Campanha ativa sem identificador',
-        );
-      }
+      final campanha = gate.campanha!;
       final campanhaNome = campanha['nome']?.toString() ?? campanha['titulo']?.toString() ?? 'Campanha';
       final valorMinimo = (campanha['valorMinimo'] as num?)?.toDouble() ?? 0.0;
       final dataSorteio = (campanha['dataSorteio'] as Timestamp?)?.toDate() ??
@@ -260,16 +256,14 @@ class CampaignEngineService {
         logW('❌ [CampaignEngine] Valor insuficiente: R\$ $valor < R\$ $valorMinimo');
         return ParticipacaoResult.valorInsuficiente(valorMinimo);
       }
+      if (idVenda.isEmpty) return ParticipacaoResult.semCampanha();
 
-      // 4. Gerar número único de 5 dígitos
-      final numero = await _gerarNumeroUnico(lojaId, campanhaId);
-      logD('🎫 [CampaignEngine] Número gerado: $numero');
-
-      // 5. Criar participação
-      final participacao = Participacao(
+      // 4–6. Número + participação idempotente (id por venda), período
+      // revalidado com horário do servidor.
+      final base = Participacao(
         id: '',
-        campanhaId: campanhaId,
-        numero: numero,
+        campanhaId: gate.campanhaId!,
+        numero: '',
         vendaId: idVenda,
         clienteId: clienteId,
         nomeCliente: nome,
@@ -279,24 +273,32 @@ class CampaignEngineService {
         origem: origem,
         criadoEm: DateTime.now(),
         status: 'valido',
+      ).toMap()
+        ..remove('numeroSorte')
+        ..remove('dataParticipacao');
+      final validada = await CampanhaSorteioGate.registrarParticipacaoValidada(
+        lojaId: lojaId,
+        vendaId: idVenda,
+        valorCompra: valor,
+        dadosParticipante: base,
+        gerarNumero: (cid) => _gerarNumeroUnico(lojaId, cid),
       );
+      if (validada == null || !validada.criadaAgora) {
+        logD('ℹ️ [CampaignEngine] Participação não validada/já existente');
+        return validada == null
+            ? ParticipacaoResult.semCampanha()
+            : ParticipacaoResult.duplicado();
+      }
+      final campanhaId = validada.campanhaId;
+      final numero = validada.numero;
 
-      // 6. Salvar no Firestore
-      final docRef = await _db
-          .collection('lojas')
-          .doc(lojaId)
-          .collection('campanhas_sorteio')
-          .doc(campanhaId)
-          .collection('participantes')
-          .add(participacao.toMap());
-
-      logD('✅ [CampaignEngine] Participação salva: ${docRef.id}');
+      logD('✅ [CampaignEngine] Participação salva: ${validada.participacaoId}');
 
       // 7. Disparar envio de mensagens (assíncrono, não bloqueia)
       _enviarMensagensAsync(
         lojaId: lojaId,
         campanhaId: campanhaId,
-        participacaoId: docRef.id,
+        participacaoId: validada.participacaoId,
         numero: numero,
         clienteNome: nome,
         telefone: telefone,
@@ -312,7 +314,7 @@ class CampaignEngineService {
         campanhaId: campanhaId,
         campanhaNome: campanhaNome,
         participacao: Participacao(
-          id: docRef.id,
+          id: validada.participacaoId,
           campanhaId: campanhaId,
           numero: numero,
           vendaId: idVenda,
@@ -338,58 +340,6 @@ class CampaignEngineService {
   // ============================================================
   // MÉTODOS AUXILIARES
   // ============================================================
-
-  /// Busca campanha ativa para a loja
-  static Future<Map<String, dynamic>?> _getCampanhaAtiva(String lojaId) async {
-    try {
-      logD('🔍 [CampaignEngine] Buscando campanha ativa');
-      final now = DateTime.now();
-
-      // Estratégia 1: Buscar campanhas com limite e filtrar no código (reduz custo Firestore)
-      // (evita problemas de índice composto do Firestore)
-      final allCampanhas = await _db
-          .collection('lojas')
-          .doc(lojaId)
-          .collection('campanhas_sorteio')
-          .limit(50)
-          .get();
-
-      logD('📋 [CampaignEngine] Total de campanhas: ${allCampanhas.docs.length}');
-
-      for (final doc in allCampanhas.docs) {
-        final data = doc.data();
-        logD('   📌 Campanha ${doc.id}: ativa=${data['ativa']}, status=${data['status']}');
-
-        // Verificar se está ativa (campo booleano ou status string)
-        final isAtiva = data['ativa'] == true || data['status'] == 'aberta' || data['status'] == 'ativa';
-        if (!isAtiva) continue;
-
-        // Verificar período
-        final dataInicio = (data['dataInicio'] as Timestamp?)?.toDate();
-        final dataFim = (data['dataFim'] as Timestamp?)?.toDate();
-
-        final dentroDoInicio = dataInicio == null || dataInicio.isBefore(now) || dataInicio.isAtSameMomentAs(now);
-        final dentroDoFim = dataFim == null || dataFim.isAfter(now);
-
-        logD('   📅 dataInicio=$dataInicio, dataFim=$dataFim');
-        logD('   ✅ dentroDoInicio=$dentroDoInicio, dentroDoFim=$dentroDoFim');
-
-        if (dentroDoInicio && dentroDoFim) {
-          logD('✅ [CampaignEngine] Campanha ativa encontrada: ${doc.id} - ${data['nome'] ?? data['titulo']}');
-          return {
-            ...data,
-            'id': doc.id,
-          };
-        }
-      }
-
-      logW('⚠️ [CampaignEngine] Nenhuma campanha ativa encontrada');
-      return null;
-    } catch (e, st) {
-      logE('❌ [CampaignEngine] Erro ao buscar campanha (type=${e.runtimeType})', error: e, st: st);
-      return null;
-    }
-  }
 
   /// Verifica se já existe participação para esta venda
   static Future<bool> _verificarDuplicidade(String lojaId, String vendaId) async {

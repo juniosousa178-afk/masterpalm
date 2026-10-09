@@ -1,7 +1,6 @@
 // lib/services/pos_pagamento_service.dart
 
 import 'dart:convert';
-import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
@@ -20,7 +19,7 @@ import 'produtos_firestore_service.dart';
 import 'venda_combo_estoque_expansion.dart';
 import 'firestore_paths.dart';
 import 'pedido_collection_resolver.dart';
-import 'sorteio_numero_service.dart';
+import 'campanha_sorteio_gate.dart';
 import 'campaign_engine_service.dart';
 
 /// Serviço para processar ações após confirmação de pagamento
@@ -48,6 +47,9 @@ class PosPagamentoService {
 
   /// Última falha de [processarConfirmacaoPagamento] (para mensagem específica na UI).
   static String? ultimaFalhaProcessamento;
+
+  /// Se a última confirmação enviou número da sorte ao cliente (campanha válida).
+  static bool ultimaNotificacaoComNumeroSorte = false;
 
   /// Processa todas as ações após confirmação de pagamento
   ///
@@ -78,6 +80,7 @@ class PosPagamentoService {
     bool estoqueJaBaixado = false,
   }) async {
     ultimaFalhaProcessamento = null;
+    ultimaNotificacaoComNumeroSorte = false;
     try {
       debugPrint(
         '[CATALOGO_POS_PAGAMENTO_START] vendaId=$vendaId lojaId=$lojaId '
@@ -154,46 +157,52 @@ class PosPagamentoService {
       // 2. Atualizar status da venda para "pago"
       await _atualizarStatusVenda(lojaId, vendaId);
 
-      // 3. Número da sorte: reutiliza participação canônica do CampaignEngine no admin.
-      final numeroResolvido = await resolverNumeroSorteParaPosPagamento(
-        lojaId: lojaId,
-        vendaId: vendaId,
-        estoqueJaBaixado: estoqueJaBaixado,
-      );
-      final numeroSorte = numeroResolvido.numero;
+      // 3. Número da sorte: só com participação persistida em campanha válida.
+      ({
+        String? numero,
+        bool canonico,
+        bool incluirNaNotificacao,
+        String? campanhaId,
+      }) numeroResolvido;
       try {
-        await _salvarNumeroSorte(
+        numeroResolvido = await resolverNumeroSorteParaPosPagamento(
           lojaId: lojaId,
           vendaId: vendaId,
-          numeroSorte: numeroSorte,
+          estoqueJaBaixado: estoqueJaBaixado,
           customer: customer,
           valorTotal: valorTotal,
-          pularColecaoNumerosSorte: numeroResolvido.canonico,
         );
       } catch (e) {
         debugPrint(
-          '⚠️ [PÓS-PAGAMENTO] Falha não-bloqueante ao salvar número da sorte '
+          '⚠️ [PÓS-PAGAMENTO] Falha ao resolver sorteio — sem número '
           '(type=${e.runtimeType}) | lojaId=$lojaId | vendaId=$vendaId',
+        );
+        numeroResolvido = (
+          numero: null,
+          canonico: false,
+          incluirNaNotificacao: false,
+          campanhaId: null,
         );
       }
-
-      // 3.1. Campanha (não bloqueante): pedido já foi confirmado e estoque já baixado.
-      try {
-        await SorteioNumeroService.registrarNumeroEmCampanhas(
-          lojaId: lojaId,
-          clienteNome: customer['nome']?.toString() ?? 'Cliente',
-          clienteId:
-              customer['id']?.toString() ?? customer['clienteId']?.toString(),
-          valorCompra: valorTotal,
-          dataCompra: DateTime.now(),
-          numeroSorte: numeroSorte,
-          vendaIdOuPedidoId: vendaId,
-        );
-      } catch (e) {
-        debugPrint(
-          '⚠️ [PÓS-PAGAMENTO] Falha não-bloqueante ao registrar campanha '
-          '(type=${e.runtimeType}) | lojaId=$lojaId | vendaId=$vendaId',
-        );
+      final numeroSorte = numeroResolvido.numero ?? '';
+      ultimaNotificacaoComNumeroSorte = numeroResolvido.incluirNaNotificacao;
+      if (numeroSorte.isNotEmpty) {
+        try {
+          await _salvarNumeroSorte(
+            lojaId: lojaId,
+            vendaId: vendaId,
+            numeroSorte: numeroSorte,
+            customer: customer,
+            valorTotal: valorTotal,
+            campanhaId: numeroResolvido.campanhaId,
+            pularColecaoNumerosSorte: numeroResolvido.canonico,
+          );
+        } catch (e) {
+          debugPrint(
+            '⚠️ [PÓS-PAGAMENTO] Falha não-bloqueante ao salvar número da sorte '
+            '(type=${e.runtimeType}) | lojaId=$lojaId | vendaId=$vendaId',
+          );
+        }
       }
 
       // 4. Ativar prêmio da roleta (já é não-bloqueante internamente, mantém await)
@@ -203,18 +212,8 @@ class PosPagamentoService {
       );
 
       // 5. Enviar notificações (Email e WhatsApp)
-      final incluirNumeroSorte = deveOmitirNumeroSorteNotificacaoCliente(
-        participacaoCanonica: numeroResolvido.canonico,
-      )
-          ? false
-          : true;
-      if (!incluirNumeroSorte) {
-        debugPrint(
-          'ℹ️ [PÓS-PAGAMENTO] Número de sorte omitido da notificação; '
-          'participação canônica já registrada pelo CampaignEngine. '
-          'vendaId=$vendaId | lojaId=$lojaId',
-        );
-      }
+      final incluirNumeroSorte =
+          numeroSorte.isNotEmpty && numeroResolvido.incluirNaNotificacao;
       await _enviarNotificacoes(
         lojaId: lojaId,
         vendaId: vendaId,
@@ -443,20 +442,23 @@ class PosPagamentoService {
     );
   }
 
-  /// Gera um número da sorte aleatório de 5 dígitos
-  static String _gerarNumeroSorte() {
-    final random = Random();
-    final numero = random.nextInt(90000) + 10000; // Gera entre 10000 e 99999
-    return numero.toString();
-  }
-
-  /// No fluxo admin (`estoqueJaBaixado`), reutiliza número já registrado em
-  /// `participantes` pelo CampaignEngine em vez de gerar outro.
+  /// Número da sorte só existe com participação persistida em campanha válida:
+  /// - admin (`estoqueJaBaixado`): reutiliza participação canônica do CampaignEngine;
+  /// - senão: [CampanhaSorteioGate] (exatamente 1 campanha ativa da loja, período
+  ///   validado no servidor). Sem campanha / falha de consulta ⇒ `numero == null`.
   @visibleForTesting
-  static Future<({String numero, bool canonico})> resolverNumeroSorteParaPosPagamento({
+  static Future<
+      ({
+        String? numero,
+        bool canonico,
+        bool incluirNaNotificacao,
+        String? campanhaId,
+      })> resolverNumeroSorteParaPosPagamento({
     required String lojaId,
     required String vendaId,
     required bool estoqueJaBaixado,
+    Map<String, dynamic> customer = const {},
+    double valorTotal = 0,
   }) async {
     if (estoqueJaBaixado) {
       final participacao = debugBuscarParticipacaoOverride != null
@@ -469,15 +471,51 @@ class PosPagamentoService {
               vendaId: vendaId,
             );
       final canonico = participacao?.numero ?? '';
-      if (canonico.isNotEmpty) {
+      if (canonico.isNotEmpty && participacao?.status == 'valido') {
         debugPrint(
-          'ℹ️ [PÓS-PAGAMENTO] Número canônico reutilizado da campanha: $canonico '
+          'ℹ️ [PÓS-PAGAMENTO] Número canônico reutilizado da campanha '
           '| lojaId=$lojaId | vendaId=$vendaId',
         );
-        return (numero: canonico, canonico: true);
+        return (
+          numero: canonico,
+          canonico: true,
+          incluirNaNotificacao: false,
+          campanhaId: participacao?.campanhaId,
+        );
       }
     }
-    return (numero: _gerarNumeroSorte(), canonico: false);
+
+    final validada = await CampanhaSorteioGate.registrarParticipacaoValidada(
+      lojaId: lojaId,
+      vendaId: vendaId,
+      valorCompra: valorTotal,
+      dadosParticipante: {
+        'clienteNome': customer['nome']?.toString() ?? 'Cliente',
+        'clienteEmail': customer['email']?.toString(),
+        'clienteTelefone': customer['telefone']?.toString(),
+        'clienteId':
+            customer['id']?.toString() ?? customer['clienteId']?.toString(),
+        'origem': 'catalogo',
+      },
+    );
+    if (validada == null) {
+      debugPrint(
+        'ℹ️ [PÓS-PAGAMENTO] Sem campanha de sorteio válida — sem número da sorte '
+        '| lojaId=$lojaId | vendaId=$vendaId',
+      );
+      return (
+        numero: null,
+        canonico: false,
+        incluirNaNotificacao: false,
+        campanhaId: null,
+      );
+    }
+    return (
+      numero: validada.numero,
+      canonico: !validada.criadaAgora,
+      incluirNaNotificacao: validada.criadaAgora,
+      campanhaId: validada.campanhaId,
+    );
   }
 
   /// Salva o número da sorte no Firestore
@@ -487,6 +525,7 @@ class PosPagamentoService {
     required String numeroSorte,
     required Map<String, dynamic> customer,
     required double valorTotal,
+    String? campanhaId,
     bool pularColecaoNumerosSorte = false,
   }) async {
     try {
@@ -498,6 +537,8 @@ class PosPagamentoService {
             .add({
           'numero': numeroSorte,
           'vendaId': vendaId,
+          if (campanhaId != null && campanhaId.isNotEmpty)
+            'campanhaId': campanhaId,
           'cliente': {
             'nome': customer['nome'],
             'email': customer['email'],

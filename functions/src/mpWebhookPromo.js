@@ -12,6 +12,7 @@
  */
 
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
+import { resolverCampanhaAtiva } from "./campanhaSorteioGate.js";
 
 const COLLECTION_LOJAS = process.env.COLLECTION_LOJAS || "lojas";
 export const PROMO_PROCESSED_COL = "_mp_webhook_promo_processed";
@@ -122,17 +123,14 @@ export async function registrarPromocaoPosPagamentoMp(db, { lojaId, orderId, pay
   const clienteTelefone = String(cliente.telefone || cliente.phone || "").trim() || null;
 
   const agora = new Date();
-  const campanhasSnap = await db
-    .collection(COLLECTION_LOJAS)
-    .doc(String(lojaId))
-    .collection("campanhas_sorteio")
-    .where("ativa", "==", true)
-    .where("dataInicio", "<=", agora)
-    .where("dataFim", ">=", agora)
-    .get();
+  const gate = await resolverCampanhaAtiva(db, {
+    colLojas: COLLECTION_LOJAS,
+    lojaId,
+    agora,
+  });
 
-  if (campanhasSnap.empty) {
-    logPromo("[PROMO-SKIP]", "nenhuma campanha ativa no período", { lojaId });
+  if (gate.status !== "ativa") {
+    logPromo("[PROMO-SKIP]", "sem campanha única válida", { lojaId, gate: gate.status });
     await promoRef.set(
       {
         lojaId: String(lojaId),
@@ -151,8 +149,8 @@ export async function registrarPromocaoPosPagamentoMp(db, { lojaId, orderId, pay
   let primeiroNumero = null;
   let escritas = 0;
 
-  for (const campDoc of campanhasSnap.docs) {
-    const cdata = campDoc.data() || {};
+  for (const campDoc of [gate.campanha]) {
+    const cdata = campDoc.data || {};
     const valorMinimo = Number(cdata.valorMinimo ?? cdata.valor_minimo ?? 0);
     if (valor < valorMinimo) {
       logPromo("[PROMO-SKIP]", "valor abaixo do mínimo da campanha", { campanhaId: campDoc.id, valor, valorMinimo });
