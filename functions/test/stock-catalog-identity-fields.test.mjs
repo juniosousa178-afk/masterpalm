@@ -70,7 +70,9 @@ test('editorial without codigoBarras keeps the existing code', async () => {
 });
 
 for (const [label, value] of [
-  ['empty', '   '],
+  ['null', null],
+  ['empty', ''],
+  ['whitespace', '   '],
   ['non-string', 103],
   ['too long', 'X'.repeat(MAX_PRODUCT_CODE_LENGTH + 1)],
   ['control char', 'AN45\nSM'],
@@ -83,6 +85,7 @@ for (const [label, value] of [
       e => e.code === 'invalid-argument',
     );
     assert.deepEqual(db.snapshot(), before);
+    assert.equal(read(db, db.collection('lojas').doc(lojaId), 'estoque_produtos', productId).codigoBarras, 'AN32SM');
   });
 }
 
