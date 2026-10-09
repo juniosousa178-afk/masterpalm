@@ -2,7 +2,7 @@ import {recipe, componentIntents, comboOrder, recalculateFixedCombos} from './st
 import {createHash} from 'node:crypto';
 import {FieldValue} from 'firebase-admin/firestore';
 import {documentId, storeRef, requireAuthenticated, authorizeStockCommand, authorizePublish, SERVER_PAYMENT_AUTH} from './stockCatalogAccess.js';
-import {isMap, stockError, normalizeStock, projectCatalog, quantity, resolveKey, resolveExtraKey, validateEditorial, inferStockKind, buildCommercialLiveOnlyPatch, commercialFieldsSnapshot, COMMERCIAL_EDITORIAL_FIELDS} from './catalogStockProjection.js';
+import {isMap, stockError, normalizeStock, projectCatalog, quantity, resolveKey, resolveExtraKey, splitEditorialPayload, inferStockKind, buildCommercialLiveOnlyPatch, commercialFieldsSnapshot, COMMERCIAL_EDITORIAL_FIELDS} from './catalogStockProjection.js';
 import {PRODUCT_VALIDATION_FAILED, REASON, makeIssue, productValidationError, gradeKeyLabel} from './productValidationErrors.js';
 import {ATOMIC_PDV_SALE_FLAG, parseAtomicPdvSale, buildCanonicalEstoqueVendaDoc} from './stockCatalogPdvSale.js';
 import {
@@ -47,7 +47,7 @@ function parseCommand(raw) {
   if (raw.kind === 'restore') documentId(raw.sourceOperationId, 'sourceOperationId');
   if (['editorial','create','replace'].includes(raw.kind)) {
     if (items.length !== 1) throw stockError('invalid-argument', 'Editorial command requires one product');
-    validateEditorial(raw.editorial);
+    splitEditorialPayload(raw.editorial);
   } else if ('editorial' in raw) throw stockError('invalid-argument', 'Editorial fields not allowed');
   if (['create','replace'].includes(raw.kind)) {
     keysOnly(raw.definition, ['quantidade','variacoes','estoquePorTamanho','estoquePorCor','tamanhos','cores',
@@ -347,7 +347,7 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
                 nome: (stock.data()?.nome ?? stock.data()?.name ?? '').toString(),
                 publicadoNoCatalogo: stock.data()?.publicadoNoCatalogo === true,
               }
-            : validateEditorial(command.editorial));
+            : splitEditorialPayload(command.editorial).editorial);
       records.set(id, {
         stockRef, draftRef, dependency: dependencyHandle, creating,
         draftExists: draft.exists, originalRecipe: recipe(data), data,
@@ -369,15 +369,18 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
       const r = records.get(item.productId);
       if (!r || r.softFail || !r.data) throw stockError('failed-precondition', 'Product unavailable');
       if (command.kind === 'editorial') {
-        const patch = validateEditorial(command.editorial);
-        r.editorial = {...r.editorial, ...patch}; r.data = {...r.data, ...patch}; return;
+        const {editorial: patch, identity} = splitEditorialPayload(command.editorial);
+        r.editorial = {...r.editorial, ...patch}; r.data = {...r.data, ...patch, ...identity}; return;
       }
       if (['adjust','replace','delete','undo','tombstoneVariation','clearVariationTombstone','physicalReconciliation'].includes(command.kind) && item.expectedRevision !== r.originalRevision) {
         throw stockError('aborted', command.kind === 'physicalReconciliation'
           ? PHYSICAL_RECONCILIATION_CONFLICT
           : 'Stock revision conflict');
       }
-      if (command.kind === 'create') {r.editorial = validateEditorial(command.editorial); r.data = {...r.data, ...r.editorial}; return;}
+      if (command.kind === 'create') {
+        const {editorial, identity} = splitEditorialPayload(command.editorial);
+        r.editorial = editorial; r.data = {...r.data, ...editorial, ...identity}; return;
+      }
       if (command.kind === 'physicalReconciliation') {
         if (r.data.pendingSoftDelete) throw stockError('failed-precondition', PHYSICAL_RECONCILIATION_PENDING);
         physicalAudit = applyPhysicalReconciliation(r, command.reconciliation, {legacyCompat});
@@ -387,8 +390,8 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
         // No missing field inherits an old grade during explicit schema/count replacement.
         if (r.data.pendingSoftDelete) throw stockError('failed-precondition', 'Restore deleted product before editing');
         const candidate = {...r.data, ...newDefinition, stockRevision: r.originalRevision};
-        const patch = validateEditorial(command.editorial);
-        r.data = {...normalizeStock(candidate), ...patch}; r.editorial = {...r.editorial, ...patch}; return;
+        const {editorial: patch, identity} = splitEditorialPayload(command.editorial);
+        r.data = {...normalizeStock(candidate), ...patch, ...identity}; r.editorial = {...r.editorial, ...patch}; return;
       }
       if (command.kind === 'delete' || command.kind === 'undo') {
         r.data.pendingSoftDelete = command.kind === 'delete'; return;

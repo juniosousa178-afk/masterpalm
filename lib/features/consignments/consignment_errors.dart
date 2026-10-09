@@ -119,6 +119,8 @@ class ConsignmentException implements Exception {
         return 'Esta consignação já foi acertada e não pode receber novas peças.';
       case 'CONSIGNMENT_CANCELLED':
         return 'Esta consignação está cancelada.';
+      case 'CONSIGNMENT_DELETE_NOT_ALLOWED':
+        return 'Só consignações canceladas podem ser excluídas da lista.';
       case 'CONSIGNMENT_REVISION_CONFLICT':
       case 'aborted':
         return 'Esta consignação foi atualizada. Atualize a tela e tente novamente.';

@@ -168,6 +168,19 @@ class ConsignmentService {
     );
   }
 
+  /// Soft delete of a CANCELLED consignment; deterministic id makes repeated taps replay.
+  static Future<Map<String, dynamic>> deleteCancelled({
+    required String lojaId,
+    required String consignmentId,
+  }) {
+    return command(
+      lojaId: lojaId,
+      operation: 'deleteCancelled',
+      operationId: 'delete_$consignmentId',
+      consignmentId: consignmentId,
+    );
+  }
+
   static Future<Map<String, dynamic>> issue({
     required String lojaId,
     required String consignmentId,
@@ -245,7 +258,11 @@ class ConsignmentService {
     }
   }
 
-  static Stream<List<ConsignmentDoc>> watchConsignments(String lojaId) {
+  /// Lists hide soft-deleted cancelled consignments; reports pass [includeDeleted].
+  static Stream<List<ConsignmentDoc>> watchConsignments(
+    String lojaId, {
+    bool includeDeleted = false,
+  }) {
     return _db
         .collection('lojas')
         .doc(lojaId)
@@ -255,6 +272,7 @@ class ConsignmentService {
       final list = snap.docs
           .map((d) => ConsignmentDoc.fromMap(d.id, d.data()))
           .where((c) => c.storeId == lojaId || c.storeId.isEmpty)
+          .where((c) => includeDeleted || !c.isDeleted)
           .toList();
       list.sort((a, b) {
         final da = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);

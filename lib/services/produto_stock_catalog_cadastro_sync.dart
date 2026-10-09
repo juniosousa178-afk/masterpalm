@@ -153,10 +153,15 @@ class ProdutoStockCatalogCadastroSync {
         'dataInicioPromo': produto.dataInicioPromo!.toIso8601String(),
       if (produto.dataFimPromo != null)
         'dataFimPromo': produto.dataFimPromo!.toIso8601String(),
+      // Empty code is omitted: a stale editor must never clear the canonical code.
+      if (produto.codigoBarras.trim().isNotEmpty)
+        'codigoBarras': produto.codigoBarras.trim(),
     };
     return Map<String, dynamic>.fromEntries(
       raw.entries.where(
-        (e) => StockCatalogBackendService.editorialFields.contains(e.key),
+        (e) =>
+            StockCatalogBackendService.editorialFields.contains(e.key) ||
+            StockCatalogBackendService.identityFields.contains(e.key),
       ),
     );
   }
@@ -330,15 +335,30 @@ class ProdutoStockCatalogCadastroSync {
   static Future<Map<String, dynamic>> sendIntent({
     required String lojaId,
     required ProdutoStockCatalogCadastroIntent intent,
-  }) {
-    return StockCatalogBackendService.command(
-      lojaId: lojaId,
-      operationId: intent.operationId,
-      kind: intent.kind,
-      items: intent.items,
-      editorial: intent.editorial,
-      definition: intent.definition,
-    );
+  }) async {
+    Future<Map<String, dynamic>> send(Map<String, dynamic> editorial) =>
+        StockCatalogBackendService.command(
+          lojaId: lojaId,
+          operationId: intent.operationId,
+          kind: intent.kind,
+          items: intent.items,
+          editorial: editorial,
+          definition: intent.definition,
+        );
+    try {
+      return await send(intent.editorial);
+    } catch (error) {
+      final hasIdentity = intent.editorial.keys
+          .any(StockCatalogBackendService.identityFields.contains);
+      if (!hasIdentity ||
+          !StockCatalogBackendService.isIdentityFieldUnsupported(error)) {
+        rethrow;
+      }
+      // Rejected before any write, so the same operationId is still unused.
+      return send(Map<String, dynamic>.fromEntries(intent.editorial.entries
+          .where((e) =>
+              !StockCatalogBackendService.identityFields.contains(e.key))));
+    }
   }
 
   static Future<void> applyBackendResponseToHive({

@@ -110,6 +110,7 @@ class ConsignmentDoc {
     this.createdAt,
     this.revision = 1,
     this.additions = const [],
+    this.isDeleted = false,
   });
 
   final String id;
@@ -131,12 +132,15 @@ class ConsignmentDoc {
   final DateTime? settledAt;
   final DateTime? createdAt;
   final int revision;
+  /// Soft delete (hidden from lists); only cancelled consignments can carry it.
+  final bool isDeleted;
 
   bool get isDraft => status == 'DRAFT';
   bool get isIssued => status == 'ISSUED';
   bool get isSettled => status == 'SETTLED';
   bool get isCancelled => status == 'CANCELLED';
   bool get canAddItems => isDraft || isIssued;
+  bool get canDelete => isCancelled && !isDeleted;
 
   /// Consolidated qty by productId + variation identity (ignores addition lot suffix).
   List<Map<String, dynamic>> get consolidatedLines {
@@ -203,6 +207,7 @@ class ConsignmentDoc {
       settledAt: ts(data['settledAt']),
       createdAt: ts(data['createdAt']),
       revision: n(data['revision']).toInt() == 0 ? 1 : n(data['revision']).toInt(),
+      isDeleted: data['isDeleted'] == true,
     );
   }
 }

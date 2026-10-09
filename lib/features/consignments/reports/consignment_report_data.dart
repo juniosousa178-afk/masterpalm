@@ -473,7 +473,7 @@ class ConsignmentReportDataService {
     String? status,
     ConsignmentReportDateRange? range,
   }) async {
-    final all = await ConsignmentService.watchConsignments(lojaId).first;
+    final all = await ConsignmentService.watchConsignments(lojaId, includeDeleted: true).first;
     return all
         .where(
           (d) => ConsignmentReportAggregator.matchesFilters(

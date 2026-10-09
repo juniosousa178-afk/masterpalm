@@ -12,6 +12,11 @@ import '../reports/screens/consignment_reports_hub_screen.dart';
 import 'consignment_add_items_screen.dart';
 import 'consignment_settle_screen.dart';
 
+const consignmentDeleteConfirmMessage =
+    'Excluir esta consignação cancelada da lista?\n'
+    'O histórico da operação será preservado.';
+const consignmentDeletedMessage = 'Consignação excluída da lista.';
+
 class ConsignmentDetailsScreen extends StatefulWidget {
   const ConsignmentDetailsScreen({
     super.key,
@@ -29,6 +34,7 @@ class ConsignmentDetailsScreen extends StatefulWidget {
 class _ConsignmentDetailsScreenState extends State<ConsignmentDetailsScreen> {
   ConsignmentDoc? _doc;
   bool _loading = true;
+  bool _deleting = false;
   String? _error;
   final _dateFmt = DateFormat('dd/MM/yyyy');
 
@@ -121,6 +127,37 @@ class _ConsignmentDetailsScreenState extends State<ConsignmentDetailsScreen> {
       await _load();
     } catch (e) {
       if (!mounted) return;
+      final msg = e is ConsignmentException
+          ? e.message
+          : ConsignmentException.userMessage('SERVER', e.toString());
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    }
+  }
+
+  Future<void> _delete(ConsignmentDoc c) async {
+    if (_deleting || !c.canDelete) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Excluir consignação'),
+        content: const Text(consignmentDeleteConfirmMessage),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Voltar')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Excluir')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _deleting = true);
+    try {
+      await ConsignmentService.deleteCancelled(lojaId: widget.lojaId, consignmentId: c.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text(consignmentDeletedMessage)));
+      Navigator.of(context).pop();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _deleting = false);
       final msg = e is ConsignmentException
           ? e.message
           : ConsignmentException.userMessage('SERVER', e.toString());
@@ -347,6 +384,13 @@ class _ConsignmentDetailsScreenState extends State<ConsignmentDetailsScreen> {
                             child: const Text('Cancelar'),
                           ),
                         ],
+                        if (c.canDelete)
+                          OutlinedButton.icon(
+                            key: const Key('consignment_delete_cancelled'),
+                            onPressed: _deleting ? null : () => _delete(c),
+                            icon: const Icon(Icons.delete_outline),
+                            label: const Text('Excluir'),
+                          ),
                       ],
                     ),
     );

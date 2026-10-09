@@ -238,6 +238,28 @@ export function validateEditorial(patch) {
   }
   return structuredClone(patch);
 }
+/** Product identity metadata: persisted on estoque_produtos only, never projected to draft/live. */
+export const PRODUCT_IDENTITY_FIELDS = Object.freeze(['codigoBarras']);
+export const MAX_PRODUCT_CODE_LENGTH = 64;
+/** Splits a command editorial payload into catalog editorial and stock-only identity fields. */
+export function splitEditorialPayload(payload) {
+  if (!isMap(payload)) throw stockError('invalid-argument', 'Protected or unknown editorial field');
+  const editorial = {};
+  const identity = {};
+  for (const [key, value] of Object.entries(payload)) {
+    if (PRODUCT_IDENTITY_FIELDS.includes(key)) identity[key] = value;
+    else editorial[key] = value;
+  }
+  if ('codigoBarras' in identity) {
+    const code = typeof identity.codigoBarras === 'string' ? identity.codigoBarras.trim() : '';
+    // Empty codes are rejected: clearing a code must never happen through a stale editor payload.
+    if (!code || code.length > MAX_PRODUCT_CODE_LENGTH || /[\u0000-\u001f\u007f]/.test(code)) {
+      throw stockError('invalid-argument', 'Invalid codigoBarras');
+    }
+    identity.codigoBarras = code;
+  }
+  return {editorial: validateEditorial(editorial), identity};
+}
 /**
  * Presence-based commercial merge (never truthy-filter false/0).
  * Prefer draft/editorial when the key is present; else fall back to canonical estoque.

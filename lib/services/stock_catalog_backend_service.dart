@@ -312,6 +312,16 @@ class StockCatalogBackendService {
     'maxParcelasSemJuros',
   };
 
+  /// Mirrors server PRODUCT_IDENTITY_FIELDS: travel in the editorial payload but are
+  /// stored on estoque_produtos only (never draft/live).
+  static const identityFields = <String>{'codigoBarras'};
+
+  /// Servers without identity-field support reject the whole command before writing.
+  static bool isIdentityFieldUnsupported(Object error) =>
+      error is FirebaseFunctionsException &&
+      error.code == 'invalid-argument' &&
+      (error.message ?? '').contains('Protected or unknown editorial field');
+
   static Future<Map<String, dynamic>> saveEditorial(
     String lojaId,
     String productId,

@@ -86,7 +86,10 @@ String consignmentProductCodeFromMaps(
 
 String consignmentPickerNormalizeQuery(String input) => normalizeText(input);
 
-String consignmentPickerNormalizeCode(String input) => input.trim().toLowerCase();
+/// Search-only code key: ignores case, accents, spaces and separators
+/// ("AN45SM - 103" == "an45sm-103" == "AN45SM103"). Stored codes are never rewritten.
+String consignmentPickerNormalizeCode(String input) =>
+    normalizeText(input).replaceAll(RegExp(r'[\s\-_./]+'), '');
 
 bool _nonemptyMap(dynamic value) => value is Map && value.isNotEmpty;
 
@@ -300,9 +303,9 @@ bool consignmentPickerItemMatchesQuery(ConsignmentPickerItem item, String query)
   final qCode = consignmentPickerNormalizeCode(qRaw);
   final code = consignmentPickerNormalizeCode(item.productCode);
   // Exact or prefix only — never strip leading zeros via numeric parse / mid-string digit match.
-  if (code.isNotEmpty && (code == qCode || code.startsWith(qCode))) return true;
+  if (code.isNotEmpty && qCode.isNotEmpty && code.startsWith(qCode)) return true;
   if (consignmentPickerNormalizeQuery(item.name).contains(qName)) return true;
-  if (item.productId.toLowerCase().contains(qCode)) return true;
+  if (item.productId.toLowerCase().contains(qRaw.toLowerCase())) return true;
   return false;
 }
 

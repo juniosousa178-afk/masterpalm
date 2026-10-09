@@ -41,6 +41,7 @@ export const CODES = Object.freeze({
   CONSIGNMENT_CANCELLED: 'CONSIGNMENT_CANCELLED',
   CONSIGNMENT_REVISION_CONFLICT: 'CONSIGNMENT_REVISION_CONFLICT',
   CONSIGNMENT_PRODUCT_LIMIT: 'CONSIGNMENT_PRODUCT_LIMIT',
+  CONSIGNMENT_DELETE_NOT_ALLOWED: 'CONSIGNMENT_DELETE_NOT_ALLOWED',
   INVALID_SETTLEMENT_TOTAL: 'INVALID_SETTLEMENT_TOTAL',
   IDEMPOTENCY_CONFLICT: 'IDEMPOTENCY_CONFLICT',
   AUTH: 'AUTH',
@@ -65,6 +66,7 @@ const HTTP_BY_CODE = Object.freeze({
   [CODES.CONSIGNMENT_CANCELLED]: 'failed-precondition',
   [CODES.CONSIGNMENT_REVISION_CONFLICT]: 'aborted',
   [CODES.CONSIGNMENT_PRODUCT_LIMIT]: 'resource-exhausted',
+  [CODES.CONSIGNMENT_DELETE_NOT_ALLOWED]: 'failed-precondition',
   [CODES.INVALID_SETTLEMENT_TOTAL]: 'failed-precondition',
   [CODES.IDEMPOTENCY_CONFLICT]: 'already-exists',
   [CODES.AUTH]: 'permission-denied',
@@ -213,7 +215,7 @@ export function optionalString(value, label, max = 2000) {
 
 export const OPERATIONS = Object.freeze([
   'createDraft', 'updateDraft', 'issue', 'settle', 'cancelDraft', 'createReseller', 'updateReseller',
-  'listEligibleProducts', 'addItems',
+  'listEligibleProducts', 'addItems', 'deleteCancelled',
 ]);
 
 export function parseCommand(raw) {

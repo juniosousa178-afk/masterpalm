@@ -393,6 +393,7 @@ export async function executeConsignmentInTransaction(tx, db, raw, auth) {
     case 'issue': result = await issueConsignment(tx, base, command, uid); break;
     case 'settle': result = await settleConsignment(tx, base, command, uid); break;
     case 'addItems': result = await addItemsToConsignment(tx, base, command, uid); break;
+    case 'deleteCancelled': result = await deleteCancelledConsignment(tx, base, command, uid); break;
     default: throw consignmentError(CODES.INVALID_ARGUMENT, 'Unsupported consignment operation');
   }
   tx.create(opRef(base, command.operationId), {
@@ -572,6 +573,37 @@ async function cancelDraft(tx, base, command, uid) {
     revision: (data.revision || 1) + 1,
   });
   return {consignmentId: command.consignmentId, status: STATUS.CANCELLED};
+}
+
+/** Hides a cancelled consignment from lists. Document, operations and audit history are kept; stock is never read. */
+async function deleteCancelledConsignment(tx, base, command, uid) {
+  keysOnly(command.payload, []);
+  const {ref, data} = await loadDraft(tx, base, command);
+  if (data.status !== STATUS.CANCELLED) {
+    throw consignmentError(CODES.CONSIGNMENT_DELETE_NOT_ALLOWED, 'Only cancelled consignments can be deleted');
+  }
+  if (data.isDeleted === true) {
+    return {consignmentId: command.consignmentId, status: STATUS.CANCELLED, isDeleted: true, revision: data.revision};
+  }
+  const revision = (data.revision || 1) + 1;
+  tx.update(ref, {
+    isDeleted: true,
+    deletedAt: FieldValue.serverTimestamp(),
+    deletedBy: uid,
+    revision,
+  });
+  tx.create(base.collection('consignment_audit').doc(command.operationId), {
+    type: 'CONSIGNMENT_DELETE_CANCELLED',
+    storeId: command.lojaId,
+    consignmentId: command.consignmentId,
+    operationId: command.operationId,
+    actorUid: uid,
+    timestamp: FieldValue.serverTimestamp(),
+    affectedProducts: [],
+    saleId: null,
+    financeId: null,
+  });
+  return {consignmentId: command.consignmentId, status: STATUS.CANCELLED, isDeleted: true, revision};
 }
 
 async function issueConsignment(tx, base, command, uid) {
