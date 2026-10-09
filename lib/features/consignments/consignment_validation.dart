@@ -66,8 +66,8 @@ bool consignmentSettlementIsValid(List<ConsignmentSettlementLineInput> lines) {
 int consignmentDraftTotalQty(List<ConsignmentDraftLine> lines) =>
     lines.fold(0, (s, l) => s + l.qtySent);
 
-/// Must match MAX_PRODUCTS_PER_CONSIGNMENT in functions/src/consignmentProtocol.js.
-const int kConsignmentMaxProducts = 25;
+/// Must match MAX_DISTINCT_PRODUCTS_PER_CONSIGNMENT in functions/src/consignmentProtocol.js.
+const int kConsignmentMaxProducts = 50;
 
 const String consignmentProductLimitMessage =
     'Limite de $kConsignmentMaxProducts produtos diferentes por consignação. '

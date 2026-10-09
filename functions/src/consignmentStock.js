@@ -7,9 +7,8 @@ import {
   isMap, stockError, normalizeStock, projectCatalog, quantity, resolveKey, resolveExtraKey,
   META_COST, cellTotal,
 } from './catalogStockProjection.js';
-import {consignmentError, CODES} from './consignmentProtocol.js';
+import {consignmentError, CODES, MAX_STOCK_RECORDS_PER_TRANSACTION} from './consignmentProtocol.js';
 
-const MAX_PRODUCTS = 25;
 const nonempty = v => isMap(v) && Object.keys(v).length > 0;
 const ordered = value => Array.isArray(value) ? value.map(ordered) : isMap(value)
   ? Object.fromEntries(Object.keys(value).sort().map(k => [k, ordered(value[k])])) : value;
@@ -188,11 +187,13 @@ export function applyExactConsignmentDelta(stock, kind, selector, delta) {
 export async function loadConsignmentStockRecords(tx, base, productIds) {
   const ids = [...new Set(productIds.map(id => documentId(id, 'productId')))];
   if (!ids.length) throw consignmentError(CODES.INVALID_ARGUMENT, 'Products required');
-  if (ids.length > MAX_PRODUCTS) throw consignmentError(CODES.RESOURCE_EXHAUSTED, 'Too many affected products');
+  if (ids.length > MAX_STOCK_RECORDS_PER_TRANSACTION) {
+    throw consignmentError(CODES.RESOURCE_EXHAUSTED, 'Too many affected products');
+  }
   const records = new Map();
   for (const id of ids) {
     if (records.has(id)) continue;
-    if (records.size >= MAX_PRODUCTS) throw consignmentError(CODES.RESOURCE_EXHAUSTED, 'Combo fan-out exceeds transaction budget');
+    if (records.size >= MAX_STOCK_RECORDS_PER_TRANSACTION) throw consignmentError(CODES.RESOURCE_EXHAUSTED, 'Combo fan-out exceeds transaction budget');
     const stockRef = base.collection('estoque_produtos').doc(id);
     const draftRef = base.collection('draft_produtos').doc(id);
     const [stock, draft, dependency, tombstone] = await tx.getAll(
@@ -245,8 +246,13 @@ export function persistConsignmentStock(tx, base, records, operationId, directio
   recalculateFixedCombos(records, direction);
   const products = [];
   const writes = [];
-  const set = (ref, data, merge = false) => writes.push(() => merge ? tx.set(ref, data, {merge: true}) : tx.set(ref, data));
-  const remove = ref => writes.push(() => tx.delete(ref));
+  let units = 0;
+  // Every set below carries one serverTimestamp transform.
+  const set = (ref, data, merge = false) => {
+    units += 2;
+    writes.push(() => merge ? tx.set(ref, data, {merge: true}) : tx.set(ref, data));
+  };
+  const remove = ref => { units += 1; writes.push(() => tx.delete(ref)); };
   const affected = [];
   for (const [id, r] of records) {
     const changed = fingerprint(stockEffect(r.data)) !== r.beforeHash;
@@ -273,7 +279,7 @@ export function persistConsignmentStock(tx, base, records, operationId, directio
       else remove(live);
     }
   }
-  return {products, writes, affected};
+  return {products, writes, affected, units};
 }
 
 function moneyValue(raw) {

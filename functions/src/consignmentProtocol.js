@@ -5,9 +5,16 @@ import {isMap} from './catalogStockProjection.js';
 
 export const CONSIGNMENT_PROTOCOL_VERSION = 1;
 export const CONSIGNMENT_SCHEMA_VERSION = 1;
-export const MAX_LINES = 50;
-// Issue and settlement touch every distinct product in one stock transaction (consignmentStock MAX_PRODUCTS).
-export const MAX_PRODUCTS_PER_CONSIGNMENT = 25;
+// Lines are product + variation (+ addition lot); they grow the consignment doc, not stock writes.
+export const MAX_LINES = 150;
+// Product rule; app mirror: kConsignmentMaxProducts in lib/features/consignments/consignment_validation.dart.
+export const MAX_DISTINCT_PRODUCTS_PER_CONSIGNMENT = 50;
+// Consigned products plus combos recalculated through stock_catalog_dependencies in one transaction.
+export const MAX_STOCK_RECORDS_PER_TRANSACTION = 60;
+// Firestore commits allow 500 writes and each serverTimestamp transform counts as one more.
+// Worst case per stock record: stock + draft + live sets, each with a timestamp transform = 6 units.
+export const WRITE_UNITS_PER_STOCK_RECORD = 6;
+export const MAX_TRANSACTION_WRITE_UNITS = 400;
 
 export const STATUS = Object.freeze({
   DRAFT: 'DRAFT',

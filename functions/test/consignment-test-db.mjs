@@ -34,6 +34,16 @@ function isFieldValue(value) {
   return typeof value._methodName === 'string' && value._methodName.length > 0;
 }
 
+/** Field transforms count toward Firestore's per-commit write limit; FieldValue.delete() does not. */
+function countTransforms(value) {
+  if (isFieldValue(value)) return isSentinel(value, 'delete') ? 0 : 1;
+  if (Array.isArray(value)) return value.reduce((n, v) => n + countTransforms(v), 0);
+  if (value && typeof value === 'object' && value.constructor === Object) {
+    return Object.values(value).reduce((n, v) => n + countTransforms(v), 0);
+  }
+  return 0;
+}
+
 /** Mirrors Admin SDK write validation: no transforms inside arrays, no undefined values. */
 export function assertValidFirestoreData(value, path = '', inArray = false) {
   if (value === undefined) {
@@ -120,18 +130,23 @@ export function createConsignmentTestDb() {
     snapshot() {
       return new Map([...store.entries()].map(([k, v]) => [k, cloneData(v)]));
     },
+    lastCommit: null,
     async runTransaction(fn) {
       const working = new Map([...store.entries()].map(([k, v]) => [k, cloneData(v)]));
+      const stats = {writes: 0, transforms: 0};
+      const count = data => { stats.writes++; stats.transforms += countTransforms(data); };
       const tx = {
         async get(ref) { return snapFrom(working, ref); },
         async getAll(...refs) { return refs.map(ref => snapFrom(working, ref)); },
         set(ref, data, opts) {
+          count(data);
           assertValidFirestoreData(data);
           const prev = working.get(ref.path) || {};
           const next = opts?.merge ? {...prev, ...materialize(data)} : materialize(data);
           working.set(ref.path, next);
         },
         create(ref, data) {
+          count(data);
           assertValidFirestoreData(data);
           if (working.has(ref.path)) {
             const err = new Error('ALREADY_EXISTS');
@@ -141,6 +156,7 @@ export function createConsignmentTestDb() {
           working.set(ref.path, materialize(data));
         },
         update(ref, data) {
+          count(data);
           assertValidFirestoreData(data);
           if (!working.has(ref.path)) {
             const err = new Error('NOT_FOUND');
@@ -151,11 +167,12 @@ export function createConsignmentTestDb() {
           const patch = materialize(data);
           working.set(ref.path, {...prev, ...patch});
         },
-        delete(ref) { working.delete(ref.path); },
+        delete(ref) { stats.writes++; working.delete(ref.path); },
       };
       const result = await fn(tx);
       store.clear();
       for (const [k, v] of working) store.set(k, cloneData(v));
+      db.lastCommit = stats;
       return result;
     },
   };

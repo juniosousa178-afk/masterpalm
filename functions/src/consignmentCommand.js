@@ -6,7 +6,7 @@ import {
 import {
   CONSIGNMENT_SCHEMA_VERSION, STATUS, COMMISSION, CODES, consignmentError, requestFingerprint,
   keysOnly, money, lineAmounts, quantityPositive, quantityNonNegative, optionalString, parseCommand,
-  MAX_PRODUCTS_PER_CONSIGNMENT,
+  MAX_DISTINCT_PRODUCTS_PER_CONSIGNMENT, MAX_TRANSACTION_WRITE_UNITS, MAX_LINES,
 } from './consignmentProtocol.js';
 import {
   classifyConsignmentProduct, parseVariationSelector, variationIdentity,
@@ -17,8 +17,6 @@ import {
   REASON, makeIssue, productValidationError, gradeKey, gradeKeyLabel,
 } from './productValidationErrors.js';
 import {quantity} from './catalogStockProjection.js';
-
-const MAX_LINES = 50;
 
 function consignmentRef(base, id) { return base.collection('consignments').doc(documentId(id, 'consignmentId')); }
 function resellerRef(base, id) { return base.collection('consignment_resellers').doc(documentId(id, 'resellerId')); }
@@ -182,11 +180,21 @@ function uniqueLines(lines) {
 
 function assertProductLimit(lines) {
   const distinct = new Set(lines.map(l => l?.productId)).size;
-  if (distinct > MAX_PRODUCTS_PER_CONSIGNMENT) {
+  if (distinct > MAX_DISTINCT_PRODUCTS_PER_CONSIGNMENT) {
     throw consignmentError(
       CODES.CONSIGNMENT_PRODUCT_LIMIT,
-      `Consignment has ${distinct} distinct products; limit is ${MAX_PRODUCTS_PER_CONSIGNMENT}`,
+      `Consignment has ${distinct} distinct products; limit is ${MAX_DISTINCT_PRODUCTS_PER_CONSIGNMENT}`,
     );
+  }
+}
+
+// Non-stock write units per operation (document write + serverTimestamp transform each):
+// issue/addItems = consignment + audit + operation; settle adds sale and finance (3 timestamps each).
+export const FIXED_WRITE_UNITS = Object.freeze({issue: 6, addItems: 6, settle: 14});
+
+function assertWriteBudget(persisted, operation) {
+  if ((persisted.units ?? 0) + FIXED_WRITE_UNITS[operation] > MAX_TRANSACTION_WRITE_UNITS) {
+    throw consignmentError(CODES.RESOURCE_EXHAUSTED, 'Stock transaction write budget exceeded');
   }
 }
 
@@ -592,7 +600,7 @@ async function issueConsignment(tx, base, command, uid) {
     frozen.push({...line, variationKey: selector, variationSnapshot: line.productType === 'simple' ? null : selector});
   }
   const persisted = persistConsignmentStock(tx, base, records, command.operationId, -1);
-  if (persisted.writes.length + 8 > 100) throw consignmentError(CODES.RESOURCE_EXHAUSTED, 'Stock transaction write budget exceeded');
+  assertWriteBudget(persisted, 'issue');
   for (const write of persisted.writes) write();
   const issued = {
     ...data,
@@ -766,9 +774,7 @@ async function addItemsToConsignment(tx, base, command, uid) {
       record.data = applyExactConsignmentDelta(record.data, line.productType, selector, -line.qtySent);
     }
     persisted = persistConsignmentStock(tx, base, records, command.operationId, -1);
-    if (persisted.writes.length + 8 > 100) {
-      throw consignmentError(CODES.RESOURCE_EXHAUSTED, 'Stock transaction write budget exceeded');
-    }
+    assertWriteBudget(persisted, 'addItems');
     for (const write of persisted.writes) write();
     for (const [id, record] of records) {
       if (!record?.data) continue;
@@ -996,7 +1002,7 @@ async function settleConsignment(tx, base, command, uid) {
     });
   }
 
-  if (persisted.writes.length + 12 > 100) throw consignmentError(CODES.RESOURCE_EXHAUSTED, 'Stock transaction write budget exceeded');
+  assertWriteBudget(persisted, 'settle');
   for (const write of persisted.writes) write();
 
   tx.set(ref, {

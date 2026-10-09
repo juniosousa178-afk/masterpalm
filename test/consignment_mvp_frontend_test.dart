@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:master_palm/core/home_module_registry.dart';
@@ -41,12 +43,29 @@ void main() {
     });
 
     test('product limit counts distinct products, not lines or variations', () {
-      final ids = [for (var i = 0; i < 25; i++) 'p$i'];
-      expect(kConsignmentMaxProducts, 25);
-      expect(consignmentDistinctProductCount([...ids, 'p0', 'p1', '']), 25);
+      final ids = [for (var i = 0; i < 50; i++) 'p$i'];
+      expect(kConsignmentMaxProducts, 50);
+      expect(consignmentDistinctProductCount([...ids, 'p0', 'p1', '']), 50);
       expect(consignmentExceedsProductLimit(ids), isFalse);
       expect(consignmentExceedsProductLimit([...ids, 'p0']), isFalse);
-      expect(consignmentExceedsProductLimit([...ids, 'p25']), isTrue);
+      expect(consignmentExceedsProductLimit([...ids, 'p50']), isTrue);
+      expect(
+        consignmentExceedsProductLimit([for (var i = 0; i < 32; i++) 'm$i', 'm0']),
+        isFalse,
+        reason: 'Mir draft: 32 distinct products in 33 pieces',
+      );
+      expect(
+        consignmentProductLimitMessage,
+        'Limite de 50 produtos diferentes por consignação. '
+        'Divida as peças em mais de uma consignação.',
+      );
+    });
+
+    test('app limit matches the server contract', () {
+      final src = File('functions/src/consignmentProtocol.js').readAsStringSync();
+      final m = RegExp(r'MAX_DISTINCT_PRODUCTS_PER_CONSIGNMENT = (\d+);').firstMatch(src);
+      expect(m, isNotNull);
+      expect(int.parse(m!.group(1)!), kConsignmentMaxProducts);
     });
 
     test('resource-exhausted maps to the Portuguese product limit message', () {
