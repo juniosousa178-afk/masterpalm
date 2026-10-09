@@ -56,19 +56,10 @@ class _ConsignmentResellerHistoryScreenState extends State<ConsignmentResellerHi
       appBar: AppBar(
         title: Text(_selecting ? 'Selecionar consignações' : 'Histórico por revendedor'),
         actions: [
-          _selecting
-              ? IconButton(
-                  key: const Key('consignment_select_mode'),
-                  tooltip: 'Cancelar seleção',
-                  icon: const Icon(Icons.close),
-                  onPressed: _toggleSelecting,
-                )
-              : TextButton.icon(
-                  key: const Key('consignment_select_mode'),
-                  onPressed: _toggleSelecting,
-                  icon: const Icon(Icons.checklist),
-                  label: const Text('Selecionar'),
-                ),
+          ConsignmentSelectModeButton(
+            selecting: _selecting,
+            onPressed: _toggleSelecting,
+          ),
         ],
       ),
       bottomNavigationBar: _selecting

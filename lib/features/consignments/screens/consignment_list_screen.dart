@@ -18,6 +18,9 @@ import '../reports/widgets/consignment_combined_print_bar.dart';
 class ConsignmentListScreen extends StatefulWidget {
   const ConsignmentListScreen({super.key});
 
+  @visibleForTesting
+  static Future<String?> Function()? debugLojaId;
+
   @override
   State<ConsignmentListScreen> createState() => _ConsignmentListScreenState();
 }
@@ -66,7 +69,7 @@ class _ConsignmentListScreenState extends State<ConsignmentListScreen> {
 
   Future<void> _boot() async {
     try {
-      final lojaId = await LojaIdService.get();
+      final lojaId = await (ConsignmentListScreen.debugLojaId ?? LojaIdService.get)();
       final enabled =
           lojaId != null && lojaId.trim().isNotEmpty && await ConsignmentFeatureFlag.isEnabled(lojaId);
       if (!mounted) return;
@@ -92,19 +95,10 @@ class _ConsignmentListScreenState extends State<ConsignmentListScreen> {
         title: Text(_selecting ? 'Selecionar consignações' : 'Consignados'),
         actions: [
           if (_enabled && _lojaId != null)
-            _selecting
-                ? IconButton(
-                    key: const Key('consignment_select_mode'),
-                    tooltip: 'Cancelar seleção',
-                    icon: const Icon(Icons.close),
-                    onPressed: _toggleSelecting,
-                  )
-                : TextButton.icon(
-                    key: const Key('consignment_select_mode'),
-                    onPressed: _toggleSelecting,
-                    icon: const Icon(Icons.checklist),
-                    label: const Text('Selecionar'),
-                  ),
+            ConsignmentSelectModeButton(
+              selecting: _selecting,
+              onPressed: _toggleSelecting,
+            ),
           if (_enabled && _lojaId != null && !_selecting)
             IconButton(
               tooltip: 'Relatórios',
