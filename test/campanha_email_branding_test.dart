@@ -35,9 +35,12 @@ void main() {
     });
 
     test('EMAILBRAND-2: loja inexistente usa fallback MasterPalm na CF', () {
-      expect(functionsIndex, contains('let displayName = "MasterPalm"'));
-      expect(functionsIndex, contains('if (lojaId)'));
-      expect(functionsIndex, contains('lojaData.nome || lojaData.name'));
+      final sendEmailCore = File('functions/src/raffleNotificationGuard.js')
+          .readAsStringSync();
+      expect(functionsIndex, contains('executeSendEmail('));
+      expect(sendEmailCore, contains('let displayName = "MasterPalm"'));
+      expect(sendEmailCore, contains('if (lojaId)'));
+      expect(sendEmailCore, contains('lojaData.nome || lojaData.name'));
     });
 
     test('EMAILBRAND-3: CF não confia fromName arbitrário do cliente', () {

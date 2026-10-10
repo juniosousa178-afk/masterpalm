@@ -41,6 +41,7 @@ import {
 } from "./src/rateLimiter.js";
 import { processMpWebhook } from "./src/mpWebhookHandler.js";
 import { resolverCampanhaAtiva } from "./src/campanhaSorteioGate.js";
+import { executeSendEmail, executeSendWhatsApp } from "./src/raffleNotificationGuard.js";
 import {
   verifyMpCatalogWebhookNotification,
   MP_WEBHOOK_CATALOG_SIGNATURE_HTTP_STATUS,
@@ -4611,8 +4612,16 @@ export const sendWhatsAppOrderConfirmation = onRequest(
       const identifier = getClientIdentifier(req);
       await checkRateLimit("sendWhatsAppOrderConfirmation", identifier);
 
-      await sendWhatsAppViaGraph(lojaId, phone, String(message));
-      return res.status(200).json({ ok: true, message: "Mensagem enviada" });
+      const result = await executeSendWhatsApp({
+        db: getFirestore(),
+        colLojas: COLLECTION_LOJAS,
+        body,
+        lojaId: String(lojaId),
+        phone: String(phone),
+        message: String(message),
+        send: sendWhatsAppViaGraph,
+      });
+      return res.status(result.status).json(result.json);
     } catch (e) {
       console.error("[sendWhatsAppOrderConfirmation] error:", e);
       const status = e.message?.includes("não configurado") || e.message?.includes("inválido") ? 400 : 500;
@@ -4624,7 +4633,8 @@ export const sendWhatsAppOrderConfirmation = onRequest(
 );
 
 // HTTP: envio de e-mail genérico (web admin / PosPagamento / CampaignEngine).
-// Contrato: { to, subject, html } — SMTP servidor (navegador não envia SMTP).
+// Contrato: { to, subject, html|text, lojaId? } — SMTP servidor (navegador não envia SMTP).
+// Sorteio: + notificationType="raffle_participation", saleId, campaignId, participationId, luckyNumber.
 export const sendEmail = onRequest(
   {
     cors: true,
@@ -4659,34 +4669,19 @@ export const sendEmail = onRequest(
       }
 
       // Nome visível: somente server-side via lojaId (nunca confiar fromName do cliente).
-      let displayName = "MasterPalm";
-      if (lojaId) {
-        try {
-          const lojaSnap = await getFirestore().collection(COLLECTION_LOJAS).doc(lojaId).get();
-          if (lojaSnap.exists) {
-            const lojaData = lojaSnap.data() || {};
-            const nome = String(lojaData.nome || lojaData.name || "").trim();
-            if (nome) displayName = nome;
-          }
-        } catch (e) {
-          console.warn("[sendEmail] falha ao resolver nome da loja:", lojaId, e?.message || e);
-        }
-      }
-
-      const transporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: { user: smtpUser, pass: smtpPass },
+      // E-mail de sorteio só sai com participação autoritativa (raffleNotificationGuard).
+      const result = await executeSendEmail({
+        db: getFirestore(),
+        colLojas: COLLECTION_LOJAS,
+        body,
+        input: { to, subject, html, text, lojaId },
+        smtpUser,
+        sendMail: (opts) =>
+          nodemailer
+            .createTransport({ service: "gmail", auth: { user: smtpUser, pass: smtpPass } })
+            .sendMail(opts),
       });
-
-      await transporter.sendMail({
-        from: `"${displayName}" <${smtpUser}>`,
-        to,
-        subject,
-        html: html || undefined,
-        text: text || undefined,
-      });
-
-      return res.status(200).json({ ok: true, message: "Email enviado" });
+      return res.status(result.status).json(result.json);
     } catch (e) {
       console.error("[sendEmail] error:", e);
       return res.status(500).json({

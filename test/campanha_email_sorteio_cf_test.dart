@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:master_palm/services/campaign_engine_service.dart';
+import 'package:master_palm/services/pos_pagamento_service.dart';
 
 const _lojaId = 'loja-email-sorteio';
 const _campanhaId = 'camp-email-1';
@@ -40,9 +41,13 @@ void main() {
       );
 
       expect(payload.keys.toSet(), equals({'to', 'subject', 'html', 'lojaId'}));
-      expect(posPagamentoSrc, contains("'to': destinatario"));
-      expect(posPagamentoSrc, contains("'subject': assunto"));
-      expect(posPagamentoSrc, contains("'html': htmlBody"));
+      final posPayload = PosPagamentoService.montarPayloadSendEmail(
+        to: 'lara@test.com',
+        subject: 's',
+        html: 'h',
+      );
+      expect(posPayload.keys.toSet(), equals({'to', 'subject', 'html'}));
+      expect(posPagamentoSrc, contains('montarPayloadSendEmail('));
 
       final json = jsonEncode(payload);
       expect(json, contains('lara@test.com'));

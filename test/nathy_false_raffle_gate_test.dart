@@ -76,6 +76,7 @@ Future<
       bool canonico,
       bool incluirNaNotificacao,
       String? campanhaId,
+      String? participacaoId,
     })> _resolverPos(String vendaId, {double valor = 100}) =>
     PosPagamentoService.resolverNumeroSorteParaPosPagamento(
       lojaId: _loja,
@@ -238,6 +239,7 @@ void main() {
       expect(r.numero, matches(RegExp(r'^\d{5}$')));
       expect(r.incluirNaNotificacao, isTrue);
       expect(r.campanhaId, 'ok');
+      expect(r.participacaoId, CampanhaSorteioGate.participacaoDocId('607'));
       final doc = await fs
           .collection('lojas')
           .doc(_loja)
@@ -377,6 +379,114 @@ void main() {
     test('pré-pedidos só anuncia número da sorte quando foi enviado', () {
       final src = File('lib/screens/pre_pedidos_screen.dart').readAsStringSync();
       expect(src, contains('PosPagamentoService.ultimaNotificacaoComNumeroSorte'));
+    });
+  });
+
+  group('contrato estruturado sendEmail / WhatsApp (guard do servidor)', () {
+    test('PosPagamento: participação validada ⇒ campos completos no payload', () async {
+      await _seed(fs, {'ok': _camp()});
+      final r = await _resolverPos('800');
+      final campos = PosPagamentoService.camposSorteioEstruturados(
+        lojaId: _loja,
+        vendaId: '800',
+        campanhaId: r.campanhaId,
+        participacaoId: r.participacaoId,
+        numeroSorte: r.numero!,
+      );
+      expect(campos, {
+        'notificationType': 'raffle_participation',
+        'lojaId': _loja,
+        'saleId': '800',
+        'campaignId': 'ok',
+        'participationId': CampanhaSorteioGate.participacaoDocId('800'),
+        'luckyNumber': r.numero,
+      });
+      final payload = PosPagamentoService.montarPayloadSendEmail(
+        to: 'c@example.test',
+        subject: 's',
+        html: '<p>${r.numero}</p>',
+        camposSorteio: campos,
+      );
+      expect(payload['participationId'], CampanhaSorteioGate.participacaoDocId('800'));
+      expect(payload['to'], 'c@example.test');
+    });
+
+    test('PosPagamento: sem campanha ⇒ sem campos de sorteio e e-mail normal', () async {
+      final r = await _resolverPos('801');
+      expect(r.participacaoId, isNull);
+      expect(
+        PosPagamentoService.camposSorteioEstruturados(
+          lojaId: _loja,
+          vendaId: '801',
+          campanhaId: r.campanhaId,
+          participacaoId: r.participacaoId,
+          numeroSorte: r.numero ?? '',
+        ),
+        isNull,
+      );
+      final payload = PosPagamentoService.montarPayloadSendEmail(
+        to: 'c@example.test',
+        subject: '✅ Pedido confirmado - Loja',
+        html: '<p>ok</p>',
+      );
+      expect(payload.keys.toSet(), {'to', 'subject', 'html'});
+    });
+
+    test('CampaignEngine: payload com campos estruturados; campo ausente ⇒ null', () {
+      final campos = CampaignEngineService.camposSorteioEstruturados(
+        lojaId: _loja,
+        vendaId: '900',
+        campanhaId: 'ok',
+        participacaoId: 'venda_900',
+        numero: '12345',
+      );
+      final payload = CampaignEngineService.montarPayloadSendEmailCf(
+        to: 'c@example.test',
+        subject: 's',
+        html: 'h',
+        lojaId: _loja,
+        camposSorteio: campos,
+      );
+      expect(payload['notificationType'], 'raffle_participation');
+      expect(payload['saleId'], '900');
+      expect(payload['luckyNumber'], '12345');
+      expect(
+        CampaignEngineService.camposSorteioEstruturados(
+          lojaId: _loja,
+          vendaId: '',
+          campanhaId: 'ok',
+          participacaoId: 'p',
+          numero: '12345',
+        ),
+        isNull,
+      );
+    });
+
+    test('CampaignEngine: recusa do servidor não conta como envio nem cai em fallback', () {
+      expect(
+        CampaignEngineService.interpretarRespostaNotificacao(
+          200,
+          '{"ok":false,"sent":false,"code":"RAFFLE_NOT_ACTIVE"}',
+        ),
+        isFalse,
+      );
+      expect(
+        CampaignEngineService.interpretarRespostaNotificacao(
+          200,
+          '{"ok":true,"sent":false,"duplicate":true}',
+        ),
+        isTrue,
+      );
+      expect(
+        CampaignEngineService.interpretarRespostaNotificacao(200, '{"ok":true,"sent":true}'),
+        isTrue,
+      );
+      expect(CampaignEngineService.interpretarRespostaNotificacao(500, '{}'), isNull);
+    });
+
+    test('CampaignEngine não usa mais SMTP local no e-mail de sorteio', () {
+      final src = File('lib/services/campaign_engine_service.dart').readAsStringSync();
+      expect(src, isNot(contains('EmailService.enviarEmail')));
     });
   });
 }

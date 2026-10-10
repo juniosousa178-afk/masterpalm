@@ -1,0 +1,73 @@
+{
+  "generatedAt": "2026-10-09",
+  "mode": "READ_ONLY (Cloud Functions v2 GET + GCS source object GET); no deploy, no write",
+  "project": "masterpalm-58c46",
+  "region": "southamerica-east1",
+  "repoLiveBase": "e92edd4",
+  "candidateBase": "cb53fd7",
+  "hashNote": "PROD/REPO_SOURCE_HASH = sha256 (16 hex) over runtime .js/.json files (CRLF normalized, excluding test/, scripts/, credentials, .env*)",
+  "functions": [
+    {
+      "FUNCTION_NAME": "mpWebhook",
+      "CURRENT_REVISION": "mpwebhook-00154-bos",
+      "SOURCE_OBJECT": "mpWebhook/function-source.zip#1783451788399624",
+      "PROD_PACKAGE_EXACT_COMMIT": "9bae974 (ancestor of e92edd4)",
+      "PROD_SOURCE_HASH": "f427fbde583e8499",
+      "REPO_SOURCE_HASH": "8380ebade28e9fbd",
+      "DIFF_COUNT": 17,
+      "DIFF_FILES": {
+        "changed": ["index.js", "src/mpPlanChange.js", "src/mpPlanRecurring.js", "src/rateLimiter.js"],
+        "onlyProd": [],
+        "onlyRepo": ["src/billingOperations.js", "src/billingWebhookStatus.js", "src/catalogStockProjection.js", "src/consignmentCommand.js", "src/consignmentLegacyBootstrap.js", "src/consignmentProtocol.js", "src/consignmentStock.js", "src/productValidationErrors.js", "src/stockCatalogAccess.js", "src/stockCatalogCombo.js", "src/stockCatalogCommands.js", "src/stockCatalogPdvSale.js", "src/stockPhysicalReconciliation.js"]
+      },
+      "FUNCTION_PATH_PROD_VS_E92EDD4": "identical (export block, mpWebhookHandler, mpWebhookPromo, mpWebhookPremioRoleta, catalogMpOrderHelpers, mpWebhookCatalogEdge, mpStructuredLogsMp)",
+      "FUNCTION_PATH_PROD_VS_CANDIDATE": ["src/mpWebhookPromo.js (raffle gate)", "src/campanhaSorteioGate.js (new)"]
+    },
+    {
+      "FUNCTION_NAME": "sendEmail",
+      "CURRENT_REVISION": "sendemail-00002-bed",
+      "SOURCE_OBJECT": "sendEmail/function-source.zip#1783725031609733",
+      "PROD_PACKAGE_EXACT_COMMIT": "4acfa4e (ancestor of e92edd4)",
+      "PROD_SOURCE_HASH": "1c0d0c6a9a0bfde1",
+      "REPO_SOURCE_HASH": "8380ebade28e9fbd",
+      "DIFF_COUNT": 17,
+      "DIFF_FILES": {
+        "changed": ["index.js", "src/mpPlanChange.js", "src/mpPlanRecurring.js", "src/rateLimiter.js"],
+        "onlyProd": [],
+        "onlyRepo": "same 13 modules as mpWebhook"
+      },
+      "FUNCTION_PATH_PROD_VS_E92EDD4": "identical export block; rateLimiter.js only adds createPlanChangeSubscription limit",
+      "FUNCTION_PATH_PROD_VS_CANDIDATE": ["sendEmail export block -> executeSendEmail", "src/raffleNotificationGuard.js (new)", "src/campanhaSorteioGate.js (new)"]
+    },
+    {
+      "FUNCTION_NAME": "gerarCupomNumeroSorte",
+      "CURRENT_REVISION": "gerarcupomnumerosorte-00105-cop",
+      "SOURCE_OBJECT": "gerarCupomNumeroSorte/function-source.zip#1779191585680143",
+      "PROD_PACKAGE_EXACT_COMMIT": "e20f2eb + uncommitted index.js/mpWebhookHandler.js (mpCatalogPayment PIX amount patch); e20f2eb NOT ancestor of e92edd4",
+      "PROD_SOURCE_HASH": "773af68199a6b5a0",
+      "REPO_SOURCE_HASH": "8380ebade28e9fbd",
+      "DIFF_COUNT": 28,
+      "DIFF_FILES": {
+        "changed": ["index.js", "package-lock.json", "package.json", "src/catalogMpOrderHelpers.js", "src/mpPlanChange.js", "src/mpPlanRecurring.js", "src/mpWebhookHandler.js", "src/rateLimiter.js"],
+        "onlyProd": [],
+        "onlyRepo": "20 modules (13 above + masterPlanAdmin, melhorEnvioIntegration, mpWebhookPremioRoleta, planEffectiveAccessResolver, roletaCatalogo, shippingPreOrder, superFreteIntegration)"
+      },
+      "FUNCTION_PATH_PROD_VS_E92EDD4": "identical export block; rateLimiter.js only adds limits for other functions; package.json only adds devDependency; package-lock = the one already live in mpWebhook/sendEmail",
+      "FUNCTION_PATH_PROD_VS_CANDIDATE": ["gerarCupomNumeroSorte export block (raffle gate, cb53fd7)", "src/campanhaSorteioGate.js (new)"],
+      "OUT_OF_SCOPE_RISK": "prod-only PIX amount patch (normalizeBrlTransactionAmountForMpPix) lives in mpCatalogPayment code of this package and is NOT in the repo; mpCatalogPayment must not be deployed from repo without porting it"
+    },
+    {
+      "FUNCTION_NAME": "sendWhatsAppOrderConfirmation",
+      "CURRENT_REVISION": "sendwhatsapporderconfirmation-00098-kot",
+      "SOURCE_OBJECT": "sendWhatsAppOrderConfirmation/function-source.zip#1779191576459214 (byte-identical to gerarCupomNumeroSorte package)",
+      "PROD_PACKAGE_EXACT_COMMIT": "same as gerarCupomNumeroSorte",
+      "PROD_SOURCE_HASH": "773af68199a6b5a0",
+      "REPO_SOURCE_HASH": "8380ebade28e9fbd",
+      "DIFF_COUNT": 28,
+      "DIFF_FILES": "same as gerarCupomNumeroSorte",
+      "FUNCTION_PATH_PROD_VS_E92EDD4": "identical code (only trailing comments differ)",
+      "FUNCTION_PATH_PROD_VS_CANDIDATE": ["sendWhatsAppOrderConfirmation export block -> executeSendWhatsApp", "src/raffleNotificationGuard.js (new)"]
+    }
+  ],
+  "conclusion": "No production-only code on the execution path of the 4 in-scope functions; repo is a strict superset there. Candidate = production function path + approved raffle-gate/guard changes only. Deploy MUST be scoped with --only functions:<names>."
+}

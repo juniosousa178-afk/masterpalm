@@ -163,6 +163,7 @@ class PosPagamentoService {
         bool canonico,
         bool incluirNaNotificacao,
         String? campanhaId,
+        String? participacaoId,
       }) numeroResolvido;
       try {
         numeroResolvido = await resolverNumeroSorteParaPosPagamento(
@@ -182,6 +183,7 @@ class PosPagamentoService {
           canonico: false,
           incluirNaNotificacao: false,
           campanhaId: null,
+          participacaoId: null,
         );
       }
       final numeroSorte = numeroResolvido.numero ?? '';
@@ -212,8 +214,16 @@ class PosPagamentoService {
       );
 
       // 5. Enviar notificações (Email e WhatsApp)
-      final incluirNumeroSorte =
-          numeroSorte.isNotEmpty && numeroResolvido.incluirNaNotificacao;
+      final camposSorteio = numeroSorte.isNotEmpty &&
+              numeroResolvido.incluirNaNotificacao
+          ? camposSorteioEstruturados(
+              lojaId: lojaId,
+              vendaId: vendaId,
+              campanhaId: numeroResolvido.campanhaId,
+              participacaoId: numeroResolvido.participacaoId,
+              numeroSorte: numeroSorte,
+            )
+          : null;
       await _enviarNotificacoes(
         lojaId: lojaId,
         vendaId: vendaId,
@@ -222,7 +232,8 @@ class PosPagamentoService {
         cupomRoletaCodigo: cupomRoletaCodigo,
         cupomRoletaDesconto: cupomRoletaDesconto,
         valorTotal: valorTotal,
-        incluirNumeroSorte: incluirNumeroSorte,
+        incluirNumeroSorte: camposSorteio != null,
+        camposSorteio: camposSorteio,
       );
 
       try {
@@ -254,27 +265,6 @@ class PosPagamentoService {
       debugPrint('$st');
       return false;
     }
-  }
-
-  /// Envia apenas as notificações de número da sorte (Email e WhatsApp) ao cliente.
-  /// Usado após nova venda no APK, quando o número já foi gerado e registrado na campanha.
-  /// [vendaId] pode ser o key da venda no Hive ou um identificador (ex: 'nova-venda').
-  static Future<void> enviarNotificacaoNumeroSorte({
-    required String lojaId,
-    required String vendaId,
-    required Map<String, dynamic> customer,
-    required String numeroSorte,
-    required double valorTotal,
-  }) async {
-    await _enviarNotificacoes(
-      lojaId: lojaId,
-      vendaId: vendaId,
-      customer: customer,
-      numeroSorte: numeroSorte,
-      cupomRoletaCodigo: null,
-      cupomRoletaDesconto: null,
-      valorTotal: valorTotal,
-    );
   }
 
   /// Atualiza o status da venda para "pago"
@@ -453,6 +443,7 @@ class PosPagamentoService {
         bool canonico,
         bool incluirNaNotificacao,
         String? campanhaId,
+        String? participacaoId,
       })> resolverNumeroSorteParaPosPagamento({
     required String lojaId,
     required String vendaId,
@@ -481,6 +472,7 @@ class PosPagamentoService {
           canonico: true,
           incluirNaNotificacao: false,
           campanhaId: participacao?.campanhaId,
+          participacaoId: participacao?.id,
         );
       }
     }
@@ -508,6 +500,7 @@ class PosPagamentoService {
         canonico: false,
         incluirNaNotificacao: false,
         campanhaId: null,
+        participacaoId: null,
       );
     }
     return (
@@ -515,8 +508,46 @@ class PosPagamentoService {
       canonico: !validada.criadaAgora,
       incluirNaNotificacao: validada.criadaAgora,
       campanhaId: validada.campanhaId,
+      participacaoId: validada.participacaoId,
     );
   }
+
+  /// Campos que o servidor (`sendEmail` / `sendWhatsAppOrderConfirmation`) exige para
+  /// aceitar notificação de sorteio. Algum ausente ⇒ `null` (notificação sem sorteio).
+  @visibleForTesting
+  static Map<String, String>? camposSorteioEstruturados({
+    required String lojaId,
+    required String vendaId,
+    required String? campanhaId,
+    required String? participacaoId,
+    required String numeroSorte,
+  }) {
+    final campos = {
+      'notificationType': 'raffle_participation',
+      'lojaId': lojaId.trim(),
+      'saleId': vendaId.trim(),
+      'campaignId': (campanhaId ?? '').trim(),
+      'participationId': (participacaoId ?? '').trim(),
+      'luckyNumber': numeroSorte.trim(),
+    };
+    if (campos.values.any((v) => v.isEmpty)) return null;
+    return campos;
+  }
+
+  /// Corpo HTTP do `sendEmail`; sorteio só com [camposSorteio].
+  @visibleForTesting
+  static Map<String, String> montarPayloadSendEmail({
+    required String to,
+    required String subject,
+    required String html,
+    Map<String, String>? camposSorteio,
+  }) =>
+      {
+        'to': to,
+        'subject': subject,
+        'html': html,
+        ...?camposSorteio,
+      };
 
   /// Salva o número da sorte no Firestore
   static Future<void> _salvarNumeroSorte({
@@ -594,6 +625,7 @@ class PosPagamentoService {
     double? cupomRoletaDesconto,
     required double valorTotal,
     bool incluirNumeroSorte = true,
+    Map<String, String>? camposSorteio,
   }) async {
     try {
       final email = customer['email']?.toString();
@@ -628,6 +660,7 @@ class PosPagamentoService {
           cupomRoletaDesconto: cupomRoletaDesconto,
           valorTotal: valorTotal,
           incluirNumeroSorte: incluirNumeroSorte,
+          camposSorteio: camposSorteio,
         );
       }
 
@@ -644,6 +677,7 @@ class PosPagamentoService {
           cupomRoletaDesconto: cupomRoletaDesconto,
           valorTotal: valorTotal,
           incluirNumeroSorte: incluirNumeroSorte,
+          camposSorteio: camposSorteio,
         );
       }
 
@@ -665,6 +699,7 @@ class PosPagamentoService {
     double? cupomRoletaDesconto,
     required double valorTotal,
     bool incluirNumeroSorte = true,
+    Map<String, String>? camposSorteio,
   }) async {
     try {
       // Montar HTML do email
@@ -683,11 +718,14 @@ class PosPagamentoService {
       final response = await http.post(
         Uri.parse('https://southamerica-east1-$projectId.cloudfunctions.net/sendEmail'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'to': destinatario,
-          'subject': assunto,
-          'html': htmlBody,
-        }),
+        body: jsonEncode(
+          montarPayloadSendEmail(
+            to: destinatario,
+            subject: assunto,
+            html: htmlBody,
+            camposSorteio: incluirNumeroSorte ? camposSorteio : null,
+          ),
+        ),
       );
 
       if (response.statusCode == 200) {
@@ -794,6 +832,7 @@ class PosPagamentoService {
     double? cupomRoletaDesconto,
     required double valorTotal,
     bool incluirNumeroSorte = true,
+    Map<String, String>? camposSorteio,
   }) async {
     try {
       final temCupom = cupomRoletaCodigo != null && cupomRoletaCodigo.isNotEmpty;
@@ -921,6 +960,7 @@ Obrigado por comprar conosco! 💜
         Uri.parse('https://southamerica-east1-$projectId.cloudfunctions.net/sendWhatsAppOrderConfirmation'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
+          if (incluirNumeroSorte) ...?camposSorteio,
           'lojaId': lojaId,
           'phone': telefone,
           'message': mensagem,

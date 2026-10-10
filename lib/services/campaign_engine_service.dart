@@ -24,7 +24,6 @@ import '../core/logger.dart';
 
 import '../models/venda.dart';
 import 'campanha_sorteio_gate.dart';
-import 'email_service.dart';
 
 /// Modelo de participação em campanha
 class Participacao {
@@ -299,6 +298,7 @@ class CampaignEngineService {
         lojaId: lojaId,
         campanhaId: campanhaId,
         participacaoId: validada.participacaoId,
+        vendaId: validada.vendaId,
         numero: numero,
         clienteNome: nome,
         telefone: telefone,
@@ -454,6 +454,7 @@ class CampaignEngineService {
     required String lojaId,
     required String campanhaId,
     required String participacaoId,
+    required String vendaId,
     required String numero,
     required String clienteNome,
     String? telefone,
@@ -467,6 +468,7 @@ class CampaignEngineService {
         lojaId: lojaId,
         campanhaId: campanhaId,
         participacaoId: participacaoId,
+        vendaId: vendaId,
         numero: numero,
         clienteNome: clienteNome,
         telefone: telefone,
@@ -498,6 +500,7 @@ class CampaignEngineService {
     required String lojaId,
     required String campanhaId,
     required String participacaoId,
+    String? vendaId,
     required String numero,
     required String clienteNome,
     String? telefone,
@@ -516,12 +519,16 @@ class CampaignEngineService {
 
     var mensagemEnviadaWhatsApp = false;
     var mensagemEnviadaEmail = false;
+    var idVenda = vendaId?.trim() ?? '';
 
     try {
       final snap = await participanteRef.get();
       final data = snap.data() ?? {};
       mensagemEnviadaWhatsApp = data['mensagemEnviadaWhatsApp'] == true;
       mensagemEnviadaEmail = data['mensagemEnviadaEmail'] == true;
+      if (idVenda.isEmpty) {
+        idVenda = (data['vendaId'] ?? data['pedidoId'] ?? '').toString().trim();
+      }
     } catch (e, st) {
       logE(
         '⚠️ [CampaignEngine] Erro ao ler flags de notificação (type=${e.runtimeType})',
@@ -529,6 +536,14 @@ class CampaignEngineService {
         st: st,
       );
     }
+
+    final camposSorteio = camposSorteioEstruturados(
+      lojaId: lojaId,
+      vendaId: idVenda,
+      campanhaId: campanhaId,
+      participacaoId: participacaoId,
+      numero: numero,
+    );
 
     final canais = resolverCanaisNotificacaoParticipacao(
       mensagemEnviadaWhatsApp: mensagemEnviadaWhatsApp,
@@ -551,8 +566,9 @@ class CampaignEngineService {
             dataSorteio: dataSorteio,
             nomeLoja: nomeLoja,
           );
+          whatsappEnviado = true;
         } else {
-          await _enviarWhatsApp(
+          whatsappEnviado = await _enviarWhatsApp(
             lojaId: lojaId,
             telefone: telefone!,
             clienteNome: clienteNome,
@@ -560,9 +576,9 @@ class CampaignEngineService {
             campanhaNome: campanhaNome,
             dataSorteio: dataSorteio,
             nomeLoja: nomeLoja,
+            camposSorteio: camposSorteio,
           );
         }
-        whatsappEnviado = true;
       } catch (e, st) {
         logE(
           '⚠️ [CampaignEngine] Erro ao enviar WhatsApp (type=${e.runtimeType})',
@@ -594,6 +610,7 @@ class CampaignEngineService {
             campanhaNome: campanhaNome,
             dataSorteio: dataSorteio,
             nomeLoja: nomeLoja,
+            camposSorteio: camposSorteio,
           );
         }
         if (enviado) emailEnviado = true;
@@ -658,8 +675,46 @@ Desejamos boa sorte! Qualquer duvida, estamos a disposicao.
 ''';
   }
 
-  /// Envio automático via Cloud Function; fallback wa.me só se CF falhar.
-  static Future<void> _enviarWhatsApp({
+  /// Campos que o servidor exige para aceitar notificação de sorteio.
+  /// Algum ausente ⇒ `null` (o servidor recusa notificação de sorteio sem eles).
+  @visibleForTesting
+  static Map<String, String>? camposSorteioEstruturados({
+    required String lojaId,
+    required String vendaId,
+    required String campanhaId,
+    required String participacaoId,
+    required String numero,
+  }) {
+    final campos = {
+      'notificationType': 'raffle_participation',
+      'lojaId': lojaId.trim(),
+      'saleId': vendaId.trim(),
+      'campaignId': campanhaId.trim(),
+      'participationId': participacaoId.trim(),
+      'luckyNumber': numero.trim(),
+    };
+    if (campos.values.any((v) => v.isEmpty)) return null;
+    return campos;
+  }
+
+  /// Resultado do `sendEmail` / `sendWhatsAppOrderConfirmation`:
+  /// `null` ⇒ falha de transporte; `true` ⇒ entregue (ou já entregue antes);
+  /// `false` ⇒ servidor recusou o sorteio (não usar fallback local).
+  @visibleForTesting
+  static bool? interpretarRespostaNotificacao(int statusCode, String body) {
+    if (statusCode != 200) return null;
+    try {
+      final json = jsonDecode(body);
+      if (json is Map) {
+        if (json['duplicate'] == true) return true;
+        if (json['sent'] == false || json['ok'] == false) return false;
+      }
+    } catch (_) {}
+    return true;
+  }
+
+  /// Envio automático via Cloud Function; fallback wa.me só se a CF estiver indisponível.
+  static Future<bool> _enviarWhatsApp({
     required String lojaId,
     required String telefone,
     required String clienteNome,
@@ -667,7 +722,12 @@ Desejamos boa sorte! Qualquer duvida, estamos a disposicao.
     required String campanhaNome,
     DateTime? dataSorteio,
     required String nomeLoja,
+    Map<String, String>? camposSorteio,
   }) async {
+    if (camposSorteio == null) {
+      logW('⚠️ [CampaignEngine] Participação sem identificadores completos; WhatsApp não enviado');
+      return false;
+    }
     final mensagem = montarMensagemWhatsAppParticipacao(
       clienteNome: clienteNome,
       numero: numero,
@@ -686,14 +746,21 @@ Desejamos boa sorte! Qualquer duvida, estamos a disposicao.
         ),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
+          ...camposSorteio,
           'lojaId': lojaId,
           'phone': telefone,
           'message': mensagem,
         }),
       );
-      if (response.statusCode == 200) {
+      final entregue =
+          interpretarRespostaNotificacao(response.statusCode, response.body);
+      if (entregue == true) {
         logD('✅ [CampaignEngine] WhatsApp CF enviado para $telefoneLimpo');
-        return;
+        return true;
+      }
+      if (entregue == false) {
+        logW('⚠️ [CampaignEngine] WhatsApp de sorteio recusado pelo servidor');
+        return false;
       }
       logW(
         '⚠️ [CampaignEngine] CF WhatsApp status ${response.statusCode}; tentando wa.me',
@@ -715,9 +782,10 @@ Desejamos boa sorte! Qualquer duvida, estamos a disposicao.
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
       logD('✅ [CampaignEngine] WhatsApp wa.me aberto para $telefoneLimpo');
-    } else {
-      logW('⚠️ [CampaignEngine] Não foi possível abrir WhatsApp');
+      return true;
     }
+    logW('⚠️ [CampaignEngine] Não foi possível abrir WhatsApp');
+    return false;
   }
 
   /// Payload HTTP para Cloud Function `sendEmail` (contrato PosPagamento).
@@ -727,8 +795,10 @@ Desejamos boa sorte! Qualquer duvida, estamos a disposicao.
     required String subject,
     required String html,
     required String lojaId,
+    Map<String, String>? camposSorteio,
   }) =>
       {
+        ...?camposSorteio,
         'to': to,
         'subject': subject,
         'html': html,
@@ -783,7 +853,8 @@ Equipe $nomeLoja
     return (assunto: assunto, html: html, textoPlano: textoPlano);
   }
 
-  /// Envia email com o número da sorte. Retorna true somente se CF ou SMTP entregou.
+  /// Envia email com o número da sorte só via `sendEmail` (o servidor valida a
+  /// participação). Retorna true somente se o servidor entregou.
   static Future<bool> _enviarEmail({
     required String lojaId,
     required String email,
@@ -792,7 +863,12 @@ Equipe $nomeLoja
     required String campanhaNome,
     DateTime? dataSorteio,
     required String nomeLoja,
+    Map<String, String>? camposSorteio,
   }) async {
+    if (camposSorteio == null) {
+      logW('⚠️ [CampaignEngine] Participação sem identificadores completos; email não enviado');
+      return false;
+    }
     final conteudo = montarConteudoEmailParticipacao(
       clienteNome: clienteNome,
       numero: numero,
@@ -814,43 +890,30 @@ Equipe $nomeLoja
             subject: conteudo.assunto,
             html: conteudo.html,
             lojaId: lojaId,
+            camposSorteio: camposSorteio,
           ),
         ),
       );
-      if (response.statusCode == 200) {
+      final entregue =
+          interpretarRespostaNotificacao(response.statusCode, response.body);
+      if (entregue == null) {
+        logW('⚠️ [CampaignEngine] CF email status ${response.statusCode}');
+        return false;
+      }
+      if (entregue) {
         logD('✅ [CampaignEngine] Email CF enviado para $email');
-        return true;
+      } else {
+        logW('⚠️ [CampaignEngine] Email de sorteio recusado pelo servidor');
       }
-      logW(
-        '⚠️ [CampaignEngine] CF email status ${response.statusCode} body=${response.body}; tentando SMTP',
-      );
+      return entregue;
     } catch (e, st) {
       logE(
-        '⚠️ [CampaignEngine] CF email falhou; tentando SMTP (type=${e.runtimeType})',
+        '⚠️ [CampaignEngine] CF email falhou (type=${e.runtimeType})',
         error: e,
         st: st,
       );
+      return false;
     }
-
-    try {
-      final enviado = await EmailService.enviarEmail(
-        destinatario: email,
-        assunto: conteudo.assunto,
-        mensagem: conteudo.textoPlano,
-      );
-      if (enviado) {
-        logD('✅ [CampaignEngine] Email SMTP enviado para $email');
-        return true;
-      }
-      logW('⚠️ [CampaignEngine] Falha ao enviar email via SMTP');
-    } catch (e, st) {
-      logE(
-        '⚠️ [CampaignEngine] EmailService indisponivel (type=${e.runtimeType})',
-        error: e,
-        st: st,
-      );
-    }
-    return false;
   }
 
   // ============================================================

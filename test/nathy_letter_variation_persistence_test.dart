@@ -1,11 +1,15 @@
 // P0 Nathy — letras (3º nível de variação) não podem sumir na hidratação.
 // Grade A=1 B=2 C=0 D=1, qty agregada 4. Sem Firestore real.
 
+import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:master_palm/core/produto_effective_stock.dart';
+import 'package:master_palm/core/produto_pending_stock_reconciliation.dart';
 import 'package:master_palm/core/produto_variacao_extra.dart';
 import 'package:master_palm/models/produto.dart';
+import 'package:master_palm/services/firestore_paths.dart';
 import 'package:master_palm/services/produtos_firestore_service.dart';
+import 'package:master_palm/services/venda_estoque_remoto_prep_service.dart';
 import 'package:master_palm/services/venda_produto_stock_hydrate_service.dart';
 
 const _loja = 'loja-letras';
@@ -203,6 +207,101 @@ void main() {
       final r = await _route(p, () => remote);
       expect(r.decision, SaleVariationRouteDecision.openVariationPicker);
       expect(_letrasVendaveis(r.produto, tam: 'sem-tamanho'), ['A', 'B', 'D']);
+    });
+  });
+
+  group('preparação da venda e reconciliação de pending', () {
+    tearDown(() => ProdutosFirestoreService.debugFirestoreOverride = null);
+
+    test('prep de venda: refresh autoritativo antes da baixa mantém letras',
+        () async {
+      final fs = FakeFirebaseFirestore();
+      ProdutosFirestoreService.debugFirestoreOverride = fs;
+      await fs
+          .collection('lojas')
+          .doc(_loja)
+          .collection(FSPaths.estoqueProdutosCol)
+          .doc('colar-letrinha')
+          .set(_remote());
+      final p = _local(qty: 4);
+      await VendaEstoqueRemotoPrepService.refreshAuthoritativeStockCacheForSale(
+        lojaId: _loja,
+        produto: p,
+      );
+      _expectGradeABCD(p);
+    });
+
+    test('prep de venda: pending real não é mascarado pelo refresh', () async {
+      final fs = FakeFirebaseFirestore();
+      ProdutosFirestoreService.debugFirestoreOverride = fs;
+      await fs
+          .collection('lojas')
+          .doc(_loja)
+          .collection(FSPaths.estoqueProdutosCol)
+          .doc('colar-letrinha')
+          .set(_remote(letras: const {'A': 9, 'B': 9, 'C': 9, 'D': 9}));
+      final local = _deep(_remote()['variacoes']);
+      final p = _local(qty: 4, variacoes: local, pending: 'op-local');
+      await VendaEstoqueRemotoPrepService.refreshAuthoritativeStockCacheForSale(
+        lojaId: _loja,
+        produto: p,
+      );
+      expect(_celula(p), {'A': 1, 'B': 2, 'C': 0, 'D': 1});
+      expect(p.quantidade, 4);
+    });
+
+    test('pending genérico (sem letras) vs remoto com letras avançado → nunca flush',
+        () {
+      final p = _local(qty: 4, pending: 'op-local');
+      final d = classifyPendingAgainstRemote(
+        local: p,
+        remote: _remote(rev: 4),
+      );
+      expect(
+        d.classification,
+        PendingStockReconcileClass.supersededPendingRemoteAdvanced,
+      );
+      expect(d.classification.mustNeverFlush, isTrue);
+      expect(applyAuthoritativeRemoteStockToProduto(p, remote: _remote(rev: 4)),
+          isFalse,
+          reason: 'pending local não é mascarado antes da limpeza');
+      expect(d.classification.mayClearLocalPendingOnly, isTrue);
+      p.pendingStockOperationId = null;
+      p.pendingStockBaseRevision = null;
+      expect(applyAuthoritativeRemoteStockToProduto(p, remote: _remote(rev: 4)),
+          isTrue);
+      _expectGradeABCD(p);
+    });
+
+    test('pending com letras já confirmado no remoto → limpa só local', () {
+      final p = _local(
+        qty: 4,
+        variacoes: _deep(_remote()['variacoes']),
+        pending: 'op-4',
+      );
+      final d = classifyPendingAgainstRemote(
+        local: p,
+        remote: _remote(rev: 4),
+      );
+      expect(
+        d.classification,
+        PendingStockReconcileClass.staleConfirmedEquivalent,
+      );
+      expect(d.classification.mayClearLocalPendingOnly, isTrue);
+      expect(_celula(p), {'A': 1, 'B': 2, 'C': 0, 'D': 1});
+    });
+
+    test('remoto ilegível na reconciliação → ambíguo, letras locais intactas',
+        () {
+      final p = _local(
+        qty: 4,
+        variacoes: _deep(_remote()['variacoes']),
+        pending: 'op-local',
+      );
+      final d = classifyPendingAgainstRemote(local: p, remote: null);
+      expect(d.classification, PendingStockReconcileClass.ambiguousPending);
+      expect(d.classification.mayClearLocalPendingOnly, isFalse);
+      expect(_celula(p), {'A': 1, 'B': 2, 'C': 0, 'D': 1});
     });
   });
 
