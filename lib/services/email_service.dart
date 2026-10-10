@@ -1,60 +1,115 @@
+import 'dart:convert';
 
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
-import 'package:mailer/mailer.dart';
-import 'package:mailer/smtp_server.dart';
-import 'package:logger/logger.dart';
+import 'package:http/http.dart' as http;
 
-final logger = Logger();
-
+/// Cliente do `sendEmail` (Cloud Function). O app não tem credencial SMTP: só pede
+/// e-mails de tipos aprovados; destinatário e conteúdo são derivados no servidor a
+/// partir do pedido / participação / carrinho, com o usuário autenticado da loja.
 class EmailService {
-  /// Envia email.
-  /// [remetenteNome] – nome exibido como remetente (ex: "MasterPalm" para admin, nome da loja para cliente)
-  /// [logoUrl] – URL da logo da loja para incluir no topo do email (HTML)
-  static Future<bool> enviarEmail({
-    required String destinatario,
-    required String assunto,
-    required String mensagem,
-    String remetenteNome = 'MasterPalm',
-    String? logoUrl,
-  }) async {
-    const smtpEmail = 'masterpalm26@gmail.com';
-    const smtpSenha = 'vyicsfqbsghrbuuz'; // Senha de app (sem espaços)
+  EmailService._();
 
-    if (smtpEmail.contains('SEU_EMAIL') || smtpSenha == 'SENHA_DE_APP') {
-      debugPrint('⚠️ [EMAIL] SMTP não configurado. Configure smtpEmail e smtpSenha em email_service.dart');
-      return false;
-    }
+  static const String tipoConfirmacaoPedido = 'order_confirmation';
+  static const String tipoParticipacaoSorteio = 'raffle_participation';
+  static const String tipoLembreteCarrinho = 'abandoned_cart_reminder';
 
-    debugPrint('📧 [EMAIL] Enviando para: $destinatario | assunto: $assunto');
-    final smtpServer = gmail(smtpEmail, smtpSenha);
+  @visibleForTesting
+  static Future<({int statusCode, String body})> Function(
+    Map<String, String> payload,
+  )? debugEnviarOverride;
 
-    final message = Message()
-      ..from = Address(smtpEmail, remetenteNome)
-      ..recipients.add(destinatario)
-      ..subject = assunto;
-    if (logoUrl != null && logoUrl.trim().isNotEmpty) {
-      final escaped = mensagem
-          .replaceAll('&', '&amp;')
-          .replaceAll('<', '&lt;')
-          .replaceAll('>', '&gt;')
-          .replaceAll('\n', '<br>');
-      message.html = '''
-<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;font-size:14px;color:#333;line-height:1.5;">
-<div style="text-align:center;margin-bottom:20px;">
-<img src="$logoUrl" alt="Logo" style="max-width:120px;max-height:80px;height:auto;" />
-</div>
-<div>$escaped</div>
-</body></html>''';
-    }
-    message.text = mensagem;
+  /// Confirmação de pagamento do pedido [vendaId]. Bloco de sorteio só com
+  /// [camposSorteio] completos (o servidor ainda valida a participação).
+  static Map<String, String> payloadConfirmacaoPedido({
+    required String lojaId,
+    required String vendaId,
+    Map<String, String>? camposSorteio,
+  }) =>
+      {
+        'emailType': tipoConfirmacaoPedido,
+        'lojaId': lojaId.trim(),
+        'saleId': vendaId.trim(),
+        if (camposSorteio != null) ...{
+          'campaignId': camposSorteio['campaignId'] ?? '',
+          'participationId': camposSorteio['participationId'] ?? '',
+          'luckyNumber': camposSorteio['luckyNumber'] ?? '',
+        },
+      };
 
+  /// Participação persistida em campanha (campos de `camposSorteioEstruturados`).
+  static Map<String, String> payloadParticipacaoSorteio(
+    Map<String, String> camposSorteio,
+  ) =>
+      {
+        'emailType': tipoParticipacaoSorteio,
+        'lojaId': camposSorteio['lojaId'] ?? '',
+        'saleId': camposSorteio['saleId'] ?? '',
+        'campaignId': camposSorteio['campaignId'] ?? '',
+        'participationId': camposSorteio['participationId'] ?? '',
+        'luckyNumber': camposSorteio['luckyNumber'] ?? '',
+      };
+
+  /// Lembrete de carrinho abandonado: [cartId] (catálogo) ou [clienteId] (cadastro).
+  static Map<String, String> payloadLembreteCarrinho({
+    required String lojaId,
+    String? clienteId,
+    String? cartId,
+    String? destinatario,
+    String? link,
+  }) {
+    final cart = (cartId ?? '').trim();
+    final cliente = (clienteId ?? '').trim();
+    final to = (destinatario ?? '').trim();
+    final url = (link ?? '').trim();
+    return {
+      'emailType': tipoLembreteCarrinho,
+      'lojaId': lojaId.trim(),
+      if (cart.isNotEmpty) 'cartId': cart else if (cliente.isNotEmpty) 'clienteId': cliente,
+      if (to.isNotEmpty) 'to': to,
+      if (url.isNotEmpty) 'link': url,
+    };
+  }
+
+  /// `true` só quando o servidor confirmou o envio.
+  static bool foiEnviado(int statusCode, String body) {
+    if (statusCode != 200) return false;
     try {
-      await send(message, smtpServer);
-      return true;
-    } catch (e) {
-      logger.e('Erro ao enviar e-mail (type=${e.runtimeType})');
-      debugPrint('⚠️ [EMAIL] Erro ao enviar (type=${e.runtimeType})');
+      final json = jsonDecode(body);
+      return json is Map && json['sent'] == true;
+    } catch (_) {
       return false;
     }
+  }
+
+  /// Código de erro/recusa devolvido pelo servidor (ex.: `EMAIL_COOLDOWN`).
+  static String? codigoResposta(String body) {
+    try {
+      final json = jsonDecode(body);
+      if (json is Map && json['code'] != null) return json['code'].toString();
+    } catch (_) {}
+    return null;
+  }
+
+  static Future<({int statusCode, String body})> enviar(
+    Map<String, String> payload,
+  ) async {
+    final override = debugEnviarOverride;
+    if (override != null) return override(payload);
+
+    final token = await FirebaseAuth.instance.currentUser?.getIdToken();
+    final projectId = Firebase.app().options.projectId;
+    final response = await http.post(
+      Uri.parse(
+        'https://southamerica-east1-$projectId.cloudfunctions.net/sendEmail',
+      ),
+      headers: {
+        'Content-Type': 'application/json',
+        if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(payload),
+    );
+    return (statusCode: response.statusCode, body: response.body);
   }
 }

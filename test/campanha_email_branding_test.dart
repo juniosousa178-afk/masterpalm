@@ -5,64 +5,47 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:master_palm/services/campaign_engine_service.dart';
+import 'package:master_palm/services/email_service.dart';
 
 const _lojaId = 'nathy-pratas-e-folheados';
 const _nomeLoja = 'Nathy Pratas e Folheados';
 
 void main() {
-  final functionsIndex = File('functions/index.js').readAsStringSync();
+  final contrato = File('functions/src/emailContracts.js').readAsStringSync();
   final campaignSrc =
       File('lib/services/campaign_engine_service.dart').readAsStringSync();
 
   group('EMAILBRAND — identidade da loja no remetente', () {
     test('EMAILBRAND-1: payload inclui lojaId para CF resolver nome', () {
-      final conteudo = CampaignEngineService.montarConteudoEmailParticipacao(
-        clienteNome: 'Lara',
-        numero: '48152',
-        campanhaNome: 'Campanha Borboleta',
-        nomeLoja: _nomeLoja,
-      );
-      final payload = CampaignEngineService.montarPayloadSendEmailCf(
-        to: 'lara@test.com',
-        subject: conteudo.assunto,
-        html: conteudo.html,
-        lojaId: _lojaId,
-      );
+      final payload = EmailService.payloadParticipacaoSorteio({
+        'lojaId': _lojaId,
+        'saleId': 'v-1',
+        'campaignId': 'c-1',
+        'participationId': 'venda_v-1',
+        'luckyNumber': '48152',
+      });
 
       expect(payload['lojaId'], _lojaId);
-      expect(payload['to'], 'lara@test.com');
+      expect(payload.containsKey('to'), isFalse);
       expect(jsonEncode(payload), contains(_lojaId));
     });
 
     test('EMAILBRAND-2: loja inexistente usa fallback MasterPalm na CF', () {
-      final sendEmailCore = File('functions/src/raffleNotificationGuard.js')
-          .readAsStringSync();
-      expect(functionsIndex, contains('executeSendEmail('));
-      expect(sendEmailCore, contains('let displayName = "MasterPalm"'));
-      expect(sendEmailCore, contains('if (lojaId)'));
-      expect(sendEmailCore, contains('lojaData.nome || lojaData.name'));
+      expect(contrato, contains('return "MasterPalm";'));
+      expect(contrato, contains('d.nome || d.name'));
+      expect(contrato, contains('storeDisplayName(db, colLojas, lojaId)'));
     });
 
     test('EMAILBRAND-3: CF não confia fromName arbitrário do cliente', () {
-      expect(
-        functionsIndex,
-        contains('nunca confiar fromName do cliente'),
-      );
-      expect(functionsIndex, isNot(contains('body.fromName')));
-      expect(functionsIndex, isNot(contains('body.displayName')));
+      expect(contrato, isNot(contains('body.fromName')));
+      expect(contrato, isNot(contains('body.displayName')));
+      expect(contrato, contains('from: `"\${plan.send.lojaNome}" <\${smtpUser}>`'));
     });
 
-    test('EMAILBRAND-4: subject e html permanecem corretos', () {
-      final conteudo = CampaignEngineService.montarConteudoEmailParticipacao(
-        clienteNome: 'Lara',
-        numero: '48152',
-        campanhaNome: 'Campanha Borboleta',
-        nomeLoja: _nomeLoja,
-      );
-
-      expect(conteudo.assunto, contains('Campanha Borboleta'));
-      expect(conteudo.html, contains('48152'));
-      expect(conteudo.html, contains(_nomeLoja));
+    test('EMAILBRAND-4: subject e html montados no servidor com dados da campanha', () {
+      expect(contrato, contains('Confirmacao de participacao - Campanha \${campanhaNome}'));
+      expect(contrato, contains('campanha.nome || campanha.titulo'));
+      expect(contrato, contains('Loja: \${escapeHtml(lojaNome)}'));
     });
 
     test('EMAILBRAND-5: WhatsApp inalterado (sem lojaId no payload WA)', () {

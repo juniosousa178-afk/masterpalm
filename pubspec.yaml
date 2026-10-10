@@ -77,7 +77,6 @@ dependencies:
   firebase_storage: ^12.4.9
   firebase_messaging: ^15.1.5
   connectivity_plus: ^6.1.4
-  mailer: ^6.5.0
   firebase_dynamic_links: ^6.1.10
 
   # App Check (compatível com os pacotes acima)

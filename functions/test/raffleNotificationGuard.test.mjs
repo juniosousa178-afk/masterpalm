@@ -4,111 +4,41 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  executeSendEmail,
   executeSendWhatsApp,
   stripRaffleLines,
   hasRaffleMarkers,
   RAFFLE_NOT_ACTIVE,
   CLAIMS_COLLECTION,
 } from "../src/raffleNotificationGuard.js";
-
-const agora = new Date("2026-10-09T12:00:00Z");
-const dia = 24 * 3600 * 1000;
-const LOJA = "loja-a";
-const OUTRA = "loja-b";
-const CAMP = "camp-1";
-const VENDA = "venda-123";
-const PART = "venda_venda-123";
-const NUM = "48213";
-const EMAIL = "cliente@example.test";
-const FONE = "(11) 98888-7777";
-
-function createDb({ failCampaignLookup = false } = {}) {
-  const docs = new Map();
-  const doc = (path) => ({
-    id: path.split("/").pop(),
-    path,
-    collection: (name) => coll(`${path}/${name}`),
-    async get() {
-      const data = docs.get(path);
-      return { exists: data !== undefined, id: path.split("/").pop(), data: () => (data ? { ...data } : undefined) };
-    },
-    async create(data) {
-      if (docs.has(path)) {
-        const e = new Error("6 ALREADY_EXISTS: Document already exists");
-        e.code = 6;
-        throw e;
-      }
-      docs.set(path, data);
-    },
-    async delete() {
-      docs.delete(path);
-    },
-  });
-  const coll = (path, filters = [], lim = Infinity) => ({
-    doc: (id) => doc(`${path}/${id}`),
-    where: (f, op, v) => coll(path, [...filters, [f, op, v]], lim),
-    limit: (n) => coll(path, filters, n),
-    async get() {
-      if (failCampaignLookup && path.endsWith("/campanhas_sorteio")) throw new Error("unavailable");
-      const prefix = `${path}/`;
-      const out = [];
-      for (const [p, data] of docs) {
-        if (!p.startsWith(prefix) || p.slice(prefix.length).includes("/")) continue;
-        const ok = filters.every(([f, op, v]) => (op === "in" ? v.includes(data[f]) : data[f] === v));
-        if (ok) out.push({ id: p.slice(prefix.length), ref: doc(p), data: () => ({ ...data }) });
-      }
-      const sliced = out.slice(0, lim);
-      return { docs: sliced, empty: sliced.length === 0, size: sliced.length };
-    },
-  });
-  return {
-    collection: (name) => coll(name),
-    _set: (path, data) => docs.set(path, data),
-    _has: (path) => docs.has(path),
-    _count: (prefix) => [...docs.keys()].filter((k) => k.startsWith(prefix)).length,
-  };
-}
-
-const campanha = (over = {}) => ({
-  ativa: true,
-  status: "aberta",
-  nome: "Campanha Teste",
-  dataInicio: new Date(agora.getTime() - dia),
-  dataFim: new Date(agora.getTime() + dia),
-  ...over,
-});
-
-const participante = (over = {}) => ({
-  numeroSorte: NUM,
-  campanhaId: CAMP,
-  lojaId: LOJA,
-  vendaId: VENDA,
-  pedidoId: VENDA,
-  status: "valido",
-  clienteEmail: EMAIL,
-  clienteTelefone: "11988887777",
-  dataParticipacao: new Date(agora.getTime() - 3600 * 1000),
-  ...over,
-});
-
-function seedValid(db, { loja = LOJA, camp = CAMP, part = PART, partData = {} } = {}) {
-  db._set(`lojas/${loja}`, { nome: "Loja A" });
-  db._set(`lojas/${loja}/campanhas_sorteio/${camp}`, campanha());
-  db._set(`lojas/${loja}/campanhas_sorteio/${camp}/participantes/${part}`, participante({ lojaId: loja, campanhaId: camp, ...partData }));
-}
+import {
+  agora,
+  LOJA,
+  OUTRA,
+  CAMP,
+  PART,
+  NUM,
+  EMAIL,
+  FONE,
+  createDb,
+  campanha,
+  participante,
+  seedStore,
+  seedValid,
+  raffleBody,
+  emailHarness,
+} from "./_emailFakeDb.mjs";
 
 const structured = (over = {}) => ({
   notificationType: "raffle_participation",
   lojaId: LOJA,
-  saleId: VENDA,
+  saleId: "venda-123",
   campaignId: CAMP,
   participationId: PART,
   luckyNumber: NUM,
   ...over,
 });
 
-// Payloads reais dos clientes antigos (sem campos estruturados).
+// Payloads reais dos clientes antigos (sem emailType).
 const oldPosPagamentoEmail = {
   to: EMAIL,
   subject: "🎉 Parabéns! Você está concorrendo - Loja A",
@@ -159,28 +89,6 @@ Guarde este numero com carinho.
 Loja: Loja A
 `;
 
-function emailHarness(db) {
-  const sent = [];
-  const call = (body) =>
-    executeSendEmail({
-      db,
-      body,
-      input: {
-        to: String(body.to || ""),
-        subject: String(body.subject || ""),
-        html: body.html != null ? String(body.html) : "",
-        text: body.text != null ? String(body.text) : "",
-        lojaId: String(body.lojaId || ""),
-      },
-      smtpUser: "smtp@example.test",
-      sendMail: async (opts) => {
-        sent.push(opts);
-      },
-      agora,
-    });
-  return { sent, call };
-}
-
 function whatsHarness(db) {
   const sent = [];
   const call = (body) =>
@@ -198,12 +106,12 @@ function whatsHarness(db) {
   return { sent, call };
 }
 
-// ---------------------------------------------------------------- cliente antigo, zero campanha
+// ---------------------------------------------------------------- cliente antigo (sem emailType)
 
 test("OLD_CLIENT: e-mail PosPagamento antigo sem campanha ⇒ EMAIL_SEND_COUNT=0, 200 RAFFLE_NOT_ACTIVE", async () => {
   const db = createDb();
-  db._set(`lojas/${LOJA}`, { nome: "Loja A" });
-  const { sent, call } = emailHarness(db);
+  seedStore(db);
+  const { sent, call } = emailHarness(db, { token: null });
   const r = await call(oldPosPagamentoEmail);
   assert.equal(r.status, 200);
   assert.equal(r.json.code, RAFFLE_NOT_ACTIVE);
@@ -211,41 +119,27 @@ test("OLD_CLIENT: e-mail PosPagamento antigo sem campanha ⇒ EMAIL_SEND_COUNT=0
   assert.equal(sent.length, 0);
 });
 
-test("OLD_CLIENT: mesmo payload antigo com lojaId e sem campanha ⇒ 0 envios", async () => {
+test("OLD_CLIENT: e-mail CampaignEngine antigo ⇒ 0 envios (200 evita fallback SMTP local)", async () => {
   const db = createDb();
-  const { sent, call } = emailHarness(db);
-  const r = await call({ ...oldPosPagamentoEmail, lojaId: LOJA });
-  assert.equal(r.json.code, RAFFLE_NOT_ACTIVE);
-  assert.equal(r.json.reason, "no_active_campaign");
-  assert.equal(sent.length, 0);
-});
-
-test("OLD_CLIENT: e-mail CampaignEngine antigo sem campanha ⇒ 0 envios (200 evita fallback SMTP local)", async () => {
-  const db = createDb();
-  const { sent, call } = emailHarness(db);
+  const { sent, call } = emailHarness(db, { token: null });
   const r = await call(oldCampaignEngineEmail);
   assert.equal(r.status, 200);
   assert.equal(r.json.code, RAFFLE_NOT_ACTIVE);
   assert.equal(sent.length, 0);
 });
 
-test("OLD_CLIENT: número aleatório não persistido mesmo com campanha válida ⇒ 0 envios", async () => {
+test("OLD_CLIENT: payload cru de sorteio nunca envia, nem com participação real e token válido", async () => {
   const db = createDb();
   seedValid(db);
   const { sent, call } = emailHarness(db);
-  const fake = { ...oldCampaignEngineEmail, html: oldCampaignEngineEmail.html.replace(NUM, "77777") };
-  const r = await call(fake);
-  assert.equal(r.json.code, RAFFLE_NOT_ACTIVE);
+  for (const body of [oldCampaignEngineEmail, oldPosPagamentoEmail, { ...oldPosPagamentoEmail, ...structured() }]) {
+    const r = await call(body);
+    assert.equal(r.status, 200);
+    assert.equal(r.json.code, RAFFLE_NOT_ACTIVE);
+    assert.equal(r.json.reason, "legacy_raw_email_disabled");
+  }
   assert.equal(sent.length, 0);
-});
-
-test("OLD_CLIENT: e-mail PosPagamento antigo sem lojaId é bloqueado mesmo com campanha válida", async () => {
-  const db = createDb();
-  seedValid(db);
-  const { sent, call } = emailHarness(db);
-  const r = await call(oldPosPagamentoEmail);
-  assert.equal(r.json.reason, "legacy_missing_loja");
-  assert.equal(sent.length, 0);
+  assert.equal(db._count(`${CLAIMS_COLLECTION}/`), 0);
 });
 
 test("OLD_CLIENT: WhatsApp PosPagamento antigo sem campanha ⇒ envia só a confirmação do pedido, sem sorteio", async () => {
@@ -280,18 +174,22 @@ test("OLD_CLIENT: WhatsApp CampaignEngine antigo sem campanha ⇒ 0 envios", asy
 
 // ---------------------------------------------------------------- campanha válida
 
-test("VALID: participação persistida + campos estruturados ⇒ 1 envio; retry ⇒ sem duplicado", async () => {
+test("VALID: raffle_participation autenticado ⇒ 1 envio ao participante; retry ⇒ sem duplicado", async () => {
   const db = createDb();
   seedValid(db);
   const { sent, call } = emailHarness(db);
-  const body = { to: EMAIL, subject: "Confirmacao de participacao - Campanha Campanha Teste", html: `<p>${NUM}</p>`, ...structured() };
-  const r1 = await call(body);
+  const r1 = await call(raffleBody());
+  assert.equal(r1.status, 200);
   assert.equal(r1.json.sent, true);
-  const r2 = await call(body);
+  const r2 = await call(raffleBody());
   assert.equal(r2.json.duplicate, true);
   assert.equal(r2.json.sent, false);
   assert.equal(sent.length, 1);
+  assert.equal(sent[0].to, EMAIL);
   assert.equal(sent[0].from, '"Loja A" <smtp@example.test>');
+  assert.ok(sent[0].html.includes(NUM));
+  assert.ok(sent[0].html.includes("Campanha Teste"));
+  assert.ok(sent[0].text.includes("Ola Maria"));
   assert.equal(db._count(`${CLAIMS_COLLECTION}/`), 1);
 });
 
@@ -299,23 +197,11 @@ test("VALID: falha SMTP libera a reserva e o retry envia uma vez", async () => {
   const db = createDb();
   seedValid(db);
   let fail = true;
-  const sent = [];
-  const call = () =>
-    executeSendEmail({
-      db,
-      body: structured(),
-      input: { to: EMAIL, subject: "s", html: `<p>${NUM}</p>`, text: "", lojaId: LOJA },
-      smtpUser: "smtp@example.test",
-      sendMail: async (o) => {
-        if (fail) throw new Error("smtp down");
-        sent.push(o);
-      },
-      agora,
-    });
-  await assert.rejects(call(), /smtp down/);
+  const { sent, call } = emailHarness(db, { failSend: () => fail });
+  await assert.rejects(call(raffleBody()), /smtp down/);
   assert.equal(db._count(`${CLAIMS_COLLECTION}/`), 0);
   fail = false;
-  const r = await call();
+  const r = await call(raffleBody());
   assert.equal(r.json.sent, true);
   assert.equal(sent.length, 1);
 });
@@ -337,20 +223,10 @@ test("VALID: e-mail e WhatsApp têm reservas independentes", async () => {
   seedValid(db);
   const e = emailHarness(db);
   const w = whatsHarness(db);
-  await e.call({ to: EMAIL, subject: "s", html: `<p>${NUM}</p>`, ...structured() });
+  await e.call(raffleBody());
   await w.call({ lojaId: LOJA, phone: FONE, message: oldCampaignEngineWhatsApp, ...structured() });
   assert.equal(e.sent.length, 1);
   assert.equal(w.sent.length, 1);
-});
-
-test("LEGACY_VALID: CampaignEngine antigo com participação real ⇒ 1 envio; retry sem duplicado", async () => {
-  const db = createDb();
-  seedValid(db);
-  const { sent, call } = emailHarness(db);
-  await call(oldCampaignEngineEmail);
-  const r2 = await call(oldCampaignEngineEmail);
-  assert.equal(r2.json.duplicate, true);
-  assert.equal(sent.length, 1);
 });
 
 test("LEGACY_VALID: WhatsApp CampaignEngine antigo com participação real e mesmo telefone ⇒ 1 envio", async () => {
@@ -367,11 +243,14 @@ test("LEGACY_VALID: WhatsApp CampaignEngine antigo com participação real e mes
 
 // ---------------------------------------------------------------- bloqueios estruturados
 
-test("ZERO campanha: payload estruturado ⇒ 0 envios", async () => {
+test("ZERO campanha: raffle_participation ⇒ 0 envios", async () => {
   const db = createDb();
+  seedStore(db);
   db._set(`lojas/${LOJA}/campanhas_sorteio/${CAMP}/participantes/${PART}`, participante());
   const { sent, call } = emailHarness(db);
-  const r = await call({ to: EMAIL, subject: "s", html: `<p>${NUM}</p>`, ...structured() });
+  const r = await call(raffleBody());
+  assert.equal(r.status, 200);
+  assert.equal(r.json.code, RAFFLE_NOT_ACTIVE);
   assert.equal(r.json.reason, "no_active_campaign");
   assert.equal(sent.length, 0);
 });
@@ -382,9 +261,8 @@ test("AMBIGUOUS: duas campanhas ativas ⇒ 0 envios", async () => {
   db._set(`lojas/${LOJA}/campanhas_sorteio/camp-2`, campanha());
   const e = emailHarness(db);
   const w = whatsHarness(db);
-  const r = await e.call({ to: EMAIL, subject: "s", html: `<p>${NUM}</p>`, ...structured() });
+  const r = await e.call(raffleBody());
   assert.equal(r.json.reason, "ambiguous_campaign");
-  await e.call(oldCampaignEngineEmail);
   await w.call({ lojaId: LOJA, phone: FONE, message: oldCampaignEngineWhatsApp });
   assert.equal(e.sent.length, 0);
   assert.equal(w.sent.length, 0);
@@ -396,16 +274,17 @@ test("CROSS_TENANT: participação de outra loja não autoriza e-mail", async ()
   seedValid(db, { loja: OUTRA, camp: "camp-b", part: "venda_x" });
   const { sent, call } = emailHarness(db);
   const outros = [
-    structured({ campaignId: "camp-b", participationId: "venda_x" }),
-    structured({ participationId: "venda_x" }),
-    structured({ lojaId: OUTRA }),
+    raffleBody({ campaignId: "camp-b", participationId: "venda_x" }),
+    raffleBody({ participationId: "venda_x" }),
   ];
-  for (const s of outros) {
-    const r = await call({ to: EMAIL, subject: "s", html: `<p>${NUM}</p>`, ...s });
-    assert.equal(r.json.code, RAFFLE_NOT_ACTIVE, JSON.stringify(s));
+  for (const b of outros) {
+    const r = await call(b);
+    assert.equal(r.json.code, RAFFLE_NOT_ACTIVE, JSON.stringify(b));
   }
+  const alheia = await call(raffleBody({ lojaId: OUTRA, campaignId: "camp-b", participationId: "venda_x" }));
+  assert.equal(alheia.status, 403);
   db._set(`lojas/${LOJA}/campanhas_sorteio/${CAMP}/participantes/forjada`, participante({ lojaId: OUTRA }));
-  const r = await call({ to: EMAIL, subject: "s", html: `<p>${NUM}</p>`, ...structured({ participationId: "forjada" }) });
+  const r = await call(raffleBody({ participationId: "forjada" }));
   assert.equal(r.json.reason, "cross_tenant");
   assert.equal(sent.length, 0);
 });
@@ -414,9 +293,9 @@ test("MISMATCH: número, venda, destinatário, status e período inválidos ⇒ 
   const cases = [
     [{ luckyNumber: "11111" }, {}, "lucky_number_mismatch"],
     [{ saleId: "outra-venda" }, {}, "sale_mismatch"],
-    [{}, { clienteEmail: "outro@example.test" }, "recipient_mismatch"],
+    [{ to: "outro@example.test" }, {}, "recipient_mismatch"],
     [{}, { status: "invalida" }, "participation_invalid"],
-    [{}, { dataParticipacao: new Date(agora.getTime() - 2 * dia) }, "outside_campaign_window"],
+    [{}, { dataParticipacao: new Date(agora.getTime() - 2 * 24 * 3600 * 1000) }, "outside_campaign_window"],
     [{}, { dataParticipacao: null }, "outside_campaign_window"],
     [{ participationId: "inexistente" }, {}, "participation_not_found"],
     [{ luckyNumber: "" }, {}, "missing_fields"],
@@ -425,7 +304,7 @@ test("MISMATCH: número, venda, destinatário, status e período inválidos ⇒ 
     const db = createDb();
     seedValid(db, { partData });
     const { sent, call } = emailHarness(db);
-    const r = await call({ to: EMAIL, subject: "s", html: `<p>${NUM}</p>`, ...structured(over) });
+    const r = await call(raffleBody(over));
     assert.equal(r.json.reason, reason, JSON.stringify(over) + JSON.stringify(partData));
     assert.equal(sent.length, 0);
   }
@@ -433,8 +312,10 @@ test("MISMATCH: número, venda, destinatário, status e período inválidos ⇒ 
 
 test("FAIL_CLOSED: falha ao ler campanhas ⇒ 0 envios", async () => {
   const db = createDb({ failCampaignLookup: true });
+  seedStore(db);
+  db._set(`lojas/${LOJA}/campanhas_sorteio/${CAMP}/participantes/${PART}`, participante());
   const { sent, call } = emailHarness(db);
-  const r = await call({ to: EMAIL, subject: "s", html: `<p>${NUM}</p>`, ...structured() });
+  const r = await call(raffleBody());
   assert.equal(r.json.reason, "campaign_lookup_failed");
   await call(oldCampaignEngineEmail);
   assert.equal(sent.length, 0);
@@ -447,49 +328,6 @@ test("WhatsApp estruturado não verificado ⇒ remove sorteio e mantém confirma
   assert.equal(sent.length, 1);
   assert.equal(hasRaffleMarkers(sent[0].msg), false);
   assert.ok(!sent[0].msg.includes(NUM));
-});
-
-// ---------------------------------------------------------------- e-mails normais
-
-test("NORMAL: confirmação de pedido PosPagamento (sem sorteio, sem lojaId) envia", async () => {
-  const db = createDb();
-  const { sent, call } = emailHarness(db);
-  const r = await call({
-    to: EMAIL,
-    subject: "✅ Pedido confirmado - Loja A",
-    html: '<html><body><h1>✅ Pedido confirmado, Maria!</h1><p>Obrigado por sua compra de <strong>R$ 129.90</strong> na <strong>Loja A</strong>!</p><p>Seu pedido foi confirmado com sucesso. Em breve você receberá as atualizações do andamento.</p><div class="cupom"><h3>🎁 Você também ganhou na Roleta da Sorte!</h3><div class="cupom-codigo">ROLETA10</div></div></body></html>',
-  });
-  assert.equal(r.json.sent, true);
-  assert.equal(sent.length, 1);
-  assert.equal(sent[0].from, '"MasterPalm" <smtp@example.test>');
-});
-
-test("NORMAL: lembrete de carrinho abandonado (to/subject/html/text/lojaId) envia", async () => {
-  const db = createDb();
-  db._set(`lojas/${LOJA}`, { nome: "Loja A" });
-  seedValid(db);
-  const { sent, call } = emailHarness(db);
-  const r = await call({
-    to: EMAIL,
-    subject: "Você deixou itens no carrinho - Loja A",
-    html: "<p>Olá Maria, seus itens 12345 ainda estão no carrinho.</p>",
-    text: "Olá Maria, seus itens ainda estão no carrinho.",
-    lojaId: LOJA,
-  });
-  assert.equal(r.json.sent, true);
-  assert.equal(sent.length, 1);
-  assert.equal(sent[0].from, '"Loja A" <smtp@example.test>');
-  assert.equal(sent[0].text, "Olá Maria, seus itens ainda estão no carrinho.");
-});
-
-test("NORMAL: e-mails normais repetidos não são deduplicados", async () => {
-  const db = createDb();
-  const { sent, call } = emailHarness(db);
-  const body = { to: EMAIL, subject: "Pedido enviado", text: "Seu pedido saiu para entrega." };
-  await call(body);
-  await call(body);
-  assert.equal(sent.length, 2);
-  assert.equal(db._count(`${CLAIMS_COLLECTION}/`), 0);
 });
 
 test("NORMAL: WhatsApp de confirmação sem sorteio envia inalterado", async () => {

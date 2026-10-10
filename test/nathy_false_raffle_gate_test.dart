@@ -8,6 +8,7 @@ import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:master_palm/services/campaign_engine_service.dart';
 import 'package:master_palm/services/campanha_sorteio_gate.dart';
+import 'package:master_palm/services/email_service.dart';
 import 'package:master_palm/services/pos_pagamento_service.dart';
 
 const _loja = 'loja-raffle';
@@ -363,17 +364,16 @@ void main() {
   });
 
   group('UI / notificação', () {
-    test('e-mail sem sorteio não fala em concorrer nem número', () {
-      final html = PosPagamentoService.montarEmailHtmlNotificacaoCliente(
-        nome: 'C',
-        lojaNome: 'Loja',
-        numeroSorte: '',
-        valorTotal: 10,
-        incluirNumeroSorte: false,
+    test('e-mail sem sorteio não pede bloco de sorteio ao servidor', () {
+      final payload = EmailService.payloadConfirmacaoPedido(
+        lojaId: _loja,
+        vendaId: '1',
       );
-      expect(html, isNot(contains('Número da Sorte')));
-      expect(html, isNot(contains('concorrendo')));
-      expect(html, contains('Pedido confirmado'));
+      expect(payload, {
+        'emailType': 'order_confirmation',
+        'lojaId': _loja,
+        'saleId': '1',
+      });
     });
 
     test('pré-pedidos só anuncia número da sorte quando foi enviado', () {
@@ -401,14 +401,16 @@ void main() {
         'participationId': CampanhaSorteioGate.participacaoDocId('800'),
         'luckyNumber': r.numero,
       });
-      final payload = PosPagamentoService.montarPayloadSendEmail(
-        to: 'c@example.test',
-        subject: 's',
-        html: '<p>${r.numero}</p>',
+      final payload = EmailService.payloadConfirmacaoPedido(
+        lojaId: _loja,
+        vendaId: '800',
         camposSorteio: campos,
       );
+      expect(payload['emailType'], 'order_confirmation');
       expect(payload['participationId'], CampanhaSorteioGate.participacaoDocId('800'));
-      expect(payload['to'], 'c@example.test');
+      expect(payload['luckyNumber'], r.numero);
+      expect(payload.containsKey('to'), isFalse);
+      expect(payload.containsKey('html'), isFalse);
     });
 
     test('PosPagamento: sem campanha ⇒ sem campos de sorteio e e-mail normal', () async {
@@ -424,12 +426,11 @@ void main() {
         ),
         isNull,
       );
-      final payload = PosPagamentoService.montarPayloadSendEmail(
-        to: 'c@example.test',
-        subject: '✅ Pedido confirmado - Loja',
-        html: '<p>ok</p>',
+      final payload = EmailService.payloadConfirmacaoPedido(
+        lojaId: _loja,
+        vendaId: '801',
       );
-      expect(payload.keys.toSet(), {'to', 'subject', 'html'});
+      expect(payload.keys.toSet(), {'emailType', 'lojaId', 'saleId'});
     });
 
     test('CampaignEngine: payload com campos estruturados; campo ausente ⇒ null', () {
@@ -440,14 +441,9 @@ void main() {
         participacaoId: 'venda_900',
         numero: '12345',
       );
-      final payload = CampaignEngineService.montarPayloadSendEmailCf(
-        to: 'c@example.test',
-        subject: 's',
-        html: 'h',
-        lojaId: _loja,
-        camposSorteio: campos,
-      );
-      expect(payload['notificationType'], 'raffle_participation');
+      final payload = EmailService.payloadParticipacaoSorteio(campos!);
+      expect(payload['emailType'], 'raffle_participation');
+      expect(payload['lojaId'], _loja);
       expect(payload['saleId'], '900');
       expect(payload['luckyNumber'], '12345');
       expect(
@@ -487,6 +483,7 @@ void main() {
     test('CampaignEngine não usa mais SMTP local no e-mail de sorteio', () {
       final src = File('lib/services/campaign_engine_service.dart').readAsStringSync();
       expect(src, isNot(contains('EmailService.enviarEmail')));
+      expect(src, contains('EmailService.payloadParticipacaoSorteio'));
     });
   });
 }

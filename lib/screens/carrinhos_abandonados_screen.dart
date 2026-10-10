@@ -518,10 +518,7 @@ class _CarrinhosAbandonadosScreenState
       lojaId: _lojaId!,
       clienteId: item.clienteId,
       emailDestino: item.email,
-      nomeCliente: item.nome,
-      nomeLoja: _lojaNome.isNotEmpty ? _lojaNome : null,
       telefone: item.telefone,
-      itens: item.itens,
     );
     if (mounted) {
       setState(() => _enviando = false);
@@ -542,12 +539,9 @@ class _CarrinhosAbandonadosScreenState
       lojaId: _lojaId!,
       cartId: item.cartId,
       emailDestino: item.clienteEmail,
-      nomeCliente: item.clienteNome,
       linkRecuperacao: link,
-      nomeLoja: _lojaNome.isNotEmpty ? _lojaNome : null,
       telefone: item.clienteTelefone,
       whatsapp: item.clienteWhatsapp,
-      produtos: item.produtos,
       raw: item.raw,
     );
     if (mounted) {

@@ -10,6 +10,7 @@ import 'package:master_palm/models/venda.dart';
 import 'package:master_palm/models/venda_item.dart';
 import 'package:master_palm/services/carrinho_abandonado_service.dart';
 import 'package:master_palm/services/customer_metrics_service.dart';
+import 'package:master_palm/services/email_service.dart';
 import 'package:master_palm/services/vendas_period_metrics_service.dart';
 
 Venda _venda({
@@ -122,20 +123,42 @@ void main() {
     });
   });
 
-  group('M3.8 S1 — Template e-mail abandonado', () {
-    test('template inclui link e itens', () {
-      final tpl = CarrinhoAbandonadoService.montarTemplateLembrete(
-        nomeCliente: 'Ana',
-        link: 'https://exemplo.com/c?cart=1',
-        nomeLoja: 'Loja Teste',
-        produtos: [
-          {'nome': 'Anel', 'quantidade': 2, 'cor': 'rose', 'tamanho': '16'},
-        ],
+  group('M3.8 S1 — E-mail abandonado (contrato servidor)', () {
+    test('payload tipado leva só ids, destinatário a conferir e link', () {
+      final p = EmailService.payloadLembreteCarrinho(
+        lojaId: 'loja-t',
+        cartId: 'cart-1',
+        clienteId: 'ignorado',
+        destinatario: 'ana@example.test',
+        link: 'https://app.mastepalm.com.br/loja/loja-t?cart=cart-1',
       );
-      expect(tpl.texto, contains('Ana'));
-      expect(tpl.texto, contains('Anel'));
-      expect(tpl.texto, contains('https://exemplo.com/c?cart=1'));
-      expect(tpl.html, contains('<br>'));
+      expect(p, {
+        'emailType': 'abandoned_cart_reminder',
+        'lojaId': 'loja-t',
+        'cartId': 'cart-1',
+        'to': 'ana@example.test',
+        'link': 'https://app.mastepalm.com.br/loja/loja-t?cart=cart-1',
+      });
+      final c = EmailService.payloadLembreteCarrinho(
+        lojaId: 'loja-t',
+        clienteId: 'cli-1',
+      );
+      expect(c.keys.toSet(), {'emailType', 'lojaId', 'clienteId'});
+    });
+
+    test('recusas do servidor viram mensagem clara (sem fallback SMTP)', () {
+      expect(
+        CarrinhoAbandonadoService.mensagemFalhaEnvio('EMAIL_COOLDOWN', 'a@b.c'),
+        contains('há pouco'),
+      );
+      expect(
+        CarrinhoAbandonadoService.mensagemFalhaEnvio('RECIPIENT_NOT_VERIFIED', 'a@b.c'),
+        contains('não confere'),
+      );
+      expect(
+        CarrinhoAbandonadoService.mensagemFalhaEnvio(null, 'a@b.c'),
+        'Falha ao enviar e-mail para a@b.c',
+      );
     });
   });
 

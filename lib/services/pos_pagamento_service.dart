@@ -21,6 +21,7 @@ import 'firestore_paths.dart';
 import 'pedido_collection_resolver.dart';
 import 'campanha_sorteio_gate.dart';
 import 'campaign_engine_service.dart';
+import 'email_service.dart';
 
 /// Serviço para processar ações após confirmação de pagamento
 ///
@@ -534,21 +535,6 @@ class PosPagamentoService {
     return campos;
   }
 
-  /// Corpo HTTP do `sendEmail`; sorteio só com [camposSorteio].
-  @visibleForTesting
-  static Map<String, String> montarPayloadSendEmail({
-    required String to,
-    required String subject,
-    required String html,
-    Map<String, String>? camposSorteio,
-  }) =>
-      {
-        'to': to,
-        'subject': subject,
-        'html': html,
-        ...?camposSorteio,
-      };
-
   /// Salva o número da sorte no Firestore
   static Future<void> _salvarNumeroSorte({
     required String lojaId,
@@ -646,21 +632,12 @@ class PosPagamentoService {
       final lojaData = lojaDoc.data()!;
       final lojaNome = lojaData['nome']?.toString() ?? 'Loja';
 
-      // Enviar Email
+      // Enviar Email (servidor deriva destinatário/conteúdo do pedido)
       if (email != null && email.isNotEmpty) {
         await _enviarEmail(
-          destinatario: email,
-          assunto: incluirNumeroSorte
-              ? '🎉 Parabéns! Você está concorrendo - $lojaNome'
-              : '✅ Pedido confirmado - $lojaNome',
-          nome: nome,
-          lojaNome: lojaNome,
-          numeroSorte: numeroSorte,
-          cupomRoletaCodigo: cupomRoletaCodigo,
-          cupomRoletaDesconto: cupomRoletaDesconto,
-          valorTotal: valorTotal,
-          incluirNumeroSorte: incluirNumeroSorte,
-          camposSorteio: camposSorteio,
+          lojaId: lojaId,
+          vendaId: vendaId,
+          camposSorteio: incluirNumeroSorte ? camposSorteio : null,
         );
       }
 
@@ -688,134 +665,31 @@ class PosPagamentoService {
     }
   }
 
-  /// Envia email com número da sorte
+  /// Confirmação de pedido por e-mail (`sendEmail` tipado; servidor monta o conteúdo).
   static Future<void> _enviarEmail({
-    required String destinatario,
-    required String assunto,
-    required String nome,
-    required String lojaNome,
-    required String numeroSorte,
-    String? cupomRoletaCodigo,
-    double? cupomRoletaDesconto,
-    required double valorTotal,
-    bool incluirNumeroSorte = true,
+    required String lojaId,
+    required String vendaId,
     Map<String, String>? camposSorteio,
   }) async {
     try {
-      // Montar HTML do email
-      final htmlBody = montarEmailHtmlNotificacaoCliente(
-        nome: nome,
-        lojaNome: lojaNome,
-        numeroSorte: numeroSorte,
-        cupomRoletaCodigo: cupomRoletaCodigo,
-        cupomRoletaDesconto: cupomRoletaDesconto,
-        valorTotal: valorTotal,
-        incluirNumeroSorte: incluirNumeroSorte,
-      );
-
-      // Enviar via Cloud Function ou serviço de email
-      final projectId = Firebase.app().options.projectId;
-      final response = await http.post(
-        Uri.parse('https://southamerica-east1-$projectId.cloudfunctions.net/sendEmail'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(
-          montarPayloadSendEmail(
-            to: destinatario,
-            subject: assunto,
-            html: htmlBody,
-            camposSorteio: incluirNumeroSorte ? camposSorteio : null,
-          ),
+      final r = await EmailService.enviar(
+        EmailService.payloadConfirmacaoPedido(
+          lojaId: lojaId,
+          vendaId: vendaId,
+          camposSorteio: camposSorteio,
         ),
       );
-
-      if (response.statusCode == 200) {
-        debugPrint('📧 Email enviado para: $destinatario');
+      if (EmailService.foiEnviado(r.statusCode, r.body)) {
+        debugPrint('📧 Email de confirmação enviado | vendaId=$vendaId');
       } else {
-        debugPrint('❌ Erro ao enviar email: ${response.statusCode}');
+        debugPrint(
+          '❌ Email de confirmação não enviado: ${r.statusCode} '
+          '${EmailService.codigoResposta(r.body) ?? ''}',
+        );
       }
     } catch (e) {
       debugPrint('❌ Exceção ao enviar email (type=${e.runtimeType})');
     }
-  }
-
-  /// Monta o HTML do email de confirmação ao cliente.
-  @visibleForTesting
-  static String montarEmailHtmlNotificacaoCliente({
-    required String nome,
-    required String lojaNome,
-    required String numeroSorte,
-    String? cupomRoletaCodigo,
-    double? cupomRoletaDesconto,
-    required double valorTotal,
-    bool incluirNumeroSorte = true,
-  }) {
-    final temCupom = cupomRoletaCodigo != null && cupomRoletaCodigo.isNotEmpty;
-
-    return '''
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <style>
-    body { font-family: Arial, sans-serif; background-color: #f4f4f4; margin: 0; padding: 20px; }
-    .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-    .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; }
-    .header h1 { margin: 0; font-size: 28px; }
-    .content { padding: 30px; }
-    .numero-sorte { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 20px; border-radius: 10px; text-align: center; margin: 20px 0; }
-    .numero-sorte h2 { margin: 0 0 10px 0; font-size: 18px; }
-    .numero-sorte .numero { font-size: 48px; font-weight: bold; letter-spacing: 5px; }
-    .cupom { background: #fff3cd; border: 2px dashed #ffc107; padding: 20px; border-radius: 10px; margin: 20px 0; text-align: center; }
-    .cupom-codigo { font-size: 24px; font-weight: bold; color: #856404; letter-spacing: 2px; }
-    .footer { background-color: #f8f9fa; padding: 20px; text-align: center; font-size: 12px; color: #6c757d; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>${incluirNumeroSorte ? '🎉 Parabéns' : '✅ Pedido confirmado'}, $nome!</h1>
-    </div>
-    <div class="content">
-      <p>Obrigado por sua compra de <strong>R\$ ${valorTotal.toStringAsFixed(2)}</strong> na <strong>$lojaNome</strong>!</p>
-
-      ${incluirNumeroSorte ? '''
-      <div class="numero-sorte">
-        <h2>🎲 Seu Número da Sorte:</h2>
-        <div class="numero">$numeroSorte</div>
-      </div>
-
-      <p style="text-align: center; color: #28a745; font-weight: bold;">
-        ✅ Você está participando da nossa promoção!
-      </p>
-
-      <p>Seu número da sorte foi registrado e você está concorrendo a prêmios incríveis. Fique de olho no sorteio!</p>
-      ''' : '''
-      <p>Seu pedido foi confirmado com sucesso. Em breve você receberá as atualizações do andamento.</p>
-      '''}
-
-      ${temCupom ? '''
-      <div class="cupom">
-        <h3 style="margin: 0 0 10px 0; color: #856404;">🎁 Você também ganhou na Roleta da Sorte!</h3>
-        <p style="margin: 5px 0; color: #856404;">Cupom de desconto de <strong>${cupomRoletaDesconto?.toStringAsFixed(0)}%</strong> para sua próxima compra:</p>
-        <div class="cupom-codigo">$cupomRoletaCodigo</div>
-        <p style="margin: 10px 0 0 0; font-size: 12px; color: #856404;">
-          📅 Válido por 60 dias | 🔄 Use na próxima compra
-        </p>
-      </div>
-      ''' : ''}
-
-      <p style="margin-top: 30px; text-align: center;">
-        Obrigado por comprar conosco! 💜
-      </p>
-    </div>
-    <div class="footer">
-      <p>$lojaNome - Todos os direitos reservados</p>
-      <p>Este é um email automático, por favor não responda.</p>
-    </div>
-  </div>
-</body>
-</html>
-''';
   }
 
   /// Envia mensagem via WhatsApp (Cloud Function + config Canais Meta).

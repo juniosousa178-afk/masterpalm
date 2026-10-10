@@ -46,6 +46,10 @@ export const RATE_LIMITS = {
   // Cupom/número sorte: 1 por pedido finalizado
   gerarCupomNumeroSorte: { maxPerMin: 20, windowMs: 60_000 },
 
+  // E-mail transacional tipado: por IP (antes da auth) e por usuário autenticado
+  sendEmail: { maxPerMin: 30, windowMs: 60_000 },
+  sendEmailUser: { maxPerMin: 20, windowMs: 60_000 },
+
   // OAuth: fluxo humano, poucas tentativas
   mpOAuthInit: { maxPerMin: 15, windowMs: 60_000 },
   mpOAuthCallback: { maxPerMin: 15, windowMs: 60_000 },

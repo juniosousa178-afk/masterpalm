@@ -6,7 +6,7 @@ import 'dart:io';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:master_palm/services/campaign_engine_service.dart';
-import 'package:master_palm/services/pos_pagamento_service.dart';
+import 'package:master_palm/services/email_service.dart';
 
 const _lojaId = 'loja-email-sorteio';
 const _campanhaId = 'camp-email-1';
@@ -20,50 +20,43 @@ void main() {
       File('lib/services/pos_pagamento_service.dart').readAsStringSync();
 
   group('M3.7 EMAIL-SORTEIO — contrato sendEmail', () {
-    test('RED-R1: sendEmail HTTP exportada em functions/index.js', () {
+    test('RED-R1: sendEmail HTTP exportada e tipada em functions/index.js', () {
       expect(functionsIndex, contains('export const sendEmail = onRequest'));
-      expect(functionsIndex, contains('Parâmetros obrigatórios: to, subject, html ou text'));
+      expect(functionsIndex, contains('handleSendEmailRequest({'));
+      expect(functionsIndex, contains('extractBearerTokenFromRequest(req)'));
     });
 
-    test('GREEN-C1: payload campanha alinha chaves com PosPagamento', () {
-      final conteudo = CampaignEngineService.montarConteudoEmailParticipacao(
-        clienteNome: 'Lara',
-        numero: _numero,
-        campanhaNome: 'Campanha Borboleta',
-        nomeLoja: 'Nathy Pratas',
+    test('GREEN-C1: payload campanha alinha chaves com PosPagamento (sem conteúdo cru)', () {
+      final campos = {
+        'lojaId': _lojaId,
+        'saleId': 'venda-1',
+        'campaignId': _campanhaId,
+        'participationId': _participacaoId,
+        'luckyNumber': _numero,
+      };
+      final payload = EmailService.payloadParticipacaoSorteio(campos);
+      expect(
+        payload.keys.toSet(),
+        equals({'emailType', 'lojaId', 'saleId', 'campaignId', 'participationId', 'luckyNumber'}),
       );
-
-      final payload = CampaignEngineService.montarPayloadSendEmailCf(
-        to: 'lara@test.com',
-        subject: conteudo.assunto,
-        html: conteudo.html,
+      final posPayload = EmailService.payloadConfirmacaoPedido(
         lojaId: _lojaId,
+        vendaId: 'venda-1',
+        camposSorteio: campos,
       );
-
-      expect(payload.keys.toSet(), equals({'to', 'subject', 'html', 'lojaId'}));
-      final posPayload = PosPagamentoService.montarPayloadSendEmail(
-        to: 'lara@test.com',
-        subject: 's',
-        html: 'h',
-      );
-      expect(posPayload.keys.toSet(), equals({'to', 'subject', 'html'}));
-      expect(posPagamentoSrc, contains('montarPayloadSendEmail('));
+      expect(posPayload['participationId'], payload['participationId']);
+      expect(posPagamentoSrc, contains('EmailService.payloadConfirmacaoPedido('));
 
       final json = jsonEncode(payload);
-      expect(json, contains('lara@test.com'));
+      expect(json, isNot(contains('lara@test.com')));
       expect(json, contains(_numero));
     });
 
-    test('GREEN-C2: HTML campanha contém número da sorte', () {
-      final conteudo = CampaignEngineService.montarConteudoEmailParticipacao(
-        clienteNome: 'Lara',
-        numero: _numero,
-        campanhaNome: 'Campanha Borboleta',
-        nomeLoja: 'Nathy Pratas',
-      );
-
-      expect(conteudo.html, contains(_numero));
-      expect(conteudo.assunto, contains('Campanha Borboleta'));
+    test('GREEN-C2: servidor monta o e-mail de campanha com o número persistido', () {
+      final contrato =
+          File('functions/src/emailContracts.js').readAsStringSync();
+      expect(contrato, contains('Confirmacao de participacao - Campanha'));
+      expect(contrato, contains('verified.participation?.numeroSorte'));
     });
 
     test('GREEN-C3: flag mensagemEnviadaEmail só true após envio bem-sucedido', () async {

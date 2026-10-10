@@ -41,7 +41,8 @@ import {
 } from "./src/rateLimiter.js";
 import { processMpWebhook } from "./src/mpWebhookHandler.js";
 import { resolverCampanhaAtiva } from "./src/campanhaSorteioGate.js";
-import { executeSendEmail, executeSendWhatsApp } from "./src/raffleNotificationGuard.js";
+import { executeSendWhatsApp } from "./src/raffleNotificationGuard.js";
+import { handleSendEmailRequest } from "./src/emailContracts.js";
 import {
   verifyMpCatalogWebhookNotification,
   MP_WEBHOOK_CATALOG_SIGNATURE_HTTP_STATUS,
@@ -4632,9 +4633,9 @@ export const sendWhatsAppOrderConfirmation = onRequest(
   })
 );
 
-// HTTP: envio de e-mail genérico (web admin / PosPagamento / CampaignEngine).
-// Contrato: { to, subject, html|text, lojaId? } — SMTP servidor (navegador não envia SMTP).
-// Sorteio: + notificationType="raffle_participation", saleId, campaignId, participationId, luckyNumber.
+// HTTP: e-mails transacionais tipados (PosPagamento / CampaignEngine / carrinho abandonado).
+// Contrato em src/emailContracts.js: { emailType, lojaId, ...ids } + Authorization: Bearer <ID token>
+// de um usuário da loja. Destinatário e conteúdo vêm do pedido/participação/carrinho (nunca do body).
 export const sendEmail = onRequest(
   {
     cors: true,
@@ -4646,35 +4647,21 @@ export const sendEmail = onRequest(
     try {
       if (req.method !== "POST") return res.status(405).send("Method not allowed");
 
-      const body = req.body || {};
-      const to = String(body.to || body.destinatario || body.email || "").trim();
-      const subject = String(body.subject || body.assunto || "").trim();
-      const html = body.html != null ? String(body.html) : "";
-      const text = body.text != null ? String(body.text) : "";
-      const lojaId = String(body.lojaId || body.loja_id || "").trim();
-
-      if (!to || !subject || (!html && !text)) {
-        return res.status(400).json({
-          error: "Parâmetros obrigatórios: to, subject, html ou text",
-        });
-      }
-
-      const identifier = getClientIdentifier(req);
-      await checkRateLimit("sendEmail", identifier);
+      await checkRateLimit("sendEmail", getClientIdentifier(req));
 
       const smtpUser = ((await S_SMTP_EMAIL.value()) || process.env.SMTP_EMAIL || "").trim();
       const smtpPass = ((await S_SMTP_PASSWORD.value()) || process.env.SMTP_PASSWORD || "").trim();
       if (!smtpUser || !smtpPass) {
-        return res.status(503).json({ error: "SMTP não configurado no servidor" });
+        return res.status(503).json({ ok: false, sent: false, error: "SMTP não configurado no servidor" });
       }
 
-      // Nome visível: somente server-side via lojaId (nunca confiar fromName do cliente).
-      // E-mail de sorteio só sai com participação autoritativa (raffleNotificationGuard).
-      const result = await executeSendEmail({
+      const result = await handleSendEmailRequest({
         db: getFirestore(),
         colLojas: COLLECTION_LOJAS,
-        body,
-        input: { to, subject, html, text, lojaId },
+        body: req.body || {},
+        idToken: extractBearerTokenFromRequest(req),
+        verifyIdToken: (token) => admin.auth().verifyIdToken(token),
+        limitUser: (uid) => checkRateLimit("sendEmailUser", uid),
         smtpUser,
         sendMail: (opts) =>
           nodemailer
@@ -4683,10 +4670,11 @@ export const sendEmail = onRequest(
       });
       return res.status(result.status).json(result.json);
     } catch (e) {
+      if (e?.code === "resource-exhausted") {
+        return res.status(429).json({ ok: false, sent: false, code: "RATE_LIMITED", error: e.message });
+      }
       console.error("[sendEmail] error:", e);
-      return res.status(500).json({
-        error: e.message || "Erro ao enviar email",
-      });
+      return res.status(500).json({ ok: false, sent: false, error: "Erro ao enviar email" });
     }
   }),
 );

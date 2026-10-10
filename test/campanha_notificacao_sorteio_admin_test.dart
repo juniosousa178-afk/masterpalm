@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:master_palm/services/campaign_engine_service.dart';
+import 'package:master_palm/services/email_service.dart';
 import 'package:master_palm/services/pos_pagamento_service.dart';
 
 void main() {
@@ -27,22 +28,18 @@ void main() {
     });
 
     test('NOTIF-ADMIN-2: email operacional sem sorteio não expõe número', () {
-      const numero = '48152';
-      final html = PosPagamentoService.montarEmailHtmlNotificacaoCliente(
-        nome: 'Lara',
-        lojaNome: 'Loja',
-        numeroSorte: numero,
-        valorTotal: 151.91,
-        incluirNumeroSorte: false,
+      final payload = EmailService.payloadConfirmacaoPedido(
+        lojaId: 'loja',
+        vendaId: 'v-1',
       );
 
-      expect(html, isNot(contains(numero)));
-      expect(html, contains('Pedido confirmado'));
+      expect(payload.containsKey('luckyNumber'), isFalse);
+      expect(payload['emailType'], 'order_confirmation');
     });
 
     test('NOTIF-ADMIN-3: CampaignEngine usa Cloud Functions para envio real', () {
       expect(engineSrc, contains('sendWhatsAppOrderConfirmation'));
-      expect(engineSrc, contains('sendEmail'));
+      expect(engineSrc, contains('EmailService.enviar('));
       expect(engineSrc, contains('WhatsApp CF enviado'));
     });
 

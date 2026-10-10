@@ -1,6 +1,9 @@
 // M3.6.5 — idempotência/ownership de notificação de sorteio no fluxo admin.
 
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:master_palm/services/email_service.dart';
 import 'package:master_palm/services/pos_pagamento_service.dart';
 
 void main() {
@@ -20,33 +23,31 @@ void main() {
       );
     });
 
-    test('NOTIF2-2: email sem sorteio não expõe número canônico duplicado', () {
-      const numeroA = '48152';
-      final html = PosPagamentoService.montarEmailHtmlNotificacaoCliente(
-        nome: 'Cliente',
-        lojaNome: 'Loja Teste',
-        numeroSorte: numeroA,
-        valorTotal: 120,
-        incluirNumeroSorte: false,
+    test('NOTIF2-2: email sem sorteio não envia número canônico duplicado', () {
+      final payload = EmailService.payloadConfirmacaoPedido(
+        lojaId: 'loja-t',
+        vendaId: 'v-1',
       );
 
-      expect(html, isNot(contains(numeroA)));
-      expect(html, isNot(contains('Número da Sorte')));
-      expect(html, contains('Pedido confirmado'));
+      expect(payload.containsKey('luckyNumber'), isFalse);
+      expect(payload.containsKey('participationId'), isFalse);
+      expect(payload['emailType'], 'order_confirmation');
     });
 
-    test('NOTIF2-6: legado sem Engine mantém bloco de sorteio no email', () {
+    test('NOTIF2-6: participação validada pede bloco de sorteio ao servidor', () {
       const numeroB = '59263';
-      final html = PosPagamentoService.montarEmailHtmlNotificacaoCliente(
-        nome: 'Cliente',
-        lojaNome: 'Loja Teste',
-        numeroSorte: numeroB,
-        valorTotal: 80,
-        incluirNumeroSorte: true,
+      final payload = EmailService.payloadConfirmacaoPedido(
+        lojaId: 'loja-t',
+        vendaId: 'v-2',
+        camposSorteio: {
+          'campaignId': 'camp',
+          'participationId': 'venda_v-2',
+          'luckyNumber': numeroB,
+        },
       );
 
-      expect(html, contains(numeroB));
-      expect(html, contains('Número da Sorte'));
+      expect(payload['luckyNumber'], numeroB);
+      expect(payload['participationId'], 'venda_v-2');
     });
 
     test('NOTIF2-3/5: gate é determinístico por participação canônica', () {
@@ -60,19 +61,11 @@ void main() {
       expect(omit1, isTrue);
     });
 
-    test('NOTIF2-12: cupom roleta permanece no email operacional', () {
-      final html = PosPagamentoService.montarEmailHtmlNotificacaoCliente(
-        nome: 'Cliente',
-        lojaNome: 'Loja',
-        numeroSorte: '11111',
-        valorTotal: 50,
-        incluirNumeroSorte: false,
-        cupomRoletaCodigo: 'ROLETA10',
-        cupomRoletaDesconto: 10,
-      );
-
-      expect(html, contains('ROLETA10'));
-      expect(html, isNot(contains('11111')));
+    test('NOTIF2-12: cupom roleta permanece no email operacional (lido do pedido)', () {
+      final contrato =
+          File('functions/src/emailContracts.js').readAsStringSync();
+      expect(contrato, contains('cupomRoleta: pedido.cupomRoleta'));
+      expect(contrato, contains('Você também ganhou na Roleta da Sorte!'));
     });
   });
 }

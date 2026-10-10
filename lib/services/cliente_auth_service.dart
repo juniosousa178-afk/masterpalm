@@ -1,9 +1,7 @@
 import 'dart:convert';
-import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
-import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/access_scope_service.dart';
@@ -11,7 +9,6 @@ import '../core/logger.dart';
 import '../repositories/cliente_portal_repository.dart';
 import 'firestore_paths.dart';
 import '../repositories/meus_pedidos_repository.dart';
-import 'email_service.dart';
 import 'cliente_auth_helpers.dart';
 
 /// Serviço de autenticação EXCLUSIVO para clientes do catálogo (quem compra na loja).
@@ -821,7 +818,7 @@ class ClienteAuthService {
   }
 
   /// Solicitar redefinição de senha (esqueci a senha).
-  /// Na Web usa Cloud Function (envio de email no servidor). No app mobile usa SMTP direto.
+  /// Web e app: Cloud Function gera o código e envia o e-mail (SMTP só no servidor).
   static Future<Map<String, dynamic>> solicitarRedefinicaoSenha({
     required String lojaId,
     required String email,
@@ -831,71 +828,17 @@ class ClienteAuthService {
       if (emailNorm.isEmpty) {
         return {'success': false, 'error': 'Informe seu email.'};
       }
-
-      // Na Web: Cloud Function envia o email (Socket não existe no browser).
-      if (kIsWeb) {
-        return await _solicitarRedefinicaoSenhaViaCloudFunction(
-          lojaId: lojaId,
-          email: emailNorm,
-        );
-      }
-
-      // App mobile: Firestore + EmailService (SMTP direto).
-      final resultado = await FirebaseFirestore.instance
-          .collection('lojas')
-          .doc(lojaId)
-          .collection(FSPaths.clientesCol)
-          .where('email', isEqualTo: emailNorm)
-          .limit(1)
-          .get();
-
-      if (resultado.docs.isEmpty) {
-        return {'success': false, 'error': 'Email não encontrado nesta loja.'};
-      }
-
-      final doc = resultado.docs.first;
-      final docData = doc.data();
-      var token = (docData['portalToken'] ?? '').toString().trim();
-      if (token.isEmpty) {
-        final d = await getDadosCompletos(lojaId: lojaId, clienteId: doc.id, email: emailNorm);
-        token = (d?['portalToken'] ?? '').toString().trim();
-      }
-      final codigo = '${100000 + Random().nextInt(900000)}';
-      final expiraEm = DateTime.now().add(const Duration(minutes: 15));
-
-      await doc.reference.update({
-        'senhaResetCodigo': codigo,
-        'senhaResetExpiraEm': Timestamp.fromDate(expiraEm),
-        'portalToken': token,
-      });
-
-      final enviado = await EmailService.enviarEmail(
-        destinatario: emailNorm,
-        assunto: 'Código para redefinir sua senha - MasterPalm',
-        mensagem: 'Seu código para redefinir a senha é: $codigo\n\n'
-            'Ele é válido por 15 minutos. Se você não solicitou essa alteração, ignore este email.',
+      return await _solicitarRedefinicaoSenhaViaCloudFunction(
+        lojaId: lojaId,
+        email: emailNorm,
       );
-
-      if (!enviado) {
-        await doc.reference.update({
-          'senhaResetCodigo': FieldValue.delete(),
-          'senhaResetExpiraEm': FieldValue.delete(),
-          'portalToken': token,
-        });
-        return {
-          'success': false,
-          'error': 'Não foi possível enviar o email. Tente novamente ou entre em contato com a loja.',
-        };
-      }
-
-      return {'success': true};
     } catch (e, st) {
       logE('Erro solicitarRedefinicaoSenha (type=${e.runtimeType})', error: e, st: st);
       return {'success': false, 'error': 'Erro ao solicitar redefinição: $e'};
     }
   }
 
-  /// Chamada à Cloud Function para enviar código de redefinição (usado na Web).
+  /// Chamada à Cloud Function `solicitarRedefinicaoSenhaCatalogo` (destinatário vem do cadastro).
   static Future<Map<String, dynamic>> _solicitarRedefinicaoSenhaViaCloudFunction({
     required String lojaId,
     required String email,

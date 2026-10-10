@@ -9,24 +9,24 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-const indexSrc = readFileSync(
-  join(dirname(fileURLToPath(import.meta.url)), "..", "index.js"),
+const contractSrc = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "..", "src", "emailContracts.js"),
   "utf8",
 );
 
 describe("sendEmail branding", () => {
   it("EMAILBRAND-1: usa lojaId para resolver displayName", () => {
-    assert.match(indexSrc, /body\.lojaId/);
-    assert.match(indexSrc, /lojaData\.nome \|\| lojaData\.name/);
-    assert.match(indexSrc, /from: `"?\$\{displayName\}"? <\$\{smtpUser\}>`/);
+    assert.match(contractSrc, /storeDisplayName\(db, colLojas, lojaId\)/);
+    assert.match(contractSrc, /d\.nome \|\| d\.name/);
+    assert.match(contractSrc, /from: `"\$\{plan\.send\.lojaNome\}" <\$\{smtpUser\}>`/);
   });
 
   it("EMAILBRAND-2: fallback MasterPalm", () => {
-    assert.match(indexSrc, /let displayName = "MasterPalm"/);
+    assert.match(contractSrc, /return "MasterPalm";/);
   });
 
   it("EMAILBRAND-3: não aceita fromName do cliente", () => {
-    assert.doesNotMatch(indexSrc, /body\.fromName/);
-    assert.doesNotMatch(indexSrc, /body\.displayName/);
+    assert.doesNotMatch(contractSrc, /body\.fromName/);
+    assert.doesNotMatch(contractSrc, /body\.displayName/);
   });
 });

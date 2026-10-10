@@ -1,12 +1,8 @@
 // lib/services/carrinho_abandonado_service.dart
 // Recuperação de carrinho abandonado: listar e enviar lembrete por e-mail/WhatsApp.
 
-import 'dart:convert';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 
 import 'ai_loja_service.dart';
@@ -367,52 +363,6 @@ class CarrinhoAbandonadoService {
     return 'Olá, $nomeCliente! Você deixou itens no carrinho. Que tal finalizar sua compra? Acesse: $link';
   }
 
-  /// Template com itens (texto plano + HTML) para e-mail de recuperação.
-  static ({String texto, String html}) montarTemplateLembrete({
-    required String nomeCliente,
-    required String link,
-    String? nomeLoja,
-    List<Map<String, dynamic>>? produtos,
-  }) {
-    final nome = nomeCliente.trim().isEmpty ? 'cliente' : nomeCliente.trim();
-    final loja = (nomeLoja ?? 'nossa loja').trim().isEmpty
-        ? 'nossa loja'
-        : nomeLoja!.trim();
-    final buf = StringBuffer();
-    buf.writeln('Olá, $nome!');
-    buf.writeln('');
-    buf.writeln(
-        'Você deixou itens no carrinho da $loja. Que tal finalizar sua compra?');
-    buf.writeln('');
-    if (produtos != null && produtos.isNotEmpty) {
-      buf.writeln('Itens:');
-      for (final p in produtos) {
-        final n = (p['nome'] ?? p['name'] ?? 'Produto').toString();
-        final q = (p['quantidade'] as num?)?.toInt() ?? 1;
-        final cor = (p['cor'] ?? '').toString().trim();
-        final tam = (p['tamanho'] ?? '').toString().trim();
-        final extras = [
-          if (cor.isNotEmpty) 'cor $cor',
-          if (tam.isNotEmpty) 'tam $tam',
-        ].join(', ');
-        buf.writeln(extras.isEmpty ? '  • ${q}x $n' : '  • ${q}x $n ($extras)');
-      }
-      buf.writeln('');
-    }
-    buf.writeln('Acesse seu carrinho: $link');
-    buf.writeln('');
-    buf.writeln('Se já finalizou a compra, ignore este e-mail.');
-    final texto = buf.toString();
-    final escaped = texto
-        .replaceAll('&', '&amp;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;')
-        .replaceAll('\n', '<br>');
-    final html =
-        '<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;font-size:14px;color:#333;line-height:1.5;">$escaped</body></html>';
-    return (texto: texto, html: html);
-  }
-
   static String? _normalizarEmail(String? raw) {
     final e = (raw ?? '').trim().toLowerCase();
     if (e.isEmpty || !e.contains('@') || e.startsWith('@') || e.endsWith('@')) {
@@ -488,57 +438,46 @@ class CarrinhoAbandonadoService {
     return null;
   }
 
-  /// Envia via Cloud Function `sendEmail` (web) com fallback SMTP nativo.
+  /// Mensagem para o lojista a partir do código de recusa do `sendEmail`.
+  @visibleForTesting
+  static String mensagemFalhaEnvio(String? codigo, String email) {
+    switch (codigo) {
+      case 'EMAIL_COOLDOWN':
+        return 'Lembrete já enviado há pouco para este carrinho. Tente mais tarde.';
+      case 'RECIPIENT_NOT_VERIFIED':
+      case 'RECIPIENT_MISMATCH':
+        return 'E-mail $email não confere com o cadastro do cliente';
+      case 'UNAUTHENTICATED':
+        return 'Sessão expirada. Entre novamente para enviar o e-mail.';
+      case 'PERMISSION_DENIED':
+        return 'Sem permissão para enviar e-mails desta loja';
+      case 'CART_EMPTY':
+        return 'Carrinho vazio — nada para lembrar';
+      default:
+        return 'Falha ao enviar e-mail para $email';
+    }
+  }
+
+  /// `sendEmail` tipado (`abandoned_cart_reminder`): o servidor confere o
+  /// destinatário no cliente/carrinho e monta o conteúdo. Sem SMTP no app.
   /// Não grava marcação — caller só marca se [EnvioLembreteEmailResultado.ok].
-  static Future<bool> _entregarEmail({
-    required String lojaId,
-    required String destinatario,
-    required String assunto,
-    required String texto,
-    required String html,
-    String? remetenteNome,
-  }) async {
+  static Future<({bool ok, String? codigo})> _entregarEmail(
+    Map<String, String> payload,
+  ) async {
     try {
-      final projectId = Firebase.app().options.projectId;
-      final response = await http.post(
-        Uri.parse(
-          'https://southamerica-east1-$projectId.cloudfunctions.net/sendEmail',
-        ),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'to': destinatario,
-          'subject': assunto,
-          'html': html,
-          'text': texto,
-          'lojaId': lojaId,
-        }),
-      );
-      if (response.statusCode == 200) {
-        debugPrint('✅ [CARRINHO-ABANDONADO] Email CF OK → $destinatario');
-        return true;
+      final r = await EmailService.enviar(payload);
+      if (EmailService.foiEnviado(r.statusCode, r.body)) {
+        debugPrint('✅ [CARRINHO-ABANDONADO] Email CF OK');
+        return (ok: true, codigo: null);
       }
-      debugPrint(
-        '⚠️ [CARRINHO-ABANDONADO] CF email ${response.statusCode}: ${response.body}',
-      );
+      final codigo = EmailService.codigoResposta(r.body);
+      debugPrint('⚠️ [CARRINHO-ABANDONADO] CF email ${r.statusCode} $codigo');
+      return (ok: false, codigo: codigo);
     } catch (e) {
       debugPrint(
         '⚠️ [CARRINHO-ABANDONADO] CF email falhou (type=${e.runtimeType})',
       );
-    }
-
-    // SMTP direto não funciona no navegador; evita falso negativo silencioso.
-    if (kIsWeb) return false;
-
-    try {
-      return await EmailService.enviarEmail(
-        destinatario: destinatario,
-        assunto: assunto,
-        mensagem: texto,
-        remetenteNome: remetenteNome ?? 'Loja',
-      );
-    } catch (e) {
-      debugPrint('⚠️ [CARRINHO-ABANDONADO] SMTP falhou (type=${e.runtimeType})');
-      return false;
+      return (ok: false, codigo: null);
     }
   }
 
@@ -547,10 +486,7 @@ class CarrinhoAbandonadoService {
     required String lojaId,
     required String clienteId,
     required String emailDestino,
-    required String nomeCliente,
-    String? nomeLoja,
     String? telefone,
-    List<Map<String, dynamic>>? itens,
   }) async {
     final email = await resolverEmailCliente(
       lojaId: lojaId,
@@ -566,27 +502,19 @@ class CarrinhoAbandonadoService {
     }
     final link =
         await CatalogPublicUrlService.montarUrlCatalogoPublicoAsync(lojaId);
-    final assunto =
-        'Você deixou itens no carrinho${nomeLoja != null && nomeLoja.isNotEmpty ? ' - $nomeLoja' : ''}';
-    final tpl = montarTemplateLembrete(
-      nomeCliente: nomeCliente,
-      link: link,
-      nomeLoja: nomeLoja,
-      produtos: itens,
-    );
     try {
-      final ok = await _entregarEmail(
-        lojaId: lojaId,
-        destinatario: email,
-        assunto: assunto,
-        texto: tpl.texto,
-        html: tpl.html,
-        remetenteNome: nomeLoja,
+      final envio = await _entregarEmail(
+        EmailService.payloadLembreteCarrinho(
+          lojaId: lojaId,
+          clienteId: clienteId,
+          destinatario: email,
+          link: link,
+        ),
       );
-      if (!ok) {
+      if (!envio.ok) {
         return EnvioLembreteEmailResultado(
           ok: false,
-          mensagem: 'Falha ao enviar e-mail para $email',
+          mensagem: mensagemFalhaEnvio(envio.codigo, email),
           emailUsado: email,
         );
       }
@@ -611,17 +539,14 @@ class CarrinhoAbandonadoService {
     }
   }
 
-  /// E-mail de lembrete para carrinho do catálogo. Só marca enviado se CF/SMTP OK.
+  /// E-mail de lembrete para carrinho do catálogo. Só marca enviado se o servidor enviou.
   static Future<EnvioLembreteEmailResultado> enviarLembreteEmailCatalogo({
     required String lojaId,
     required String cartId,
     required String emailDestino,
-    required String nomeCliente,
     required String linkRecuperacao,
-    String? nomeLoja,
     String? telefone,
     String? whatsapp,
-    List<Map<String, dynamic>>? produtos,
     Map<String, dynamic>? raw,
   }) async {
     final email = await resolverEmailCliente(
@@ -637,27 +562,19 @@ class CarrinhoAbandonadoService {
         mensagem: 'E-mail do cliente não encontrado ou inválido',
       );
     }
-    final assunto =
-        'Você deixou itens no carrinho${nomeLoja != null && nomeLoja.isNotEmpty ? ' - $nomeLoja' : ''}';
-    final tpl = montarTemplateLembrete(
-      nomeCliente: nomeCliente,
-      link: linkRecuperacao,
-      nomeLoja: nomeLoja,
-      produtos: produtos,
-    );
     try {
-      final ok = await _entregarEmail(
-        lojaId: lojaId,
-        destinatario: email,
-        assunto: assunto,
-        texto: tpl.texto,
-        html: tpl.html,
-        remetenteNome: nomeLoja,
+      final envio = await _entregarEmail(
+        EmailService.payloadLembreteCarrinho(
+          lojaId: lojaId,
+          cartId: cartId,
+          destinatario: email,
+          link: linkRecuperacao,
+        ),
       );
-      if (!ok) {
+      if (!envio.ok) {
         return EnvioLembreteEmailResultado(
           ok: false,
-          mensagem: 'Falha ao enviar e-mail para $email',
+          mensagem: mensagemFalhaEnvio(envio.codigo, email),
           emailUsado: email,
         );
       }

@@ -1,5 +1,6 @@
 /**
- * Guard server-side para notificações de sorteio (sendEmail / sendWhatsAppOrderConfirmation).
+ * Guard server-side para notificações de sorteio (sendEmail via emailContracts.js /
+ * sendWhatsAppOrderConfirmation).
  *
  * Contrato estruturado (clientes novos):
  *   notificationType: "raffle_participation"
@@ -157,7 +158,8 @@ export async function verifyStructuredParticipation(db, { colLojas = "lojas", fi
     return { ok: false, reason: "participation_lookup_failed" };
   }
   if (!snap.exists) return { ok: false, reason: "participation_not_found" };
-  const problem = participationProblem(snap.data() || {}, {
+  const participation = snap.data() || {};
+  const problem = participationProblem(participation, {
     lojaId,
     campaignId,
     saleId,
@@ -166,7 +168,7 @@ export async function verifyStructuredParticipation(db, { colLojas = "lojas", fi
     recipient,
   });
   if (problem) return { ok: false, reason: problem };
-  return { ok: true, lojaId, campaignId, participationId };
+  return { ok: true, lojaId, campaignId, participationId, campaignData: gate.campanha.data || {}, participation };
 }
 
 /** Payload legado (sem campos estruturados): número no texto + destinatário têm de casar com 1 participação. */
@@ -288,57 +290,6 @@ export function stripRaffleLines(message) {
 
 const blockedJson = (reason) => ({ ok: false, sent: false, code: RAFFLE_NOT_ACTIVE, reason });
 const duplicateJson = () => ({ ok: true, sent: false, duplicate: true, code: RAFFLE_ALREADY_SENT });
-
-/**
- * Núcleo do sendEmail após validação/rate-limit/SMTP.
- * Bloqueio devolve 200 para clientes antigos não caírem no fallback SMTP local.
- */
-export async function executeSendEmail({ db, colLojas = "lojas", body, input, smtpUser, sendMail, agora = new Date() }) {
-  const { to, subject, html, text, lojaId } = input;
-  const decision = await evaluateRaffleNotification(db, {
-    colLojas,
-    channel: "email",
-    body,
-    texts: [subject, html, text],
-    recipient: { email: to },
-    agora,
-  });
-  if (decision.action === "block") {
-    console.warn(
-      JSON.stringify({ service: "sendEmail", event: "raffle_email_blocked", reason: decision.reason, lojaId: lojaId || null }),
-    );
-    return { status: 200, json: blockedJson(decision.reason) };
-  }
-  if (decision.action === "duplicate") return { status: 200, json: duplicateJson() };
-
-  let displayName = "MasterPalm";
-  if (lojaId) {
-    try {
-      const lojaSnap = await db.collection(colLojas).doc(lojaId).get();
-      if (lojaSnap.exists) {
-        const lojaData = lojaSnap.data() || {};
-        const nome = String(lojaData.nome || lojaData.name || "").trim();
-        if (nome) displayName = nome;
-      }
-    } catch (e) {
-      console.warn("[sendEmail] falha ao resolver nome da loja:", lojaId, e?.message || e);
-    }
-  }
-
-  try {
-    await sendMail({
-      from: `"${displayName}" <${smtpUser}>`,
-      to,
-      subject,
-      html: html || undefined,
-      text: text || undefined,
-    });
-  } catch (e) {
-    if (decision.claim) await decision.claim.release();
-    throw e;
-  }
-  return { status: 200, json: { ok: true, sent: true, message: "Email enviado" } };
-}
 
 /** Núcleo do sendWhatsAppOrderConfirmation após validação/rate-limit. */
 export async function executeSendWhatsApp({ db, colLojas = "lojas", body, lojaId, phone, message, send, agora = new Date() }) {

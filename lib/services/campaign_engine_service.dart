@@ -24,6 +24,7 @@ import '../core/logger.dart';
 
 import '../models/venda.dart';
 import 'campanha_sorteio_gate.dart';
+import 'email_service.dart';
 
 /// Modelo de participação em campanha
 class Participacao {
@@ -602,16 +603,7 @@ class CampaignEngineService {
           );
           enviado = true;
         } else {
-          enviado = await _enviarEmail(
-            lojaId: lojaId,
-            email: email!,
-            clienteNome: clienteNome,
-            numero: numero,
-            campanhaNome: campanhaNome,
-            dataSorteio: dataSorteio,
-            nomeLoja: nomeLoja,
-            camposSorteio: camposSorteio,
-          );
+          enviado = await _enviarEmail(camposSorteio: camposSorteio);
         }
         if (enviado) emailEnviado = true;
       } catch (e, st) {
@@ -788,111 +780,19 @@ Desejamos boa sorte! Qualquer duvida, estamos a disposicao.
     return false;
   }
 
-  /// Payload HTTP para Cloud Function `sendEmail` (contrato PosPagamento).
-  @visibleForTesting
-  static Map<String, String> montarPayloadSendEmailCf({
-    required String to,
-    required String subject,
-    required String html,
-    required String lojaId,
-    Map<String, String>? camposSorteio,
-  }) =>
-      {
-        ...?camposSorteio,
-        'to': to,
-        'subject': subject,
-        'html': html,
-        'lojaId': lojaId,
-      };
-
-  /// Monta assunto + HTML do e-mail de participação na campanha.
-  @visibleForTesting
-  static ({String assunto, String html, String textoPlano}) montarConteudoEmailParticipacao({
-    required String clienteNome,
-    required String numero,
-    required String campanhaNome,
-    DateTime? dataSorteio,
-    required String nomeLoja,
-  }) {
-    final primeiroNome = clienteNome.split(' ').first;
-    final dataFormatada = dataSorteio != null
-        ? '${dataSorteio.day.toString().padLeft(2, '0')}/${dataSorteio.month.toString().padLeft(2, '0')}/${dataSorteio.year}'
-        : 'Em breve';
-
-    final assunto = 'Confirmacao de participacao - Campanha $campanhaNome';
-    final textoPlano = '''
-Ola $primeiroNome,
-
-Sua participacao na campanha "$campanhaNome" foi registrada com sucesso!
-
-Seu numero da sorte: $numero
-
-Guarde este numero com carinho. Ele e valido para o sorteio conforme as regras da campanha.
-
-Data do sorteio: $dataFormatada
-
-Loja: $nomeLoja
-
-Desejamos boa sorte!
-
-Atenciosamente,
-Equipe $nomeLoja
-''';
-
-    final html = '''
-<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;">
-<h2>Participacao registrada</h2>
-<p>Ola $primeiroNome,</p>
-<p>Sua participacao na campanha <strong>$campanhaNome</strong> foi registrada com sucesso!</p>
-<p style="font-size:28px;font-weight:bold;letter-spacing:4px;">$numero</p>
-<p>Data do sorteio: $dataFormatada</p>
-<p>Loja: $nomeLoja</p>
-<p>Desejamos boa sorte!</p>
-</body></html>''';
-
-    return (assunto: assunto, html: html, textoPlano: textoPlano);
-  }
-
-  /// Envia email com o número da sorte só via `sendEmail` (o servidor valida a
-  /// participação). Retorna true somente se o servidor entregou.
+  /// Envia o e-mail de participação via `sendEmail` tipado: o servidor valida a
+  /// participação e deriva destinatário/conteúdo. Retorna true somente se entregue.
   static Future<bool> _enviarEmail({
-    required String lojaId,
-    required String email,
-    required String clienteNome,
-    required String numero,
-    required String campanhaNome,
-    DateTime? dataSorteio,
-    required String nomeLoja,
     Map<String, String>? camposSorteio,
   }) async {
     if (camposSorteio == null) {
       logW('⚠️ [CampaignEngine] Participação sem identificadores completos; email não enviado');
       return false;
     }
-    final conteudo = montarConteudoEmailParticipacao(
-      clienteNome: clienteNome,
-      numero: numero,
-      campanhaNome: campanhaNome,
-      dataSorteio: dataSorteio,
-      nomeLoja: nomeLoja,
-    );
 
     try {
-      final projectId = Firebase.app().options.projectId;
-      final response = await http.post(
-        Uri.parse(
-          'https://southamerica-east1-$projectId.cloudfunctions.net/sendEmail',
-        ),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(
-          montarPayloadSendEmailCf(
-            to: email,
-            subject: conteudo.assunto,
-            html: conteudo.html,
-            lojaId: lojaId,
-            camposSorteio: camposSorteio,
-          ),
-        ),
+      final response = await EmailService.enviar(
+        EmailService.payloadParticipacaoSorteio(camposSorteio),
       );
       final entregue =
           interpretarRespostaNotificacao(response.statusCode, response.body);
@@ -901,7 +801,7 @@ Equipe $nomeLoja
         return false;
       }
       if (entregue) {
-        logD('✅ [CampaignEngine] Email CF enviado para $email');
+        logD('✅ [CampaignEngine] Email CF enviado');
       } else {
         logW('⚠️ [CampaignEngine] Email de sorteio recusado pelo servidor');
       }
