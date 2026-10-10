@@ -17,6 +17,7 @@ import { initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
 import * as admin from "firebase-admin";
+import { getAuth } from "firebase-admin/auth";
 
 import { GoogleAuth } from "google-auth-library";
 import * as dotenv from "dotenv";
@@ -4660,7 +4661,7 @@ export const sendEmail = onRequest(
         colLojas: COLLECTION_LOJAS,
         body: req.body || {},
         idToken: extractBearerTokenFromRequest(req),
-        verifyIdToken: (token) => admin.auth().verifyIdToken(token),
+        verifyIdToken: (token) => getAuth().verifyIdToken(token),
         limitUser: (uid) => checkRateLimit("sendEmailUser", uid),
         smtpUser,
         sendMail: (opts) =>
@@ -4972,9 +4973,7 @@ export const enviarEmailVerificacao = onCall(
         `[enviarEmailVerificacao] chamado email=${emailNorm} authUid=${request.auth?.uid || "none"} authEmail=${authedEmail || "none"}`
       );
 
-      const verificationLink = await admin
-        .auth()
-        .generateEmailVerificationLink(emailNorm);
+      const verificationLink = await getAuth().generateEmailVerificationLink(emailNorm);
 
       // Não logar o link completo (token sensível). Log apenas o host.
       try {
