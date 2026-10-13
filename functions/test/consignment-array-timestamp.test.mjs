@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import {FieldValue, Timestamp} from 'firebase-admin/firestore';
 import {executeConsignmentCommand} from '../src/consignmentCommand.js';
 import {CODES, describeUnclassifiedConsignmentError, mapConsignmentHttp} from '../src/consignmentProtocol.js';
-import {assertValidFirestoreData, createConsignmentTestDb} from './consignment-test-db.mjs';
+import {
+  assertValidFirestoreData, commandCommit, createConsignmentTestDb, stockCommitsSince,
+} from './consignment-test-db.mjs';
 
 const owner = {uid: 'owner'};
 const MIR_PRICES = {P1: 72, P2: 149, P3: 88, P4: 70, P5: 98, P6: 77};
@@ -25,10 +27,7 @@ function seedStore(prices = MIR_PRICES, qty = 1, lojaId = `arrts_${++seq}`) {
     db.seed(base.collection('produtos').doc(id), {nome: `Produto ${id}`, quantidade: qty, preco});
     db.seed(base.collection('stock_catalog_dependencies').doc(id), {comboIds: []});
   }
-  let transactions = 0;
-  const run = db.runTransaction.bind(db);
-  db.runTransaction = fn => { transactions++; return run(fn); };
-  return {db, base, lojaId, transactions: () => transactions};
+  return {db, base, lojaId};
 }
 
 function cmd(lojaId, operation, operationId, payload = {}, consignmentId = null) {
@@ -65,7 +64,7 @@ test('fake rejects Firestore transforms inside arrays like the Admin SDK', () =>
 });
 
 test('Mir-equivalent six-item issue succeeds in one transaction with Timestamp history', async () => {
-  const {db, base, lojaId, transactions} = seedStore();
+  const {db, base, lojaId} = seedStore();
   const id = await createDraft(db, lojaId, MIR_PRICES);
   const draft = consignment(db, base, id);
   assert.equal(draft.status, 'DRAFT');
@@ -73,9 +72,11 @@ test('Mir-equivalent six-item issue succeeds in one transaction with Timestamp h
   assert.equal(draft.potentialCommissionAmount, 0);
   for (const p of Object.keys(MIR_PRICES)) assert.equal(stock(db, base, p).quantidade, 1, 'draft must not mutate stock');
 
-  const before = transactions();
+  const before = db.commits.length;
   const res = await executeConsignmentCommand(db, cmd(lojaId, 'issue', `issue_${id}`, {}, id), owner);
-  assert.equal(transactions() - before, 1);
+  const stockCommits = stockCommitsSince(db, before);
+  assert.equal(stockCommits.length, 1);
+  assert.equal(stockCommits[0], commandCommit(db, `issue_${id}`));
   assert.equal(res.status, 'ISSUED');
 
   for (const p of Object.keys(MIR_PRICES)) {
@@ -113,15 +114,17 @@ test('single-item issue succeeds', async () => {
 });
 
 test('addItems on issued consignment appends Timestamp history and decrements once', async () => {
-  const {db, base, lojaId, transactions} = seedStore({P1: 72, P2: 149}, 2);
+  const {db, base, lojaId} = seedStore({P1: 72, P2: 149}, 2);
   const id = await createDraft(db, lojaId, {P1: 72});
   await executeConsignmentCommand(db, cmd(lojaId, 'issue', `issue_${id}`, {}, id), owner);
   const issued = consignment(db, base, id);
-  const before = transactions();
+  const before = db.commits.length;
   const add = await executeConsignmentCommand(db, cmd(lojaId, 'addItems', `add_${id}`, {
     expectedRevision: issued.revision, lines: [line('P2', 149)],
   }, id), owner);
-  assert.equal(transactions() - before, 1);
+  const stockCommits = stockCommitsSince(db, before);
+  assert.equal(stockCommits.length, 1);
+  assert.equal(stockCommits[0], commandCommit(db, `add_${id}`));
   assert.equal(add.revision, issued.revision + 1);
   const doc = consignment(db, base, id);
   assert.equal(doc.additions.length, 2);

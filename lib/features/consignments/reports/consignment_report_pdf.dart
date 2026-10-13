@@ -120,6 +120,10 @@ class ConsignmentReportPdfBuilder {
     );
   }
 
+  // The pdf package defaults to 20 pages; a 150-product / 300-line
+  // consignment exceeds that.
+  static const _maxPages = 500;
+
   static String _footer(ConsignmentStoreProfile store, pw.Context ctx) {
     return '${store.name} · MasterPalm · ${_dateTime.format(DateTime.now())} · Página ${ctx.pageNumber} de ${ctx.pagesCount}';
   }
@@ -136,6 +140,7 @@ class ConsignmentReportPdfBuilder {
     final pdf = pw.Document(title: 'Pedido consignação ${doc.id}');
     pdf.addPage(
       pw.MultiPage(
+        maxPages: _maxPages,
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.fromLTRB(28, 28, 28, 36),
         footer: (ctx) => pw.Text(_footer(store, ctx), style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
@@ -359,6 +364,7 @@ class ConsignmentReportPdfBuilder {
     final pdf = pw.Document(title: 'Acréscimo consignação ${doc.id}');
     pdf.addPage(
       pw.MultiPage(
+        maxPages: _maxPages,
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.fromLTRB(28, 28, 28, 36),
         footer: (ctx) => pw.Text(_footer(store, ctx), style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
@@ -417,6 +423,7 @@ class ConsignmentReportPdfBuilder {
     final pdf = pw.Document(title: 'Acerto consignação ${doc.id}');
     pdf.addPage(
       pw.MultiPage(
+        maxPages: _maxPages,
         pageFormat: PdfPageFormat.a4.landscape,
         margin: const pw.EdgeInsets.fromLTRB(24, 24, 24, 32),
         footer: (ctx) => pw.Text(_footer(store, ctx), style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
@@ -557,6 +564,7 @@ class ConsignmentReportPdfBuilder {
     final pdf = pw.Document(title: 'Relatório consolidado de consignações');
     pdf.addPage(
       pw.MultiPage(
+        maxPages: _maxPages,
         pageFormat: PdfPageFormat.a4,
         margin: margin,
         footer: footer,
@@ -613,6 +621,7 @@ class ConsignmentReportPdfBuilder {
       final s = sections[i];
       pdf.addPage(
         pw.MultiPage(
+          maxPages: _maxPages,
           pageFormat: PdfPageFormat.a4,
           margin: margin,
           footer: footer,
@@ -635,6 +644,7 @@ class ConsignmentReportPdfBuilder {
     }
     pdf.addPage(
       pw.MultiPage(
+        maxPages: _maxPages,
         pageFormat: PdfPageFormat.a4,
         margin: margin,
         footer: footer,
@@ -690,6 +700,7 @@ class ConsignmentReportPdfBuilder {
     final pdf = pw.Document(title: 'Relatório geral consignados');
     pdf.addPage(
       pw.MultiPage(
+        maxPages: _maxPages,
         pageFormat: PdfPageFormat.a4.landscape,
         margin: const pw.EdgeInsets.fromLTRB(24, 24, 24, 32),
         footer: (ctx) => pw.Text(_footer(store, ctx), style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),

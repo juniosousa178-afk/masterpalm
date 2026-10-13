@@ -100,11 +100,15 @@ int consignmentDraftTotalQty(List<ConsignmentDraftLine> lines) =>
     lines.fold(0, (s, l) => s + l.qtySent);
 
 /// Must match MAX_DISTINCT_PRODUCTS_PER_CONSIGNMENT in functions/src/consignmentProtocol.js.
-const int kConsignmentMaxProducts = 50;
+const int kConsignmentMaxProducts = 150;
 
 const String consignmentProductLimitMessage =
     'Limite de $kConsignmentMaxProducts produtos diferentes por consignação. '
     'Divida as peças em mais de uma consignação.';
+
+const String consignmentCapacityMessage =
+    'Esta consignação atingiu o limite de capacidade. '
+    'Faça o acerto ou registre as próximas peças em outra consignação.';
 
 int consignmentDistinctProductCount(Iterable<String> productIds) =>
     productIds.where((id) => id.trim().isNotEmpty).toSet().length;

@@ -6,15 +6,21 @@ import {isMap} from './catalogStockProjection.js';
 export const CONSIGNMENT_PROTOCOL_VERSION = 1;
 export const CONSIGNMENT_SCHEMA_VERSION = 1;
 // Lines are product + variation (+ addition lot); they grow the consignment doc, not stock writes.
-export const MAX_LINES = 150;
+export const MAX_LINES = 300;
 // Product rule; app mirror: kConsignmentMaxProducts in lib/features/consignments/consignment_validation.dart.
-export const MAX_DISTINCT_PRODUCTS_PER_CONSIGNMENT = 50;
+export const MAX_DISTINCT_PRODUCTS_PER_CONSIGNMENT = 150;
 // Consigned products plus combos recalculated through stock_catalog_dependencies in one transaction.
-export const MAX_STOCK_RECORDS_PER_TRANSACTION = 60;
+export const MAX_STOCK_RECORDS_PER_TRANSACTION = 180;
 // Firestore commits allow 500 writes and each serverTimestamp transform counts as one more.
-// Worst case per stock record: stock + draft + live sets, each with a timestamp transform = 6 units.
-export const WRITE_UNITS_PER_STOCK_RECORD = 6;
+// Inside the stock transaction each record writes only its canonical estoque_produtos doc (+ timestamp) = 2 units.
+// draft_produtos/produtos are derived and projected after commit (consignmentCatalogProjection.js).
+export const WRITE_UNITS_PER_STOCK_RECORD = 2;
 export const MAX_TRANSACTION_WRITE_UNITS = 400;
+export const MAX_COMMAND_BYTES = 256 * 1024;
+// Growth operations keep the consignment doc under this so settlement (which barely grows it) always fits 1 MiB.
+export const MAX_CONSIGNMENT_DOC_BYTES = 700 * 1024;
+// Growth operations keep the full settle command under this so every issued consignment stays settleable.
+export const MAX_SETTLEMENT_COMMAND_BYTES = Math.floor(MAX_COMMAND_BYTES * 0.8);
 
 export const STATUS = Object.freeze({
   DRAFT: 'DRAFT',
@@ -233,6 +239,43 @@ export function parseCommand(raw) {
   const payload = raw.payload == null ? {} : raw.payload;
   if (!isMap(payload)) throw consignmentError(CODES.INVALID_ARGUMENT, 'Invalid payload');
   const consignmentId = raw.consignmentId != null ? documentId(raw.consignmentId, 'consignmentId') : null;
-  if (Buffer.byteLength(JSON.stringify(raw)) > 100000) throw consignmentError(CODES.RESOURCE_EXHAUSTED, 'Command too large');
+  if (Buffer.byteLength(JSON.stringify(raw)) > MAX_COMMAND_BYTES) throw consignmentError(CODES.RESOURCE_EXHAUSTED, 'Command too large');
   return {...raw, payload, consignmentId};
+}
+
+/** Firestore storage size rules: strings/field names = UTF-8 + 1, numbers/timestamps = 8, bool/null = 1. */
+export function firestoreValueBytes(value) {
+  if (value == null) return 1;
+  if (typeof value === 'string') return Buffer.byteLength(value) + 1;
+  if (typeof value === 'number') return 8;
+  if (typeof value === 'boolean') return 1;
+  if (value instanceof Date || typeof value.toMillis === 'function') return 8;
+  if (Array.isArray(value)) return value.reduce((n, v) => n + firestoreValueBytes(v), 0);
+  const proto = Object.getPrototypeOf(value);
+  if (proto === Object.prototype || proto === null) {
+    return Object.entries(value).reduce((n, [k, v]) => n + Buffer.byteLength(k) + 1 + firestoreValueBytes(v), 0);
+  }
+  return 8;
+}
+
+export function firestoreDocumentBytes(path, data) {
+  return Buffer.byteLength(path) + 1 + 16 + firestoreValueBytes(data);
+}
+
+/** Largest settle command the app can send for these lines (every line, worst-case ids and quantities). */
+export function settlementCommandBytes(lojaId, consignmentId, lines) {
+  return Buffer.byteLength(JSON.stringify({
+    protocolVersion: CONSIGNMENT_PROTOCOL_VERSION,
+    lojaId,
+    operation: 'settle',
+    operationId: 'x'.repeat(256),
+    consignmentId,
+    payload: {lines: lines.map(l => ({
+      lineId: l.lineId,
+      productId: l.productId,
+      variationKey: {size: l.variationKey?.size ?? '', color: l.variationKey?.color ?? '', extra: l.variationKey?.extra ?? ''},
+      qtySold: 999999,
+      qtyReturned: 999999,
+    }))},
+  }));
 }

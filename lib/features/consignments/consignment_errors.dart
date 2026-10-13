@@ -48,6 +48,10 @@ class ConsignmentException implements Exception {
   static const networkMessage =
       'É necessário estar conectado para confirmar esta operação.';
 
+  static final _capacityDetail = RegExp(
+    'document capacity|settlement command|Too many consignment lines|fan-out|write budget|Too many affected',
+  );
+
   static ConsignmentException network() =>
       const ConsignmentException('NETWORK', networkMessage);
 
@@ -80,6 +84,9 @@ class ConsignmentException implements Exception {
         buffer.writeln('• $label — ${issue.userMessage}');
       }
       return ConsignmentException(mapped, buffer.toString().trim(), issues: issues);
+    }
+    if (mapped == 'RESOURCE_EXHAUSTED' && details is Map && _capacityDetail.hasMatch('${details['detail'] ?? ''}')) {
+      return ConsignmentException(mapped, consignmentCapacityMessage, issues: issues);
     }
     return ConsignmentException(mapped, userMessage(mapped, message), issues: issues);
   }

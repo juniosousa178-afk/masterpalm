@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {executeConsignmentCommand, FIXED_WRITE_UNITS} from '../src/consignmentCommand.js';
-import {CODES, MAX_TRANSACTION_WRITE_UNITS, WRITE_UNITS_PER_STOCK_RECORD} from '../src/consignmentProtocol.js';
-import {createConsignmentTestDb} from './consignment-test-db.mjs';
+import {
+  CODES, MAX_STOCK_RECORDS_PER_TRANSACTION, MAX_TRANSACTION_WRITE_UNITS, WRITE_UNITS_PER_STOCK_RECORD,
+} from '../src/consignmentProtocol.js';
+import {commandCommit, commitUnits, createConsignmentTestDb} from './consignment-test-db.mjs';
 
 const owner = {uid: 'owner'};
 let seq = 0;
@@ -476,26 +478,29 @@ async function capacity(n) {
   const {db, base, lojaId} = seedStore({ids, qty: 5});
   const id = await issue(db, lojaId, ids.map(p => line(p, 1)));
   const doc = consignment(db, base, id);
-  await returnItems(db, lojaId, id, doc.lines.map(l => returnRow(l, 1)), {base});
-  return db.lastCommit.writes + db.lastCommit.transforms;
+  const res = await returnItems(db, lojaId, id, doc.lines.map(l => returnRow(l, 1)), {base});
+  return commitUnits(commandCommit(db, res.operationId));
 }
 
-test('31 capacity: RETURN_WRITES_1 / 10 / 50 within transaction budget', async () => {
+test('31 capacity: RETURN_WRITES_1 / 10 / 50 / 150 within transaction budget', async () => {
   const one = await capacity(1);
   const ten = await capacity(10);
   const fifty = await capacity(50);
+  const all = await capacity(150);
   const fixed = FIXED_WRITE_UNITS.returnItems;
   assert.equal(one, WRITE_UNITS_PER_STOCK_RECORD + fixed);
   assert.equal(ten, 10 * WRITE_UNITS_PER_STOCK_RECORD + fixed);
   assert.equal(fifty, 50 * WRITE_UNITS_PER_STOCK_RECORD + fixed);
-  assert.ok(fifty <= MAX_TRANSACTION_WRITE_UNITS);
-  assert.ok(60 * WRITE_UNITS_PER_STOCK_RECORD + fixed <= MAX_TRANSACTION_WRITE_UNITS, 'combo fan-out cap still fits');
-  console.log(`RETURN_WRITES_1=${one} RETURN_WRITES_10=${ten} RETURN_WRITES_50=${fifty}`);
+  assert.equal(all, 150 * WRITE_UNITS_PER_STOCK_RECORD + fixed);
+  assert.ok(all <= MAX_TRANSACTION_WRITE_UNITS);
+  assert.ok(MAX_STOCK_RECORDS_PER_TRANSACTION * WRITE_UNITS_PER_STOCK_RECORD + fixed <= MAX_TRANSACTION_WRITE_UNITS,
+    'combo fan-out cap still fits');
+  console.log(`RETURN_WRITES_1=${one} RETURN_WRITES_10=${ten} RETURN_WRITES_50=${fifty} RETURN_WRITES_150=${all}`);
 });
 
-test('31b capacity: worst combo fan-out (60 stock records) measured within budget', async () => {
+test('31b capacity: worst combo fan-out (MAX_STOCK_RECORDS_PER_TRANSACTION records) measured within budget', async () => {
   const {db, base, lojaId} = seedStore({ids: []});
-  const combos = Array.from({length: 59}, (_, i) => `K${i}`);
+  const combos = Array.from({length: MAX_STOCK_RECORDS_PER_TRANSACTION - 1}, (_, i) => `K${i}`);
   seedProduct(db, base, 'P', {quantidade: 10, stockKind: 'simple', comboIds: combos});
   for (const k of combos) {
     seedProduct(db, base, k, {
@@ -504,9 +509,9 @@ test('31b capacity: worst combo fan-out (60 stock records) measured within budge
   }
   const id = await issue(db, lojaId, [line('P', 2)]);
   const doc = consignment(db, base, id);
-  await returnItems(db, lojaId, id, [returnRow(doc.lines[0], 1)], {base});
-  const units = db.lastCommit.writes + db.lastCommit.transforms;
-  assert.equal(units, 60 * WRITE_UNITS_PER_STOCK_RECORD + FIXED_WRITE_UNITS.returnItems);
+  const res = await returnItems(db, lojaId, id, [returnRow(doc.lines[0], 1)], {base});
+  const units = commitUnits(commandCommit(db, res.operationId));
+  assert.equal(units, MAX_STOCK_RECORDS_PER_TRANSACTION * WRITE_UNITS_PER_STOCK_RECORD + FIXED_WRITE_UNITS.returnItems);
   assert.ok(units <= MAX_TRANSACTION_WRITE_UNITS);
   assert.equal(stockQty(db, base, 'P'), 9);
   assert.equal(stockQty(db, base, 'K0'), 9);

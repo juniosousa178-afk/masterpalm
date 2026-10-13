@@ -11,6 +11,7 @@ import { setGlobalOptions } from "firebase-functions/v2";
 import { defineSecret } from "firebase-functions/params";
 import crypto from "node:crypto";
 import {executeConsignmentCommand} from "./src/consignmentCommand.js";
+import {projectConsignmentCatalog} from "./src/consignmentCatalogProjection.js";
 import {mapConsignmentHttp, describeUnclassifiedConsignmentError} from "./src/consignmentProtocol.js";
 
 import { initializeApp } from "firebase-admin/app";
@@ -5502,6 +5503,20 @@ export const consignmentCommand = onCall(
     } catch (error) {
       throw consignmentCallableError(error, request.data);
     }
+  },
+);
+
+// Durable retry for the post-commit catalog projection; the stock commit never depends on it.
+export const consignmentProjectionRetry = onDocumentCreated(
+  {
+    document: `${COLLECTION_LOJAS}/{lojaId}/consignment_operations/{operationId}`,
+    retry: true,
+    timeoutSeconds: 120,
+    memory: "256MiB",
+  },
+  async (event) => {
+    if (event.data?.data()?.projection?.status !== "PENDING") return;
+    await projectConsignmentCatalog(db, event.params.lojaId, event.params.operationId);
   },
 );
 

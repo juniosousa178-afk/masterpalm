@@ -7,12 +7,14 @@ import {
   CONSIGNMENT_SCHEMA_VERSION, STATUS, COMMISSION, CODES, consignmentError, requestFingerprint,
   keysOnly, money, lineAmounts, quantityPositive, quantityNonNegative, optionalString, parseCommand,
   MAX_DISTINCT_PRODUCTS_PER_CONSIGNMENT, MAX_TRANSACTION_WRITE_UNITS, MAX_LINES, RETURN_REASON,
+  MAX_CONSIGNMENT_DOC_BYTES, MAX_SETTLEMENT_COMMAND_BYTES, firestoreDocumentBytes, settlementCommandBytes,
 } from './consignmentProtocol.js';
 import {
   classifyConsignmentProduct, parseVariationSelector, variationIdentity,
   applyExactConsignmentDelta, loadConsignmentStockRecords, persistConsignmentStock,
-  evaluateConsignmentPickerEligibility,
+  evaluateConsignmentPickerEligibility, prefetchConsignmentStockSnapshots,
 } from './consignmentStock.js';
+import {projectConsignmentCatalog, PROJECTION_STATUS} from './consignmentCatalogProjection.js';
 import {
   REASON, makeIssue, productValidationError, gradeKey, gradeKeyLabel,
 } from './productValidationErrors.js';
@@ -198,13 +200,26 @@ function assertWriteBudget(persisted, operation) {
   }
 }
 
+/** Growth guard: after this write the consignment must still fit 1 MiB at settlement and be settleable in one command. */
+function assertConsignmentCapacity(ref, lojaId, consignmentId, doc) {
+  const lines = Array.isArray(doc.lines) ? doc.lines : [];
+  if (settlementCommandBytes(lojaId, consignmentId, lines) > MAX_SETTLEMENT_COMMAND_BYTES) {
+    throw consignmentError(CODES.RESOURCE_EXHAUSTED, 'Consignment settlement command would be too large');
+  }
+  if (firestoreDocumentBytes(ref.path, doc) > MAX_CONSIGNMENT_DOC_BYTES) {
+    throw consignmentError(CODES.RESOURCE_EXHAUSTED, 'Consignment document capacity reached');
+  }
+}
+
 async function snapshotLines(tx, base, lines) {
   const productIds = [...new Set(lines.map(l => l.productId))];
   const records = new Map();
   const loadErrors = new Map();
+  const cache = new Map();
+  await prefetchConsignmentStockSnapshots(tx, base, productIds, cache);
   for (const id of productIds) {
     try {
-      const one = await loadConsignmentStockRecords(tx, base, [id]);
+      const one = await loadConsignmentStockRecords(tx, base, [id], {cache});
       records.set(id, one.get(id));
     } catch (error) {
       records.set(id, null);
@@ -332,7 +347,7 @@ async function snapshotLines(tx, base, lines) {
     delete out[out.length - 1].expectedStockRevision;
   }
   if (issues.length) throw productValidationError(issues);
-  return {lines: out, records};
+  return {lines: out, records, cache};
 }
 
 async function replayOrConflict(tx, opSnap, uid, hash) {
@@ -355,11 +370,37 @@ async function runConsignmentTransaction(db, callback) {
   }
 }
 
-export async function executeConsignmentCommand(db, raw, auth) {
+const PROJECTED_OPERATIONS = new Set(['issue', 'addItems', 'returnItems', 'settle']);
+export const INLINE_PROJECTION_BUDGET_MS = 20000;
+
+/**
+ * Best effort after the stock commit: the response never waits longer than the budget and never fails because of
+ * projection. A PENDING marker stays on the operation doc for the replay path and consignmentProjectionRetry.
+ */
+async function projectAfterCommit(db, lojaId, operationId, budgetMs) {
+  let stop = false;
+  let timer;
+  const projection = projectConsignmentCatalog(db, lojaId, operationId, {shouldStop: () => stop})
+    .catch(error => {
+      console.warn('[consignmentCommand] projection_deferred', JSON.stringify({
+        lojaId, operationId, errorCode: typeof error?.code === 'string' || typeof error?.code === 'number' ? error.code : null,
+      }));
+    });
+  const budget = new Promise(resolve => { timer = setTimeout(resolve, budgetMs); });
+  await Promise.race([projection, budget]);
+  stop = true;
+  clearTimeout(timer);
+}
+
+export async function executeConsignmentCommand(db, raw, auth, {projectionBudgetMs = INLINE_PROJECTION_BUDGET_MS} = {}) {
   if (raw?.operation === 'listEligibleProducts') {
     return listEligibleProducts(db, parseCommand(raw), auth);
   }
-  return runConsignmentTransaction(db, tx => executeConsignmentInTransaction(tx, db, raw, auth));
+  const result = await runConsignmentTransaction(db, tx => executeConsignmentInTransaction(tx, db, raw, auth));
+  if (PROJECTED_OPERATIONS.has(raw.operation)) {
+    await projectAfterCommit(db, raw.lojaId, raw.operationId, projectionBudgetMs);
+  }
+  return result;
 }
 
 export async function executeConsignmentInTransaction(tx, db, raw, auth) {
@@ -397,16 +438,18 @@ export async function executeConsignmentInTransaction(tx, db, raw, auth) {
     case 'returnItems': result = await returnItemsBeforeSettlement(tx, base, command, uid); break;
     default: throw consignmentError(CODES.INVALID_ARGUMENT, 'Unsupported consignment operation');
   }
+  const {projectionIds, ...publicResult} = result;
   tx.create(opRef(base, command.operationId), {
     actorUid: uid,
     operation: command.operation,
     requestHash: hash,
-    consignment: result.consignmentId ?? null,
+    consignment: publicResult.consignmentId ?? null,
     status: 'applied',
-    result,
+    result: publicResult,
+    ...(projectionIds?.length ? {projection: {status: PROJECTION_STATUS.PENDING, productIds: projectionIds}} : {}),
     createdAt: FieldValue.serverTimestamp(),
   });
-  return {alreadyApplied: false, operationId: command.operationId, ...result};
+  return {alreadyApplied: false, operationId: command.operationId, ...publicResult};
 }
 
 async function readReseller(tx, base, resellerId, lojaId) {
@@ -560,6 +603,7 @@ async function createDraft(tx, base, command, uid) {
     saleId: null,
     financeId: null,
   };
+  assertConsignmentCapacity(ref, command.lojaId, consignmentId, doc);
   tx.create(ref, doc);
   return {consignmentId, status: STATUS.DRAFT, revision: 1};
 }
@@ -593,6 +637,7 @@ async function updateDraft(tx, base, command, uid) {
     const {lines} = parsedLines.length ? await snapshotLines(tx, base, parsedLines) : {lines: []};
     Object.assign(patch, {lines, ...draftTotals(lines)});
   }
+  assertConsignmentCapacity(ref, command.lojaId, command.consignmentId, {...data, ...patch});
   tx.update(ref, patch);
   return {consignmentId: command.consignmentId, status: STATUS.DRAFT, revision: patch.revision};
 }
@@ -673,7 +718,6 @@ async function issueConsignment(tx, base, command, uid) {
   }
   const persisted = persistConsignmentStock(tx, base, records, command.operationId, -1);
   assertWriteBudget(persisted, 'issue');
-  for (const write of persisted.writes) write();
   const issued = {
     ...data,
     lines: frozen.map(l => {
@@ -715,6 +759,8 @@ async function issueConsignment(tx, base, command, uid) {
     potentialCommissionAmount: frozen.reduce((sum, l) => sum + l.potentialCommissionAmount, 0),
     potentialNetAmount: frozen.reduce((sum, l) => sum + l.potentialNetAmount, 0),
   };
+  assertConsignmentCapacity(ref, command.lojaId, command.consignmentId, issued);
+  for (const write of persisted.writes) write();
   tx.set(ref, issued);
   tx.create(base.collection('consignment_audit').doc(command.operationId), {
     type: 'CONSIGNMENT_ISSUE',
@@ -732,6 +778,7 @@ async function issueConsignment(tx, base, command, uid) {
     status: STATUS.ISSUED,
     products: persisted.products,
     affected: persisted.affected,
+    projectionIds: persisted.projectionIds,
     saleCreated: false,
     financeCreated: false,
   };
@@ -810,7 +857,7 @@ async function addItemsToConsignment(tx, base, command, uid) {
     throw consignmentError(CODES.RESOURCE_EXHAUSTED, 'Too many consignment lines');
   }
   assertProductLimit([...existingLines, ...parsed]);
-  const {lines: snapshotted, records} = await snapshotLines(tx, base, parsed);
+  const {lines: snapshotted, records, cache} = await snapshotLines(tx, base, parsed);
   const stockMetaByProduct = new Map();
   for (const [id, record] of records) {
     if (!record?.data) continue;
@@ -833,10 +880,12 @@ async function addItemsToConsignment(tx, base, command, uid) {
     }
   }
 
-  let persisted = {writes: [], products: [], affected: []};
+  let persisted = {writes: [], products: [], affected: [], projectionIds: []};
   if (data.status === STATUS.ISSUED) {
+    // Same fan-out as issue: fixed combos built from these products are recalculated in this commit.
+    const stockRecords = await loadConsignmentStockRecords(tx, base, stamped.map(l => l.productId), {cache});
     for (const line of stamped) {
-      const record = records.get(line.productId);
+      const record = stockRecords.get(line.productId);
       if (!record?.data) throw consignmentError(CODES.PRODUCT_NOT_FOUND, 'Product unavailable');
       const classified = classifyConsignmentProduct(record.data);
       if (classified.kind !== line.productType) {
@@ -845,10 +894,10 @@ async function addItemsToConsignment(tx, base, command, uid) {
       const selector = parseVariationSelector(line.variationKey);
       record.data = applyExactConsignmentDelta(record.data, line.productType, selector, -line.qtySent);
     }
-    persisted = persistConsignmentStock(tx, base, records, command.operationId, -1);
+    persisted = persistConsignmentStock(tx, base, stockRecords, command.operationId, -1);
     assertWriteBudget(persisted, 'addItems');
-    for (const write of persisted.writes) write();
-    for (const [id, record] of records) {
+    for (const id of records.keys()) {
+      const record = stockRecords.get(id);
       if (!record?.data) continue;
       const prev = stockMetaByProduct.get(id) || {before: null};
       stockMetaByProduct.set(id, {
@@ -871,7 +920,7 @@ async function addItemsToConsignment(tx, base, command, uid) {
   const mergedLines = [...existingLines, ...stamped];
   const totals = draftTotals(mergedLines);
   const newRevision = currentRevision + 1;
-  tx.update(ref, {
+  const patch = {
     lines: mergedLines,
     additions,
     ...totals,
@@ -885,7 +934,10 @@ async function addItemsToConsignment(tx, base, command, uid) {
     lastAdditionId: additionId,
     updatedAt: FieldValue.serverTimestamp(),
     updatedBy: uid,
-  });
+  };
+  assertConsignmentCapacity(ref, command.lojaId, command.consignmentId, {...data, ...patch});
+  for (const write of persisted.writes) write();
+  tx.update(ref, patch);
   tx.create(base.collection('consignment_audit').doc(command.operationId), {
     type: 'CONSIGNMENT_ADD_ITEMS',
     storeId: command.lojaId,
@@ -911,6 +963,7 @@ async function addItemsToConsignment(tx, base, command, uid) {
     },
     products: persisted.products || [],
     affected: persisted.affected || [],
+    projectionIds: persisted.projectionIds,
   };
 }
 
@@ -998,7 +1051,6 @@ async function returnItemsBeforeSettlement(tx, base, command, uid) {
   }
   const persisted = persistConsignmentStock(tx, base, records, command.operationId, 1);
   assertWriteBudget(persisted, 'returnItems');
-  for (const write of persisted.writes) write();
 
   for (const p of plan) p.line.qtyWithdrawn = lineWithdrawn(p.line) + p.qty;
   const withdrawalId = command.operationId;
@@ -1029,7 +1081,7 @@ async function returnItemsBeforeSettlement(tx, base, command, uid) {
   };
   const totals = withdrawalTotals(lines);
   const newRevision = currentRevision + 1;
-  tx.update(ref, {
+  const patch = {
     lines,
     withdrawals: [...(Array.isArray(data.withdrawals) ? data.withdrawals : []), withdrawal],
     ...totals,
@@ -1037,7 +1089,10 @@ async function returnItemsBeforeSettlement(tx, base, command, uid) {
     lastWithdrawalId: withdrawalId,
     updatedAt: FieldValue.serverTimestamp(),
     updatedBy: uid,
-  });
+  };
+  assertConsignmentCapacity(ref, command.lojaId, command.consignmentId, {...data, ...patch});
+  for (const write of persisted.writes) write();
+  tx.update(ref, patch);
   tx.create(base.collection('consignment_audit').doc(command.operationId), {
     type: 'CONSIGNMENT_RETURN_BEFORE_SETTLEMENT',
     storeId: command.lojaId,
@@ -1061,6 +1116,7 @@ async function returnItemsBeforeSettlement(tx, base, command, uid) {
     updatedTotals: totals,
     products: persisted.products,
     affected: persisted.affected,
+    projectionIds: persisted.projectionIds,
     saleCreated: false,
     financeCreated: false,
   };
@@ -1139,7 +1195,7 @@ async function settleConsignment(tx, base, command, uid) {
   }
   if (byKey.size) throw consignmentError(CODES.INVALID_SETTLEMENT_TOTAL, 'Missing issued lines in settlement');
 
-  let persisted = {products: [], writes: [], affected: []};
+  let persisted = {products: [], writes: [], affected: [], projectionIds: []};
   if (returnDeltas.length) {
     const records = await loadConsignmentStockRecords(tx, base, returnDeltas.map(d => d.productId));
     for (const delta of returnDeltas) {
@@ -1268,6 +1324,7 @@ async function settleConsignment(tx, base, command, uid) {
     status: STATUS.SETTLED,
     products: persisted.products,
     affected: persisted.affected,
+    projectionIds: persisted.projectionIds,
     saleId,
     financeId,
     saleCreated: Boolean(saleId),

@@ -184,75 +184,149 @@ export function applyExactConsignmentDelta(stock, kind, selector, delta) {
   return safeNormalize(next);
 }
 
-export async function loadConsignmentStockRecords(tx, base, productIds) {
+const STOCK_READ_REFS_PER_GET_ALL = 100;
+
+function stockReadRefs(base, id) {
+  return [
+    base.collection('estoque_produtos').doc(id),
+    base.collection('draft_produtos').doc(id),
+    base.collection('stock_catalog_dependencies').doc(id),
+    base.collection('exclusao_produto').doc(id),
+  ];
+}
+
+/** Reads the four stock-identity docs of each product into `cache` (path -> snapshot), in bounded getAll calls. */
+export async function prefetchConsignmentStockSnapshots(tx, base, productIds, cache) {
+  const refs = [...new Set(productIds)].flatMap(id => stockReadRefs(base, documentId(id, 'productId')))
+    .filter(ref => !cache.has(ref.path));
+  for (let i = 0; i < refs.length; i += STOCK_READ_REFS_PER_GET_ALL) {
+    const chunk = refs.slice(i, i + STOCK_READ_REFS_PER_GET_ALL);
+    const snaps = await tx.getAll(...chunk);
+    chunk.forEach((ref, j) => cache.set(ref.path, snaps[j]));
+  }
+}
+
+export async function loadConsignmentStockRecords(tx, base, productIds, {cache = new Map()} = {}) {
   const ids = [...new Set(productIds.map(id => documentId(id, 'productId')))];
   if (!ids.length) throw consignmentError(CODES.INVALID_ARGUMENT, 'Products required');
   if (ids.length > MAX_STOCK_RECORDS_PER_TRANSACTION) {
     throw consignmentError(CODES.RESOURCE_EXHAUSTED, 'Too many affected products');
   }
   const records = new Map();
-  for (const id of ids) {
-    if (records.has(id)) continue;
-    if (records.size >= MAX_STOCK_RECORDS_PER_TRANSACTION) throw consignmentError(CODES.RESOURCE_EXHAUSTED, 'Combo fan-out exceeds transaction budget');
-    const stockRef = base.collection('estoque_produtos').doc(id);
-    const draftRef = base.collection('draft_produtos').doc(id);
-    const [stock, draft, dependency, tombstone] = await tx.getAll(
-      stockRef, draftRef, base.collection('stock_catalog_dependencies').doc(id),
-      base.collection('exclusao_produto').doc(id),
-    );
-    if (!stock.exists) throw consignmentError(CODES.PRODUCT_NOT_FOUND, 'Canonical product required');
-    const raw = stock.data() || {};
-    // Editorial draft is optional for internal consignment. Stock authority is estoque_produtos.
-    const editorial = draft.exists ? (draft.data() || {}) : {};
-    const claimedStore = String(raw.lojaId || raw.storeId || editorial.lojaId || editorial.storeId || '').trim();
-    if (claimedStore && claimedStore !== base.id) {
-      throw consignmentError(CODES.AUTH, 'Cross-store product access denied');
+  for (let cursor = 0; cursor < ids.length;) {
+    const pending = ids.slice(cursor).filter(id => !records.has(id));
+    if (records.size + pending.length > MAX_STOCK_RECORDS_PER_TRANSACTION) {
+      throw consignmentError(CODES.RESOURCE_EXHAUSTED, 'Combo fan-out exceeds transaction budget');
     }
-    if (raw.ativo === false) {
-      throw consignmentError(CODES.PRODUCT_STATE_UNSAFE, 'Product is inactive');
+    await prefetchConsignmentStockSnapshots(tx, base, pending, cache);
+    cursor = ids.length;
+    for (const id of pending) {
+      if (records.has(id)) continue;
+      const [stockRef, draftRef, dependencyRef, tombstoneRef] = stockReadRefs(base, id);
+      const stock = cache.get(stockRef.path);
+      const draft = cache.get(draftRef.path);
+      const dependency = cache.get(dependencyRef.path);
+      const tombstone = cache.get(tombstoneRef.path);
+      records.set(id, consignmentStockRecord(base, ids, {stockRef, draftRef, stock, draft, dependency, tombstone}));
     }
-    if (!['simple', 'variation', 'combo'].includes(raw.stockKind)) {
-      throw consignmentError(CODES.PRODUCT_STATE_UNSAFE, 'Stock identity is ambiguous');
-    }
-    if (tombstone.exists && tombstone.data()?.p === true) {
-      throw consignmentError(CODES.PRODUCT_STATE_UNSAFE, 'Product tombstone requires reconciliation');
-    }
-    if (!dependency.exists || !Array.isArray(dependency.data().comboIds)) {
-      throw consignmentError(CODES.PRODUCT_STATE_UNSAFE, 'Dependency migration required');
-    }
-    for (const related of (dependency.data()?.comboIds ?? [])) {
-      if (!ids.includes(documentId(related))) ids.push(related);
-    }
-    let data;
-    try {
-      data = normalizeStock(stock.data());
-      quantity(data.stockRevision);
-    } catch (error) { throw wrapUnsafe(error); }
-    for (const component of recipe(data)) if (!ids.includes(component.productId)) ids.push(component.productId);
-    records.set(id, {
-      stockRef, draftRef, dependency,
-      data, editorial,
-      draftExisted: draft.exists === true,
-      beforeHash: fingerprint(stockEffect(data)),
-      originalRevision: data.stockRevision,
-      beforeStock: structuredClone(stockEffect(data)),
-    });
   }
   comboOrder(records);
   return records;
 }
 
+function consignmentStockRecord(base, ids, {stockRef, draftRef, stock, draft, dependency, tombstone}) {
+  if (!stock.exists) throw consignmentError(CODES.PRODUCT_NOT_FOUND, 'Canonical product required');
+  const raw = stock.data() || {};
+  // Editorial draft is optional for internal consignment. Stock authority is estoque_produtos.
+  const editorial = draft.exists ? (draft.data() || {}) : {};
+  const claimedStore = String(raw.lojaId || raw.storeId || editorial.lojaId || editorial.storeId || '').trim();
+  if (claimedStore && claimedStore !== base.id) {
+    throw consignmentError(CODES.AUTH, 'Cross-store product access denied');
+  }
+  if (raw.ativo === false) {
+    throw consignmentError(CODES.PRODUCT_STATE_UNSAFE, 'Product is inactive');
+  }
+  if (!['simple', 'variation', 'combo'].includes(raw.stockKind)) {
+    throw consignmentError(CODES.PRODUCT_STATE_UNSAFE, 'Stock identity is ambiguous');
+  }
+  if (tombstone.exists && tombstone.data()?.p === true) {
+    throw consignmentError(CODES.PRODUCT_STATE_UNSAFE, 'Product tombstone requires reconciliation');
+  }
+  if (!dependency.exists || !Array.isArray(dependency.data().comboIds)) {
+    throw consignmentError(CODES.PRODUCT_STATE_UNSAFE, 'Dependency migration required');
+  }
+  for (const related of (dependency.data()?.comboIds ?? [])) {
+    if (!ids.includes(documentId(related))) ids.push(related);
+  }
+  let data;
+  try {
+    data = normalizeStock(stock.data());
+    quantity(data.stockRevision);
+  } catch (error) { throw wrapUnsafe(error); }
+  for (const component of recipe(data)) if (!ids.includes(component.productId)) ids.push(component.productId);
+  return {
+    stockRef, draftRef, dependency,
+    data, editorial,
+    draftExisted: draft.exists === true,
+    beforeHash: fingerprint(stockEffect(data)),
+    originalRevision: data.stockRevision,
+    beforeStock: structuredClone(stockEffect(data)),
+  };
+}
+
+function cellLeaves(variacoes) {
+  const out = new Map();
+  if (!isMap(variacoes)) return out;
+  for (const [size, colors] of Object.entries(variacoes)) {
+    if (!isMap(colors)) continue;
+    for (const [color, value] of Object.entries(colors)) {
+      if (color === META_COST || color === 'custo') continue;
+      if (isMap(value)) {
+        for (const [extra, n] of Object.entries(value)) {
+          if (typeof n === 'number') out.set(JSON.stringify([size, color, extra]), n);
+        }
+      } else if (typeof value === 'number') {
+        out.set(JSON.stringify([size, color, '']), value);
+      }
+    }
+  }
+  return out;
+}
+
+/** Audit entry bounded by the changed cells only; full maps are pinned by before/after hashes. */
+function compactAffected(id, r, afterStock) {
+  const before = cellLeaves(r.beforeStock.variacoes);
+  const after = cellLeaves(afterStock.variacoes);
+  const cells = [];
+  for (const key of new Set([...before.keys(), ...after.keys()])) {
+    const b = before.get(key) ?? null;
+    const a = after.get(key) ?? null;
+    if (b === a) continue;
+    const [size, color, extra] = JSON.parse(key);
+    cells.push({size, color, extra, before: b, after: a});
+  }
+  return {
+    productId: id,
+    stockRevisionBefore: r.originalRevision,
+    stockRevision: afterStock.stockRevision,
+    quantidadeBefore: r.beforeStock.quantidade ?? null,
+    quantidadeAfter: afterStock.quantidade ?? null,
+    beforeHash: r.beforeHash,
+    afterHash: fingerprint(stockEffect(afterStock)),
+    cells,
+  };
+}
+
+/**
+ * Queues canonical stock writes only. Catalog projection (draft/live) is validated here but written after
+ * commit from canonical state, so stock success never depends on derived-document writes.
+ */
 export function persistConsignmentStock(tx, base, records, operationId, direction) {
   recalculateFixedCombos(records, direction);
   const products = [];
   const writes = [];
+  const projectionIds = [];
   let units = 0;
-  // Every set below carries one serverTimestamp transform.
-  const set = (ref, data, merge = false) => {
-    units += 2;
-    writes.push(() => merge ? tx.set(ref, data, {merge: true}) : tx.set(ref, data));
-  };
-  const remove = ref => { units += 1; writes.push(() => tx.delete(ref)); };
   const affected = [];
   for (const [id, r] of records) {
     const changed = fingerprint(stockEffect(r.data)) !== r.beforeHash;
@@ -262,24 +336,14 @@ export function persistConsignmentStock(tx, base, records, operationId, directio
     try { projected = projectCatalog(r.data, r.editorial, id); }
     catch (error) { throw wrapUnsafe(error); }
     products.push({productId: id, revision: projected.stock.stockRevision, quantidade: projected.stock.quantidade});
-    if (changed) {
-      affected.push({
-        productId: id,
-        before: r.beforeStock,
-        after: stockEffect(projected.stock),
-        stockRevision: projected.stock.stockRevision,
-      });
-    }
-    set(r.stockRef, {...projected.stock, stockUpdatedAt: FieldValue.serverTimestamp()});
-    // Do not recreate editorial drafts during consignment stock writes.
-    if (r.draftExisted) {
-      set(r.draftRef, {...projected.draft, updatedAt: FieldValue.serverTimestamp()});
-      const live = base.collection('produtos').doc(id);
-      if (projected.live) set(live, {...projected.live, updatedAt: FieldValue.serverTimestamp()});
-      else remove(live);
-    }
+    if (changed) affected.push(compactAffected(id, r, projected.stock));
+    // One document write plus one serverTimestamp transform.
+    units += 2;
+    writes.push(() => tx.set(r.stockRef, {...projected.stock, stockUpdatedAt: FieldValue.serverTimestamp()}));
+    // Editorial drafts are never recreated by consignment stock writes.
+    if (r.draftExisted) projectionIds.push(id);
   }
-  return {products, writes, affected, units};
+  return {products, writes, affected, units, projectionIds};
 }
 
 function moneyValue(raw) {

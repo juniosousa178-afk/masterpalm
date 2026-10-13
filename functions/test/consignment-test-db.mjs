@@ -79,8 +79,12 @@ function materialize(value) {
   return value;
 }
 
+const MAX_TRANSACTION_ATTEMPTS = 5;
+
 export function createConsignmentTestDb() {
   const store = new Map();
+  const versions = new Map();
+  const bump = path => versions.set(path, (versions.get(path) ?? 0) + 1);
 
   function makeRef(segments) {
     const path = segments.join('/');
@@ -124,57 +128,107 @@ export function createConsignmentTestDb() {
   const db = {
     _store: store,
     collection(name) { return makeColl([name]); },
-    seed(ref, data) { store.set(ref.path, cloneData(data)); },
+    seed(ref, data) { store.set(ref.path, cloneData(data)); bump(ref.path); },
+    /** Non-transactional write from another client; aborts transactions that already read this doc. */
+    concurrentWrite(ref, data) { store.set(ref.path, cloneData(data)); bump(ref.path); },
     getData(ref) { return store.has(ref.path) ? cloneData(store.get(ref.path)) : undefined; },
     exists(ref) { return store.has(ref.path); },
     snapshot() {
       return new Map([...store.entries()].map(([k, v]) => [k, cloneData(v)]));
     },
     lastCommit: null,
+    /** Every committed transaction: {writes, transforms, ops: [{type, path}]}. */
+    commits: [],
+    attempts: 0,
+    /** (path, attempt) => void, called on every transactional read. */
+    onRead: null,
+    /** ({type, path, index}) => void, called on every queued write; throwing aborts before commit. */
+    faultInjector: null,
     async runTransaction(fn) {
-      const working = new Map([...store.entries()].map(([k, v]) => [k, cloneData(v)]));
-      const stats = {writes: 0, transforms: 0};
-      const count = data => { stats.writes++; stats.transforms += countTransforms(data); };
-      const tx = {
-        async get(ref) { return snapFrom(working, ref); },
-        async getAll(...refs) { return refs.map(ref => snapFrom(working, ref)); },
-        set(ref, data, opts) {
-          count(data);
-          assertValidFirestoreData(data);
-          const prev = working.get(ref.path) || {};
-          const next = opts?.merge ? {...prev, ...materialize(data)} : materialize(data);
-          working.set(ref.path, next);
-        },
-        create(ref, data) {
-          count(data);
-          assertValidFirestoreData(data);
-          if (working.has(ref.path)) {
-            const err = new Error('ALREADY_EXISTS');
-            err.code = 6;
+      for (let attempt = 1; ; attempt++) {
+        db.attempts++;
+        const working = new Map([...store.entries()].map(([k, v]) => [k, cloneData(v)]));
+        const readVersions = new Map();
+        const stats = {writes: 0, transforms: 0};
+        const ops = [];
+        const read = ref => {
+          if (!readVersions.has(ref.path)) readVersions.set(ref.path, versions.get(ref.path) ?? 0);
+          db.onRead?.(ref.path, attempt);
+          return snapFrom(working, ref);
+        };
+        const record = (type, ref, data) => {
+          db.faultInjector?.({type, path: ref.path, index: ops.length});
+          ops.push({type, path: ref.path});
+          stats.writes++;
+          if (data !== undefined) stats.transforms += countTransforms(data);
+        };
+        const tx = {
+          async get(ref) { return read(ref); },
+          async getAll(...refs) { return refs.map(read); },
+          set(ref, data, opts) {
+            record('set', ref, data);
+            assertValidFirestoreData(data);
+            const prev = working.get(ref.path) || {};
+            const next = opts?.merge ? {...prev, ...materialize(data)} : materialize(data);
+            working.set(ref.path, next);
+          },
+          create(ref, data) {
+            record('create', ref, data);
+            assertValidFirestoreData(data);
+            if (working.has(ref.path)) {
+              const err = new Error('ALREADY_EXISTS');
+              err.code = 6;
+              throw err;
+            }
+            working.set(ref.path, materialize(data));
+          },
+          update(ref, data) {
+            record('update', ref, data);
+            assertValidFirestoreData(data);
+            if (!working.has(ref.path)) {
+              const err = new Error('NOT_FOUND');
+              err.code = 5;
+              throw err;
+            }
+            const prev = working.get(ref.path);
+            const patch = materialize(data);
+            working.set(ref.path, {...prev, ...patch});
+          },
+          delete(ref) { record('delete', ref); working.delete(ref.path); },
+        };
+        const result = await fn(tx);
+        const conflict = [...readVersions].some(([path, v]) => (versions.get(path) ?? 0) !== v);
+        if (conflict) {
+          if (attempt >= MAX_TRANSACTION_ATTEMPTS) {
+            const err = new Error('ABORTED: too much contention');
+            err.code = 10;
             throw err;
           }
-          working.set(ref.path, materialize(data));
-        },
-        update(ref, data) {
-          count(data);
-          assertValidFirestoreData(data);
-          if (!working.has(ref.path)) {
-            const err = new Error('NOT_FOUND');
-            err.code = 5;
-            throw err;
-          }
-          const prev = working.get(ref.path);
-          const patch = materialize(data);
-          working.set(ref.path, {...prev, ...patch});
-        },
-        delete(ref) { stats.writes++; working.delete(ref.path); },
-      };
-      const result = await fn(tx);
-      store.clear();
-      for (const [k, v] of working) store.set(k, cloneData(v));
-      db.lastCommit = stats;
-      return result;
+          continue;
+        }
+        const touched = new Set(ops.map(o => o.path));
+        for (const path of touched) {
+          if (working.has(path)) store.set(path, cloneData(working.get(path)));
+          else store.delete(path);
+          bump(path);
+        }
+        db.lastCommit = stats;
+        db.commits.push({...stats, ops});
+        return result;
+      }
     },
   };
   return db;
+}
+
+/** The commit that created consignment_operations/{operationId} (the stock command itself, not projections). */
+export function commandCommit(db, operationId) {
+  return db.commits.find(c => c.ops.some(o => o.type === 'create' && o.path.endsWith(`/consignment_operations/${operationId}`)));
+}
+
+export const commitUnits = commit => commit.writes + commit.transforms;
+
+/** Commits after `fromIndex` that wrote canonical stock (estoque_produtos). */
+export function stockCommitsSince(db, fromIndex) {
+  return db.commits.slice(fromIndex).filter(c => c.ops.some(o => o.path.includes('/estoque_produtos/')));
 }

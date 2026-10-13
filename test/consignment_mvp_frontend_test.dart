@@ -43,12 +43,12 @@ void main() {
     });
 
     test('product limit counts distinct products, not lines or variations', () {
-      final ids = [for (var i = 0; i < 50; i++) 'p$i'];
-      expect(kConsignmentMaxProducts, 50);
-      expect(consignmentDistinctProductCount([...ids, 'p0', 'p1', '']), 50);
+      final ids = [for (var i = 0; i < 150; i++) 'p$i'];
+      expect(kConsignmentMaxProducts, 150);
+      expect(consignmentDistinctProductCount([...ids, 'p0', 'p1', '']), 150);
       expect(consignmentExceedsProductLimit(ids), isFalse);
       expect(consignmentExceedsProductLimit([...ids, 'p0']), isFalse);
-      expect(consignmentExceedsProductLimit([...ids, 'p50']), isTrue);
+      expect(consignmentExceedsProductLimit([...ids, 'p150']), isTrue);
       expect(
         consignmentExceedsProductLimit([for (var i = 0; i < 32; i++) 'm$i', 'm0']),
         isFalse,
@@ -56,7 +56,7 @@ void main() {
       );
       expect(
         consignmentProductLimitMessage,
-        'Limite de 50 produtos diferentes por consignação. '
+        'Limite de 150 produtos diferentes por consignação. '
         'Divida as peças em mais de uma consignação.',
       );
     });
@@ -82,6 +82,22 @@ void main() {
         ConsignmentException.fromCallable('resource-exhausted', 'x', null).message,
         consignmentProductLimitMessage,
       );
+    });
+
+    test('capacity guards map to the Portuguese capacity message, not the product limit', () {
+      for (final detail in [
+        'Consignment document capacity reached',
+        'Consignment settlement command would be too large',
+        'Too many consignment lines',
+        'Combo fan-out exceeds transaction budget',
+      ]) {
+        final e = ConsignmentException.fromCallable(
+          'resource-exhausted',
+          'RESOURCE_EXHAUSTED',
+          {'consignmentCode': 'RESOURCE_EXHAUSTED', 'detail': detail},
+        );
+        expect(e.message, consignmentCapacityMessage);
+      }
     });
 
     test('server failures never show raw protocol codes', () {
