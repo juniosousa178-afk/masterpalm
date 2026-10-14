@@ -7,6 +7,7 @@ import 'dart:async';
 import 'package:collection/collection.dart'; // firstWhereOrNull
 import 'package:flutter/foundation.dart'; // debugPrint
 import 'package:hive/hive.dart';
+import 'package:uuid/uuid.dart';
 
 import '../models/cliente.dart';
 import '../models/produto.dart';
@@ -31,6 +32,7 @@ import 'catalogo_web_apos_estoque_service.dart';
 import 'combo_kit_stock_service.dart';
 import 'estoque_transaction_service.dart';
 import 'movimentacao_estoque_service.dart';
+import 'stock_catalog_backend_service.dart';
 import 'venda_combo_estoque_expansion.dart';
 import 'venda_custo_mercadoria.dart';
 import 'venda_edicao_estoque_diff.dart';
@@ -76,6 +78,17 @@ class VendaSalvaComPendenciaSyncException implements Exception {
     return m == defaultMessage ||
         m.contains('conta a receber ficou pendente de sincronização');
   }
+
+  @override
+  String toString() => message;
+}
+
+/// A nuvem tem uma edição mais nova desta venda; o local foi atualizado e nada foi gravado.
+class VendaEdicaoConflitoException implements Exception {
+  VendaEdicaoConflitoException();
+
+  final String message = 'Esta venda foi alterada em outro aparelho. Nenhuma '
+      'alteração foi feita. Abra a venda novamente e refaça a edição.';
 
   @override
   String toString() => message;
@@ -3002,6 +3015,210 @@ class VendasService {
   // Editar venda (delta de estoque)
   // ---------------------------
 
+  @visibleForTesting
+  static Future<Map<String, dynamic>?> Function(String lojaId, String vendaId)?
+      debugLerVendaRemotaEdicao;
+
+  @visibleForTesting
+  static Future<bool> Function(Venda venda, String lojaId)?
+      debugSyncVendaBaseEdicao;
+
+  static Venda _rascunhoDesanexadoParaEdicao(Venda v) => Venda(
+        clienteNome: v.clienteNome,
+        produtosDescricao: v.produtosDescricao,
+        quantidade: v.quantidade,
+        preco: v.preco,
+        total: v.total,
+        formasPagamento: v.formasPagamento,
+        data: v.data,
+        tamanho: v.tamanho,
+        vendedor: v.vendedor,
+        observacao: v.observacao,
+        lojaId: v.lojaId,
+        idFirebase: v.idFirebase,
+        clienteId: v.clienteId,
+        statusVenda: v.statusVenda,
+        cancelada: v.cancelada,
+        estornada: v.estornada,
+        origemVenda: v.origemVenda,
+        paymentId: v.paymentId,
+        orderId: v.orderId,
+        prePedidoId: v.prePedidoId,
+        pedidoId: v.pedidoId,
+        origemCusto: v.origemCusto,
+        itensComboSelecaoJson: v.itensComboSelecaoJson,
+        vendedorUid: v.vendedorUid,
+        vendedorNome: v.vendedorNome,
+        vendedorEmail: v.vendedorEmail,
+        stockOperationId: v.stockOperationId,
+      );
+
+  static Future<Map<String, dynamic>?> _lerVendaRemotaEdicao(
+    String lojaId,
+    String vendaId,
+  ) {
+    final hook = debugLerVendaRemotaEdicao;
+    if (hook != null) return hook(lojaId, vendaId);
+    return VendasFirestoreService.lerVendaRemota(lojaId: lojaId, vendaId: vendaId);
+  }
+
+  static Future<bool> _syncVendaBaseEdicao(Venda venda, String lojaId) {
+    final hook = debugSyncVendaBaseEdicao;
+    if (hook != null) return hook(venda, lojaId);
+    return VendasFirestoreService.syncVenda(
+      venda,
+      lojaId: lojaId,
+      enqueueOnFailure: false,
+    );
+  }
+
+  /// Garante que a nuvem tem a venda com as linhas que o usuário editou e envia `saleEdit`.
+  /// Nada é alterado (estoque ou venda) se o servidor rejeitar.
+  static Future<Map<String, dynamic>> _executarSaleEditServidor({
+    required Venda vendaOriginal,
+    required Venda rascunho,
+    required String lojaId,
+    required String editIntentId,
+  }) async {
+    final hashOriginal =
+        VendaEdicaoEstoqueDiff.saleEditLinesHash(vendaOriginal.itensOuVazio);
+    var saleId = (vendaOriginal.idFirebase ?? '').trim();
+    final remoto =
+        saleId.isEmpty ? null : await _lerVendaRemotaEdicao(lojaId, saleId);
+    final hashRemoto = remoto == null
+        ? null
+        : VendaEdicaoEstoqueDiff.saleEditLinesHash(
+            VendasFirestoreService.vendaFromFirestoreMap(remoto, saleId, lojaId)
+                    .itens ??
+                const <VendaItem>[],
+          );
+
+    if (remoto != null &&
+        hashRemoto != hashOriginal &&
+        remoto['saleEditRevision'] is num) {
+      // A nuvem já tem uma edição autoritativa mais nova: atualiza o local e pede refazer.
+      await VendasFirestoreService.aplicarVendaRemotaAutoritativaNaHive(
+        local: vendaOriginal,
+        remote: remoto,
+        lojaId: lojaId,
+      );
+      throw VendaEdicaoConflitoException();
+    }
+    if (remoto == null || hashRemoto != hashOriginal) {
+      // Venda nunca sincronizada (ou nuvem com linhas legadas antigas): publica a versão
+      // local, que é a base sobre a qual o estoque desta venda foi movimentado.
+      final ok = await _syncVendaBaseEdicao(vendaOriginal, lojaId);
+      saleId = (vendaOriginal.idFirebase ?? '').trim();
+      if (!ok || saleId.isEmpty) {
+        throw Exception(
+          'Não foi possível sincronizar esta venda com a nuvem antes da edição. '
+          'Verifique a conexão e tente novamente. Nenhuma alteração foi feita.',
+        );
+      }
+    }
+
+    final sale = VendasFirestoreService.saleEditSalePayload(rascunho);
+    final operationId = VendaEdicaoEstoqueDiff.buildSaleEditOperationId(
+      lojaId: lojaId,
+      saleId: saleId,
+      editIntentId: editIntentId,
+      originalLinesHash: hashOriginal,
+      salePayload: sale,
+    );
+    debugPrint(
+      '[VENDA-EDICAO] saleEdit vendaId=$saleId operationId=$operationId '
+      'linhas=${rascunho.itensOuVazio.length}',
+    );
+    try {
+      return await StockCatalogBackendService.saleEdit(
+        lojaId: lojaId,
+        operationId: operationId,
+        saleId: saleId,
+        expectedOriginalLinesHash: hashOriginal,
+        sale: sale,
+      );
+    } catch (e) {
+      if (StockCommandReason.code(e) == StockCommandReason.saleEditConflict) {
+        try {
+          final atual = await _lerVendaRemotaEdicao(lojaId, saleId);
+          if (atual != null && atual['saleEditRevision'] is num) {
+            await VendasFirestoreService.aplicarVendaRemotaAutoritativaNaHive(
+              local: vendaOriginal,
+              remote: atual,
+              lojaId: lojaId,
+            );
+          }
+        } catch (_) {}
+      }
+      rethrow;
+    }
+  }
+
+  /// Projeção local (Hive, catálogo web, movimentações) do resultado autoritativo do servidor.
+  static Future<void> _projetarResultadoSaleEdit({
+    required String lojaId,
+    required Box<Produto> produtosBox,
+    required Map<String, dynamic> resposta,
+    required List<VendaItem> itensAntigos,
+    required List<VendaItem> itensNovos,
+    required String vendedor,
+    required String vendaIdLog,
+  }) async {
+    final resultados = EstoqueTransactionService.resultadosDoBackend(resposta);
+    final jaAplicada = resposta['alreadyApplied'] == true;
+    final delta = VendaEdicaoEstoqueDiff.saleEditDeltaPorProduto(
+      antigos: itensAntigos,
+      novos: itensNovos,
+    );
+    if (delta.values.any((d) => d.quantidade > 0)) {
+      await EstoqueTransactionService.removerDoCatalogoSeEstoqueZerado(
+        lojaId,
+        resultados,
+      );
+    }
+    for (final r in resultados) {
+      await EstoqueTransactionService.atualizarHiveAposTransacao(
+        produtosBox: produtosBox,
+        lojaId: lojaId,
+        result: r,
+      );
+    }
+    final devolvidos = {
+      for (final e in delta.entries)
+        if (e.value.quantidade < 0) e.key,
+    };
+    if (devolvidos.isNotEmpty) {
+      await ComboKitStockService.reprojetarCombosAposDevolucao(
+        lojaId: lojaId,
+        produtosBox: produtosBox,
+        produtoIdsDevolvidos: devolvidos,
+        produtoIdsJaProjetados: resultados.map((r) => r.produtoId).toSet(),
+      );
+    }
+    if (resultados.isNotEmpty) {
+      await CatalogoWebAposEstoqueService.sincronizarAposResultadosTransacao(
+        lojaId: lojaId,
+        produtosBox: produtosBox,
+        resultadosPrincipais: resultados,
+        resultadosComboExtra: const [],
+      );
+    }
+    if (jaAplicada) return;
+    for (final e in delta.entries) {
+      final q = e.value.quantidade;
+      MovimentacaoEstoqueService.registrar(
+        lojaId: lojaId,
+        produtoId: e.key,
+        produtoNome: e.value.produtoNome,
+        tipo: q > 0 ? 'saida' : 'entrada',
+        quantidade: q.abs(),
+        motivo: q > 0 ? 'Venda (edição)' : 'Devolução (edição venda)',
+        usuario: vendedor,
+        vendaId: q > 0 ? null : vendaIdLog,
+      ).catchError((_) {});
+    }
+  }
+
   /// Atualiza venda existente aplicando delta de estoque só quando itens mudam.
   static Future<Venda> editarVendaMulti({
     required Venda vendaOriginal,
@@ -3029,6 +3246,7 @@ class VendasService {
     int intervaloParcelasDias = 30,
     Map<int, List<Map<String, dynamic>>>? itensComboSelecaoPorIndice,
     DateTime? dataVenda,
+    String? saleEditIntentId,
   }) async {
     if (itens.isEmpty) {
       throw Exception('Nenhum item informado.');
@@ -3092,7 +3310,43 @@ class VendasService {
 
     String? editStockJournalKey;
 
-    if (!itensEquivalentes) {
+    // Linhas mudaram: o servidor lê a venda salva, calcula o delta e grava estoque + venda
+    // num único commit. O caminho de reconciliação local fica só para testes com Firestore fake.
+    final usarSaleEditServidor =
+        !itensEquivalentes && EstoqueTransactionService.usaBackendConfiavel;
+
+    if (usarSaleEditServidor) {
+      final (
+        itensParaEstoque,
+        produtosEncontrados,
+        _,
+      ) = VendaComboEstoqueExpansion.expandirCombos(
+        itens: itens,
+        produtosBox: produtosBox,
+        lojaId: lojaEfetiva,
+        itensComboSelecaoPorIndice: itensComboSelecaoPorIndice,
+      );
+      VendaComboEstoqueExpansion.validarExpansaoParaBaixaFirestore(
+        itensParaEstoque: itensParaEstoque,
+        produtosEncontrados: produtosEncontrados,
+      );
+      final produtosDasLinhas = <Produto>[];
+      for (final item in itens) {
+        final p = encontrarProdutoNoEstoque(
+          produtosBox: produtosBox,
+          productId: item.productId,
+          nome: item.produtoNome,
+          lojaId: lojaEfetiva,
+        );
+        if (p != null) produtosDasLinhas.add(p);
+      }
+      if (produtosDasLinhas.isNotEmpty) {
+        await VendaEstoqueRemotoPrepService.garantirProdutosProntosParaBaixa(
+          lojaId: lojaEfetiva,
+          produtos: produtosDasLinhas,
+        );
+      }
+    } else if (!itensEquivalentes) {
       final linhasAntigas = montarLinhasEstoqueCanonicasParaEdicao(
         itens: itensAntigos,
         produtosBox: produtosBox,
@@ -3296,39 +3550,65 @@ class VendasService {
       unidadesMercadoria: totalUnidades,
     );
 
+    void aplicarCamposEditados(Venda v) {
+      v.clienteNome = cliente.nome;
+      v.produtosDescricao = "$produtosDescricao\n$formasPagamentoTexto";
+      v.quantidade = itens.length;
+      v.preco = subtotal;
+      v.total = total;
+      v.formasPagamento = formasPagamentoTexto;
+      v.data = dataVenda ?? v.data;
+      v.tamanho = '';
+      v.vendedor = vendedor;
+      if (vendedorUid != null && vendedorUid.trim().isNotEmpty) {
+        v.vendedorUid = vendedorUid.trim();
+      }
+      if (vendedorNome != null && vendedorNome.trim().isNotEmpty) {
+        v.vendedorNome = vendedorNome.trim();
+      }
+      if (vendedorEmail != null && vendedorEmail.trim().isNotEmpty) {
+        v.vendedorEmail = vendedorEmail.trim().toLowerCase();
+      }
+      v.frete = frete;
+      v.desconto = descontoPct;
+      v.observacao = observacao.trim();
+      v.itens = itens;
+      v.pagamentoDinheiro = dinheiro;
+      v.pagamentoPix = pix;
+      v.pagamentoCartao = cartao;
+      v.taxas = taxas;
+      v.custoProdutos = custoProdutos;
+      v.descontoValor = subtotal * (descontoPct / 100);
+      v.lojaId = lojaEfetiva;
+      v.clienteId = cliente.key?.toString() ?? cliente.idFirebase;
+      v.origemCusto = origemCustoVenda;
+      v.itensComboSelecaoJson = comboJsonNovo;
+    }
+
+    if (usarSaleEditServidor) {
+      final rascunho = _rascunhoDesanexadoParaEdicao(vendaOriginal);
+      aplicarCamposEditados(rascunho);
+      final resposta = await _executarSaleEditServidor(
+        vendaOriginal: vendaOriginal,
+        rascunho: rascunho,
+        lojaId: lojaEfetiva,
+        editIntentId: (saleEditIntentId ?? '').trim().isNotEmpty
+            ? saleEditIntentId!.trim()
+            : const Uuid().v4(),
+      );
+      await _projetarResultadoSaleEdit(
+        lojaId: lojaEfetiva,
+        produtosBox: produtosBox,
+        resposta: resposta,
+        itensAntigos: itensAntigos,
+        itensNovos: itens,
+        vendedor: vendedor,
+        vendaIdLog: (vendaOriginal.idFirebase ?? vendaId).trim(),
+      );
+    }
+
     final venda = vendaOriginal;
-    venda.clienteNome = cliente.nome;
-    venda.produtosDescricao = "$produtosDescricao\n$formasPagamentoTexto";
-    venda.quantidade = itens.length;
-    venda.preco = subtotal;
-    venda.total = total;
-    venda.formasPagamento = formasPagamentoTexto;
-    venda.data = dataVenda ?? venda.data;
-    venda.tamanho = '';
-    venda.vendedor = vendedor;
-    if (vendedorUid != null && vendedorUid.trim().isNotEmpty) {
-      venda.vendedorUid = vendedorUid.trim();
-    }
-    if (vendedorNome != null && vendedorNome.trim().isNotEmpty) {
-      venda.vendedorNome = vendedorNome.trim();
-    }
-    if (vendedorEmail != null && vendedorEmail.trim().isNotEmpty) {
-      venda.vendedorEmail = vendedorEmail.trim().toLowerCase();
-    }
-    venda.frete = frete;
-    venda.desconto = descontoPct;
-    venda.observacao = observacao.trim();
-    venda.itens = itens;
-    venda.pagamentoDinheiro = dinheiro;
-    venda.pagamentoPix = pix;
-    venda.pagamentoCartao = cartao;
-    venda.taxas = taxas;
-    venda.custoProdutos = custoProdutos;
-    venda.descontoValor = subtotal * (descontoPct / 100);
-    venda.lojaId = lojaEfetiva;
-    venda.clienteId = cliente.key?.toString() ?? cliente.idFirebase;
-    venda.origemCusto = origemCustoVenda;
-    venda.itensComboSelecaoJson = comboJsonNovo;
+    aplicarCamposEditados(venda);
 
     await venda.save();
 

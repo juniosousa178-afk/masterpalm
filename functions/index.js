@@ -5554,6 +5554,12 @@ export const stockCatalogCommand = onCall(
       const { executeStockCommand } = await import("./src/stockCatalogCommands.js");
       return await executeStockCommand(db, request.data, request.auth);
     } catch (error) {
+      try {
+        const { stockCommandRejectionLog } = await import("./src/stockCatalogSaleEdit.js");
+        console.warn(JSON.stringify(stockCommandRejectionLog(request.data, error)));
+      } catch (_) {
+        // Logging must never change the callable outcome.
+      }
       throw stockCatalogCallableError(error);
     }
   },

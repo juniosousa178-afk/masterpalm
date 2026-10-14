@@ -4,6 +4,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
+import '../core/client_build_identity.dart';
 import '../core/sale_forensic_trace.dart';
 import '../diagnostics/diagnostic_enums.dart';
 import '../diagnostics/diagnostic_trace_service.dart';
@@ -51,6 +52,95 @@ class StockCatalogProductValidationException implements Exception {
       buffer.toString().trim(),
       issues: issues,
     );
+  }
+}
+
+/// Códigos estruturados de rejeição do stockCatalogCommand (`HttpsError.details.code`).
+class StockCommandReason {
+  StockCommandReason._();
+
+  static const stockChanged = 'STOCK_CHANGED';
+  static const insufficientStock = 'INSUFFICIENT_STOCK';
+  static const legacyProtocolBlocked = 'LEGACY_PROTOCOL_BLOCKED';
+  static const gradeSelectionRequired = 'GRADE_SELECTION_REQUIRED';
+  static const saleEditConflict = 'SALE_EDIT_CONFLICT';
+  static const invalidSaleEdit = 'INVALID_SALE_EDIT';
+  static const operationPayloadConflict = 'OPERATION_PAYLOAD_CONFLICT';
+
+  static const _conhecidos = {
+    stockChanged,
+    insufficientStock,
+    legacyProtocolBlocked,
+    gradeSelectionRequired,
+    saleEditConflict,
+    invalidSaleEdit,
+    operationPayloadConflict,
+  };
+
+  static Map<dynamic, dynamic>? _details(Object error) {
+    try {
+      final details = (error as dynamic).details;
+      return details is Map ? details : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Código conhecido em `details.code`, ou null (erros antigos / sem estrutura).
+  static String? code(Object error) {
+    final c = '${_details(error)?['code'] ?? ''}'.trim();
+    return _conhecidos.contains(c) ? c : null;
+  }
+
+  static String? reason(Object error) {
+    final r = '${_details(error)?['reason'] ?? ''}'.trim();
+    return r.isEmpty ? null : r;
+  }
+
+  /// Mensagem de UI pelo código estruturado; null quando o erro não traz código conhecido.
+  static String? userMessage(Object error) {
+    switch (code(error)) {
+      case stockChanged:
+        return 'Os dados de estoque deste produto foram atualizados. '
+            'Atualize a tela e tente novamente.';
+      case insufficientStock:
+        return 'Estoque insuficiente para concluir a operação.';
+      case gradeSelectionRequired:
+        return 'Selecione o tamanho/cor do produto antes de continuar.';
+      case legacyProtocolBlocked:
+        return 'Esta versão do aplicativo não consegue concluir esta alteração '
+            'de estoque com segurança. Nenhuma alteração foi feita. '
+            'Atualize o aplicativo e tente novamente.';
+      case saleEditConflict:
+        return 'Esta venda foi alterada em outro aparelho. Nenhuma alteração foi '
+            'feita. Abra a venda novamente e refaça a edição.';
+      case operationPayloadConflict:
+        return 'Esta edição já foi registrada com outros dados. Nenhuma alteração '
+            'foi feita. Abra a venda novamente antes de repetir.';
+      case invalidSaleEdit:
+        return switch (reason(error)) {
+          'LINE_PRODUCT_ID_REQUIRED' =>
+            'Um item desta venda não está vinculado a um produto do estoque, '
+                'por isso a quantidade dele não pode ser alterada na edição. '
+                'Nenhuma alteração foi feita.',
+          'COMBO_EDIT_NOT_SUPPORTED' =>
+            'Alterar itens ou componentes de combo não é suportado na edição da '
+                'venda. Nenhuma alteração foi feita.',
+          'SALE_NOT_FOUND' =>
+            'Esta venda ainda não está na nuvem. Sincronize e tente novamente. '
+                'Nenhuma alteração foi feita.',
+          'SALE_NOT_EDITABLE' =>
+            'Esta venda foi cancelada ou estornada e não pode ser editada.',
+          'SALE_ALREADY_RESTORED' =>
+            'O estoque desta venda já foi devolvido; ela não pode ser editada.',
+          'SALE_EDIT_TOO_LARGE' =>
+            'Edição grande demais para uma única operação. Altere no máximo '
+                '25 produtos diferentes por vez. Nenhuma alteração foi feita.',
+          _ => 'Não foi possível validar a edição da venda. '
+              'Nenhuma alteração foi feita.',
+        };
+    }
+    return null;
   }
 }
 
@@ -366,8 +456,6 @@ class StockCatalogBackendService {
       if (reconciliation != null)
         'reconciliation': Map<String, dynamic>.from(reconciliation),
     };
-    final payload =
-        Map<String, dynamic>.from(jsonDecode(jsonEncode(rawPayload)) as Map);
     // Observability only — does not alter command semantics.
     if (kind == 'sale' && SaleForensicTraceStore.active != null) {
       SaleForensicTraceStore.captureSalePayload(
@@ -376,8 +464,56 @@ class StockCatalogBackendService {
         items: items,
       );
     }
+    return _send(
+      lojaId: lojaId,
+      operationId: operationId,
+      kind: kind,
+      rawPayload: rawPayload,
+    );
+  }
+
+  /// Edição de venda autoritativa no servidor: o servidor lê a venda salva, calcula o delta
+  /// por célula e grava estoque + documento da venda numa única transação.
+  /// [expectedOriginalLinesHash] = hash das linhas que o usuário editou (CAS).
+  static Future<Map<String, dynamic>> saleEdit({
+    required String lojaId,
+    required String operationId,
+    required String saleId,
+    required String expectedOriginalLinesHash,
+    required Map<String, dynamic> sale,
+  }) {
+    const build = '$kClientAppVersion+$kClientBuildId';
+    return _send(
+      lojaId: lojaId,
+      operationId: operationId,
+      kind: 'saleEdit',
+      rawPayload: <String, dynamic>{
+        'protocolVersion': 1,
+        'lojaId': _id(lojaId),
+        'operationId': _id(operationId),
+        'kind': 'saleEdit',
+        'saleEdit': <String, dynamic>{
+          'saleId': _id(saleId),
+          'expectedOriginalLinesHash': expectedOriginalLinesHash,
+          'sale': sale,
+        },
+        if (_clientBuildValido.hasMatch(build)) 'clientBuild': build,
+      },
+    );
+  }
+
+  static final _clientBuildValido = RegExp(r'^[A-Za-z0-9._+:\-]{1,80}$');
+
+  static Future<Map<String, dynamic>> _send({
+    required String lojaId,
+    required String operationId,
+    required String kind,
+    required Map<String, dynamic> rawPayload,
+  }) async {
+    final payload =
+        Map<String, dynamic>.from(jsonDecode(jsonEncode(rawPayload)) as Map);
     final diagModule = switch (kind) {
-      'sale' => DiagnosticModule.sales,
+      'sale' || 'saleEdit' => DiagnosticModule.sales,
       'restore' => DiagnosticModule.restore,
       'replace' ||
       'adjust' ||

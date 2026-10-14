@@ -3,6 +3,7 @@
 import 'dart:convert';
 
 import 'package:collection/collection.dart';
+import 'package:crypto/crypto.dart';
 
 import '../models/venda_item.dart';
 import 'estoque_transaction_service.dart';
@@ -177,6 +178,102 @@ class VendaEdicaoEstoqueDiff {
   /// Chave de journal: `loja|deltaHash|edit|{vendaId}` via [saleIntentId].
   static String buildEditStockJournalSaleIntentId(String vendaId) =>
       'edit|${vendaId.trim()}';
+
+  static final _espacos = RegExp(r'\s+', unicode: true);
+
+  static String _normKey(Object? v) =>
+      (v ?? '').toString().trim().toLowerCase().replaceAll(_espacos, ' ');
+
+  /// Identidade de estoque de uma linha (espelho de `lineKey` no servidor).
+  static List<String> saleEditLineKey({
+    required String? productId,
+    required String produtoNome,
+    required String tamanho,
+    required String cor,
+    required String extraValor,
+  }) {
+    final pid = (productId ?? '').trim();
+    return [
+      pid,
+      pid.isNotEmpty ? '' : _normKey(produtoNome),
+      _normKey(tamanho),
+      _normKey(cor),
+      _normKey(extraValor),
+    ];
+  }
+
+  /// Hash CAS das linhas da venda, independente da ordem.
+  /// Deve produzir o mesmo valor que `saleLinesHash` em `functions/src/stockCatalogSaleEdit.js`.
+  static String saleEditLinesHash(List<VendaItem> itens) {
+    final qtyPorChave = <String, int>{};
+    final chaves = <String, List<String>>{};
+    for (final it in itens) {
+      if (it.quantidade <= 0) continue;
+      final key = saleEditLineKey(
+        productId: it.productId,
+        produtoNome: it.produtoNome,
+        tamanho: it.tamanho,
+        cor: it.cor,
+        extraValor: it.extraValor,
+      );
+      final id = jsonEncode(key);
+      chaves.putIfAbsent(id, () => key);
+      qtyPorChave[id] = (qtyPorChave[id] ?? 0) + it.quantidade;
+    }
+    final ids = qtyPorChave.keys.where((id) => qtyPorChave[id]! > 0).toList()
+      ..sort();
+    final rows = [
+      for (final id in ids) [...chaves[id]!, qtyPorChave[id]!],
+    ];
+    return sha256.convert(utf8.encode(jsonEncode(rows))).toString();
+  }
+
+  /// Delta líquido por produto entre linhas salvas e editadas (`+` baixa, `-` devolve).
+  /// Só linhas com productId; usado para o histórico de movimentações (derivado).
+  static Map<String, ({int quantidade, String produtoNome})>
+      saleEditDeltaPorProduto({
+    required List<VendaItem> antigos,
+    required List<VendaItem> novos,
+  }) {
+    final out = <String, ({int quantidade, String produtoNome})>{};
+    void somar(List<VendaItem> itens, int sinal) {
+      for (final it in itens) {
+        final pid = (it.productId ?? '').trim();
+        if (pid.isEmpty || it.quantidade <= 0) continue;
+        final prev = out[pid];
+        out[pid] = (
+          quantidade: (prev?.quantidade ?? 0) + sinal * it.quantidade,
+          produtoNome: prev?.produtoNome ?? it.produtoNome,
+        );
+      }
+    }
+
+    somar(novos, 1);
+    somar(antigos, -1);
+    out.removeWhere((_, v) => v.quantidade == 0);
+    return out;
+  }
+
+  /// Id determinístico do comando `saleEdit`: o mesmo pedido de edição (sessão + conteúdo)
+  /// reenviado após falha de rede é idempotente; outra sessão gera outro id.
+  static String buildSaleEditOperationId({
+    required String lojaId,
+    required String saleId,
+    required String editIntentId,
+    required String originalLinesHash,
+    required Map<String, dynamic> salePayload,
+  }) {
+    final payloadHash =
+        sha256.convert(utf8.encode(jsonEncode(salePayload))).toString();
+    final raw = [
+      lojaId.trim(),
+      saleId.trim(),
+      editIntentId.trim(),
+      originalLinesHash,
+      payloadHash,
+    ].join('|');
+    return 'saleedit_${sha256.convert(utf8.encode(raw))}';
+  }
 }
 
 /// Resultado da validação pré-salvamento na UI (edição de venda).

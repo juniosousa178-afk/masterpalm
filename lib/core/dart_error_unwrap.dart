@@ -2,6 +2,7 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../services/stock_catalog_backend_service.dart' show StockCommandReason;
 import '../services/venda_estoque_remoto_prep_service.dart'
     show PendingStockSyncRequiredException;
 import '../services/vendas_service.dart' show VendaPersistenciaInconsistenciaCritica;
@@ -24,6 +25,8 @@ Object unwrapDartInteropError(Object e, {int maxDepth = 6}) {
 /// Texto útil para UI (sem code/plugin/path/stack).
 String formatDartErrorForUser(Object e) {
   final root = unwrapDartInteropError(e);
+  final porCodigo = StockCommandReason.userMessage(root);
+  if (porCodigo != null) return porCodigo;
   if (root is FirebaseException) {
     return _firebaseExceptionUserMessage(root);
   }
@@ -48,9 +51,9 @@ String _firebaseExceptionUserMessage(FirebaseException e) {
   if (code == 'failed-precondition' || code == 'aborted') {
     final msg = e.message?.trim() ?? '';
     final lower = msg.toLowerCase();
-    if (lower.contains('revision') ||
-        lower.contains('conflict') ||
-        lower.contains('stock revision')) {
+    // Só revisão de estoque comprovada é "dados atualizados"; outras pré-condições não.
+    if (lower.contains('stock revision') ||
+        lower.contains('revision conflict')) {
       return 'Os dados de estoque deste produto foram atualizados. '
           'Atualize a tela e tente novamente.';
     }
@@ -62,7 +65,12 @@ String _firebaseExceptionUserMessage(FirebaseException e) {
       return 'Não foi possível validar o estoque de um ou mais produtos. '
           'Atualize a tela e tente novamente.';
     }
-    return 'Os dados de estoque precisam ser atualizados. '
+    if (lower.contains('stock protocol unavailable') ||
+        lower.contains('unsupported stock protocol')) {
+      return 'Esta operação de estoque não é permitida para esta loja ou versão '
+          'do aplicativo. Atualize o aplicativo e tente novamente.';
+    }
+    return 'Não foi possível concluir a operação de estoque. '
         'Atualize a tela e tente novamente.';
   }
   if (code == 'already-exists') {
@@ -121,6 +129,9 @@ String formatSalvarVendaErrorForUser(Object e) {
     return root.message;
   }
 
+  final porCodigo = StockCommandReason.userMessage(root);
+  if (porCodigo != null) return porCodigo;
+
   final detalhe = formatDartErrorForUser(e);
   final lower = detalhe.toLowerCase();
 
@@ -174,10 +185,9 @@ String formatSalvarVendaErrorForUser(Object e) {
       lower.contains('permiss')) {
     return 'Sem permissão para concluir a venda. Verifique login e acesso à loja.';
   }
-  // Somente sinais comprovados de conflito/estoque remoto — não StateError genérico.
-  if (lower.contains('failed-precondition') ||
-      lower.contains('aborted') ||
-      lower.contains('stock revision') ||
+  // Somente sinais comprovados de conflito/estoque remoto — não StateError nem
+  // failed-precondition genéricos.
+  if (lower.contains('stock revision') ||
       lower.contains('revision conflict') ||
       lower.contains('os dados de estoque deste produto foram atualizados') ||
       lower.contains('os dados de estoque precisam ser atualizados')) {

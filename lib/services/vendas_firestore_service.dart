@@ -16,6 +16,7 @@ import '../core/mp_venda_identity.dart';
 import '../core/venda_metrics_filter.dart';
 import 'store_resolver_facade.dart';
 import 'sync_queue_service.dart';
+import 'venda_edicao_estoque_diff.dart';
 
 /// Serviço para sincronizar vendas com Firestore
 class VendasFirestoreService {
@@ -108,6 +109,143 @@ class VendasFirestoreService {
         return s.isEmpty ? null : s;
       }(),
     );
+  }
+
+  static Map<String, dynamic> itemParaFirestore(VendaItem item) => {
+        'produtoNome': item.produtoNome,
+        'quantidade': item.quantidade,
+        'tamanho': item.tamanho,
+        'cor': item.cor,
+        'precoUnitario': item.precoUnitario,
+        'precoTotal': item.precoUnitario * item.quantidade,
+        if (item.productId != null && item.productId!.trim().isNotEmpty)
+          'productId': item.productId,
+        if (item.variacaoExtraResumo.trim().isNotEmpty)
+          'variacaoExtraResumo': item.variacaoExtraResumo.trim(),
+        if (item.extraValor.trim().isNotEmpty)
+          'extraValor': item.extraValor.trim(),
+        'custoUnitario': item.custoUnitario ?? 0.0,
+        'origemCustoItem': item.origemCustoItem ?? VendaOrigemCusto.desconhecido,
+      };
+
+  /// Campos editáveis enviados no comando `saleEdit` (o servidor grava venda + estoque juntos).
+  /// Datas em ISO-8601 UTC; identidade da venda (id, createdAt, stockOperationId) nunca vai no payload.
+  static Map<String, dynamic> saleEditSalePayload(Venda venda) {
+    String? opcional(String? v) {
+      final s = (v ?? '').trim();
+      return s.isEmpty ? null : s;
+    }
+
+    final saldoFiado = valorAReceberDaVenda(venda);
+    final fiado = <String, dynamic>{};
+    if (saldoFiado > 0.01) {
+      final meta = parseFiadoMetadataFromFormasPagamento(venda.formasPagamento);
+      fiado['saldoFiado'] = saldoFiado;
+      if (meta.quantidadeParcelas > 1) {
+        fiado['quantidadeParcelasFiado'] = meta.quantidadeParcelas;
+        fiado['intervaloParcelasDias'] = meta.intervaloDias;
+      }
+      if (meta.dataVencimento != null) {
+        fiado['dataVencimentoFiado'] =
+            meta.dataVencimento!.toUtc().toIso8601String();
+      }
+    }
+
+    return <String, dynamic>{
+      'clienteNome': venda.clienteNome,
+      if (opcional(venda.clienteId) != null) 'clienteId': opcional(venda.clienteId),
+      'produtosDescricao': venda.produtosDescricao,
+      'quantidade': venda.quantidade,
+      'preco': venda.preco,
+      'total': venda.total,
+      'formasPagamento': venda.formasPagamento,
+      'frete': venda.frete,
+      'desconto': venda.desconto,
+      'descontoValor': venda.descontoValor,
+      'observacao': venda.observacao,
+      'pagamentoDinheiro': venda.pagamentoDinheiro,
+      'pagamentoPix': venda.pagamentoPix,
+      'pagamentoCartao': venda.pagamentoCartao,
+      'taxas': venda.taxas,
+      'custoProdutos': venda.custoProdutos,
+      'tamanho': venda.tamanho,
+      'vendedor': venda.vendedor,
+      if (opcional(venda.vendedorUid) != null) 'vendedorUid': opcional(venda.vendedorUid),
+      if (opcional(venda.vendedorNome) != null)
+        'vendedorNome': opcional(venda.vendedorNome),
+      if (opcional(venda.vendedorEmail) != null)
+        'vendedorEmail': opcional(venda.vendedorEmail)!.toLowerCase(),
+      'itens': venda.itensOuVazio.map(itemParaFirestore).toList(),
+      if (opcional(venda.origemCusto) != null) 'origemCusto': opcional(venda.origemCusto),
+      if (opcional(venda.itensComboSelecaoJson) != null)
+        'itensComboSelecaoJson': opcional(venda.itensComboSelecaoJson),
+      ...fiado,
+      'data': venda.data.toUtc().toIso8601String(),
+    };
+  }
+
+  static List<VendaItem> _itensRemotos(Map<String, dynamic> remote, String lojaId) =>
+      vendaFromFirestoreMap(remote, '_', lojaId).itens ?? const <VendaItem>[];
+
+  /// Venda editada pelo servidor (`saleEditRevision`) cujas linhas diferem das locais:
+  /// o remoto é a fonte da verdade do estoque consumido e não pode ser sobrescrito.
+  static bool linhasRemotasAutoritativasDivergem({
+    required Map<String, dynamic> remote,
+    required Venda local,
+    required String lojaId,
+  }) {
+    if (remote['saleEditRevision'] is! num) return false;
+    return VendaEdicaoEstoqueDiff.saleEditLinesHash(_itensRemotos(remote, lojaId)) !=
+        VendaEdicaoEstoqueDiff.saleEditLinesHash(local.itensOuVazio);
+  }
+
+  /// Copia para a venda local os campos de venda gravados pelo servidor (linhas, valores, pagamentos).
+  static Future<void> aplicarVendaRemotaAutoritativaNaHive({
+    required Venda local,
+    required Map<String, dynamic> remote,
+    required String lojaId,
+  }) async {
+    final r = vendaFromFirestoreMap(remote, local.idFirebase ?? '_', lojaId);
+    local
+      ..clienteNome = r.clienteNome
+      ..produtosDescricao = r.produtosDescricao
+      ..quantidade = r.quantidade
+      ..preco = r.preco
+      ..total = r.total
+      ..formasPagamento = r.formasPagamento
+      ..data = r.data
+      ..tamanho = r.tamanho
+      ..vendedor = r.vendedor
+      ..frete = r.frete
+      ..desconto = r.desconto
+      ..observacao = r.observacao
+      ..itens = r.itens
+      ..pagamentoDinheiro = r.pagamentoDinheiro
+      ..pagamentoPix = r.pagamentoPix
+      ..pagamentoCartao = r.pagamentoCartao
+      ..taxas = r.taxas
+      ..custoProdutos = r.custoProdutos
+      ..descontoValor = r.descontoValor
+      ..origemCusto = r.origemCusto
+      ..itensComboSelecaoJson = r.itensComboSelecaoJson;
+    if (r.vendedorUid != null) local.vendedorUid = r.vendedorUid;
+    if (r.vendedorNome != null) local.vendedorNome = r.vendedorNome;
+    if (r.vendedorEmail != null) local.vendedorEmail = r.vendedorEmail;
+    if (local.isInBox) await local.save();
+  }
+
+  /// Lê a venda remota (para pré-verificação de edição). `null` = documento não existe.
+  static Future<Map<String, dynamic>?> lerVendaRemota({
+    required String lojaId,
+    required String vendaId,
+  }) async {
+    final snap = await _db
+        .collection('lojas')
+        .doc(lojaId)
+        .collection(FSPaths.estoqueVendasCol)
+        .doc(vendaId)
+        .get();
+    return snap.data();
   }
 
   /// Atualiza pagamentos/total da venda local quando o remoto mudou (ex.: fiado misto).
@@ -247,6 +385,24 @@ class VendasFirestoreService {
             .collection(FSPaths.estoqueVendasCol);
 
         final remoteSnap = await colRef.doc(vendaId).get();
+        final remoteData = remoteSnap.data();
+        if (remoteData != null &&
+            linhasRemotasAutoritativasDivergem(
+              remote: remoteData,
+              local: venda,
+              lojaId: storeId,
+            )) {
+          logD(
+            '[SYNC-VENDAS] venda $vendaId editada no servidor (saleEditRevision); '
+            'linhas locais desatualizadas → hidrata local, sem sobrescrever remoto',
+          );
+          await aplicarVendaRemotaAutoritativaNaHive(
+            local: venda,
+            remote: remoteData,
+            lojaId: storeId,
+          );
+          return true;
+        }
         if (remoteSnap.exists && isMpCanonicalVendaDocId(vendaId)) {
           logD(
             '[MP-IDEMPOTENCIA] doc já existe no Firestore ($vendaId); merge sem segundo UUID',
@@ -295,20 +451,7 @@ class VendasFirestoreService {
         'custoProdutos': venda.custoProdutos,
 
         // Itens vendidos (estrutura completa para histórico; productId para fluxos ID-first)
-        'itens': venda.itensOuVazio.map((item) => {
-          'produtoNome': item.produtoNome,
-          'quantidade': item.quantidade,
-          'tamanho': item.tamanho,
-          'cor': item.cor,
-          'precoUnitario': item.precoUnitario,
-          'precoTotal': item.precoUnitario * item.quantidade,
-          if (item.productId != null && item.productId!.trim().isNotEmpty) 'productId': item.productId,
-          if (item.variacaoExtraResumo.trim().isNotEmpty)
-            'variacaoExtraResumo': item.variacaoExtraResumo.trim(),
-          if (item.extraValor.trim().isNotEmpty) 'extraValor': item.extraValor.trim(),
-          'custoUnitario': item.custoUnitario ?? 0.0,
-          'origemCustoItem': item.origemCustoItem ?? VendaOrigemCusto.desconhecido,
-        }).toList(),
+        'itens': venda.itensOuVazio.map(itemParaFirestore).toList(),
 
         // Cliente estável (para consultas)
         'clienteId': venda.clienteId,

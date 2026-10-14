@@ -6,6 +6,18 @@ import {isMap, stockError, normalizeStock, projectCatalog, quantity, resolveKey,
 import {PRODUCT_VALIDATION_FAILED, REASON, makeIssue, productValidationError, gradeKeyLabel} from './productValidationErrors.js';
 import {ATOMIC_PDV_SALE_FLAG, parseAtomicPdvSale, buildCanonicalEstoqueVendaDoc} from './stockCatalogPdvSale.js';
 import {
+  SALE_EDIT_KIND,
+  SALE_EDIT_OPERATION_ID,
+  SALE_EDIT_REASON,
+  LEGACY_SPLIT_EDIT_SALE_HALF,
+  saleEditError,
+  parseSaleEditPayload,
+  parseClientBuild,
+  loadSaleEditPlan,
+  buildSaleEditPatch,
+  nextSaleOperationItems,
+} from './stockCatalogSaleEdit.js';
+import {
   parseReconciliation,
   applyPhysicalReconciliation,
   snapshotStockCells,
@@ -24,10 +36,29 @@ const stockEffect = p => Object.fromEntries(['quantidade','variacoes','estoquePo
 function keysOnly(data, allowed) {
   if (!isMap(data) || Object.keys(data).some(k => !allowed.includes(k))) throw stockError('invalid-argument', 'Unknown or protected command field');
 }
-function parseCommand(raw) {
-  keysOnly(raw, ['protocolVersion','lojaId','operationId','kind','items','sourceOperationId','editorial','definition','tombstoneKeys','reconciliation', ATOMIC_PDV_SALE_FLAG, 'sale']);
+function parseSaleEditCommand(raw) {
+  keysOnly(raw, ['protocolVersion','lojaId','operationId','kind','saleEdit','clientBuild']);
   if (raw.protocolVersion !== 1) throw stockError('failed-precondition', 'Unsupported stock protocol');
   documentId(raw.lojaId, 'lojaId'); documentId(raw.operationId, 'operationId');
+  if (!SALE_EDIT_OPERATION_ID.test(raw.operationId)) {
+    throw saleEditError('invalid-argument', SALE_EDIT_REASON.INVALID_SALE_EDIT, 'INVALID_OPERATION_ID', 'Invalid saleEdit operationId');
+  }
+  const clientBuild = parseClientBuild(raw.clientBuild);
+  const saleEdit = parseSaleEditPayload(raw.saleEdit);
+  if (Buffer.byteLength(JSON.stringify(raw)) > 200000) {
+    throw saleEditError('resource-exhausted', SALE_EDIT_REASON.INVALID_SALE_EDIT, 'SALE_EDIT_TOO_LARGE', 'Command too large');
+  }
+  return {
+    protocolVersion: 1, lojaId: raw.lojaId, operationId: raw.operationId, kind: SALE_EDIT_KIND,
+    saleEdit, clientBuild, items: [], tombstoneKeys: null, atomicPdvSale: false, atomicSale: null, reconciliation: null,
+  };
+}
+function parseCommand(raw) {
+  if (isMap(raw) && raw.kind === SALE_EDIT_KIND) return parseSaleEditCommand(raw);
+  keysOnly(raw, ['protocolVersion','lojaId','operationId','kind','items','sourceOperationId','editorial','definition','tombstoneKeys','reconciliation', ATOMIC_PDV_SALE_FLAG, 'sale', 'clientBuild']);
+  if (raw.protocolVersion !== 1) throw stockError('failed-precondition', 'Unsupported stock protocol');
+  documentId(raw.lojaId, 'lojaId'); documentId(raw.operationId, 'operationId');
+  const clientBuild = parseClientBuild(raw.clientBuild);
   if (!['sale','restock','adjust','restore','editorial','create','replace','delete','undo','tombstoneVariation','clearVariationTombstone','physicalReconciliation'].includes(raw.kind)) {
     throw stockError('invalid-argument', 'Unsupported command');
   }
@@ -91,7 +122,9 @@ function parseCommand(raw) {
     if ('sale' in raw) throw stockError('invalid-argument', 'sale requires atomicPdvSale=true');
   }
   if (Buffer.byteLength(JSON.stringify(raw)) > 100000) throw stockError('resource-exhausted', 'Command too large');
-  return {...raw, items, tombstoneKeys, atomicPdvSale, atomicSale, reconciliation};
+  const parsed = {...raw, items, tombstoneKeys, atomicPdvSale, atomicSale, reconciliation};
+  if (clientBuild) parsed.clientBuild = clientBuild;
+  return parsed;
 }
 function technicalSimpleColor(value) {
   const n = String(value ?? '').trim().toLowerCase().replace(/\s+/gu, '');
@@ -156,14 +189,34 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
   if (!Number.isInteger(reservedWrites) || reservedWrites < 0 || reservedWrites > 100) throw stockError('internal', 'Invalid transaction reservation');
   requireAuthenticated(auth);
   const command = parseCommand(raw), base = storeRef(db, command.lojaId);
-  const hash = fingerprint(command);
+  // Build stamps are observability only and never change operation identity.
+  const {clientBuild: _clientBuild, ...hashable} = command;
+  const hash = fingerprint(hashable);
+  const isSaleEdit = command.kind === SALE_EDIT_KIND;
+  if (isSaleEdit && auth === SERVER_PAYMENT_AUTH) throw stockError('permission-denied', 'Reserved server identity');
     const permission = command.kind === 'replace' || command.kind === 'physicalReconciliation' ? 'adjust'
       : command.kind === 'tombstoneVariation' ? 'delete'
       : command.kind === 'clearVariationTombstone' ? 'undo'
+      : isSaleEdit ? 'sale'
       : command.kind;
-    const authz = await authorizeStockCommand(tx, db, base, auth, permission, command.kind);
+    // A sale edit is authorized exactly like a sale; it never grants generic restock.
+    let authz;
+    try {
+      authz = await authorizeStockCommand(tx, db, base, auth, permission, isSaleEdit ? 'sale' : command.kind);
+    } catch (error) {
+      if (error?.code === 'failed-precondition' && /Stock protocol unavailable/.test(error.message) && !error.details) {
+        error.details = {code: SALE_EDIT_REASON.LEGACY_PROTOCOL_BLOCKED, reason: `KIND_${command.kind}`};
+      }
+      throw error;
+    }
     const uid = authz.uid;
     const legacyCompat = authz.legacyCompat === true;
+    // Old clients split mixed edits into `_sale` then `_restock`; under NO_CONTROL the restock
+    // half is always refused, so the sale half must be refused first to avoid a partial edit.
+    if (legacyCompat && command.kind === 'sale' && LEGACY_SPLIT_EDIT_SALE_HALF.test(command.operationId)) {
+      throw saleEditError('failed-precondition', SALE_EDIT_REASON.LEGACY_PROTOCOL_BLOCKED,
+        'LEGACY_SPLIT_EDIT_SALE_HALF', 'Legacy split sale edit is not supported; update the app');
+    }
     const opRef = base.collection('stock_catalog_operations').doc(command.operationId);
     const saleRef = command.atomicPdvSale
       ? base.collection('estoque_vendas').doc(command.operationId)
@@ -171,7 +224,9 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
     const op = await tx.get(opRef);
     // Atomic PDV: all reads precede writes — sale doc identity checked before mutation.
     const existingSale = saleRef ? await tx.get(saleRef) : null;
-    if (op.exists && (op.data().requestHash !== hash || op.data().actorUid !== uid)) throw stockError('already-exists', 'Operation identity conflict');
+    if (op.exists && (op.data().requestHash !== hash || op.data().actorUid !== uid)) {
+      throw saleEditError('already-exists', SALE_EDIT_REASON.OPERATION_PAYLOAD_CONFLICT, null, 'Operation identity conflict');
+    }
     // Replays return current canonical values, even after later deletion/editing.
     // They never traverse a recipe that may have changed since the first commit.
     if (op.exists) {
@@ -181,6 +236,12 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
         if (current.exists) products.push({productId: id, ...normalizeStock(current.data())});
       }
       const replay = {alreadyApplied: true, operationId: command.operationId, products};
+      if (isSaleEdit) {
+        replay.saleId = op.data().saleId;
+        replay.saleEditRevision = op.data().saleEditRevision ?? null;
+        replay.saleCommitted = true;
+        replay.stockChanged = (op.data().items ?? []).length > 0;
+      }
       if (command.atomicPdvSale) {
         replay.saleCommitted = true;
         replay.saleId = command.operationId;
@@ -222,12 +283,26 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
         source = rebound;
       }
       if (source.data().restoredBy && source.data().restoredBy !== command.operationId) throw stockError('already-exists', 'Sale already restored');
-      items = source.data().items;
+      // Sales edited through saleEdit restore what they consume now, not what they consumed at creation.
+      items = Array.isArray(source.data().currentItems) && !source.data().currentItemsUnreliable
+        ? source.data().currentItems
+        : source.data().items;
+    }
+    let saleEditPlan = null;
+    if (isSaleEdit) {
+      saleEditPlan = await loadSaleEditPlan(tx, base, command);
+      items = saleEditPlan.items;
     }
     const ids = [...new Set(items.map(i => i.productId))];
-    if (ids.length > MAX_PRODUCTS) throw stockError('resource-exhausted', 'Too many products');
+    if (ids.length > MAX_PRODUCTS) {
+      if (isSaleEdit) {
+        throw saleEditError('resource-exhausted', SALE_EDIT_REASON.INVALID_SALE_EDIT, 'SALE_EDIT_TOO_LARGE',
+          'Too many changed products in one sale edit');
+      }
+      throw stockError('resource-exhausted', 'Too many products');
+    }
     const records = new Map(), targetIds = new Set(items.map(i => i.productId));
-    const softSale = command.kind === 'sale' || command.kind === 'restock';
+    const softSale = command.kind === 'sale' || command.kind === 'restock' || isSaleEdit;
     const newDefinition = ['create','replace'].includes(command.kind) ? normalizeStock({
       variacoes: null, estoquePorTamanho: {}, estoquePorCor: {}, tamanhos: [], cores: [],
       itensCombo: [], comboConfig: null, ...command.definition,
@@ -246,7 +321,13 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
       if (legacyCompat) {
         // NO_CONTROL: estoque_produtos required; draft/dependency optional.
         // create may proceed without existing stock; replace/editorial/sale need stock.
-        if (!stock.exists && !creating) throw stockError('failed-precondition', 'Canonical product required');
+        if (!stock.exists && !creating) {
+          if (isSaleEdit && targetIds.has(id)) {
+            records.set(id, null);
+            continue;
+          }
+          throw stockError('failed-precondition', 'Canonical product required');
+        }
       } else if ((!stock.exists || !draft.exists) && !creating) {
         if (softSale && targetIds.has(id)) {
           records.set(id, null);
@@ -363,8 +444,22 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
       const ok = new Map([...records.entries()].filter(([, r]) => r && r.data));
       if (ok.size) comboOrder(ok);
     }
+    // Combo lines expand through client-side recipes; the server cannot prove which
+    // components a saved combo line consumed, so a changed combo line fails closed.
+    if (isSaleEdit) {
+      for (const item of items) {
+        const r = records.get(item.productId);
+        if (r?.data?.stockKind === 'combo') {
+          throw saleEditError('failed-precondition', SALE_EDIT_REASON.INVALID_SALE_EDIT, 'COMBO_EDIT_NOT_SUPPORTED',
+            'Combo lines cannot change quantity in a sale edit');
+        }
+      }
+    }
     const appliedItems = [];
     let physicalAudit = null;
+    const signedDelta = item => command.kind === 'sale' || (isSaleEdit && item.direction === 'debit')
+      ? -item.quantity
+      : item.quantity;
     function applyItem(item, expand) {
       const r = records.get(item.productId);
       if (!r || r.softFail || !r.data) throw stockError('failed-precondition', 'Product unavailable');
@@ -373,9 +468,8 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
         r.editorial = {...r.editorial, ...patch}; r.data = {...r.data, ...patch, ...identity}; return;
       }
       if (['adjust','replace','delete','undo','tombstoneVariation','clearVariationTombstone','physicalReconciliation'].includes(command.kind) && item.expectedRevision !== r.originalRevision) {
-        throw stockError('aborted', command.kind === 'physicalReconciliation'
-          ? PHYSICAL_RECONCILIATION_CONFLICT
-          : 'Stock revision conflict');
+        if (command.kind === 'physicalReconciliation') throw stockError('aborted', PHYSICAL_RECONCILIATION_CONFLICT);
+        throw saleEditError('aborted', SALE_EDIT_REASON.STOCK_CHANGED, null, 'Stock revision conflict');
       }
       if (command.kind === 'create') {
         const {editorial, identity} = splitEditorialPayload(command.editorial);
@@ -401,12 +495,12 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
         if (r.data.pendingSoftDelete) throw stockError('failed-precondition', 'Product deleted');
         return;
       }
-      r.data = applyCell(r.data, item, command.kind === 'sale' ? -item.quantity : item.quantity, command.kind === 'adjust');
+      r.data = applyCell(r.data, item, signedDelta(item), command.kind === 'adjust');
       appliedItems.push(item);
       if (expand) for (const child of componentIntents(r.data, item)) applyItem(child, true);
     }
-    // Prevalidate ALL sale/restock lines before any mutation (multi-product actionable errors).
-    if (command.kind === 'sale' || command.kind === 'restock') {
+    // Prevalidate ALL sale/restock/saleEdit lines before any mutation (multi-product actionable errors).
+    if (softSale) {
       const issues = [];
       const scratch = new Map([...records.entries()].map(([id, r]) => {
         if (!r || r.softFail || !r.data) return [id, r];
@@ -438,11 +532,14 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
             }));
             return;
           }
-          r.data = applyCell(r.data, item, command.kind === 'sale' ? -item.quantity : item.quantity, false);
+          r.data = applyCell(r.data, item, signedDelta(item), false);
         } catch (error) {
           const msg = String(error?.message || '');
           let reason = REASON.OTHER_PRODUCT_BLOCK;
-          if (!item.size || !item.color) {
+          // A negative result is insufficient stock even for simple products, which carry no size/color.
+          if (/Invalid canonical stock quantity/i.test(msg)) {
+            reason = REASON.INSUFFICIENT_STOCK;
+          } else if (!item.size || !item.color) {
             reason = REASON.GRADE_SELECTION_REQUIRED;
           } else if (/Variation not found|Extra variation/i.test(msg)) {
             reason = !technicalSimpleColor(item.color)
@@ -469,8 +566,9 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
     const liveRecords = new Map([...records.entries()].filter(([, r]) => r && r.data && !r.softFail));
     comboOrder(liveRecords); // Validate the new recipe, including newly introduced cycles.
     if (command.kind !== 'editorial' && command.kind !== 'tombstoneVariation' && command.kind !== 'clearVariationTombstone') {
+      const onlyRestores = isSaleEdit && items.length > 0 && items.every(i => i.direction === 'restore');
       recalculateFixedCombos(liveRecords,
-        ['restock','restore','undo'].includes(command.kind) ? 1 : -1);
+        ['restock','restore','undo'].includes(command.kind) || onlyRestores ? 1 : -1);
     }
     const products = [], writes = [];
     // Budget is checked before queuing any write on the Firestore transaction.
@@ -563,6 +661,13 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
       result: {productIds: ids}, sourceOperationId: command.sourceOperationId ?? null,
       legacyCompat: legacyCompat === true,
       ...(command.kind === 'sale' ? {saleId: command.operationId} : {}),
+      ...(isSaleEdit ? {
+        saleId: command.saleEdit.saleId,
+        saleEditRevision: saleEditPlan.revision,
+        originalLinesHash: saleEditPlan.originalLinesHash,
+        newLinesHash: saleEditPlan.newLinesHash,
+      } : {}),
+      ...(command.clientBuild ? {clientBuild: command.clientBuild} : {}),
       ...(command.atomicPdvSale ? {atomicPdvSale: true} : {}),
       ...(physicalAudit ? {
         type: physicalAudit.type,
@@ -591,9 +696,31 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
       writes.push(() => tx.create(saleRef, saleDoc));
     }
     if (sourceRef) writes.push(() => tx.update(sourceRef, {restoredBy: command.operationId}));
-    if (writes.length + reservedWrites > 100) throw stockError('resource-exhausted', 'Stock transaction write budget exceeded');
+    if (isSaleEdit) {
+      writes.push(() => tx.update(saleEditPlan.saleRef, buildSaleEditPatch(command, saleEditPlan, {actorUid: uid})));
+      if (saleEditPlan.saleOp && appliedItems.length) {
+        const next = nextSaleOperationItems(saleEditPlan.saleOp.data, appliedItems);
+        writes.push(() => tx.update(saleEditPlan.saleOp.ref, next.unreliable
+          ? {currentItemsUnreliable: true, currentItems: FieldValue.delete(), lastSaleEditOperationId: command.operationId}
+          : {currentItems: next.items, lastSaleEditOperationId: command.operationId}));
+      }
+    }
+    if (writes.length + reservedWrites > 100) {
+      if (isSaleEdit) {
+        throw saleEditError('resource-exhausted', SALE_EDIT_REASON.INVALID_SALE_EDIT, 'SALE_EDIT_TOO_LARGE',
+          'Stock transaction write budget exceeded');
+      }
+      throw stockError('resource-exhausted', 'Stock transaction write budget exceeded');
+    }
     for (const write of writes) write();
     const result = {alreadyApplied: false, operationId: command.operationId, products};
+    if (isSaleEdit) {
+      result.saleId = command.saleEdit.saleId;
+      result.saleEditRevision = saleEditPlan.revision;
+      result.saleCommitted = true;
+      result.stockChanged = appliedItems.length > 0;
+      result.writeUnits = writes.length;
+    }
     if (command.atomicPdvSale) {
       result.saleCommitted = true;
       result.saleId = command.operationId;

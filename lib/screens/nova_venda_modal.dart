@@ -23,6 +23,7 @@ import '../core/venda_finalizacao_reentrada_guard.dart';
 import '../core/pdv_sale_intent_lifecycle.dart';
 import '../core/venda_metrics_filter.dart';
 import 'package:hive/hive.dart';
+import 'package:uuid/uuid.dart';
 
 import '../models/cliente.dart';
 import '../models/produto.dart';
@@ -146,6 +147,9 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
   late String lojaId;
 
   bool get _modoEdicao => widget.vendaParaEditar != null;
+
+  /// Retentativas de salvar nesta sessão reutilizam a identidade do comando `saleEdit`.
+  final String _saleEditIntentId = const Uuid().v4();
 
   @override
   void initState() {
@@ -2345,6 +2349,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
             quantidadeParcelasFiado: quantidadeParcelasFiado,
             intervaloParcelasDias: intervaloParcelasDias,
             itensComboSelecaoPorIndice: itensComboSelecaoPorIndice,
+            saleEditIntentId: _saleEditIntentId,
           );
           return (true, null, null);
         } on VendaSalvaComPendenciaSyncException catch (e) {
