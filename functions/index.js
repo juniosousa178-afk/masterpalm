@@ -5513,6 +5513,8 @@ export const consignmentProjectionRetry = onDocumentCreated(
     retry: true,
     timeoutSeconds: 120,
     memory: "256MiB",
+    // Overrides the global Mercado Pago secrets: the projector only needs Firestore.
+    secrets: [],
   },
   async (event) => {
     await handleProjectionRetryEvent(db, event);
