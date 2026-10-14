@@ -14,6 +14,7 @@ import {
   historicalStockCells,
   REMOVED_VARIATION_DEBIT,
 } from '../src/stockCatalogSaleEdit.js';
+import {normalizeStock, projectCatalog} from '../src/catalogStockProjection.js';
 import {createConsignmentTestDb} from './consignment-test-db.mjs';
 
 const owner = {uid: 'owner'};
@@ -248,6 +249,49 @@ for (const mode of MODES) {
     assert.deepEqual(db.snapshot(), snap);
   });
 
+  test(`[${mode}] tampered historicalStockCells cannot create sellable stock`, async () => {
+    const tampered = [
+      {size: 'MENINO', color: 'sem-cor', extra: '', quantidade: 9999},
+      {size: 'MENINA', color: 'sem-cor', extra: '', quantidade: 9999},
+      {size: 'GAROTO', color: 'sem-cor', extra: '', quantidade: 9999},
+    ];
+    const grants = {sale: true, restock: true};
+    const {db, base, lojaId} = seedStore(mode, {products: {[PID]: berloque(0, {historicalStockCells: tampered}), simples},
+      grantPerms: grants});
+    const snap = db.snapshot();
+    const sale = (size, q = 1) => executeStockCommand(db, {protocolVersion: 1, lojaId, operationId: `sale_${size}_${mode}_${++seq}`,
+      kind: 'sale', items: [{productId: PID, quantity: q, size, color: 'sem-cor'}]}, owner);
+    await rejectsWith(sale('MENINO'), {issueReason: 'VARIATION_NOT_FOUND'});
+    await rejectsWith(sale('GAROTO'), {issueReason: 'VARIATION_NOT_FOUND'});
+    await rejectsWith(sale('MENINA'), {issueReason: 'INSUFFICIENT_STOCK'});
+    await rejectsWith(edit(db, base, lojaId, [menino(2), line('simples', 1, {preco: 10})]),
+      {issueReason: 'HISTORICAL_VARIATION_REMOVED'});
+    await rejectsWith(edit(db, base, lojaId, [menino(1), menina(1), line('simples', 1, {preco: 10})]),
+      {issueReason: 'INSUFFICIENT_STOCK'});
+    await rejectsWith(edit(db, base, lojaId, [menino(1), line(PID, 1, {tamanho: 'GAROTO', cor: 'sem-cor'}),
+      line('simples', 1, {preco: 10})]), {issueReason: 'VARIATION_NOT_FOUND'});
+    await rejectsWith(executeStockCommand(db, {protocolVersion: 1, lojaId, operationId: `restock_tamper_${mode}`, kind: 'restock',
+      items: [{productId: PID, quantity: 1, size: 'MENINO', color: 'sem-cor'}]}, owner),
+    mode === 'NO_CONTROL' ? {detail: 'LEGACY_PROTOCOL_BLOCKED'} : {issueReason: 'VARIATION_NOT_FOUND'});
+    assert.deepEqual(db.snapshot(), snap, 'no tampered value reached stock, sale, draft or catalog');
+    const p = projectCatalog(normalizeStock(stock(db, base)), {nome: NOME, publicadoNoCatalogo: true}, PID);
+    assert.equal(p.stock.quantidade, 0, 'commercial availability ignores historical cells');
+    assert.equal(p.live, null, 'nothing to publish');
+    assert.equal('historicalStockCells' in p.draft, false);
+    assert.deepEqual(p.draft.variacoes, {MENINA: {'sem-cor': 0}});
+    // Restore allowance comes from the saved sale only: +1, regardless of the tampered counter.
+    await edit(db, base, lojaId, [line('simples', 1, {preco: 10})]);
+    assert.equal(historical(db, base).find(c => c.size === 'MENINO').quantidade, 10000);
+    assert.equal(stock(db, base).quantidade, 0);
+  });
+
+  test(`[${mode}] malformed historicalStockCells fails closed on restore`, async () => {
+    const {db, base, lojaId} = seedStore(mode, {products: {[PID]: berloque(0, {historicalStockCells: {MENINO: 50}}), simples}});
+    const snap = db.snapshot();
+    await rejectsWith(edit(db, base, lojaId, [line('simples', 1, {preco: 10})]), {detail: 'PRODUCT_VALIDATION_FAILED'});
+    assert.deepEqual(db.snapshot(), snap);
+  });
+
   test(`[${mode}] deleted product: no historical restore`, async () => {
     const {db, base, lojaId} = seedStore(mode, {products: {[PID]: berloque(0, {pendingSoftDelete: true}), simples}});
     const snap = db.snapshot();
@@ -298,20 +342,50 @@ test('MIR fixture: 91-line sale, historical MENINO/sem-cor qty 1 restored once',
   saleLines.splice(37, 0, menino(1));
   assert.equal(saleLines.length, 91);
   const {db, base, lojaId} = seedStore('NO_CONTROL', {products, saleLines});
+  const before = stock(db, base);
+  const draftBefore = draft(db, base);
+
+  // Positive delta on the removed cell: blocked, nothing written.
+  const snap = db.snapshot();
+  await rejectsWith(edit(db, base, lojaId, saleLines.map(l => (l.tamanho === 'MENINO' ? menino(2) : l))),
+    {issueReason: 'HISTORICAL_VARIATION_REMOVED', issueMessage: REMOVED_MESSAGE});
+  assert.deepEqual(db.snapshot(), snap);
+
   // Owner removes the MENINO line and one other piece in the same edit.
   const newLines = saleLines.filter(l => l.tamanho !== 'MENINO' && l.productId !== 'mir-p5');
   const cmd = editCommand(lojaId, newLines, {stored: storedLines(db, base)});
+  const from = db.commits.length;
   const r = await executeStockCommand(db, cmd, owner);
   assert.equal(r.alreadyApplied, false);
+  assert.equal(db.commits.slice(from).filter(c => c.ops.length).length, 1, 'single atomic commit');
   const replay = await executeStockCommand(db, cmd, owner);
   assert.equal(replay.alreadyApplied, true);
-  const cells = historical(db, base);
-  const restored = cells.reduce((sum, c) => sum + c.quantidade, 0);
+  const replayAgain = await executeStockCommand(db, cmd, owner);
+  assert.equal(replayAgain.alreadyApplied, true);
+
+  const after = stock(db, base);
+  const restored = historical(db, base).reduce((sum, c) => sum + c.quantidade, 0);
+  const commercialDelta = after.quantidade - before.quantidade;
   assert.equal(restored, 1);
+  assert.equal(commercialDelta, 0);
+  assert.equal(after.stockRevision, before.stockRevision + 1);
+  assert.deepEqual(after.variacoes, before.variacoes);
+  assert.deepEqual(after.tamanhos, before.tamanhos);
+  assert.deepEqual(draft(db, base).variacoes ?? draftBefore.variacoes, before.variacoes);
+  assert.equal(live(db, base), undefined);
   assert.equal(stock(db, base, 'mir-p5').quantidade, 5);
   assertCommercialGradeUnchanged(db, base);
-  assert.equal(db.getData(base.collection('estoque_vendas').doc('sale-1')).itens.length, 89);
-  console.log(`MIR_REMOVED_VARIATION_EDIT_TEST_PASS=true MIR_EXPECTED_HISTORICAL_RESTORE=${restored} MIR_DUPLICATE_RESTORE=${restored - 1}`);
+  const saleDoc = db.getData(base.collection('estoque_vendas').doc('sale-1'));
+  assert.equal(saleDoc.itens.length, 89);
+  assert.equal(saleDoc.saleEditRevision, 1, 'sale document updated once');
+  assert.equal(saleDoc.lastSaleEditOperationId, cmd.operationId);
+  const op = db.getData(base.collection('stock_catalog_operations').doc(cmd.operationId));
+  assert.equal(op.kind, 'saleEdit');
+  assert.equal(op.saleId, 'sale-1');
+  assert.deepEqual(op.items.filter(i => i.historicalCell), [{productId: PID, quantity: 1, size: 'MENINO', color: 'sem-cor',
+    extra: '', direction: 'restore', historicalCell: true}]);
+  console.log(`MIR_HISTORICAL_RESTORE_FIXTURE_PASS=true MIR_HISTORICAL_RESTORE_QTY=${restored} ` +
+    `MIR_COMMERCIAL_QTY_DELTA=${commercialDelta} MIR_DUPLICATE_RESTORE=${restored - 1} MIR_HISTORICAL_RESTORE_IDEMPOTENT=true`);
 });
 
 test('applyRemovedVariation bounds: proof, direction, quantity, kind', () => {
