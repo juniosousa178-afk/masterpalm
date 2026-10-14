@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {executeConsignmentCommand, FIXED_WRITE_UNITS} from '../src/consignmentCommand.js';
-import {projectConsignmentCatalog} from '../src/consignmentCatalogProjection.js';
+import {handleProjectionRetryEvent, projectConsignmentCatalog} from '../src/consignmentCatalogProjection.js';
 import {
   CODES, MAX_DISTINCT_PRODUCTS_PER_CONSIGNMENT, MAX_LINES, MAX_STOCK_RECORDS_PER_TRANSACTION,
   MAX_TRANSACTION_WRITE_UNITS, MAX_CONSIGNMENT_DOC_BYTES, MAX_SETTLEMENT_COMMAND_BYTES, MAX_COMMAND_BYTES,
@@ -648,4 +648,245 @@ test('§8 settlement-command guard: lines whose settle payload would not fit are
     e => e.consignmentCode === CODES.RESOURCE_EXHAUSTED && /settlement command/.test(e.message));
   assert.deepEqual(db.snapshot(), snapshot);
   assert.ok(MAX_SETTLEMENT_COMMAND_BYTES < MAX_COMMAND_BYTES);
+});
+
+// Release blockers: projection ordering, crash recovery, retry trigger, pending/complete, write budget.
+const draftOf = (db, base, id) => db.getData(base.collection('draft_produtos').doc(id));
+const liveOf = (db, base, id) => db.getData(base.collection('produtos').doc(id));
+const retryEvent = (lojaId, operationId, data) => ({data: {data: () => data}, params: {lojaId, operationId}});
+
+async function issueDeferred(db, lojaId, lines) {
+  const id = await createDraft(db, lojaId, lines);
+  db.faultInjector = ({path}) => { if (path.includes('/draft_produtos/')) throw new Error('deferred projection'); };
+  const res = await run(db, cmd(lojaId, 'issue', `issue_${id}`, {}, id));
+  db.faultInjector = null;
+  assert.equal(res.status, 'ISSUED');
+  return id;
+}
+
+function seedRev10(qty) {
+  const s = newStore();
+  for (const p of pids(N)) seedProduct(s.db, s.base, s.lojaId, p, {quantidade: qty, stockKind: 'simple', stockRevision: 10});
+  return s;
+}
+
+function assertProjectedAt(db, base, rev, qty) {
+  for (const p of pids(N)) {
+    assert.equal(stock(db, base, p).stockRevision, rev);
+    assert.equal(draftOf(db, base, p).catalogStockRevision, rev, p);
+    assert.equal(draftOf(db, base, p).estoque, qty, p);
+    assert.equal(liveOf(db, base, p).catalogStockRevision, rev, p);
+    assert.equal(liveOf(db, base, p).quantidade, qty, p);
+  }
+}
+
+test('§5 OUT_OF_ORDER: delayed rev11 projection retried after rev12 is projected never regresses draft/live', async () => {
+  const {db, base, lojaId} = seedRev10(5);
+  const c1 = await issueDeferred(db, lojaId, pids(N).map(p => line(p)));
+  assert.equal(stock(db, base, pid(1)).stockRevision, 11);
+  assert.equal(opDoc(db, base, `issue_${c1}`).projection.status, 'PENDING');
+  const {id: c2} = await draftAndIssue(db, lojaId, pids(N).map(p => line(p)));
+  assert.equal(opDoc(db, base, `issue_${c2}`).projection.status, 'DONE');
+  assertProjectedAt(db, base, 12, 3);
+
+  const old = await handleProjectionRetryEvent(db, retryEvent(lojaId, `issue_${c1}`, opDoc(db, base, `issue_${c1}`)));
+  assert.equal(old.status, 'DONE');
+  assert.equal(old.written, 0);
+  assertProjectedAt(db, base, 12, 3);
+  console.log('STALE_PROJECTION_CANNOT_REGRESS_CATALOG=true');
+});
+
+test('§5 OUT_OF_ORDER: both projections pending, old one runs first and projects the current revision', async () => {
+  const {db, base, lojaId} = seedRev10(5);
+  const c1 = await issueDeferred(db, lojaId, pids(N).map(p => line(p)));
+  const c2 = await issueDeferred(db, lojaId, pids(N).map(p => line(p)));
+  assert.equal((await projectConsignmentCatalog(db, lojaId, `issue_${c1}`)).written, N);
+  assertProjectedAt(db, base, 12, 3);
+  const second = await projectConsignmentCatalog(db, lojaId, `issue_${c2}`);
+  assert.equal(second.written, 0);
+  assertProjectedAt(db, base, 12, 3);
+});
+
+test('§5 OUT_OF_ORDER: canonical stock committed while the old projection is mid-transaction forces a re-read', async () => {
+  const {db, base, lojaId} = seedRev10(5);
+  const c1 = await issueDeferred(db, lojaId, pids(N).map(p => line(p)));
+  let armed = true;
+  db.onRead = (path, attempt) => {
+    if (!armed || attempt !== 1 || !path.endsWith(`/estoque_produtos/${pid(1)}`)) return;
+    armed = false;
+    const ref = base.collection('estoque_produtos').doc(pid(1));
+    db.concurrentWrite(ref, {...db.getData(ref), quantidade: 3, stockRevision: 12, stockOperationId: 'pdv_sale'});
+  };
+  await projectConsignmentCatalog(db, lojaId, `issue_${c1}`);
+  db.onRead = null;
+  assert.equal(draftOf(db, base, pid(1)).catalogStockRevision, 12);
+  assert.equal(draftOf(db, base, pid(1)).estoque, 3);
+  assert.equal(liveOf(db, base, pid(1)).quantidade, 3);
+  assert.equal(draftOf(db, base, pid(2)).catalogStockRevision, 11);
+});
+
+test('§5 derived documents already at a newer revision are never rewritten backwards', async () => {
+  const {db, base, lojaId} = seedRev10(5);
+  const c1 = await issueDeferred(db, lojaId, pids(N).map(p => line(p)));
+  const draftRef = base.collection('draft_produtos').doc(pid(1));
+  db.concurrentWrite(draftRef, {...db.getData(draftRef), catalogStockRevision: 99, estoque: 42});
+  const r = await projectConsignmentCatalog(db, lojaId, `issue_${c1}`);
+  assert.equal(r.stale, 1);
+  assert.equal(draftOf(db, base, pid(1)).catalogStockRevision, 99);
+  assert.equal(draftOf(db, base, pid(1)).estoque, 42);
+  assert.equal(draftOf(db, base, pid(2)).catalogStockRevision, 11);
+  console.log('OUT_OF_ORDER_PROJECTION_TEST_PASS=true');
+});
+
+test('§6 POST_COMMIT_CRASH_RECOVERY: instance dies right after the stock commit; retry projects current state, no second stock mutation', async () => {
+  const {db, base, lojaId} = issued150(2);
+  const id = await createDraft(db, lojaId, pids(N).map(p => line(p)));
+  const realRun = db.runTransaction.bind(db);
+  let committed = false;
+  db.runTransaction = fn => {
+    if (committed) return Promise.reject(new Error('instance terminated'));
+    return realRun(fn).then(r => { committed = Boolean(commandCommit(db, `issue_${id}`)); return r; });
+  };
+  const res = await run(db, cmd(lojaId, 'issue', `issue_${id}`, {}, id));
+  db.runTransaction = realRun;
+  assert.equal(res.status, 'ISSUED');
+  for (const p of pids(N)) assert.equal(stock(db, base, p).quantidade, 1);
+  const op = opDoc(db, base, `issue_${id}`);
+  assert.equal(op.projection.status, 'PENDING');
+  assert.equal(draftOf(db, base, pid(1)).catalogStockRevision, undefined);
+
+  const from = db.commits.length;
+  const stockBefore = pids(N).map(p => stock(db, base, p));
+  const r = await handleProjectionRetryEvent(db, retryEvent(lojaId, `issue_${id}`, op));
+  assert.equal(r.status, 'DONE');
+  assert.equal(stockCommitsSince(db, from).length, 0);
+  assert.deepEqual(pids(N).map(p => stock(db, base, p)), stockBefore);
+  for (const p of pids(N)) assert.equal(draftOf(db, base, p).catalogStockRevision, stock(db, base, p).stockRevision);
+  const after = db.snapshot();
+  assert.equal((await handleProjectionRetryEvent(db, retryEvent(lojaId, `issue_${id}`, op))).status, 'SKIPPED');
+  assert.deepEqual(db.snapshot(), after);
+  console.log('POST_COMMIT_CRASH_RECOVERY_PASS=true');
+});
+
+test('§7 retry trigger: only derived projection writes, idempotent, tenant isolated', async () => {
+  const {db, base, lojaId} = issued150(2);
+  const lojaB = `${lojaId}_other`;
+  const baseB = db.collection('lojas').doc(lojaB);
+  db.seed(baseB, {ownerUid: 'other', lojaId: lojaB});
+  seedSimple(db, baseB, lojaB, pids(N), 7);
+  const id = await issueDeferred(db, lojaId, pids(N).map(p => line(p)));
+  const op = opDoc(db, base, `issue_${id}`);
+  const ofB = snap => [...snap].filter(([k]) => k.startsWith(`lojas/${lojaB}/`));
+  const bBefore = ofB(db.snapshot());
+  const from = db.commits.length;
+
+  const cross = await handleProjectionRetryEvent(db, retryEvent(lojaB, `issue_${id}`, op));
+  assert.equal(cross.status, 'SKIPPED');
+  assert.equal(db.commits.slice(from).flatMap(c => c.ops).length, 0);
+
+  const consignmentBefore = consignment(db, base, id);
+  const r = await handleProjectionRetryEvent(db, retryEvent(lojaId, `issue_${id}`, op));
+  assert.equal(r.status, 'DONE');
+  const ops = db.commits.slice(from).flatMap(c => c.ops);
+  assert.ok(ops.length > 0);
+  for (const o of ops) {
+    assert.ok(o.path.startsWith(`lojas/${lojaId}/`), o.path);
+    assert.match(o.path, /\/(draft_produtos|produtos|consignment_operations)\//, o.path);
+  }
+  const stockWrites = ops.filter(o => o.path.includes('/estoque_produtos/')).length;
+  assert.equal(stockWrites, 0);
+  assert.deepEqual(consignment(db, base, id), consignmentBefore);
+  const {projection: _p, ...opRest} = opDoc(db, base, `issue_${id}`);
+  const {projection: _q, ...opRestBefore} = op;
+  assert.deepEqual(opRest, opRestBefore);
+  assert.deepEqual(ofB(db.snapshot()), bBefore);
+  const after = db.snapshot();
+  assert.equal((await handleProjectionRetryEvent(db, retryEvent(lojaId, `issue_${id}`, op))).status, 'SKIPPED');
+  assert.deepEqual(db.snapshot(), after);
+  console.log(`PROJECTION_RETRY_STOCK_WRITE_COUNT=${stockWrites} PROJECTION_RETRY_TENANT_ISOLATION=true`);
+});
+
+test('§8 PENDING is written in the stock commit; COMPLETE only after every product is projected', async () => {
+  const {db, base, lojaId} = issued150(2);
+  const id = await issueDeferred(db, lojaId, pids(N).map(p => line(p)));
+  const opId = `issue_${id}`;
+  const commit = commandCommit(db, opId);
+  assert.equal(commit.ops.filter(o => o.path.includes('/estoque_produtos/')).length, N);
+  assert.equal(opDoc(db, base, opId).projection.status, 'PENDING');
+  assert.equal(opDoc(db, base, opId).projection.productIds.length, N);
+
+  db.faultInjector = ({path}) => { if (path.endsWith(`/draft_produtos/${pid(60)}`)) throw new Error('chunk failure'); };
+  await assert.rejects(projectConsignmentCatalog(db, lojaId, opId), /chunk failure/);
+  assert.equal(opDoc(db, base, opId).projection.status, 'PENDING');
+
+  db.faultInjector = ({type, path}) => {
+    if (type === 'update' && path.endsWith(`/consignment_operations/${opId}`)) throw new Error('completion failure');
+  };
+  await assert.rejects(projectConsignmentCatalog(db, lojaId, opId), /completion failure/);
+  assert.equal(opDoc(db, base, opId).projection.status, 'PENDING');
+  db.faultInjector = null;
+
+  const ref = base.collection('estoque_produtos').doc(pid(5));
+  db.concurrentWrite(ref, {...db.getData(ref), stockKind: 'legacy'});
+  const r = await projectConsignmentCatalog(db, lojaId, opId);
+  assert.equal(r.status, 'INVALID');
+  assert.equal(opDoc(db, base, opId).projection.status, 'INVALID');
+  assert.deepEqual(opDoc(db, base, opId).projection.invalidProductIds, [pid(5)]);
+  console.log('PROJECTION_PENDING_STATE_ATOMIC=true PROJECTION_COMPLETE_ONLY_AFTER_SUCCESS=true');
+});
+
+function seedMaxCombos(qty) {
+  const s = newStore();
+  const combos = MAX_STOCK_RECORDS_PER_TRANSACTION - N;
+  pids(N).forEach((id, i) => seedProduct(s.db, s.base, s.lojaId, id, {quantidade: qty, stockKind: 'simple'},
+    {comboIds: i < combos ? [`kit-${i}`] : []}));
+  for (let i = 0; i < combos; i++) {
+    seedProduct(s.db, s.base, s.lojaId, `kit-${i}`, {
+      quantidade: qty, stockKind: 'combo', tipoProduto: 'combo', itensCombo: [{productId: pid(i + 1), quantidade: 1}],
+    });
+  }
+  return s;
+}
+
+test('§9 WRITE_BUDGET_REGRESSION_GUARD: issue, return and settlement worst cases stay <= 400 (platform 500)', async () => {
+  assert.equal(MAX_TRANSACTION_WRITE_UNITS, 400);
+  const staticWorst = MAX_STOCK_RECORDS_PER_TRANSACTION * WRITE_UNITS_PER_STOCK_RECORD +
+    Math.max(...Object.values(FIXED_WRITE_UNITS));
+  assert.ok(staticWorst <= MAX_TRANSACTION_WRITE_UNITS, `static worst ${staticWorst}`);
+
+  const a = seedMaxCombos(3);
+  const {id} = await draftAndIssue(a.db, a.lojaId, pids(N).map(p => line(p, 2)));
+  const issueWorst = commitUnits(commandCommit(a.db, `issue_${id}`));
+  assert.ok(issueWorst <= MAX_TRANSACTION_WRITE_UNITS, `issue ${issueWorst}`);
+  await settle(a.db, a.base, a.lojaId, id, () => [1, 1]);
+  const settleWorst = commitUnits(commandCommit(a.db, `settle_${id}`));
+  assert.ok(settleWorst <= MAX_TRANSACTION_WRITE_UNITS, `settle ${settleWorst}`);
+  assert.equal(settleWorst, staticWorst);
+
+  const b = seedMaxCombos(3);
+  const {id: idB} = await draftAndIssue(b.db, b.lojaId, pids(N).map(p => line(p, 2)));
+  const doc = consignment(b.db, b.base, idB);
+  const rows = doc.lines.map(l => ({lineId: l.lineId, productId: l.productId, variationKey: l.variationKey, qty: 1}));
+  await run(b.db, cmd(b.lojaId, 'returnItems', `ret_${idB}`, {expectedRevision: doc.revision, lines: rows}, idB));
+  const returnWorst = commitUnits(commandCommit(b.db, `ret_${idB}`));
+  assert.ok(returnWorst <= MAX_TRANSACTION_WRITE_UNITS, `return ${returnWorst}`);
+  console.log(`ISSUE_WORST_CASE_WRITE_UNITS=${issueWorst} RETURN_WORST_CASE_WRITE_UNITS=${returnWorst} ` +
+    `SETTLEMENT_WORST_CASE_WRITE_UNITS=${settleWorst} STATIC_WORST_CASE=${staticWorst}`);
+});
+
+test('§14 RETURN_150_IDEMPOTENT: replaying a 150-line return changes nothing; altered payload fails closed', async () => {
+  const {db, base, lojaId} = issued150(2);
+  const {id} = await draftAndIssue(db, lojaId, pids(N).map(p => line(p, 2)));
+  const doc = consignment(db, base, id);
+  const rows = doc.lines.map(l => ({lineId: l.lineId, productId: l.productId, variationKey: l.variationKey, qty: 1}));
+  const payload = {expectedRevision: doc.revision, lines: rows};
+  await run(db, cmd(lojaId, 'returnItems', `ret_${id}`, payload, id));
+  for (const p of pids(N)) assert.equal(stock(db, base, p).quantidade, 1);
+  const after = db.snapshot();
+  const replay = await run(db, cmd(lojaId, 'returnItems', `ret_${id}`, payload, id));
+  assert.equal(replay.alreadyApplied, true);
+  assert.deepEqual(db.snapshot(), after);
+  await assert.rejects(run(db, cmd(lojaId, 'returnItems', `ret_${id}`, {...payload, lines: rows.slice(1)}, id)));
+  assert.deepEqual(db.snapshot(), after);
+  console.log('RETURN_150_IDEMPOTENT=true');
 });
