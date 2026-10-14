@@ -157,6 +157,28 @@ void main() {
         expect(formatSalvarVendaErrorForUser(e), isNot(contains(atualizados)), reason: nome);
       });
     });
+
+    test('variação removida do cadastro mostra a mensagem do servidor', () {
+      const msg = 'Esta venda possui uma variação antiga que não existe mais no cadastro do produto: MENINO. '
+          'Nenhuma alteração foi feita.';
+      final e = _fx('failed-precondition', 'PRODUCT_VALIDATION_FAILED', {
+        'code': 'PRODUCT_VALIDATION_FAILED',
+        'issues': [
+          {
+            'productId': 'berloque',
+            'productName': 'Berloque Placa Mãe De Menino/menina Prata 925',
+            'selectionLabel': 'MENINO / sem-cor',
+            'reasonCode': 'HISTORICAL_VARIATION_REMOVED',
+            'userMessage': msg,
+          },
+        ],
+      });
+      final validation = StockCatalogProductValidationException.tryParse(e);
+      expect(validation, isNotNull);
+      final texto = formatSalvarVendaErrorForUser(validation!);
+      expect(texto, contains('Berloque Placa Mãe De Menino/menina Prata 925 (MENINO / sem-cor) — $msg'));
+      expect(texto, isNot(contains(atualizados)));
+    });
   });
 
   group('linhasRemotasAutoritativasDivergem (proteção do syncVenda)', () {

@@ -21,6 +21,7 @@ export const REASON = Object.freeze({
   CROSS_STORE_PRODUCT: 'CROSS_STORE_PRODUCT',
   ZERO_STOCK: 'ZERO_STOCK',
   OTHER_PRODUCT_BLOCK: 'OTHER_PRODUCT_BLOCK',
+  HISTORICAL_VARIATION_REMOVED: 'HISTORICAL_VARIATION_REMOVED',
 });
 
 export const PRODUCT_VALIDATION_FAILED = 'PRODUCT_VALIDATION_FAILED';
@@ -35,8 +36,13 @@ export function gradeKeyLabel({size = '', color = '', extra = ''} = {}) {
   return [size, color, extra].map((v) => String(v ?? '').trim()).filter(Boolean).join(' / ');
 }
 
-export function userMessageForReason(reasonCode, {requestedQty, availableQty} = {}) {
+export function userMessageForReason(reasonCode, {requestedQty, availableQty, variationLabel = ''} = {}) {
   switch (reasonCode) {
+    case REASON.HISTORICAL_VARIATION_REMOVED: {
+      const label = String(variationLabel || '').trim();
+      return `Esta venda possui uma variação antiga que não existe mais no cadastro do produto${label ? `: ${label}` : ''}. ` +
+        'Nenhuma alteração foi feita.';
+    }
     case REASON.INSUFFICIENT_STOCK:
       return 'Estoque insuficiente. Atualize a quantidade e tente novamente.';
     case REASON.ZERO_STOCK:
@@ -83,6 +89,7 @@ export function makeIssue({
   reasonCode,
   requestedQty = null,
   availableQty = null,
+  variationLabel = '',
 } = {}) {
   const code = REASON[reasonCode] ? reasonCode : REASON.OTHER_PRODUCT_BLOCK;
   return {
@@ -91,7 +98,7 @@ export function makeIssue({
     lineIndex: Number.isInteger(lineIndex) ? lineIndex : 0,
     selectionLabel: String(selectionLabel || ''),
     reasonCode: code,
-    userMessage: userMessageForReason(code, {requestedQty, availableQty}),
+    userMessage: userMessageForReason(code, {requestedQty, availableQty, variationLabel}),
     requestedQty: requestedQty == null ? null : requestedQty,
     availableQty: availableQty == null ? null : availableQty,
   };

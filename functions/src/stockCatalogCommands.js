@@ -16,6 +16,8 @@ import {
   loadSaleEditPlan,
   buildSaleEditPatch,
   nextSaleOperationItems,
+  applyRemovedVariation,
+  REMOVED_VARIATION_DEBIT,
 } from './stockCatalogSaleEdit.js';
 import {
   parseReconciliation,
@@ -31,7 +33,8 @@ const ordered = value => Array.isArray(value) ? value.map(ordered) : isMap(value
   ? Object.fromEntries(Object.keys(value).sort().map(k => [k, ordered(value[k])])) : value;
 const fingerprint = value => createHash('sha256').update(JSON.stringify(ordered(value))).digest('hex');
 const stockEffect = p => Object.fromEntries(['quantidade','variacoes','estoquePorTamanho','estoquePorCor',
-  'tamanhos','cores','variacoesExtraTipo','tipoProduto','stockKind','itensCombo','comboConfig','pendingSoftDelete']
+  'tamanhos','cores','variacoesExtraTipo','tipoProduto','stockKind','itensCombo','comboConfig','pendingSoftDelete',
+  'historicalStockCells']
   .filter(key => key in p).map(key => [key, p[key]]));
 function keysOnly(data, allowed) {
   if (!isMap(data) || Object.keys(data).some(k => !allowed.includes(k))) throw stockError('invalid-argument', 'Unknown or protected command field');
@@ -460,6 +463,14 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
     const signedDelta = item => command.kind === 'sale' || (isSaleEdit && item.direction === 'debit')
       ? -item.quantity
       : item.quantity;
+    const applyStockCell = (data, item) => {
+      try {
+        return {data: applyCell(data, item, signedDelta(item), command.kind === 'adjust'), historical: false};
+      } catch (error) {
+        if (!isSaleEdit) throw error;
+        return {data: applyRemovedVariation(data, item, saleEditPlan.oldLines, error), historical: true};
+      }
+    };
     function applyItem(item, expand) {
       const r = records.get(item.productId);
       if (!r || r.softFail || !r.data) throw stockError('failed-precondition', 'Product unavailable');
@@ -495,8 +506,9 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
         if (r.data.pendingSoftDelete) throw stockError('failed-precondition', 'Product deleted');
         return;
       }
-      r.data = applyCell(r.data, item, signedDelta(item), command.kind === 'adjust');
-      appliedItems.push(item);
+      const applied = applyStockCell(r.data, item);
+      r.data = applied.data;
+      appliedItems.push(applied.historical ? {...item, historicalCell: true} : item);
       if (expand) for (const child of componentIntents(r.data, item)) applyItem(child, true);
     }
     // Prevalidate ALL sale/restock/saleEdit lines before any mutation (multi-product actionable errors).
@@ -532,13 +544,21 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
             }));
             return;
           }
-          r.data = applyCell(r.data, item, signedDelta(item), false);
+          r.data = applyStockCell(r.data, item).data;
         } catch (error) {
           const msg = String(error?.message || '');
           let reason = REASON.OTHER_PRODUCT_BLOCK;
           // A negative result is insufficient stock even for simple products, which carry no size/color.
           if (/Invalid canonical stock quantity/i.test(msg)) {
             reason = REASON.INSUFFICIENT_STOCK;
+          } else if (msg === REMOVED_VARIATION_DEBIT) {
+            issues.push(makeIssue({
+              productId: item.productId, productName: name, lineIndex,
+              selectionLabel, reasonCode: REASON.HISTORICAL_VARIATION_REMOVED, requestedQty: item.quantity,
+              variationLabel: [item.size, technicalSimpleColor(item.color) ? '' : item.color, item.extra]
+                .map(v => String(v ?? '').trim()).filter(Boolean).join(' / '),
+            }));
+            return;
           } else if (!item.size || !item.color) {
             reason = REASON.GRADE_SELECTION_REQUIRED;
           } else if (/Variation not found|Extra variation/i.test(msg)) {

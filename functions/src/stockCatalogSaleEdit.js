@@ -230,6 +230,56 @@ export function computeSaleEditDelta(oldLines, newLines) {
   return items.sort((a, b) => (a.direction === b.direction ? 0 : a.direction === 'restore' ? -1 : 1));
 }
 
+/** Quantity of the exact item cell consumed by the saved sale (0 when the sale never had it). */
+export function originalSaleCellQuantity(oldLines, item) {
+  const id = JSON.stringify([String(item.productId ?? '').trim(), '', normKey(item.size ?? ''),
+    normKey(item.color ?? ''), normKey(item.extra ?? '')]);
+  return aggregate(oldLines).get(id)?.quantity ?? 0;
+}
+
+/**
+ * Restore-only stock for cells removed from the commercial grade after the sale consumed them.
+ * Never part of `quantidade`, the grade, the editor, the picker or any catalog projection;
+ * only a server sale edit restoring units the saved sale proves it consumed writes here.
+ */
+export const HISTORICAL_STOCK_CELLS = 'historicalStockCells';
+const MISSING_CELL = /^(Variation not found|Extra variation not found)$/;
+export const REMOVED_VARIATION_DEBIT = 'Removed variation cannot be debited';
+
+export function historicalStockCells(stock) {
+  const raw = stock?.[HISTORICAL_STOCK_CELLS];
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw) || raw.some(c => !isMap(c) || ['size', 'color', 'extra'].some(k => typeof c[k] !== 'string'))) {
+    throw stockError('failed-precondition', 'Invalid historical stock cells');
+  }
+  return raw.map(c => ({size: c.size, color: c.color, extra: c.extra, quantidade: quantity(c.quantidade)}));
+}
+
+/**
+ * Sale edit fallback when the exact cell is gone from the grade. A restore bounded by the saved
+ * sale goes to the historical cell; a debit of a removed cell the sale had is refused. Anything
+ * else (no proof in the saved sale, simple/combo, deleted product) keeps the original error.
+ */
+export function applyRemovedVariation(stock, item, oldLines, error) {
+  if (!MISSING_CELL.test(String(error?.message ?? ''))) throw error;
+  if (stock?.stockKind !== 'variation' || stock.pendingSoftDelete || (!item.size && !item.color)) throw error;
+  const original = originalSaleCellQuantity(oldLines, item);
+  if (original <= 0) throw error;
+  if (item.direction !== 'restore') throw stockError('failed-precondition', REMOVED_VARIATION_DEBIT);
+  if (!Number.isSafeInteger(item.quantity) || item.quantity <= 0 || item.quantity > original) throw error;
+  const cells = historicalStockCells(stock);
+  const same = c => normKey(c.size) === normKey(item.size ?? '') && normKey(c.color) === normKey(item.color ?? '')
+    && normKey(c.extra) === normKey(item.extra ?? '');
+  const hit = cells.find(same);
+  if (hit) hit.quantidade = quantity(hit.quantidade + item.quantity);
+  else cells.push({size: item.size ?? '', color: item.color ?? '', extra: item.extra ?? '', quantidade: item.quantity});
+  cells.sort((a, b) => {
+    const ka = JSON.stringify([a.size, a.color, a.extra]), kb = JSON.stringify([b.size, b.color, b.extra]);
+    return ka < kb ? -1 : ka > kb ? 1 : 0;
+  });
+  return {...stock, [HISTORICAL_STOCK_CELLS]: cells};
+}
+
 const CLOSED_STATUSES = new Set(['cancelada', 'cancelado', 'estornada', 'estornado', 'excluida', 'excluido']);
 
 /** Validates the stored sale and returns the edit plan. All reads happen before any write. */
