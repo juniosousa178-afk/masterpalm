@@ -1,0 +1,116 @@
+{
+  "CASE3_NEW_SALE": [
+    {
+      "protocolVersion": 1,
+      "lojaId": "loja-oldclient-capture",
+      "operationId": "f365b48e-0c1e-43f6-a4fa-9b871d701fdf",
+      "kind": "sale",
+      "items": [
+        {
+          "productId": "prod-a-simple",
+          "quantity": 1,
+          "size": "",
+          "color": "",
+          "extra": ""
+        },
+        {
+          "productId": "prod-b-variation",
+          "quantity": 1,
+          "size": "12",
+          "color": "sem-cor",
+          "extra": ""
+        }
+      ]
+    }
+  ],
+  "CASE1_SETUP_SALE": [
+    {
+      "protocolVersion": 1,
+      "lojaId": "loja-oldclient-capture",
+      "operationId": "c673e85f-2259-4b1b-b588-90cc5dd6bf93",
+      "kind": "sale",
+      "items": [
+        {
+          "productId": "prod-a-simple",
+          "quantity": 1,
+          "size": "",
+          "color": "",
+          "extra": ""
+        },
+        {
+          "productId": "prod-b-variation",
+          "quantity": 1,
+          "size": "12",
+          "color": "sem-cor",
+          "extra": ""
+        }
+      ]
+    }
+  ],
+  "CASE1_EDIT_INCREASE_ONLY": [
+    {
+      "protocolVersion": 1,
+      "lojaId": "loja-oldclient-capture",
+      "operationId": "editstock_c673e85f-2259-4b1b-b588-90cc5dd6bf93_0ad5fb856b1199bff1084471282221f49323a59283a42a9bcd4256425a899ed2",
+      "kind": "sale",
+      "items": [
+        {
+          "productId": "prod-a-simple",
+          "quantity": 1
+        }
+      ]
+    }
+  ],
+  "CASE2_SETUP_SALE": [
+    {
+      "protocolVersion": 1,
+      "lojaId": "loja-oldclient-capture",
+      "operationId": "fda550b6-8695-421c-a575-c2a049f49f15",
+      "kind": "sale",
+      "items": [
+        {
+          "productId": "prod-a-simple",
+          "quantity": 1,
+          "size": "",
+          "color": "",
+          "extra": ""
+        },
+        {
+          "productId": "prod-b-variation",
+          "quantity": 1,
+          "size": "12",
+          "color": "sem-cor",
+          "extra": ""
+        }
+      ]
+    }
+  ],
+  "CASE2_EDIT_MIXED": [
+    {
+      "protocolVersion": 1,
+      "lojaId": "loja-oldclient-capture",
+      "operationId": "editstock_fda550b6-8695-421c-a575-c2a049f49f15_5b44f2c39a598bb3418d63f276c2d655f39be69979064bc7483b406ac914a722_sale",
+      "kind": "sale",
+      "items": [
+        {
+          "productId": "prod-a-simple",
+          "quantity": 1
+        }
+      ]
+    },
+    {
+      "protocolVersion": 1,
+      "lojaId": "loja-oldclient-capture",
+      "operationId": "editstock_fda550b6-8695-421c-a575-c2a049f49f15_5b44f2c39a598bb3418d63f276c2d655f39be69979064bc7483b406ac914a722_restock",
+      "kind": "restock",
+      "items": [
+        {
+          "productId": "prod-b-variation",
+          "quantity": 1,
+          "size": "12",
+          "color": "sem-cor"
+        }
+      ]
+    }
+  ]
+}
