@@ -357,6 +357,45 @@ for (const mode of MODES) {
   });
 }
 
+for (const mode of MODES) {
+  test(`[${mode}] worst supported edit: 25 changed products + sale op + receivable parcels stays within budget`, async () => {
+    const products = Object.fromEntries(Array.from({length: 25}, (_, i) => [`p${i}`, simple()]));
+    const oldLines = Object.keys(products).map(id => line(id, 1));
+    const seedWithSaleOp = () => {
+      const s = seedStore(mode, {products, saleLines: oldLines, fiado: false});
+      s.db.seed(s.base.collection('stock_catalog_operations').doc(SALE), {kind: 'sale', status: 'applied', actorUid: 'owner',
+        items: Object.keys(products).map(productId => ({productId, quantity: 1, size: '', color: '', extra: ''}))});
+      return s;
+    };
+    const newLines = Object.keys(products).map(id => line(id, 2));
+    const fixed = 25 * 3 + 3;
+    const maxParcels = 100 - fixed;
+    {
+      const {db, base, lojaId} = seedWithSaleOp();
+      const r = await edit(db, base, lojaId, fiadoSale(newLines, 500, {parcelas: maxParcels}));
+      assert.equal(r.receivable.count, maxParcels);
+      const c = db.commits.at(-1);
+      assert.equal(c.writes, 100, 'exactly at the preserved internal limit');
+      assert.ok(c.writes + c.transforms <= 500, `units ${c.writes + c.transforms}`);
+      console.log(`SALE_EDIT_MAX_WRITES=${c.writes} SALE_EDIT_MAX_WRITE_UNITS_WITH_RECEIVABLE=${c.writes + c.transforms} ` +
+        `MAX_PARCELS_WITH_25_PRODUCTS=${maxParcels}`);
+    }
+    {
+      const {db, base, lojaId} = seedWithSaleOp();
+      const snap = db.snapshot();
+      await rejectsWith(edit(db, base, lojaId, fiadoSale(newLines, 500, {parcelas: maxParcels + 1})), {reason: 'SALE_EDIT_TOO_LARGE'});
+      assert.deepEqual(db.snapshot(), snap);
+    }
+    {
+      // Payment-only edit with the client maximum of 48 parcels: no stock writes, well inside the limit.
+      const {db, base, lojaId} = seedWithSaleOp();
+      const r = await edit(db, base, lojaId, fiadoSale(oldLines, 25, {parcelas: 48}));
+      assert.equal(r.stockChanged, false);
+      assert.equal(db.commits.at(-1).writes, 2 + 48);
+    }
+  });
+}
+
 test('the receivable query runs inside the transaction', async () => {
   const {db, base, lojaId} = seedStore('ACTIVE');
   await edit(db, base, lojaId, pixSale([line('a', 1)], 100));
