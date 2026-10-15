@@ -63,7 +63,15 @@ abstract final class ContaReceberVendaBackfillService {
           .doc(idV)
           .get();
       if (!snap.exists || snap.data() == null) return false;
-      return snap.data()!['deletedAt'] == null;
+      final data = snap.data()!;
+      if (data['deletedAt'] != null) return false;
+      // Venda editada no servidor sem saldo (ex.: fiado → Pix): cópia local antiga não recria dívida.
+      final saldoRemoto = saldoAReceberVendaRemota(data);
+      if (saldoRemoto != null && saldoRemoto <= 0.01) {
+        debugPrint('[CR-BACKFILL][SKIP-VENDA-SEM-SALDO-REMOTO] vendaId=$idV');
+        return false;
+      }
+      return true;
     } catch (_) {
       return true;
     }

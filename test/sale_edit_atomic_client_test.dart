@@ -2,10 +2,12 @@
 
 import 'dart:io';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
+import 'package:master_palm/core/conta_receber_identity.dart';
 import 'package:master_palm/core/dart_error_unwrap.dart';
 import 'package:master_palm/core/hive_box_names.dart';
 import 'package:master_palm/core/loja_ativa_resolver.dart';
@@ -17,6 +19,7 @@ import 'package:master_palm/models/venda_item.dart';
 import 'package:master_palm/services/catalog_publish_service.dart';
 import 'package:master_palm/services/catalogo_sync_service.dart';
 import 'package:master_palm/services/conta_receber_firestore_service.dart';
+import 'package:master_palm/services/conta_receber_service.dart';
 import 'package:master_palm/services/estoque_transaction_service.dart';
 import 'package:master_palm/services/produto_exclusao_tombstone_service.dart';
 import 'package:master_palm/services/produtos_firestore_service.dart';
@@ -150,6 +153,9 @@ void main() {
         'pid': ({'code': 'INVALID_SALE_EDIT', 'reason': 'LINE_PRODUCT_ID_REQUIRED'}, 'não está vinculado'),
         'combo': ({'code': 'INVALID_SALE_EDIT', 'reason': 'COMBO_EDIT_NOT_SUPPORTED'}, 'combo'),
         'big': ({'code': 'INVALID_SALE_EDIT', 'reason': 'SALE_EDIT_TOO_LARGE'}, '25 produtos'),
+        'crPag': ({'code': 'INVALID_SALE_EDIT', 'reason': 'RECEIVABLE_HAS_PAYMENTS'}, 'recebimentos registrados'),
+        'crRev': ({'code': 'INVALID_SALE_EDIT', 'reason': 'RECEIVABLE_REQUIRES_REVIEW'}, 'conta a receber'),
+        'crVenc': ({'code': 'INVALID_SALE_EDIT', 'reason': 'FIADO_DUE_DATE_REQUIRED'}, 'data de vencimento'),
       };
       casos.forEach((nome, c) {
         final e = _fx('failed-precondition', 'x', c.$1);
@@ -442,6 +448,96 @@ void main() {
       await editar(v, [linha('a', 1)], obs: 'só observação');
       expect(comandosEstoque(), isEmpty);
       expect(vendasBox.values.single.observacao, 'só observação');
+    });
+
+    group('fiado → não fiado (conta a receber remota)', () {
+      const crId = 'cr_sale-1_p1';
+      DocumentReference<Map<String, dynamic>> crRef() =>
+          firestore.collection('lojas').doc(lojaId).collection('contas_receber').doc(crId);
+
+      Future<Venda> vendaFiadaComConta(List<VendaItem> itens) async {
+        final total = itens.fold<double>(0, (a, i) => a + i.precoUnitario * i.quantidade);
+        final v = Venda(
+          clienteNome: 'Cliente SEA', produtosDescricao: 'orig', quantidade: itens.length,
+          preco: total, total: total, formasPagamento: 'Fiado - R\$ $total. Vencimento: 10/10/2026',
+          data: DateTime(2026, 9, 9), vendedor: 'App', observacao: 'orig', itens: itens,
+          lojaId: lojaId, idFirebase: 'sale-1',
+        );
+        await vendasBox.add(v);
+        remoto = {'itens': itens.map(VendasFirestoreService.itemParaFirestore).toList(), 'lojaId': lojaId};
+        final conta = ContaReceber(
+          lojaId: lojaId, clienteNome: 'Cliente SEA', valor: total, valorOriginal: total,
+          dataVencimento: DateTime(2026, 10, 10), dataVenda: DateTime(2026, 9, 9),
+          vendaKey: v.key as int, vendaIdFirebase: 'sale-1', parcelaNumero: 1, parcelaTotal: 1,
+        );
+        normalizarContaReceberId(conta);
+        await (await ContaReceberService.openBoxLoja(lojaId)).add(conta);
+        await crRef().set(ContaReceberFirestoreService.mapContaReceber(conta, docId: crId));
+        return v;
+      }
+
+      /// Servidor fake: o saleEdit real cancela a conta no mesmo commit da venda.
+      void servidorReconciliaConta() {
+        StockCatalogBackendService.debugTransport = (name, data) async {
+          chamadas.add({'name': name, ...data});
+          final sale = (data['saleEdit'] as Map)['sale'] as Map;
+          final semSaldo = ((sale['saldoFiado'] as num?) ?? 0) <= 0.01;
+          if (semSaldo) {
+            await crRef().set({
+              'cancelada': true, 'deletedAt': DateTime.utc(2026, 10, 15), 'status': 'cancelada',
+              'saldoAtual': 0, 'valor': 0, 'pago': false, 'motivoCancelamento': 'SALE_EDIT_REMOVED_FIADO',
+              'lastWriteOrigin': 'sale_edit_server',
+            }, SetOptions(merge: true));
+          }
+          return {
+            'alreadyApplied': false, 'operationId': data['operationId'], 'products': <Object>[],
+            'saleId': 'sale-1', 'saleEditRevision': 1, 'saleCommitted': true, 'stockChanged': false,
+            'receivable': {'action': semSaldo ? 'SOFT_DELETE' : 'NONE', 'count': semSaldo ? 1 : 0},
+          };
+        };
+      }
+
+      Future<void> drenarSyncAgendado() => Future<void>.delayed(const Duration(milliseconds: 50));
+
+      test('fiado → Pix sem mudar linhas passa pelo saleEdit; conta remota não fica pendente', () async {
+        final v = await vendaFiadaComConta([linha('a', 1)]);
+        servidorReconciliaConta();
+        await editar(v, [linha('a', 1)]);
+        await drenarSyncAgendado();
+
+        final cmds = comandosEstoque();
+        expect(cmds, hasLength(1), reason: 'o servidor reconcilia a conta no commit da venda');
+        expect(cmds.single['kind'], 'saleEdit');
+        final sale = (cmds.single['saleEdit'] as Map)['sale'] as Map;
+        expect(sale.containsKey('saldoFiado'), isFalse);
+        expect(sale['pagamentoPix'], 10);
+
+        final remota = (await crRef().get()).data()!;
+        expect(remota['cancelada'], isTrue);
+        expect(remota['status'], 'cancelada');
+        expect(remota['pago'], isFalse);
+        expect(remota['motivoCancelamento'], 'SALE_EDIT_REMOVED_FIADO');
+        expect((await ContaReceberService.openBoxLoja(lojaId)).values, isEmpty);
+        expect(vendasBox.values.single.pagamentoPix, 10);
+      });
+
+      test('falha do servidor: venda e conta (local e remota) intactas', () async {
+        final v = await vendaFiadaComConta([linha('a', 1)]);
+        respostaServidor = (_) => _fx('failed-precondition', 'x',
+            {'code': 'INVALID_SALE_EDIT', 'reason': 'RECEIVABLE_HAS_PAYMENTS'});
+        Object? erro;
+        try {
+          await editar(v, [linha('a', 1)]);
+        } catch (e) {
+          erro = e;
+        }
+        expect(formatSalvarVendaErrorForUser(erro!), contains('recebimentos registrados'));
+        expect(vendasBox.values.single.pagamentoPix, 0);
+        expect((await ContaReceberService.openBoxLoja(lojaId)).values, hasLength(1));
+        final remota = (await crRef().get()).data()!;
+        expect(remota['cancelada'], isFalse);
+        expect(remota['saldoAtual'], 10);
+      });
     });
   });
 }

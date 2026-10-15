@@ -19,6 +19,7 @@ import {
   applyRemovedVariation,
   REMOVED_VARIATION_DEBIT,
 } from './stockCatalogSaleEdit.js';
+import {loadSaleEditReceivables, planSaleEditReceivable} from './stockCatalogSaleEditReceivable.js';
 import {
   parseReconciliation,
   applyPhysicalReconciliation,
@@ -244,6 +245,7 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
         replay.saleEditRevision = op.data().saleEditRevision ?? null;
         replay.saleCommitted = true;
         replay.stockChanged = (op.data().items ?? []).length > 0;
+        replay.receivable = op.data().receivable ?? null;
       }
       if (command.atomicPdvSale) {
         replay.saleCommitted = true;
@@ -291,10 +293,12 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
         ? source.data().currentItems
         : source.data().items;
     }
-    let saleEditPlan = null;
+    let saleEditPlan = null, receivablePlan = null;
     if (isSaleEdit) {
       saleEditPlan = await loadSaleEditPlan(tx, base, command);
       items = saleEditPlan.items;
+      const linked = await loadSaleEditReceivables(tx, base, command);
+      receivablePlan = planSaleEditReceivable({base, command, plan: saleEditPlan, linked});
     }
     const ids = [...new Set(items.map(i => i.productId))];
     if (ids.length > MAX_PRODUCTS) {
@@ -686,6 +690,12 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
         saleEditRevision: saleEditPlan.revision,
         originalLinesHash: saleEditPlan.originalLinesHash,
         newLinesHash: saleEditPlan.newLinesHash,
+        receivable: {
+          action: receivablePlan.action,
+          count: receivablePlan.count,
+          oldPaymentMode: receivablePlan.oldPaymentMode,
+          newPaymentMode: receivablePlan.newPaymentMode,
+        },
       } : {}),
       ...(command.clientBuild ? {clientBuild: command.clientBuild} : {}),
       ...(command.atomicPdvSale ? {atomicPdvSale: true} : {}),
@@ -724,6 +734,10 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
           ? {currentItemsUnreliable: true, currentItems: FieldValue.delete(), lastSaleEditOperationId: command.operationId}
           : {currentItems: next.items, lastSaleEditOperationId: command.operationId}));
       }
+      for (const w of receivablePlan.writes) {
+        writes.push(() => w.type === 'update' ? tx.update(w.ref, w.data)
+          : w.type === 'set-merge' ? tx.set(w.ref, w.data, {merge: true}) : tx.set(w.ref, w.data));
+      }
     }
     if (writes.length + reservedWrites > 100) {
       if (isSaleEdit) {
@@ -740,6 +754,12 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
       result.saleCommitted = true;
       result.stockChanged = appliedItems.length > 0;
       result.writeUnits = writes.length;
+      result.receivable = {
+        action: receivablePlan.action,
+        count: receivablePlan.count,
+        oldPaymentMode: receivablePlan.oldPaymentMode,
+        newPaymentMode: receivablePlan.newPaymentMode,
+      };
     }
     if (command.atomicPdvSale) {
       result.saleCommitted = true;

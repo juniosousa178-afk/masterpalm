@@ -3312,10 +3312,14 @@ class VendasService {
 
     // Linhas mudaram: o servidor lê a venda salva, calcula o delta e grava estoque + venda
     // num único commit. O caminho de reconciliação local fica só para testes com Firestore fake.
-    final usarSaleEditServidor =
-        !itensEquivalentes && EstoqueTransactionService.usaBackendConfiavel;
+    // Venda com fiado (antes ou depois): a conta a receber remota é reconciliada pelo servidor
+    // no mesmo commit da venda, mesmo sem mudança de linhas.
+    final edicaoEnvolveFiado =
+        crv.vendaPossuiSaldoAReceber(vendaOriginal) || saldoFiadoPreview > 0.01;
+    final usarSaleEditServidor = EstoqueTransactionService.usaBackendConfiavel &&
+        (!itensEquivalentes || edicaoEnvolveFiado);
 
-    if (usarSaleEditServidor) {
+    if (usarSaleEditServidor && !itensEquivalentes) {
       final (
         itensParaEstoque,
         produtosEncontrados,

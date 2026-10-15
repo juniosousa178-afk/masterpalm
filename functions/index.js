@@ -5552,7 +5552,16 @@ export const stockCatalogCommand = onCall(
   async (request) => {
     try {
       const { executeStockCommand } = await import("./src/stockCatalogCommands.js");
-      return await executeStockCommand(db, request.data, request.auth);
+      const result = await executeStockCommand(db, request.data, request.auth);
+      if (request.data?.kind === "saleEdit") {
+        try {
+          const { saleEditAppliedLog } = await import("./src/stockCatalogSaleEditReceivable.js");
+          console.info(JSON.stringify(saleEditAppliedLog(request.data, result)));
+        } catch (_) {
+          // Logging must never change the callable outcome.
+        }
+      }
+      return result;
     } catch (error) {
       try {
         const { stockCommandRejectionLog } = await import("./src/stockCatalogSaleEdit.js");

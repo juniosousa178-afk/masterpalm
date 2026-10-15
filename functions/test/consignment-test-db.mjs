@@ -65,6 +65,12 @@ export function assertValidFirestoreData(value, path = '', inArray = false) {
   }
 }
 
+/** Top-level FieldValue.delete() in an update / set(merge) removes the stored field. */
+function withoutDeleted(merged, patch) {
+  for (const [k, v] of Object.entries(patch ?? {})) if (isSentinel(v, 'delete')) delete merged[k];
+  return merged;
+}
+
 function materialize(value) {
   if (isSentinel(value, 'serverTimestamp')) return new Date('2026-09-20T12:00:00.000Z');
   if (Array.isArray(value)) return value.map(materialize);
@@ -94,9 +100,36 @@ export function createConsignmentTestDb() {
       collection(name) { return makeColl([...segments, name]); },
     };
   }
+  function makeQuery(segments, filters, max) {
+    return {
+      _query: {segments, filters, max},
+      where(field, op, value) {
+        if (op !== '==') throw new Error(`Unsupported test query op ${op}`);
+        return makeQuery(segments, [...filters, {field, value}], max);
+      },
+      limit(n) { return makeQuery(segments, filters, n); },
+      async get() { return runQuery(store, this._query); },
+    };
+  }
+  function runQuery(source, {segments, filters, max}, onMatch) {
+    const prefix = `${segments.join('/')}/`;
+    const docs = [];
+    for (const [path, data] of [...source.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+      if (!path.startsWith(prefix)) continue;
+      const rest = path.slice(prefix.length);
+      if (!rest || rest.includes('/')) continue;
+      if (!filters.every(f => data?.[f.field] === f.value)) continue;
+      if (max !== undefined && docs.length >= max) break;
+      const ref = makeRef([...segments, rest]);
+      onMatch?.(ref);
+      docs.push({id: rest, ref, exists: true, data: () => cloneData(data)});
+    }
+    return {docs, empty: docs.length === 0, size: docs.length};
+  }
   function makeColl(segments) {
     return {
       doc(id) { return makeRef([...segments, id]); },
+      where(field, op, value) { return makeQuery(segments, [], undefined).where(field, op, value); },
       async get() {
         const prefix = `${segments.join('/')}/`;
         const docs = [];
@@ -139,6 +172,8 @@ export function createConsignmentTestDb() {
     lastCommit: null,
     /** Every committed transaction: {writes, transforms, ops: [{type, path}]}. */
     commits: [],
+    /** Collection paths queried inside transactions. */
+    queryReads: [],
     attempts: 0,
     /** (path, attempt) => void, called on every transactional read. */
     onRead: null,
@@ -163,13 +198,19 @@ export function createConsignmentTestDb() {
           if (data !== undefined) stats.transforms += countTransforms(data);
         };
         const tx = {
-          async get(ref) { return read(ref); },
+          async get(ref) {
+            if (ref?._query) {
+              db.queryReads.push(ref._query.segments.join('/'));
+              return runQuery(working, ref._query, read);
+            }
+            return read(ref);
+          },
           async getAll(...refs) { return refs.map(read); },
           set(ref, data, opts) {
             record('set', ref, data);
             assertValidFirestoreData(data);
             const prev = working.get(ref.path) || {};
-            const next = opts?.merge ? {...prev, ...materialize(data)} : materialize(data);
+            const next = opts?.merge ? withoutDeleted({...prev, ...materialize(data)}, data) : materialize(data);
             working.set(ref.path, next);
           },
           create(ref, data) {
@@ -192,7 +233,7 @@ export function createConsignmentTestDb() {
             }
             const prev = working.get(ref.path);
             const patch = materialize(data);
-            working.set(ref.path, {...prev, ...patch});
+            working.set(ref.path, withoutDeleted({...prev, ...patch}, data));
           },
           delete(ref) { record('delete', ref); working.delete(ref.path); },
         };

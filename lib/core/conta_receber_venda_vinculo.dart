@@ -21,6 +21,25 @@ double valorAReceberDaVenda(Venda venda) => calcularSaldoFiadoVenda(
       totalPagoAgora: totalPagoAgoraVenda(venda),
     );
 
+/// Saldo a receber do documento remoto da venda (`saldoFiado`, senão total − pagamentos).
+/// Null quando o documento não traz valores para decidir.
+double? saldoAReceberVendaRemota(Map<String, dynamic> data) {
+  final saldo = data['saldoFiado'];
+  if (saldo is num && saldo.isFinite) return saldo.toDouble().clamp(0.0, double.infinity);
+  final total = data['total'];
+  if (total is! num || !total.isFinite) return null;
+  double pago(String k) {
+    final v = data[k];
+    return v is num && v.isFinite ? v.toDouble() : 0.0;
+  }
+
+  return calcularSaldoFiadoVenda(
+    total: total.toDouble(),
+    totalPagoAgora:
+        pago('pagamentoDinheiro') + pago('pagamentoPix') + pago('pagamentoCartao'),
+  );
+}
+
 /// Venda fiada pura, mista (Pix + saldo) ou qualquer saldo a receber aberto.
 bool vendaPossuiSaldoAReceber(Venda venda) {
   if (venda.cancelada || venda.estornada) return false;

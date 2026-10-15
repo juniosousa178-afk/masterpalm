@@ -136,6 +136,14 @@ class StockCommandReason {
           'SALE_EDIT_TOO_LARGE' =>
             'Edição grande demais para uma única operação. Altere no máximo '
                 '25 produtos diferentes por vez. Nenhuma alteração foi feita.',
+          'RECEIVABLE_HAS_PAYMENTS' =>
+            'Não é possível remover o fiado: existem recebimentos registrados '
+                'nesta venda. Nenhuma alteração foi feita.',
+          'RECEIVABLE_REQUIRES_REVIEW' =>
+            'A conta a receber desta venda não pode ser ajustada automaticamente '
+                '(já tem recebimentos ou foi encerrada). Nenhuma alteração foi feita.',
+          'FIADO_DUE_DATE_REQUIRED' =>
+            'Informe a data de vencimento da venda fiada. Nenhuma alteração foi feita.',
           _ => 'Não foi possível validar a edição da venda. '
               'Nenhuma alteração foi feita.',
         };
