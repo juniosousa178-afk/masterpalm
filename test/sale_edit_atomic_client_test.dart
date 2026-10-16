@@ -11,6 +11,7 @@ import 'package:master_palm/core/conta_receber_identity.dart';
 import 'package:master_palm/core/dart_error_unwrap.dart';
 import 'package:master_palm/core/hive_box_names.dart';
 import 'package:master_palm/core/loja_ativa_resolver.dart';
+import 'package:master_palm/core/venda_estado_pagamento.dart';
 import 'package:master_palm/models/cliente.dart';
 import 'package:master_palm/models/conta_receber.dart';
 import 'package:master_palm/models/produto.dart';
@@ -156,6 +157,8 @@ void main() {
         'crPag': ({'code': 'INVALID_SALE_EDIT', 'reason': 'RECEIVABLE_HAS_PAYMENTS'}, 'recebimentos registrados'),
         'crRev': ({'code': 'INVALID_SALE_EDIT', 'reason': 'RECEIVABLE_REQUIRES_REVIEW'}, 'conta a receber'),
         'crVenc': ({'code': 'INVALID_SALE_EDIT', 'reason': 'FIADO_DUE_DATE_REQUIRED'}, 'data de vencimento'),
+        'pagConfirm': ({'code': 'PAYMENT_CHANGE_REQUIRES_CONFIRMATION'}, 'confirme a mudança'),
+        'pagMudou': ({'code': 'SALE_EDIT_CONFLICT', 'reason': 'PAYMENT_STATE_CHANGED'}, 'pagamento desta venda'),
       };
       casos.forEach((nome, c) {
         final e = _fx('failed-precondition', 'x', c.$1);
@@ -341,12 +344,16 @@ void main() {
       return v;
     }
 
-    Future<Venda> editar(Venda v, List<VendaItem> itens, {String intent = 'intent-1', String obs = 'editada'}) {
+    Future<Venda> editar(Venda v, List<VendaItem> itens,
+        {String intent = 'intent-1', String obs = 'editada', double? pix, bool fiado = false,
+        DateTime? vencimento, bool explicito = false}) {
       final total = itens.fold<double>(0, (a, i) => a + i.precoUnitario * i.quantidade);
       return VendasService.editarVendaMulti(
         vendaOriginal: v, produtosBox: produtosBox, clientesBox: clientesBox, vendasBox: vendasBox,
         clienteNome: 'Cliente SEA', clienteExistente: clientesBox.values.first,
-        itens: itens, pix: total, lojaId: lojaId, observacao: obs, saleEditIntentId: intent,
+        itens: itens, pix: pix ?? (fiado ? 0 : total), lojaId: lojaId, observacao: obs, saleEditIntentId: intent,
+        isFiado: fiado, dataVencimentoFiado: fiado ? (vencimento ?? DateTime(2026, 10, 10)) : null,
+        pagamentoAlteradoExplicitamente: explicito,
       );
     }
 
@@ -455,18 +462,23 @@ void main() {
       DocumentReference<Map<String, dynamic>> crRef() =>
           firestore.collection('lojas').doc(lojaId).collection('contas_receber').doc(crId);
 
-      Future<Venda> vendaFiadaComConta(List<VendaItem> itens) async {
+      Future<Venda> vendaFiadaComConta(List<VendaItem> itens, {double pix = 0}) async {
         final total = itens.fold<double>(0, (a, i) => a + i.precoUnitario * i.quantidade);
+        final aberto = total - pix;
         final v = Venda(
           clienteNome: 'Cliente SEA', produtosDescricao: 'orig', quantidade: itens.length,
-          preco: total, total: total, formasPagamento: 'Fiado - R\$ $total. Vencimento: 10/10/2026',
+          preco: total, total: total,
+          formasPagamento: [
+            if (pix > 0) 'Pagamento Pix: R\$ $pix',
+            'Fiado - R\$ $aberto. Vencimento: 10/10/2026',
+          ].join('\n'),
           data: DateTime(2026, 9, 9), vendedor: 'App', observacao: 'orig', itens: itens,
-          lojaId: lojaId, idFirebase: 'sale-1',
+          pagamentoPix: pix, lojaId: lojaId, idFirebase: 'sale-1',
         );
         await vendasBox.add(v);
         remoto = {'itens': itens.map(VendasFirestoreService.itemParaFirestore).toList(), 'lojaId': lojaId};
         final conta = ContaReceber(
-          lojaId: lojaId, clienteNome: 'Cliente SEA', valor: total, valorOriginal: total,
+          lojaId: lojaId, clienteNome: 'Cliente SEA', valor: aberto, valorOriginal: aberto,
           dataVencimento: DateTime(2026, 10, 10), dataVenda: DateTime(2026, 9, 9),
           vendaKey: v.key as int, vendaIdFirebase: 'sale-1', parcelaNumero: 1, parcelaTotal: 1,
         );
@@ -499,16 +511,21 @@ void main() {
 
       Future<void> drenarSyncAgendado() => Future<void>.delayed(const Duration(milliseconds: 50));
 
-      test('fiado → Pix sem mudar linhas passa pelo saleEdit; conta remota não fica pendente', () async {
+      test('fiado → Pix explícito sem mudar linhas passa pelo saleEdit; conta remota não fica pendente', () async {
         final v = await vendaFiadaComConta([linha('a', 1)]);
         servidorReconciliaConta();
-        await editar(v, [linha('a', 1)]);
+        await editar(v, [linha('a', 1)], explicito: true);
         await drenarSyncAgendado();
 
         final cmds = comandosEstoque();
         expect(cmds, hasLength(1), reason: 'o servidor reconcilia a conta no commit da venda');
         expect(cmds.single['kind'], 'saleEdit');
-        final sale = (cmds.single['saleEdit'] as Map)['sale'] as Map;
+        final saleEdit = cmds.single['saleEdit'] as Map;
+        expect(saleEdit['paymentChange'], {
+          'explicit': true,
+          'from': {'fiado': true, 'dinheiro': 0.0, 'pix': 0.0, 'cartao': 0.0},
+        });
+        final sale = saleEdit['sale'] as Map;
         expect(sale.containsKey('saldoFiado'), isFalse);
         expect(sale['pagamentoPix'], 10);
 
@@ -527,7 +544,7 @@ void main() {
             {'code': 'INVALID_SALE_EDIT', 'reason': 'RECEIVABLE_HAS_PAYMENTS'});
         Object? erro;
         try {
-          await editar(v, [linha('a', 1)]);
+          await editar(v, [linha('a', 1)], explicito: true);
         } catch (e) {
           erro = e;
         }
@@ -537,6 +554,129 @@ void main() {
         final remota = (await crRef().get()).data()!;
         expect(remota['cancelada'], isFalse);
         expect(remota['saldoAtual'], 10);
+      });
+
+      /// Servidor fake que aplica a edição e acompanha as linhas salvas na nuvem.
+      void servidorAceita() {
+        var rev = 0;
+        StockCatalogBackendService.debugTransport = (name, data) async {
+          chamadas.add({'name': name, ...data});
+          final sale = (data['saleEdit'] as Map)['sale'] as Map;
+          remoto = {'itens': sale['itens'], 'lojaId': lojaId, 'saleEditRevision': ++rev};
+          return {
+            'alreadyApplied': false, 'operationId': data['operationId'], 'products': <Object>[],
+            'saleId': 'sale-1', 'saleEditRevision': rev, 'saleCommitted': true, 'stockChanged': true,
+            'receivable': {'action': 'UPDATE', 'count': 1},
+          };
+        };
+      }
+
+      /// Abre o editor sobre a venda salva e salva sem tocar no pagamento.
+      Future<Venda> salvarComoEditor(Venda v, List<VendaItem> itens,
+          {String obs = 'editada', String intent = 'intent-1'}) {
+        final h = hidratarPagamentoEdicao(v, hoje: DateTime(2026, 9, 20));
+        final pix = h.pagamentos
+            .where((p) => p['forma'] == 'Pix')
+            .fold<double>(0, (a, p) => a + (p['valor'] as num).toDouble());
+        return editar(v, itens, obs: obs, intent: intent, fiado: h.fiado, pix: pix, vencimento: h.vencimentoFiado);
+      }
+
+      Map saleEditEnviado() => comandosEstoque().last['saleEdit'] as Map;
+
+      test('BUG 1.0.137: saída do editor antigo (Pix = total inferido) é bloqueada antes de qualquer envio', () async {
+        final v = await vendaFiadaComConta([linha('a', 1)]);
+        servidorReconciliaConta();
+        Object? erro;
+        try {
+          await editar(v, [linha('a', 1)], obs: 'só nota', pix: 10);
+        } catch (e) {
+          erro = e;
+        }
+        expect(erro, isA<AlteracaoPagamentoNaoConfirmadaException>());
+        expect(formatSalvarVendaErrorForUser(erro!), contains('Nenhuma alteração foi feita'));
+        expect(formatSalvarVendaErrorForUser(erro), isNot(contains('estoque')));
+        expect(comandosEstoque(), isEmpty);
+        final salva = vendasBox.values.single;
+        expect(salva.pagamentoPix, 0);
+        expect(salva.observacao, 'orig');
+        expect(salva.formasPagamento, contains('Fiado'));
+        expect((await crRef().get()).data()!['cancelada'], isFalse);
+      });
+
+      test('só observação (editor hidratado): continua fiado, vencimento salvo, sem paymentChange', () async {
+        final v = await vendaFiadaComConta([linha('a', 1)]);
+        servidorReconciliaConta();
+        await salvarComoEditor(v, [linha('a', 1)], obs: 'só nota');
+        await drenarSyncAgendado();
+
+        final se = saleEditEnviado();
+        expect(se.containsKey('paymentChange'), isFalse);
+        final sale = se['sale'] as Map;
+        expect(sale['saldoFiado'], closeTo(10, 0.001));
+        expect(sale['pagamentoPix'], 0);
+        expect(DateTime.parse(sale['dataVencimentoFiado'] as String).toLocal(), DateTime(2026, 10, 10));
+        final salva = vendasBox.values.single;
+        expect(salva.observacao, 'só nota');
+        expect(salva.formasPagamento, contains('Fiado - R\$ 10.00. Vencimento: 10/10/2026'));
+        expect(salva.pagamentoPix, 0);
+        final remota = (await crRef().get()).data()!;
+        expect(remota['cancelada'], isFalse);
+        expect(remota['saldoAtual'], 10);
+      });
+
+      test('só produtos: continua fiado com o novo saldo, sem paymentChange', () async {
+        final v = await vendaFiadaComConta([linha('a', 2)]);
+        servidorAceita();
+        await salvarComoEditor(v, [linha('a', 1)]);
+        final se = saleEditEnviado();
+        expect(se.containsKey('paymentChange'), isFalse);
+        expect((se['sale'] as Map)['saldoFiado'], closeTo(10, 0.001));
+        expect((se['sale'] as Map)['pagamentoPix'], 0);
+      });
+
+      test('misto Pix + fiado: mantém o Pix pago e o saldo, sem paymentChange', () async {
+        final v = await vendaFiadaComConta([linha('a', 2)], pix: 4);
+        servidorAceita();
+        await salvarComoEditor(v, [linha('a', 1)]);
+        final se = saleEditEnviado();
+        expect(se.containsKey('paymentChange'), isFalse);
+        final sale = se['sale'] as Map;
+        expect(sale['pagamentoPix'], 4);
+        expect(sale['saldoFiado'], closeTo(6, 0.001));
+      });
+
+      test('MIR: seis remoções reabrindo o editor mantêm fiado; Pix só com mudança explícita', () async {
+        var v = await vendaFiadaComConta([linha('a', 4), linha('b', 3)]);
+        servidorAceita();
+        final passos = [
+          [linha('a', 4), linha('b', 2)],
+          [linha('a', 4), linha('b', 1)],
+          [linha('a', 4)],
+          [linha('a', 3)],
+          [linha('a', 2)],
+          [linha('a', 1)],
+        ];
+        for (var i = 0; i < passos.length; i++) {
+          v = vendasBox.values.single;
+          await salvarComoEditor(v, passos[i], intent: 'mir-$i');
+          final se = saleEditEnviado();
+          final total = passos[i].fold<double>(0, (a, l) => a + l.precoUnitario * l.quantidade);
+          expect(se.containsKey('paymentChange'), isFalse, reason: 'passo $i');
+          expect((se['sale'] as Map)['saldoFiado'], closeTo(total, 0.001), reason: 'passo $i');
+          expect((se['sale'] as Map)['pagamentoPix'], 0, reason: 'passo $i');
+        }
+        final salva = vendasBox.values.single;
+        expect(salva.total, 10);
+        expect(salva.pagamentoPix, 0);
+        expect(EstadoPagamentoVenda.daVenda(salva).fiado, isTrue);
+
+        await editar(salva, [linha('a', 1)], pix: 10, explicito: true, intent: 'mir-pix');
+        final se = saleEditEnviado();
+        expect(se['paymentChange'], {
+          'explicit': true,
+          'from': {'fiado': true, 'dinheiro': 0.0, 'pix': 0.0, 'cartao': 0.0},
+        });
+        expect((se['sale'] as Map).containsKey('saldoFiado'), isFalse);
       });
     });
   });

@@ -19,6 +19,7 @@ import '../diagnostics/diagnostic_enums.dart';
 import '../diagnostics/diagnostic_trace_service.dart';
 import '../services/venda_produto_stock_hydrate_service.dart';
 import '../core/strict_product_resolution.dart';
+import '../core/venda_estado_pagamento.dart';
 import '../core/venda_finalizacao_reentrada_guard.dart';
 import '../core/pdv_sale_intent_lifecycle.dart';
 import '../core/venda_metrics_filter.dart';
@@ -129,6 +130,14 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
   int _pendenteDiasVencimento = 30;
   int _pendenteQtdParcelasFiado = 1;
   int _pendenteIntervaloParcelasDias = 30;
+
+  /// Edição: o usuário mexeu nos controles de pagamento (formas, valores, fiado).
+  /// Abrir o editor, hidratar, mudar observação ou produtos não conta.
+  bool _pagamentoAlteradoPeloUsuario = false;
+
+  /// Edição: o usuário mexeu em vencimento/parcelas; senão o vencimento salvo é mantido.
+  bool _termosFiadoAlterados = false;
+  DateTime? _vencimentoFiadoOriginal;
 
   final _finalizacaoReentradaGuard = VendaFinalizacaoReentradaGuard();
   final _pdvSaleIntentLifecycle = PdvSaleIntentLifecycle();
@@ -275,17 +284,15 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
       ];
     }
 
-    pagamentos = [];
-    if (v.pagamentoDinheiro > 0) {
-      pagamentos.add({'forma': 'Dinheiro', 'valor': v.pagamentoDinheiro});
-    }
-    if (v.pagamentoPix > 0) {
-      pagamentos.add({'forma': 'Pix', 'valor': v.pagamentoPix});
-    }
-    if (v.pagamentoCartao > 0) {
-      pagamentos.add({'forma': 'Cartão', 'valor': v.pagamentoCartao});
-    }
-    if (pagamentos.isEmpty) pagamentos.add({'forma': 'Pix', 'valor': v.total});
+    final pagamento = hidratarPagamentoEdicao(v);
+    pagamentos = pagamento.pagamentos;
+    _pendenteFiado = pagamento.fiado;
+    _pendenteDiasVencimento = pagamento.diasVencimento;
+    _pendenteQtdParcelasFiado = pagamento.quantidadeParcelas;
+    _pendenteIntervaloParcelasDias = pagamento.intervaloDias;
+    _vencimentoFiadoOriginal = pagamento.vencimentoFiado;
+    _pagamentoAlteradoPeloUsuario = false;
+    _termosFiadoAlterados = false;
 
     for (final c in _valorControllers) {
       c.dispose();
@@ -758,6 +765,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
   void _preencherComTotal() {
     final total = _calcularTotal();
     if (pagamentos.isEmpty) return;
+    _pagamentoAlteradoPeloUsuario = true;
     pagamentos[0]['valor'] = total;
     if (_valorControllers.isNotEmpty) {
       _valorControllers[0].text = MoedaInputFormatter.format(total);
@@ -1426,9 +1434,16 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
               },
             )
             .toList(),
+        initialFiado: _pendenteFiado,
+        initialDiasVencimento: _pendenteDiasVencimento,
+        initialQuantidadeParcelasFiado: _pendenteQtdParcelasFiado,
+        initialIntervaloParcelasDias: _pendenteIntervaloParcelasDias,
       );
 
       if (result == null || !mounted) return;
+
+      _pagamentoAlteradoPeloUsuario |= result.pagamentoAlteradoPeloUsuario;
+      _termosFiadoAlterados |= result.termosFiadoAlterados;
 
       if (result.isFiado) {
         _pendenteFiado = true;
@@ -2208,7 +2223,8 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
             : null,
         onLocalPersistUiReady: releaseUiEarly,
       );
-      _pendenteFiado = false;
+      // Edição que falhou continua com o estado de pagamento hidratado/escolhido.
+      if (!_modoEdicao) _pendenteFiado = false;
       debugPrint(
         '[H1-TRACE] stage=ui_after_salvar_venda_background '
         'ok=$ok mounted=$mounted early=$uiReleasedEarly '
@@ -2343,13 +2359,16 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
               onErro?.call(message);
             },
             isFiado: isFiado,
-            dataVencimentoFiado: isFiado
-                ? DateTime.now().add(Duration(days: diasVencimentoFiado))
-                : null,
+            dataVencimentoFiado: !isFiado
+                ? null
+                : (!_termosFiadoAlterados && _vencimentoFiadoOriginal != null)
+                    ? _vencimentoFiadoOriginal
+                    : DateTime.now().add(Duration(days: diasVencimentoFiado)),
             quantidadeParcelasFiado: quantidadeParcelasFiado,
             intervaloParcelasDias: intervaloParcelasDias,
             itensComboSelecaoPorIndice: itensComboSelecaoPorIndice,
             saleEditIntentId: _saleEditIntentId,
+            pagamentoAlteradoExplicitamente: _pagamentoAlteradoPeloUsuario,
           );
           return (true, null, null);
         } on VendaSalvaComPendenciaSyncException catch (e) {
@@ -3267,9 +3286,10 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                         ),
                                       )
                                       .toList(),
-                                  onChanged: (value) => setState(
-                                    () => pagamentos[index]['forma'] = value,
-                                  ),
+                                  onChanged: (value) => setState(() {
+                                    _pagamentoAlteradoPeloUsuario = true;
+                                    pagamentos[index]['forma'] = value;
+                                  }),
                                 ),
                               ),
                               const SizedBox(width: 8),
@@ -3279,6 +3299,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                   controller: valorCtrl,
                                   labelText: 'Valor',
                                   onChanged: (value) {
+                                    _pagamentoAlteradoPeloUsuario = true;
                                     pagamentos[index]['valor'] = value;
                                     setState(() {});
                                   },
@@ -3291,6 +3312,7 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                                 ),
                                 onPressed: () {
                                   setState(() {
+                                    _pagamentoAlteradoPeloUsuario = true;
                                     if (index < _valorControllers.length) {
                                       _valorControllers[index].dispose();
                                       _valorControllers.removeAt(index);
@@ -3315,12 +3337,10 @@ class _NovaVendaModalState extends State<NovaVendaModal> {
                               label: const Text('Adicionar forma'),
                               onPressed: () {
                                 _valorControllers.add(TextEditingController());
-                                setState(
-                                  () => pagamentos.add({
-                                    'forma': 'Pix',
-                                    'valor': 0.0,
-                                  }),
-                                );
+                                setState(() {
+                                  _pagamentoAlteradoPeloUsuario = true;
+                                  pagamentos.add({'forma': 'Pix', 'valor': 0.0});
+                                });
                               },
                             ),
                             TextButton.icon(

@@ -266,6 +266,7 @@ void main() {
           pix: totalReais,
           lojaId: lojaId,
           isFiado: false,
+          pagamentoAlteradoExplicitamente: true,
         );
 
         expect(edited.pagamentoPix, closeTo(totalReais, 0.01));
@@ -312,6 +313,7 @@ void main() {
             pix: totalReais,
             lojaId: lojaId,
             isFiado: false,
+            pagamentoAlteradoExplicitamente: true,
           ),
           throwsA(
             predicate<ArgumentError>(
@@ -461,6 +463,7 @@ void main() {
           pix: totalReais,
           lojaId: lojaId,
           isFiado: false,
+          pagamentoAlteradoExplicitamente: true,
         ),
         throwsA(isA<StateError>()),
       );

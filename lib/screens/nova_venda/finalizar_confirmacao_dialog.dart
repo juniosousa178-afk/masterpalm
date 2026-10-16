@@ -14,6 +14,12 @@ class FinalizarVendaResult {
   final int quantidadeParcelasFiado;
   final int intervaloParcelasDias;
 
+  /// O usuário mexeu em fiado, formas ou valores neste diálogo.
+  final bool pagamentoAlteradoPeloUsuario;
+
+  /// O usuário mexeu em vencimento ou parcelas neste diálogo.
+  final bool termosFiadoAlterados;
+
   FinalizarVendaResult({
     required this.pagamentos,
     required this.trocoTotal,
@@ -21,6 +27,8 @@ class FinalizarVendaResult {
     this.diasVencimento = 30,
     this.quantidadeParcelasFiado = 1,
     this.intervaloParcelasDias = 30,
+    this.pagamentoAlteradoPeloUsuario = false,
+    this.termosFiadoAlterados = false,
   });
 }
 
@@ -34,6 +42,12 @@ class FinalizarVendaConfirmacaoDialog extends StatefulWidget {
   final double frete;
   final double desconto;
   final List<Map<String, dynamic>>? initialPagamentos;
+
+  /// Venda já fiada (edição): abre marcada, sem completar o saldo com Pix.
+  final bool initialFiado;
+  final int initialDiasVencimento;
+  final int initialQuantidadeParcelasFiado;
+  final int initialIntervaloParcelasDias;
   final VoidCallback onCancelar;
   final void Function(FinalizarVendaResult result) onConfirmar;
 
@@ -44,6 +58,10 @@ class FinalizarVendaConfirmacaoDialog extends StatefulWidget {
     this.frete = 0,
     this.desconto = 0,
     this.initialPagamentos,
+    this.initialFiado = false,
+    this.initialDiasVencimento = 30,
+    this.initialQuantidadeParcelasFiado = 1,
+    this.initialIntervaloParcelasDias = 30,
     required this.onCancelar,
     required this.onConfirmar,
   });
@@ -55,6 +73,10 @@ class FinalizarVendaConfirmacaoDialog extends StatefulWidget {
     double frete = 0,
     double desconto = 0,
     List<Map<String, dynamic>>? initialPagamentos,
+    bool initialFiado = false,
+    int initialDiasVencimento = 30,
+    int initialQuantidadeParcelasFiado = 1,
+    int initialIntervaloParcelasDias = 30,
   }) async {
     return showDialog<FinalizarVendaResult>(
       context: context,
@@ -65,6 +87,10 @@ class FinalizarVendaConfirmacaoDialog extends StatefulWidget {
         frete: frete,
         desconto: desconto,
         initialPagamentos: initialPagamentos,
+        initialFiado: initialFiado,
+        initialDiasVencimento: initialDiasVencimento,
+        initialQuantidadeParcelasFiado: initialQuantidadeParcelasFiado,
+        initialIntervaloParcelasDias: initialIntervaloParcelasDias,
       ),
     );
   }
@@ -80,6 +106,10 @@ class _DialogHolder extends StatelessWidget {
   final double frete;
   final double desconto;
   final List<Map<String, dynamic>>? initialPagamentos;
+  final bool initialFiado;
+  final int initialDiasVencimento;
+  final int initialQuantidadeParcelasFiado;
+  final int initialIntervaloParcelasDias;
 
   const _DialogHolder({
     required this.total,
@@ -87,6 +117,10 @@ class _DialogHolder extends StatelessWidget {
     required this.frete,
     required this.desconto,
     this.initialPagamentos,
+    required this.initialFiado,
+    required this.initialDiasVencimento,
+    required this.initialQuantidadeParcelasFiado,
+    required this.initialIntervaloParcelasDias,
   });
 
   @override
@@ -97,6 +131,10 @@ class _DialogHolder extends StatelessWidget {
       frete: frete,
       desconto: desconto,
       initialPagamentos: initialPagamentos,
+      initialFiado: initialFiado,
+      initialDiasVencimento: initialDiasVencimento,
+      initialQuantidadeParcelasFiado: initialQuantidadeParcelasFiado,
+      initialIntervaloParcelasDias: initialIntervaloParcelasDias,
       onCancelar: () => Navigator.pop(context),
       onConfirmar: (r) => Navigator.pop(context, r),
     );
@@ -109,14 +147,26 @@ class _FinalizarVendaConfirmacaoDialogState
   final List<TextEditingController> _valorControllers = [];
   final List<TextEditingController> _valorRecebidoControllers = [];
   bool _vendaFiada = false;
-  final TextEditingController _diasVencimentoController = TextEditingController(text: '30');
-  final TextEditingController _quantidadeParcelasController = TextEditingController(text: '1');
-  final TextEditingController _intervaloParcelasController = TextEditingController(text: '30');
+  late final TextEditingController _diasVencimentoController;
+  late final TextEditingController _quantidadeParcelasController;
+  late final TextEditingController _intervaloParcelasController;
   bool _fiadoParcelado = false;
+  bool _pagamentoAlterado = false;
+  bool _termosFiadoAlterados = false;
 
   @override
   void initState() {
     super.initState();
+    _vendaFiada = widget.initialFiado;
+    _fiadoParcelado = widget.initialFiado && widget.initialQuantidadeParcelasFiado > 1;
+    _diasVencimentoController =
+        TextEditingController(text: '${widget.initialDiasVencimento}');
+    _quantidadeParcelasController =
+        TextEditingController(text: '${widget.initialQuantidadeParcelasFiado}');
+    _intervaloParcelasController =
+        TextEditingController(text: '${widget.initialIntervaloParcelasDias}');
+    // Fiado: o que não foi pago é saldo a receber, nunca Pix presumido.
+    final completarComTotal = !widget.initialFiado;
     // Preserva a seleção do formulário principal (Pix/Dinheiro/Cartão)
     final init = widget.initialPagamentos;
     if (init != null && init.isNotEmpty) {
@@ -131,7 +181,7 @@ class _FinalizarVendaConfirmacaoDialogState
         final forma = (p['forma'] ?? 'Pix').toString();
         final val = (p['valor'] is num) ? (p['valor'] as num).toDouble() : 0.0;
         // Preserva o split. Só coloca total no primeiro quando NADA foi preenchido (soma == 0)
-        final valorFinal = (soma >= totalVal - 0.01 || soma > 0)
+        final valorFinal = (!completarComTotal || soma >= totalVal - 0.01 || soma > 0)
             ? val
             : (entry.key == 0 ? totalVal : 0.0);
         return {
@@ -140,20 +190,23 @@ class _FinalizarVendaConfirmacaoDialogState
           'valorRecebido': null,
         };
       }).toList();
-      if (soma < 0.01 && _pagamentos.isNotEmpty) {
+      if (completarComTotal && soma < 0.01 && _pagamentos.isNotEmpty) {
         _pagamentos[0]['valor'] = totalVal;
       }
       for (final p in _pagamentos) {
         final v = (p['valor'] as num?)?.toDouble() ?? 0.0;
-        _valorControllers.add(TextEditingController(text: MoedaInputFormatter.format(v)));
+        _valorControllers.add(TextEditingController(
+          text: v > 0 || completarComTotal ? MoedaInputFormatter.format(v) : '',
+        ));
         _valorRecebidoControllers.add(TextEditingController());
       }
     } else {
+      final inicial = completarComTotal ? widget.total : 0.0;
       _pagamentos = [
-        {'forma': 'Pix', 'valor': widget.total, 'valorRecebido': null}
+        {'forma': 'Pix', 'valor': inicial, 'valorRecebido': null}
       ];
       _valorControllers.add(TextEditingController(
-        text: MoedaInputFormatter.format(widget.total),
+        text: completarComTotal ? MoedaInputFormatter.format(inicial) : '',
       ));
       _valorRecebidoControllers.add(TextEditingController());
     }
@@ -213,6 +266,7 @@ class _FinalizarVendaConfirmacaoDialogState
 
   void _adicionarForma() {
     setState(() {
+      _pagamentoAlterado = true;
       _pagamentos.add({'forma': 'Pix', 'valor': 0.0, 'valorRecebido': null});
       _valorControllers.add(TextEditingController());
       _valorRecebidoControllers.add(TextEditingController());
@@ -222,6 +276,7 @@ class _FinalizarVendaConfirmacaoDialogState
   void _removerForma(int index) {
     if (_pagamentos.length <= 1) return;
     setState(() {
+      _pagamentoAlterado = true;
       _valorControllers[index].dispose();
       _valorRecebidoControllers[index].dispose();
       _valorControllers.removeAt(index);
@@ -246,6 +301,7 @@ class _FinalizarVendaConfirmacaoDialogState
 
   void _preencherComTotal() {
     if (_pagamentos.isEmpty) return;
+    _pagamentoAlterado = true;
     _pagamentos[0]['valor'] = widget.total;
     _valorControllers[0].text = MoedaInputFormatter.format(widget.total);
     _valorControllers[0].selection = TextSelection.collapsed(
@@ -257,6 +313,7 @@ class _FinalizarVendaConfirmacaoDialogState
   void _aoAlternarVendaFiada(bool? marcado) {
     final fiado = marcado ?? false;
     setState(() {
+      _pagamentoAlterado = true;
       _vendaFiada = fiado;
       if (fiado) {
         _zerarPagamentosAdiantado();
@@ -299,6 +356,8 @@ class _FinalizarVendaConfirmacaoDialogState
         diasVencimento: dias.clamp(1, 365),
         quantidadeParcelasFiado: qtdParcelas,
         intervaloParcelasDias: intervaloDias,
+        pagamentoAlteradoPeloUsuario: _pagamentoAlterado,
+        termosFiadoAlterados: _termosFiadoAlterados,
       ));
       return;
     }
@@ -306,8 +365,12 @@ class _FinalizarVendaConfirmacaoDialogState
     widget.onConfirmar(FinalizarVendaResult(
       pagamentos: pagamentosFinais,
       trocoTotal: _calcularTrocoTotal(),
+      pagamentoAlteradoPeloUsuario: _pagamentoAlterado,
+      termosFiadoAlterados: _termosFiadoAlterados,
     ));
   }
+
+  void _aoAlterarTermosFiado() => setState(() => _termosFiadoAlterados = true);
 
   String _fmt2(num v) => v.toStringAsFixed(2).replaceAll('.', ',');
 
@@ -472,7 +535,7 @@ class _FinalizarVendaConfirmacaoDialogState
                           TextField(
                             controller: _diasVencimentoController,
                             keyboardType: TextInputType.number,
-                            onChanged: (_) => setState(() {}),
+                            onChanged: (_) => _aoAlterarTermosFiado(),
                             decoration: const InputDecoration(
                               labelText: '1º vencimento em (dias)',
                               border: OutlineInputBorder(),
@@ -483,7 +546,10 @@ class _FinalizarVendaConfirmacaoDialogState
                           SwitchListTile.adaptive(
                             contentPadding: EdgeInsets.zero,
                             value: _fiadoParcelado,
-                            onChanged: (v) => setState(() => _fiadoParcelado = v),
+                            onChanged: (v) => setState(() {
+                              _fiadoParcelado = v;
+                              _termosFiadoAlterados = true;
+                            }),
                             title: const Text('Dividir em parcelas'),
                           ),
                           if (_fiadoParcelado) ...[
@@ -493,7 +559,7 @@ class _FinalizarVendaConfirmacaoDialogState
                                   child: TextField(
                                     controller: _quantidadeParcelasController,
                                     keyboardType: TextInputType.number,
-                                    onChanged: (_) => setState(() {}),
+                                    onChanged: (_) => _aoAlterarTermosFiado(),
                                     decoration: const InputDecoration(
                                       labelText: 'Parcelas',
                                       border: OutlineInputBorder(),
@@ -506,7 +572,7 @@ class _FinalizarVendaConfirmacaoDialogState
                                   child: TextField(
                                     controller: _intervaloParcelasController,
                                     keyboardType: TextInputType.number,
-                                    onChanged: (_) => setState(() {}),
+                                    onChanged: (_) => _aoAlterarTermosFiado(),
                                     decoration: const InputDecoration(
                                       labelText: 'Intervalo (dias)',
                                       border: OutlineInputBorder(),
@@ -617,9 +683,10 @@ class _FinalizarVendaConfirmacaoDialogState
                                   ),
                                 )
                                 .toList(),
-                            onChanged: (v) => setState(
-                              () => _pagamentos[i]['forma'] = v ?? 'Pix',
-                            ),
+                            onChanged: (v) => setState(() {
+                              _pagamentoAlterado = true;
+                              _pagamentos[i]['forma'] = v ?? 'Pix';
+                            }),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -629,6 +696,7 @@ class _FinalizarVendaConfirmacaoDialogState
                             controller: _valorControllers[i],
                             labelText: 'Valor',
                             onChanged: (value) {
+                              _pagamentoAlterado = true;
                               _pagamentos[i]['valor'] = value;
                               setState(() {});
                             },

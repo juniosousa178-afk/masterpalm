@@ -24,6 +24,7 @@ import '../core/strict_product_resolution.dart';
 import '../core/sale_forensic_trace.dart';
 import '../core/delete_forensic_trace.dart';
 import '../core/produto_effective_stock.dart';
+import '../core/venda_estado_pagamento.dart';
 import '../utils/text_utils.dart';
 import '../services/campaign_engine_service.dart'; // 🎯 integração com campanhas/sorteio (centralizado)
 import '../services/clientes_firestore_service.dart'; // 🔹 sincronização de clientes
@@ -3079,6 +3080,7 @@ class VendasService {
     required Venda rascunho,
     required String lojaId,
     required String editIntentId,
+    Map<String, dynamic>? paymentChange,
   }) async {
     final hashOriginal =
         VendaEdicaoEstoqueDiff.saleEditLinesHash(vendaOriginal.itensOuVazio);
@@ -3123,7 +3125,9 @@ class VendasService {
       saleId: saleId,
       editIntentId: editIntentId,
       originalLinesHash: hashOriginal,
-      salePayload: sale,
+      salePayload: paymentChange == null
+          ? sale
+          : {...sale, 'paymentChange': paymentChange},
     );
     debugPrint(
       '[VENDA-EDICAO] saleEdit vendaId=$saleId operationId=$operationId '
@@ -3136,6 +3140,7 @@ class VendasService {
         saleId: saleId,
         expectedOriginalLinesHash: hashOriginal,
         sale: sale,
+        paymentChange: paymentChange,
       );
     } catch (e) {
       if (StockCommandReason.code(e) == StockCommandReason.saleEditConflict) {
@@ -3247,6 +3252,7 @@ class VendasService {
     Map<int, List<Map<String, dynamic>>>? itensComboSelecaoPorIndice,
     DateTime? dataVenda,
     String? saleEditIntentId,
+    bool pagamentoAlteradoExplicitamente = false,
   }) async {
     if (itens.isEmpty) {
       throw Exception('Nenhum item informado.');
@@ -3262,6 +3268,28 @@ class VendasService {
       (acc, it) => acc + (it.precoUnitario * it.quantidade),
     );
     final totalPreview = subtotalPreview * (1 - descontoPct / 100) + frete;
+
+    final estadoPagamentoOriginal = EstadoPagamentoVenda.daVenda(vendaOriginal);
+    final pagamentoMudou = !estadoPagamentoOriginal.equivalente(
+      EstadoPagamentoVenda.daEdicao(
+        isFiado: isFiado,
+        total: totalPreview,
+        dinheiro: dinheiro,
+        pix: pix,
+        cartao: cartao,
+      ),
+    );
+    if (pagamentoMudou &&
+        estadoPagamentoOriginal.fiado &&
+        !pagamentoAlteradoExplicitamente) {
+      throw AlteracaoPagamentoNaoConfirmadaException();
+    }
+    final paymentChange = pagamentoMudou && pagamentoAlteradoExplicitamente
+        ? <String, dynamic>{
+            'explicit': true,
+            'from': estadoPagamentoOriginal.toJson(),
+          }
+        : null;
 
     validarParametrosVendaFiada(
       isFiado: isFiado,
@@ -3599,6 +3627,7 @@ class VendasService {
         editIntentId: (saleEditIntentId ?? '').trim().isNotEmpty
             ? saleEditIntentId!.trim()
             : const Uuid().v4(),
+        paymentChange: paymentChange,
       );
       await _projetarResultadoSaleEdit(
         lojaId: lojaEfetiva,

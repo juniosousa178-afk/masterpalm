@@ -66,6 +66,8 @@ class StockCommandReason {
   static const saleEditConflict = 'SALE_EDIT_CONFLICT';
   static const invalidSaleEdit = 'INVALID_SALE_EDIT';
   static const operationPayloadConflict = 'OPERATION_PAYLOAD_CONFLICT';
+  static const paymentChangeRequiresConfirmation =
+      'PAYMENT_CHANGE_REQUIRES_CONFIRMATION';
 
   static const _conhecidos = {
     stockChanged,
@@ -75,6 +77,7 @@ class StockCommandReason {
     saleEditConflict,
     invalidSaleEdit,
     operationPayloadConflict,
+    paymentChangeRequiresConfirmation,
   };
 
   static Map<dynamic, dynamic>? _details(Object error) {
@@ -112,8 +115,16 @@ class StockCommandReason {
             'de estoque com segurança. Nenhuma alteração foi feita. '
             'Atualize o aplicativo e tente novamente.';
       case saleEditConflict:
+        if (reason(error) == 'PAYMENT_STATE_CHANGED') {
+          return 'O pagamento desta venda foi alterado em outro aparelho. Nenhuma '
+              'alteração foi feita. Abra a venda novamente e confira o pagamento.';
+        }
         return 'Esta venda foi alterada em outro aparelho. Nenhuma alteração foi '
             'feita. Abra a venda novamente e refaça a edição.';
+      case paymentChangeRequiresConfirmation:
+        return 'Esta venda possui uma conta a receber ativa. Para alterar a forma '
+            'de pagamento, confirme a mudança no campo de pagamento e salve '
+            'novamente. Nenhuma alteração foi feita.';
       case operationPayloadConflict:
         return 'Esta edição já foi registrada com outros dados. Nenhuma alteração '
             'foi feita. Abra a venda novamente antes de repetir.';
@@ -489,6 +500,7 @@ class StockCatalogBackendService {
     required String saleId,
     required String expectedOriginalLinesHash,
     required Map<String, dynamic> sale,
+    Map<String, dynamic>? paymentChange,
   }) {
     const build = '$kClientAppVersion+$kClientBuildId';
     return _send(
@@ -504,6 +516,7 @@ class StockCatalogBackendService {
           'saleId': _id(saleId),
           'expectedOriginalLinesHash': expectedOriginalLinesHash,
           'sale': sale,
+          if (paymentChange != null) 'paymentChange': paymentChange,
         },
         if (_clientBuildValido.hasMatch(build)) 'clientBuild': build,
       },
