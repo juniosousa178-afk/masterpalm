@@ -250,6 +250,75 @@ test('cross-tenant hide denied', async () => {
   assert.deepEqual(db.snapshot(), snap);
 });
 
+test('fail-closed matrix A-I: every refusal writes nothing', async () => {
+  const {db, base, lojaId} = seedStore();
+  const ref = id => base.collection('consignments').doc(id);
+  const totalReturn = async () => {
+    const id = await issued(db, lojaId, [line('A', 1)]);
+    await settle(db, base, lojaId, id);
+    return id;
+  };
+
+  const a = await issued(db, lojaId, [line('A', 1)]);
+  await assertRejectedWithoutWrites(db, hide(db, lojaId, a));
+  const b = await draft(db, lojaId, [line('A', 1)]);
+  await assertRejectedWithoutWrites(db, hide(db, lojaId, b));
+  const c = await issued(db, lojaId, [line('B', 2)]);
+  await settle(db, base, lojaId, c, () => 1);
+  await assertRejectedWithoutWrites(db, hide(db, lojaId, c), 'HAS_SALE');
+  const d = await totalReturn();
+  db.seed(ref(d), {...consignment(db, base, d), grossSoldAmount: 0.01});
+  await assertRejectedWithoutWrites(db, hide(db, lojaId, d), 'HAS_SALE');
+  const e = await issued(db, lojaId, [line('C', 2)]);
+  await withdraw(db, base, lojaId, e, 0, 1);
+  await settle(db, base, lojaId, e);
+  const eAudit = base.collection('consignment_audit').doc(consignment(db, base, e).withdrawals[0].withdrawalId);
+  db.seed(eAudit, {...db.getData(eAudit), consignmentId: 'other'});
+  await assertRejectedWithoutWrites(db, hide(db, lojaId, e), 'WITHDRAWAL_AUDIT_MISMATCH');
+  const f = await totalReturn();
+  const fAudit = base.collection('consignment_audit').doc(`settle_${f}`);
+  db.seed(fAudit, {...db.getData(fAudit), sold: 1});
+  await assertRejectedWithoutWrites(db, hide(db, lojaId, f), 'SETTLEMENT_AUDIT_MISMATCH');
+  const g = await totalReturn();
+  db.seed(base.collection('estoque_vendas').doc(`csgn_${g}`), {origem: 'consignacao'});
+  await assertRejectedWithoutWrites(db, hide(db, lojaId, g), 'HAS_SALE');
+  const h = await totalReturn();
+  db.seed(base.collection('lancamentos_financeiros').doc(`csgn_fin_${h}`), {origem: 'consignacao'});
+  await assertRejectedWithoutWrites(db, hide(db, lojaId, h), 'HAS_SALE');
+  const i = await totalReturn();
+  const snap = db.snapshot();
+  await assert.rejects(hide(db, lojaId, i, `hide_total_return_${i}`, {uid: 'intruder'}), err => err.consignmentCode === CODES.AUTH);
+  assert.deepEqual(db.snapshot(), snap);
+
+  for (const id of [a, b, c, d, e, f, g, h, i]) assert.notEqual(consignment(db, base, id).isDeleted, true, id);
+});
+
+test('concurrent hides apply once; a sale created mid-transaction makes the retry refuse', async () => {
+  const {db, base, lojaId} = seedStore();
+  const id = await issued(db, lojaId, [line('A', 1)]);
+  await settle(db, base, lojaId, id);
+  const settledRevision = consignment(db, base, id).revision;
+  const results = await Promise.all([
+    hide(db, lojaId, id, `hide_total_return_${id}`),
+    hide(db, lojaId, id, `hide_total_return_${id}_tab2`),
+  ]);
+  assert.ok(results.every(r => r.isDeleted === true));
+  assert.equal(collection(db, lojaId, 'consignment_audit').filter(([, d]) => d.type === 'CONSIGNMENT_HIDE_TOTAL_RETURN').length, 1);
+  assert.equal(consignment(db, base, id).revision, settledRevision + 1);
+
+  const raced = await issued(db, lojaId, [line('B', 1)]);
+  await settle(db, base, lojaId, raced);
+  const saleRef = base.collection('estoque_vendas').doc(`csgn_${raced}`);
+  db.onRead = (path, attempt) => {
+    if (attempt === 1 && path === saleRef.path) db.concurrentWrite(saleRef, {origem: 'consignacao'});
+  };
+  const before = db.commits.length;
+  await assert.rejects(hide(db, lojaId, raced), e => notAllowed(e) && e.message.includes('HAS_SALE'));
+  db.onRead = null;
+  assert.equal(db.commits.length, before, 'no commit after the conflicting retry');
+  assert.notEqual(consignment(db, base, raced).isDeleted, true);
+});
+
 test('IS_TOTAL_RETURN rule table', () => {
   const lineOf = (o = {}) => ({lineId: 'l1', qtySent: 2, qtySold: 0, qtyReturned: 2, ...o});
   const ok = {

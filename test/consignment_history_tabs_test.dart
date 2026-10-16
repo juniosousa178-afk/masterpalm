@@ -267,6 +267,27 @@ void main() {
       expect(all.map((c) => c.id), containsAll(['totalReturn', 'hidden']));
     });
 
+    testWidgets('select mode: CANCELLED in Histórico stays unselectable for combined print', (tester) async {
+      await pumpList(tester, const Size(800, 1280));
+      await tester.tap(find.text('Selecionar'));
+      await tester.pumpAndSettle();
+      await openHistory(tester);
+      Checkbox box(String id) => tester.widget<Checkbox>(find.byKey(Key('consignment_select_$id')));
+      expect(box('cancelled').onChanged, isNull);
+      for (final id in ['totalReturn', 'withdrawnReturn', 'sold']) {
+        expect(box(id).onChanged, isNotNull, reason: 'SETTLED stays selectable: $id');
+      }
+      await tester.tap(find.text('Cancelada'));
+      await tester.pumpAndSettle();
+      expect(box('cancelled').value, isFalse);
+      expect(find.byKey(const Key('consignment_menu_totalReturn')), findsNothing, reason: 'no hide menu in select mode');
+      await tester.tap(find.byKey(const Key('consignment_tab_open')));
+      await tester.pumpAndSettle();
+      for (final id in _open) {
+        expect(box(id).onChanged, isNotNull, reason: 'open stays selectable: $id');
+      }
+    });
+
     testWidgets('cancelling the hide confirmation sends nothing', (tester) async {
       await pumpList(tester, const Size(1440, 900));
       await openHistory(tester);
