@@ -107,6 +107,10 @@ int consignmentLineOutstanding(Map<String, dynamic> line) {
   return o < 0 ? 0 : o;
 }
 
+/// Canonical server statuses (functions/src/consignmentProtocol.js `STATUS`).
+const kConsignmentOpenStatuses = <String>{'DRAFT', 'ISSUED'};
+const kConsignmentClosedStatuses = <String>{'SETTLED', 'CANCELLED'};
+
 double consignmentLineUnitPrice(Map<String, dynamic> line) {
   final v = line['unitSalePriceSnapshot'];
   if (v is num) return v.toDouble();
@@ -152,11 +156,15 @@ class ConsignmentDoc {
     this.notes = '',
     this.issuedAt,
     this.settledAt,
+    this.cancelledAt,
     this.createdAt,
     this.revision = 1,
     this.additions = const [],
     this.withdrawals = const [],
     this.isDeleted = false,
+    this.settlementOperationId = '',
+    this.saleId,
+    this.financeId,
   });
 
   final String id;
@@ -178,17 +186,51 @@ class ConsignmentDoc {
   final String notes;
   final DateTime? issuedAt;
   final DateTime? settledAt;
+  final DateTime? cancelledAt;
   final DateTime? createdAt;
   final int revision;
-  /// Soft delete (hidden from lists); only cancelled consignments can carry it.
+  /// Soft delete (hidden from lists): cancelled or settled total-return consignments.
   final bool isDeleted;
+  final String settlementOperationId;
+  final String? saleId;
+  final String? financeId;
 
   bool get isDraft => status == 'DRAFT';
   bool get isIssued => status == 'ISSUED';
   bool get isSettled => status == 'SETTLED';
   bool get isCancelled => status == 'CANCELLED';
+  /// "Em aberto" tab; every other status belongs to "Histórico".
+  bool get isOpen => kConsignmentOpenStatuses.contains(status);
   bool get canAddItems => isDraft || isIssued;
   bool get canDelete => isCancelled && !isDeleted;
+  bool get canHideFromList => isTotalReturn && !isDeleted;
+
+  DateTime? get closedAt => settledAt ?? cancelledAt ?? issuedAt ?? createdAt;
+
+  /// Mirror of the server `totalReturnIneligibility` rule (the server re-checks before hiding):
+  /// settled, nothing sold, every outstanding piece returned and every withdrawal recorded.
+  bool get isTotalReturn {
+    if (!isSettled || settlementOperationId.isEmpty || saleId != null || financeId != null) return false;
+    if (totalItemsSold != 0 || grossSoldAmount != 0 || commissionAmount != 0 || netAmount != 0) return false;
+    if (lines.isEmpty) return false;
+    final withdrawnByLine = <String, int>{};
+    for (final w in withdrawals) {
+      final rows = w['lines'] is List ? (w['lines'] as List).whereType<Map>() : const <Map>[];
+      for (final l in rows) {
+        final id = '${l['lineId'] ?? ''}';
+        withdrawnByLine[id] = (withdrawnByLine[id] ?? 0) + _lineInt(Map<String, dynamic>.from(l), 'qtyWithdrawn');
+      }
+    }
+    var returned = 0;
+    for (final l in lines) {
+      final withdrawn = consignmentLineWithdrawn(l);
+      if (_lineInt(l, 'qtySold') != 0) return false;
+      if (_lineInt(l, 'qtyReturned') != _lineInt(l, 'qtySent') - withdrawn) return false;
+      if ((withdrawnByLine.remove('${l['lineId'] ?? ''}') ?? 0) != withdrawn) return false;
+      returned += _lineInt(l, 'qtyReturned');
+    }
+    return withdrawnByLine.isEmpty && returned == totalItemsReturned;
+  }
   bool get canReturnItems => isIssued && !isDeleted && totalItemsOutstanding > 0;
   bool get hasWithdrawals => withdrawals.isNotEmpty || totalItemsWithdrawn > 0;
 
@@ -287,9 +329,26 @@ class ConsignmentDoc {
       notes: (data['notes'] ?? '').toString(),
       issuedAt: ts(data['issuedAt']),
       settledAt: ts(data['settledAt']),
+      cancelledAt: ts(data['cancelledAt']),
       createdAt: ts(data['createdAt']),
       revision: n(data['revision']).toInt() == 0 ? 1 : n(data['revision']).toInt(),
       isDeleted: data['isDeleted'] == true,
+      settlementOperationId: (data['settlementOperationId'] ?? '').toString(),
+      saleId: data['saleId']?.toString(),
+      financeId: data['financeId']?.toString(),
     );
   }
+}
+
+/// Splits the visible consignments into the two tabs; soft-deleted records appear in neither.
+({List<ConsignmentDoc> open, List<ConsignmentDoc> history}) splitConsignmentLists(
+  Iterable<ConsignmentDoc> docs,
+) {
+  final visible = docs.where((c) => !c.isDeleted);
+  final history = visible.where((c) => !c.isOpen).toList()
+    ..sort((a, b) {
+      final epoch = DateTime.fromMillisecondsSinceEpoch(0);
+      return (b.closedAt ?? epoch).compareTo(a.closedAt ?? epoch);
+    });
+  return (open: visible.where((c) => c.isOpen).toList(), history: history);
 }

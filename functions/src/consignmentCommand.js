@@ -436,6 +436,7 @@ export async function executeConsignmentInTransaction(tx, db, raw, auth) {
     case 'addItems': result = await addItemsToConsignment(tx, base, command, uid); break;
     case 'deleteCancelled': result = await deleteCancelledConsignment(tx, base, command, uid); break;
     case 'returnItems': result = await returnItemsBeforeSettlement(tx, base, command, uid); break;
+    case 'hideTotalReturn': result = await hideTotalReturnConsignment(tx, base, command, uid); break;
     default: throw consignmentError(CODES.INVALID_ARGUMENT, 'Unsupported consignment operation');
   }
   const {projectionIds, ...publicResult} = result;
@@ -1339,4 +1340,104 @@ async function settleConsignment(tx, base, command, uid) {
 
 function fromCentsSafe(cents) {
   return Math.round(cents) / 100;
+}
+
+const isCount = n => Number.isSafeInteger(n) && n >= 0;
+
+/**
+ * TOTAL_RETURN: settled with nothing sold, every outstanding piece returned by the settlement and every
+ * withdrawn piece covered by recorded withdrawals. Returns null when eligible, otherwise the failed rule.
+ */
+export function totalReturnIneligibility(data) {
+  if (data?.status !== STATUS.SETTLED) return 'NOT_SETTLED';
+  if (typeof data.settlementOperationId !== 'string' || !data.settlementOperationId) return 'NO_SETTLEMENT_OPERATION';
+  if (data.saleId != null || data.financeId != null) return 'HAS_SALE';
+  if (data.totalItemsSold !== 0 || data.grossSoldAmount !== 0 || data.commissionAmount !== 0 || data.netAmount !== 0) {
+    return 'HAS_SALE';
+  }
+  const lines = Array.isArray(data.lines) ? data.lines : [];
+  if (!lines.length) return 'NO_LINES';
+  const withdrawnByLine = new Map();
+  for (const w of Array.isArray(data.withdrawals) ? data.withdrawals : []) {
+    for (const l of Array.isArray(w?.lines) ? w.lines : []) {
+      if (!isCount(l?.qtyWithdrawn)) return 'WITHDRAWAL_MISMATCH';
+      withdrawnByLine.set(l.lineId, (withdrawnByLine.get(l.lineId) || 0) + l.qtyWithdrawn);
+    }
+  }
+  let returned = 0;
+  for (const line of lines) {
+    if (!isCount(line?.qtySent) || line.qtySold !== 0 || !isCount(line.qtyReturned)) return 'LINE_NOT_RETURNED';
+    const withdrawn = line.qtyWithdrawn ?? 0;
+    if (!isCount(withdrawn) || withdrawn > line.qtySent) return 'WITHDRAWAL_MISMATCH';
+    if ((withdrawnByLine.get(line.lineId) || 0) !== withdrawn) return 'WITHDRAWAL_MISMATCH';
+    withdrawnByLine.delete(line.lineId);
+    if (line.qtyReturned !== line.qtySent - withdrawn) return 'LINE_NOT_RETURNED';
+    returned += line.qtyReturned;
+  }
+  if (withdrawnByLine.size) return 'WITHDRAWAL_MISMATCH';
+  if (data.totalItemsReturned !== returned) return 'TOTALS_MISMATCH';
+  return null;
+}
+
+const isAuditId = id => typeof id === 'string' && id.length > 0 && !id.includes('/');
+
+/** Every stock restoration of a total return was applied once, by its own committed operation. */
+async function totalReturnAuditIneligibility(tx, base, consignmentId, data) {
+  const audits = base.collection('consignment_audit');
+  if (!isAuditId(data.settlementOperationId)) return 'NO_SETTLEMENT_OPERATION';
+  const settlement = (await tx.get(audits.doc(data.settlementOperationId))).data();
+  if (settlement?.type !== 'CONSIGNMENT_SETTLEMENT' || settlement.consignmentId !== consignmentId
+    || settlement.sold !== 0 || settlement.returned !== data.totalItemsReturned
+    || settlement.saleId != null || settlement.financeId != null) {
+    return 'SETTLEMENT_AUDIT_MISMATCH';
+  }
+  for (const w of Array.isArray(data.withdrawals) ? data.withdrawals : []) {
+    if (!isAuditId(w?.withdrawalId)) return 'WITHDRAWAL_AUDIT_MISMATCH';
+    const pieces = (Array.isArray(w.lines) ? w.lines : []).reduce((sum, l) => sum + l.qtyWithdrawn, 0);
+    const audit = (await tx.get(audits.doc(w.withdrawalId))).data();
+    if (audit?.type !== 'CONSIGNMENT_RETURN_BEFORE_SETTLEMENT' || audit.consignmentId !== consignmentId
+      || audit.returnedItems !== pieces) {
+      return 'WITHDRAWAL_AUDIT_MISMATCH';
+    }
+  }
+  if ((await tx.get(base.collection('estoque_vendas').doc(`csgn_${consignmentId}`))).exists) return 'HAS_SALE';
+  if ((await tx.get(base.collection('lancamentos_financeiros').doc(`csgn_fin_${consignmentId}`))).exists) return 'HAS_SALE';
+  return null;
+}
+
+/** Hides a settled total-return consignment from lists. Only consignment metadata and a new audit entry are written. */
+async function hideTotalReturnConsignment(tx, base, command, uid) {
+  keysOnly(command.payload, []);
+  const {ref, data} = await loadDraft(tx, base, command);
+  if (data.status !== STATUS.SETTLED) {
+    throw consignmentError(CODES.CONSIGNMENT_DELETE_NOT_ALLOWED, 'Only settled total-return consignments can be hidden');
+  }
+  if (data.isDeleted === true) {
+    return {consignmentId: command.consignmentId, status: STATUS.SETTLED, isDeleted: true, revision: data.revision};
+  }
+  const reason = totalReturnIneligibility(data)
+    ?? await totalReturnAuditIneligibility(tx, base, command.consignmentId, data);
+  if (reason) throw consignmentError(CODES.CONSIGNMENT_DELETE_NOT_ALLOWED, `Not a total return: ${reason}`);
+  const revision = (data.revision || 1) + 1;
+  tx.update(ref, {
+    isDeleted: true,
+    deletedAt: FieldValue.serverTimestamp(),
+    deletedBy: uid,
+    deletedReason: 'TOTAL_RETURN',
+    revision,
+  });
+  tx.create(base.collection('consignment_audit').doc(command.operationId), {
+    type: 'CONSIGNMENT_HIDE_TOTAL_RETURN',
+    storeId: command.lojaId,
+    consignmentId: command.consignmentId,
+    operationId: command.operationId,
+    settlementOperationId: data.settlementOperationId,
+    actorUid: uid,
+    timestamp: FieldValue.serverTimestamp(),
+    returned: data.totalItemsReturned,
+    affectedProducts: [],
+    saleId: null,
+    financeId: null,
+  });
+  return {consignmentId: command.consignmentId, status: STATUS.SETTLED, isDeleted: true, revision};
 }

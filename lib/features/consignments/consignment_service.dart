@@ -183,6 +183,19 @@ class ConsignmentService {
     );
   }
 
+  /// Soft hide of a SETTLED total-return consignment; the server re-verifies eligibility.
+  static Future<Map<String, dynamic>> hideTotalReturn({
+    required String lojaId,
+    required String consignmentId,
+  }) {
+    return command(
+      lojaId: lojaId,
+      operation: 'hideTotalReturn',
+      operationId: 'hide_total_return_$consignmentId',
+      consignmentId: consignmentId,
+    );
+  }
+
   static Future<Map<String, dynamic>> issue({
     required String lojaId,
     required String consignmentId,

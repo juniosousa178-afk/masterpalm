@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../../../design_system/mp_tokens.dart';
 import '../consignment_errors.dart';
+import '../consignment_hide_action.dart';
 import '../consignment_models.dart';
 import '../consignment_service.dart';
 import '../consignment_ui.dart';
@@ -214,6 +215,15 @@ class _ConsignmentDetailsScreenState extends State<ConsignmentDetailsScreen> {
     }
   }
 
+  Future<void> _hide(ConsignmentDoc c) async {
+    if (_deleting || !c.canHideFromList) return;
+    setState(() => _deleting = true);
+    final hidden = await confirmAndHideTotalReturn(context, lojaId: widget.lojaId, doc: c);
+    if (!mounted) return;
+    setState(() => _deleting = false);
+    if (hidden) Navigator.of(context).pop();
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = _doc;
@@ -240,12 +250,16 @@ class _ConsignmentDetailsScreenState extends State<ConsignmentDetailsScreen> {
                     doc: c,
                     kind: ConsignmentReportKind.settlement,
                   );
+                } else if (v == 'hide') {
+                  await _hide(c);
                 }
               },
               itemBuilder: (ctx) => [
                 const PopupMenuItem(value: 'order', child: Text('Relatório do pedido')),
                 if (_doc!.isSettled)
                   const PopupMenuItem(value: 'settle', child: Text('Relatório de acerto')),
+                if (_doc!.canHideFromList)
+                  const PopupMenuItem(value: 'hide', child: Text(consignmentHideTotalReturnLabel)),
               ],
             ),
           IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
@@ -487,6 +501,13 @@ class _ConsignmentDetailsScreenState extends State<ConsignmentDetailsScreen> {
                             onPressed: _deleting ? null : () => _delete(c),
                             icon: const Icon(Icons.delete_outline),
                             label: const Text('Excluir'),
+                          ),
+                        if (c.canHideFromList)
+                          OutlinedButton.icon(
+                            key: const Key('consignment_hide_total_return'),
+                            onPressed: _deleting ? null : () => _hide(c),
+                            icon: const Icon(Icons.visibility_off_outlined),
+                            label: const Text(consignmentHideTotalReturnLabel),
                           ),
                       ],
                     ),

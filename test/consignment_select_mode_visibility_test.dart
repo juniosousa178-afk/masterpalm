@@ -146,8 +146,12 @@ void main() {
     expect(tester.takeException(), isNull);
   }
 
-  Future<void> selectBoth(WidgetTester tester) async {
+  Future<void> selectBoth(WidgetTester tester, {String? historyTabFor}) async {
     for (final id in ['m1', 'm2']) {
+      if (id == historyTabFor) {
+        await tester.tap(find.byKey(const Key('consignment_tab_history')));
+        await tester.pumpAndSettle();
+      }
       final box = find.byKey(Key('consignment_select_$id'));
       await tester.ensureVisible(box);
       await tester.pumpAndSettle();
@@ -172,11 +176,11 @@ void main() {
 
       await tester.tap(find.text('Selecionar'));
       await tester.pumpAndSettle();
-      expect(find.byType(Checkbox), findsNWidgets(3));
+      expect(find.byType(Checkbox), findsNWidgets(2), reason: 'Em aberto: m1 + o1');
       expect(printButton(tester).onPressed, isNull);
       expectPrintBarLayout(tester, size, 'Selecione 2 ou mais consignações da mesma cliente.');
 
-      await selectBoth(tester);
+      await selectBoth(tester, historyTabFor: 'm2');
       expect(find.text('Imprimir selecionadas'), findsOneWidget);
       expect(printButton(tester).onPressed, isNotNull);
       expectPrintBarLayout(tester, size, '2 selecionadas');

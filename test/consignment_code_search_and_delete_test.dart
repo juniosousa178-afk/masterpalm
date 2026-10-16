@@ -197,7 +197,8 @@ void main() {
     test('server refusal maps to a clear message', () {
       final e = ConsignmentException.fromCallable(
           'failed-precondition', 'x', {'consignmentCode': 'CONSIGNMENT_DELETE_NOT_ALLOWED'});
-      expect(e.message, 'Só consignações canceladas podem ser excluídas da lista.');
+      expect(e.message,
+          'Só consignações canceladas ou encerradas com devolução total podem ser excluídas da lista.');
     });
 
     Future<void> pumpDetails(WidgetTester tester, String status) async {

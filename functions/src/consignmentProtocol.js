@@ -223,7 +223,7 @@ export function optionalString(value, label, max = 2000) {
 
 export const OPERATIONS = Object.freeze([
   'createDraft', 'updateDraft', 'issue', 'settle', 'cancelDraft', 'createReseller', 'updateReseller',
-  'listEligibleProducts', 'addItems', 'deleteCancelled', 'returnItems',
+  'listEligibleProducts', 'addItems', 'deleteCancelled', 'returnItems', 'hideTotalReturn',
 ]);
 
 export const RETURN_REASON = 'MERCHANT_RETRIEVAL_BEFORE_SETTLEMENT';

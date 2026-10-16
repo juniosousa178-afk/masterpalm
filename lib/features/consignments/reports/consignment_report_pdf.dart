@@ -158,7 +158,6 @@ class ConsignmentReportPdfBuilder {
             declaration:
                 'Declaro que recebi as peças relacionadas acima nas quantidades e condições descritas neste documento.',
           ),
-          ..._deliveryHistory(doc),
         ],
       ),
     );
@@ -300,39 +299,6 @@ class ConsignmentReportPdfBuilder {
         ),
       pw.Text('Peças retiradas voltaram ao estoque da loja e não entram no acerto da revendedora.',
           style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
-    ];
-  }
-
-  static List<pw.Widget> _deliveryHistory(ConsignmentDoc doc) {
-    return [
-          if (doc.additions.isNotEmpty) ...[
-            pw.SizedBox(height: 18),
-            pw.Text('HISTÓRICO DE ENTREGAS',
-                style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
-            pw.SizedBox(height: 6),
-            for (final raw in doc.additions)
-              () {
-                final a = Map<String, dynamic>.from(raw as Map);
-                final kind = '${a['kind'] ?? 'ADDITION'}';
-                final label = kind == 'INITIAL' ? 'Envio inicial' : 'Acréscimo';
-                final lines = (a['lines'] is List)
-                    ? (a['lines'] as List).whereType<Map>().toList()
-                    : const <Map>[];
-                final parts = <String>[];
-                for (final l in lines) {
-                  final name = '${l['productNameSnapshot'] ?? l['productId'] ?? ''}';
-                  final qty = l['qtyAdded'] ?? l['qtySent'] ?? 0;
-                  parts.add('$name=$qty');
-                }
-                return pw.Padding(
-                  padding: const pw.EdgeInsets.only(bottom: 4),
-                  child: pw.Text(
-                    '$label · ${parts.join(' · ')}',
-                    style: const pw.TextStyle(fontSize: 9),
-                  ),
-                );
-              }(),
-          ],
     ];
   }
 
@@ -637,7 +603,6 @@ class ConsignmentReportPdfBuilder {
               pw.SizedBox(height: 12),
               _settlementSummary(s.doc, s.pending),
             ],
-            ..._deliveryHistory(s.doc),
           ],
         ),
       );

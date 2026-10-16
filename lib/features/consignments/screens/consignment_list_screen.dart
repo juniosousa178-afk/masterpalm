@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../../../design_system/mp_tokens.dart';
 import '../../../services/loja_id_service.dart';
 import '../../../widgets/app_help_icon_button.dart';
 import '../consignment_errors.dart';
 import '../consignment_feature_flag.dart';
+import '../consignment_hide_action.dart';
 import '../consignment_models.dart';
 import '../consignment_service.dart';
 import '../consignment_ui.dart';
@@ -87,12 +89,97 @@ class _ConsignmentListScreenState extends State<ConsignmentListScreen> {
     }
   }
 
+  void _openDetails(ConsignmentDoc c) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ConsignmentDetailsScreen(lojaId: _lojaId!, consignmentId: c.id),
+      ),
+    );
+  }
+
+  Widget _list(List<ConsignmentDoc> items, {required bool history}) {
+    if (items.isEmpty) {
+      return Center(
+        child: Text(history ? 'Nenhuma consignação no histórico.' : 'Nenhuma consignação em aberto.'),
+      );
+    }
+    return ListView.separated(
+      key: PageStorageKey(history ? 'consignment_history_list' : 'consignment_open_list'),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 88),
+      itemCount: items.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      itemBuilder: (context, i) {
+        final c = items[i];
+        return Card(
+          key: Key('consignment_tile_${c.id}'),
+          child: ListTile(
+            leading: _selecting
+                ? ConsignmentSelectCheckbox(
+                    doc: c,
+                    selected: _selected.contains(c.id),
+                    onChanged: (_) => _toggle(c),
+                  )
+                : null,
+            title: Text(c.resellerName),
+            subtitle: Text(history ? _historySubtitle(c) : _openSubtitle(c)),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ConsignmentStatusChip(c.status),
+                if (history && !_selecting && c.canHideFromList)
+                  PopupMenuButton<String>(
+                    key: Key('consignment_menu_${c.id}'),
+                    tooltip: 'Mais opções',
+                    onSelected: (_) => confirmAndHideTotalReturn(context, lojaId: _lojaId!, doc: c),
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(
+                        value: 'hide',
+                        child: Text(consignmentHideTotalReturnLabel),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+            onTap: _selecting ? () => _toggle(c) : () => _openDetails(c),
+          ),
+        );
+      },
+    );
+  }
+
+  static final _dateFmt = DateFormat('dd/MM/yyyy');
+
+  String _openSubtitle(ConsignmentDoc c) => c.isIssued && c.hasWithdrawals
+      ? '${c.totalItemsOutstanding} pç com a revendedora · '
+          '${consignmentMoney.format(c.outstandingGrossAmount)}'
+      : '${c.totalItemsSent} pç · ${consignmentMoney.format(c.potentialGrossAmount)}';
+
+  String _historySubtitle(ConsignmentDoc c) {
+    final amount = c.isSettled
+        ? 'Vendido ${consignmentMoney.format(c.grossSoldAmount)}'
+        : consignmentMoney.format(c.potentialGrossAmount);
+    final when = c.closedAt;
+    return '${c.totalItemsSent} pç · $amount${when == null ? '' : ' · ${_dateFmt.format(when.toLocal())}'}';
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      DefaultTabController(length: 2, child: _buildScaffold(context));
+
+  Widget _buildScaffold(BuildContext context) {
     return Scaffold(
       backgroundColor: MpColors.background,
       appBar: AppBar(
         title: Text(_selecting ? 'Selecionar consignações' : 'Consignados'),
+        bottom: _enabled && _lojaId != null
+            ? const TabBar(
+                tabs: [
+                  Tab(key: Key('consignment_tab_open'), text: 'Em aberto'),
+                  Tab(key: Key('consignment_tab_history'), text: 'Histórico'),
+                ],
+              )
+            : null,
         actions: [
           if (_enabled && _lojaId != null)
             ConsignmentSelectModeButton(
@@ -170,48 +257,12 @@ class _ConsignmentListScreenState extends State<ConsignmentListScreen> {
                         }
                         final items = snap.data!;
                         _syncLatest(items);
-                        if (items.isEmpty) {
-                          return const Center(
-                            child: Text('Nenhuma consignação ainda.'),
-                          );
-                        }
-                        return ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 88),
-                          itemCount: items.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: 8),
-                          itemBuilder: (context, i) {
-                            final c = items[i];
-                            return Card(
-                              child: ListTile(
-                                leading: _selecting
-                                    ? ConsignmentSelectCheckbox(
-                                        doc: c,
-                                        selected: _selected.contains(c.id),
-                                        onChanged: (_) => _toggle(c),
-                                      )
-                                    : null,
-                                title: Text(c.resellerName),
-                                subtitle: Text(
-                                  c.isIssued && c.hasWithdrawals
-                                      ? '${c.totalItemsOutstanding} pç com a revendedora · '
-                                          '${consignmentMoney.format(c.outstandingGrossAmount)}'
-                                      : '${c.totalItemsSent} pç · ${consignmentMoney.format(c.potentialGrossAmount)}',
-                                ),
-                                trailing: ConsignmentStatusChip(c.status),
-                                onTap: _selecting
-                                    ? () => _toggle(c)
-                                    : () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => ConsignmentDetailsScreen(
-                                      lojaId: _lojaId!,
-                                      consignmentId: c.id,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
+                        final split = splitConsignmentLists(items);
+                        return TabBarView(
+                          children: [
+                            _list(split.open, history: false),
+                            _list(split.history, history: true),
+                          ],
                         );
                       },
                     ),
