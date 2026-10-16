@@ -25,6 +25,15 @@ const DAY_MS = 86_400_000;
 const receivableError = (reason, message) =>
   saleEditError('failed-precondition', SALE_EDIT_REASON.INVALID_SALE_EDIT, reason, message);
 
+export const PAYMENT_CHANGE_REQUIRES_CONFIRMATION_MESSAGE =
+  'Esta venda possui uma conta a receber ativa. Para alterar a forma de pagamento, atualize o MasterPalm ' +
+  'e confirme a mudança no campo de pagamento. Nenhuma alteração foi feita.';
+
+// Clients up to 1.0.137 show the server message verbatim only for HTTP codes they do not map;
+// failed-precondition / aborted would surface there as a generic stock error.
+const paymentChangeRequiresConfirmation = () => saleEditError('cancelled',
+  SALE_EDIT_REASON.PAYMENT_CHANGE_REQUIRES_CONFIRMATION, null, PAYMENT_CHANGE_REQUIRES_CONFIRMATION_MESSAGE);
+
 export function stableReceivableId(saleId, parcela) {
   return `cr_${String(saleId).trim().replace(/[/:]/g, '_')}_p${parcela}`;
 }
@@ -54,6 +63,26 @@ export function paymentMode(sale) {
   if (open <= EPS) return 'PAID';
   const paid = num(sale?.pagamentoDinheiro) + num(sale?.pagamentoPix) + num(sale?.pagamentoCartao);
   return paid > EPS ? 'MIXED_FIADO' : 'FIADO';
+}
+
+/**
+ * Payment state of the saved sale as the editor hydrates it (mirrors Dart `EstadoPagamentoVenda.daVenda`):
+ * fiado only while unpaid value remains AND the sale is marked fiado. A stale `saldoFiado` on a fully paid
+ * sale is not fiado.
+ */
+export function storedPaymentState(stored) {
+  const dinheiro = num(stored?.pagamentoDinheiro), pix = num(stored?.pagamentoPix), cartao = num(stored?.pagamentoCartao);
+  const unpaid = num(stored?.total) - (dinheiro + pix + cartao);
+  const marked = /fiado/i.test(String(stored?.formasPagamento ?? '')) || num(stored?.saldoFiado) > EPS;
+  return {fiado: unpaid > EPS && marked, dinheiro, pix, cartao};
+}
+
+export function editedPaymentState(sale) {
+  return {fiado: sale.saldoFiado > EPS, dinheiro: sale.pagamentoDinheiro, pix: sale.pagamentoPix, cartao: sale.pagamentoCartao};
+}
+
+export function samePaymentState(a, b) {
+  return a.fiado === b.fiado && ['dinheiro', 'pix', 'cartao'].every(k => Math.abs(num(a[k]) - num(b[k])) <= EPS);
 }
 
 /** Same split as the client `_parcelarValores`: cents spread over parcels, remainder first. */
@@ -127,6 +156,23 @@ export function planSaleEditReceivable({base, command, plan, linked}) {
   const active = linked
     .filter(r => r.data.vendaIdFirebase === saleId && !isCancelledReceivable(r.data))
     .sort((a, b) => num(a.data.parcelaNumero) - num(b.data.parcelaNumero) || a.id.localeCompare(b.id));
+
+  // Payment-state containment: a debt only changes through an explicit merchant decision.
+  const before = storedPaymentState(plan.stored);
+  const change = command.saleEdit.paymentChange ?? null;
+  if (change && !samePaymentState(change.from, before)) {
+    throw saleEditError('aborted', SALE_EDIT_REASON.SALE_EDIT_CONFLICT, 'PAYMENT_STATE_CHANGED',
+      'Sale payment state changed since the edit started');
+  }
+  const openDebt = active.some(r => !isPaidReceivable(r.data) && balance(r.data) > EPS);
+  if (!before.fiado && openDebt) {
+    // Paid sale with an open receivable: which side is true needs a human decision.
+    throw receivableError('RECEIVABLE_REQUIRES_REVIEW', 'Open receivable on a sale without open balance');
+  }
+  if (before.fiado && !change && !samePaymentState(before, editedPaymentState(sale))) {
+    throw paymentChangeRequiresConfirmation();
+  }
+
   const newOpen = sale.saldoFiado;
 
   // E / A: the edited sale has no open balance.

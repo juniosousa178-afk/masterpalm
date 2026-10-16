@@ -5531,7 +5531,7 @@ function stockCatalogCallableError(error) {
   const code = error?.code || "internal";
   const allowed = new Set([
     "unauthenticated", "permission-denied", "invalid-argument",
-    "failed-precondition", "aborted", "already-exists", "resource-exhausted", "not-found",
+    "failed-precondition", "aborted", "already-exists", "resource-exhausted", "not-found", "cancelled",
   ]);
   const details = error?.details && typeof error.details === "object"
     ? {

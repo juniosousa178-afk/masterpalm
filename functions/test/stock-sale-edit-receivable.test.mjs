@@ -6,7 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {executeStockCommand} from '../src/stockCatalogCommands.js';
-import {saleLinesHash, storedSaleLines} from '../src/stockCatalogSaleEdit.js';
+import {parseSaleEditPayload, saleLinesHash, storedSaleLines} from '../src/stockCatalogSaleEdit.js';
 import {
   saleEditAppliedLog,
   splitParcels,
@@ -84,11 +84,15 @@ const fiadoSale = (lines, total, opts = {}) => salePayload(lines, {total, saldoF
 
 const storedLines = (db, base) => db.getData(base.collection('estoque_vendas').doc(SALE)).itens;
 const opIdFor = key => `saleedit_${createHash('sha256').update(key).digest('hex')}`;
-function edit(db, base, lojaId, sale, {opId, expected} = {}) {
+/** Explicit merchant decision to leave the saved state `from` (sent by clients ≥ 1.0.138). */
+const intent = (from = {}) => ({explicit: true, from: {fiado: true, dinheiro: 0, pix: 0, cartao: 0, ...from}});
+const FROM_FIADO = intent();
+function edit(db, base, lojaId, sale, {opId, expected, paymentChange} = {}) {
   return executeStockCommand(db, {
     protocolVersion: 1, lojaId, kind: 'saleEdit',
     operationId: opId ?? opIdFor(`${lojaId}|${++seq}`),
-    saleEdit: {saleId: SALE, expectedOriginalLinesHash: expected ?? saleLinesHash(storedSaleLines(storedLines(db, base))), sale},
+    saleEdit: {saleId: SALE, expectedOriginalLinesHash: expected ?? saleLinesHash(storedSaleLines(storedLines(db, base))), sale,
+      ...(paymentChange ? {paymentChange} : {})},
   }, owner);
 }
 const cr = (db, base, id = CR1) => db.getData(base.collection('contas_receber').doc(id));
@@ -119,11 +123,11 @@ function assertSoftDeleted(doc, saldoAntes) {
 }
 
 for (const mode of MODES) {
-  test(`[${mode}] ROOT CAUSE (Mir shape): fiado 8179 → Pix 312 soft-deletes the pending receivable in the same commit`, async () => {
+  test(`[${mode}] ROOT CAUSE (Mir shape): explicit fiado 8179 → Pix 312 soft-deletes the pending receivable in the same commit`, async () => {
     const oldLines = [line('a', 1, 4000), line('b', 1, 4179)];
     const {db, base, lojaId} = seedStore(mode, {saleLines: oldLines, total: 8179});
     const from = db.commits.length;
-    const r = await edit(db, base, lojaId, pixSale([line('a', 1, 416)], 312));
+    const r = await edit(db, base, lojaId, pixSale([line('a', 1, 416)], 312), {paymentChange: FROM_FIADO});
     assert.equal(r.receivable.action, 'SOFT_DELETE');
     assert.equal(r.receivable.oldPaymentMode, 'FIADO');
     assert.equal(r.receivable.newPaymentMode, 'PAID');
@@ -144,9 +148,9 @@ for (const mode of MODES) {
     assert.equal(stockQty(db, base, 'b'), 11);
   });
 
-  test(`[${mode}] fiado → Pix without line changes: no stock write, receivable soft-deleted`, async () => {
+  test(`[${mode}] explicit fiado → Pix without line changes: no stock write, receivable soft-deleted`, async () => {
     const {db, base, lojaId} = seedStore(mode);
-    const r = await edit(db, base, lojaId, pixSale([line('a', 1)], 100));
+    const r = await edit(db, base, lojaId, pixSale([line('a', 1)], 100), {paymentChange: FROM_FIADO});
     assert.equal(r.stockChanged, false);
     assert.equal(r.receivable.action, 'SOFT_DELETE');
     assertSoftDeleted(cr(db, base), 100);
@@ -232,17 +236,20 @@ for (const mode of MODES) {
   test(`[${mode}] E with payments fails closed: nothing written (stock, sale, receivable)`, async () => {
     const {db, base, lojaId} = seedStore(mode, {receivables: [{valor: 70, valorPago: 30, historico: [{baixaId: 'b1'}]}]});
     const snap = db.snapshot();
-    await rejectsWith(edit(db, base, lojaId, pixSale([line('a', 2)], 100)),
+    await rejectsWith(edit(db, base, lojaId, pixSale([line('a', 2)], 100), {paymentChange: FROM_FIADO}),
       {code: 'failed-precondition', detail: 'INVALID_SALE_EDIT', reason: 'RECEIVABLE_HAS_PAYMENTS'});
+    assert.deepEqual(db.snapshot(), snap);
+    await rejectsWith(edit(db, base, lojaId, pixSale([line('a', 2)], 100)),
+      {code: 'cancelled', detail: 'PAYMENT_CHANGE_REQUIRES_CONFIRMATION'});
     assert.deepEqual(db.snapshot(), snap);
   });
 
   test(`[${mode}] G paid/terminal receivable is never reopened nor destroyed`, async () => {
     const paid = {valor: 0, valorPago: 100, historico: [{baixaId: 'b1'}], extra: {pago: true, status: 'paga'}};
-    for (const sale of [fiadoSale([line('a', 1)], 150), pixSale([line('a', 2)], 100)]) {
+    for (const [sale, paymentChange] of [[fiadoSale([line('a', 1)], 150)], [pixSale([line('a', 2)], 100), FROM_FIADO]]) {
       const {db, base, lojaId} = seedStore(mode, {receivables: [paid]});
       const snap = db.snapshot();
-      await assert.rejects(edit(db, base, lojaId, sale), e => e.details?.code === 'INVALID_SALE_EDIT' &&
+      await assert.rejects(edit(db, base, lojaId, sale, {paymentChange}), e => e.details?.code === 'INVALID_SALE_EDIT' &&
         ['RECEIVABLE_REQUIRES_REVIEW', 'RECEIVABLE_HAS_PAYMENTS'].includes(e.details?.reason));
       assert.deepEqual(db.snapshot(), snap);
     }
@@ -252,7 +259,7 @@ for (const mode of MODES) {
     const {db, base, lojaId} = seedStore(mode, {receivables: [{valor: 0,
       extra: {cancelada: true, status: 'cancelada', deletedAt: new Date('2026-09-01'), motivoCancelamento: 'venda_excluida'}}]});
     const before = cr(db, base);
-    const r = await edit(db, base, lojaId, pixSale([line('a', 2)], 20));
+    const r = await edit(db, base, lojaId, pixSale([line('a', 2)], 20), {paymentChange: FROM_FIADO});
     assert.equal(r.receivable.action, 'NONE');
     assert.deepEqual(cr(db, base), before);
   });
@@ -269,13 +276,16 @@ for (const mode of MODES) {
     const {db, base, lojaId} = seedStore(mode);
     const opId = opIdFor(`h-${mode}`);
     const expected = saleLinesHash(storedSaleLines(storedLines(db, base)));
-    await edit(db, base, lojaId, pixSale([line('a', 2)], 20), {opId, expected});
+    const paymentChange = FROM_FIADO;
+    await edit(db, base, lojaId, pixSale([line('a', 2)], 20), {opId, expected, paymentChange});
     const after = db.snapshot();
-    const replay = await edit(db, base, lojaId, pixSale([line('a', 2)], 20), {opId, expected});
+    const replay = await edit(db, base, lojaId, pixSale([line('a', 2)], 20), {opId, expected, paymentChange});
     assert.equal(replay.alreadyApplied, true);
     assert.equal(replay.receivable.action, 'SOFT_DELETE');
     assert.deepEqual(db.snapshot(), after, 'at most one effective mutation');
-    await rejectsWith(edit(db, base, lojaId, pixSale([line('a', 3)], 30), {opId, expected}),
+    await rejectsWith(edit(db, base, lojaId, pixSale([line('a', 3)], 30), {opId, expected, paymentChange}),
+      {code: 'already-exists', detail: 'OPERATION_PAYLOAD_CONFLICT'});
+    await rejectsWith(edit(db, base, lojaId, pixSale([line('a', 2)], 20), {opId, expected}),
       {code: 'already-exists', detail: 'OPERATION_PAYLOAD_CONFLICT'});
     assert.deepEqual(db.snapshot(), after);
   });
@@ -292,13 +302,13 @@ for (const mode of MODES) {
     const steps = [
       [fiadoSale([line('a', 2)], 120), 'UPDATE', 120],
       [fiadoSale([line('a', 2), line('b', 1)], 120), 'NONE', 120],
-      [pixSale([line('b', 1)], 50), 'SOFT_DELETE', 0],
+      [pixSale([line('b', 1)], 50), 'SOFT_DELETE', 0, FROM_FIADO],
       [fiadoSale([line('b', 2)], 60), 'CREATE', 60],
       [fiadoSale([line('a', 1)], 90), 'UPDATE', 90],
-      [pixSale([line('a', 1), line('b', 1)], 312), 'SOFT_DELETE', 0],
+      [pixSale([line('a', 1), line('b', 1)], 312), 'SOFT_DELETE', 0, FROM_FIADO],
     ];
-    for (const [sale, action, saldo] of steps) {
-      const r = await edit(db, base, lojaId, sale);
+    for (const [sale, action, saldo, paymentChange] of steps) {
+      const r = await edit(db, base, lojaId, sale, {paymentChange});
       assert.equal(r.receivable.action, action, JSON.stringify(sale.itens));
       assert.equal(cr(db, base).saldoAtual, saldo);
     }
@@ -315,7 +325,7 @@ for (const mode of MODES) {
 
   test(`[${mode}] legacy linked doc id (non-stable) is reconciled by vendaIdFirebase`, async () => {
     const {db, base, lojaId} = seedStore(mode, {receivables: [{id: 'cr_legacy_abcd1234', valor: 100}]});
-    const r = await edit(db, base, lojaId, pixSale([line('a', 1)], 100));
+    const r = await edit(db, base, lojaId, pixSale([line('a', 1)], 100), {paymentChange: FROM_FIADO});
     assert.equal(r.receivable.action, 'SOFT_DELETE');
     assertSoftDeleted(cr(db, base, 'cr_legacy_abcd1234'), 100);
     assert.equal(cr(db, base, CR1), undefined);
@@ -341,7 +351,7 @@ for (const mode of MODES) {
     const {db, base, lojaId} = seedStore(mode);
     const snap = db.snapshot();
     db.faultInjector = ({path}) => { if (path.includes('/contas_receber/')) throw new Error('injected'); };
-    await assert.rejects(edit(db, base, lojaId, pixSale([line('a', 3)], 30)), /injected/);
+    await assert.rejects(edit(db, base, lojaId, pixSale([line('a', 3)], 30), {paymentChange: FROM_FIADO}), /injected/);
     db.faultInjector = null;
     assert.deepEqual(db.snapshot(), snap);
   });
@@ -396,9 +406,161 @@ for (const mode of MODES) {
   });
 }
 
+const MIR_PRICES = {a: 312, b: 1000, c: 1500, d: 1200, e: 1667, f: 1500, g: 1000};
+const mirStore = mode => seedStore(mode, {
+  saleLines: Object.entries(MIR_PRICES).map(([id, p]) => line(id, 1, p)), total: 8179,
+  products: Object.fromEntries(Object.keys(MIR_PRICES).map(id => [id, simple()])),
+});
+const mirLines = ids => ids.map(id => line(id, 1, MIR_PRICES[id]));
+const sum = lines => lines.reduce((s, l) => s + l.precoTotal, 0);
+
+function assertNothingWritten(db, snap, commitsBefore) {
+  assert.deepEqual(db.snapshot(), snap, 'stock, sale, receivable and operation untouched');
+  assert.equal(db.commits.length, commitsBefore, 'no commit at all');
+}
+
+for (const mode of MODES) {
+  test(`[${mode}] OLD CLIENT: fiado sale + non-fiado payload without intent is rejected before any write`, async () => {
+    const cases = [
+      ['note only → Pix', {}, pixSale([line('a', 1)], 100)],
+      ['Mir shape: lines removed → Pix 312', {saleLines: [line('a', 1, 4000), line('b', 1, 4179)], total: 8179},
+        pixSale([line('a', 1, 416)], 312)],
+      ['fiado → dinheiro', {}, {...salePayload([line('a', 1)]), pagamentoDinheiro: 100}],
+      ['fiado → part Pix + fiado', {}, salePayload([line('a', 1)], {pix: 30, saldoFiado: 70})],
+      ['mixed Pix 40 + fiado 60 → Pix 100', {saleExtra: {pagamentoPix: 40, saldoFiado: 60}, receivables: [{valor: 60}]},
+        pixSale([line('a', 1)], 100)],
+    ];
+    for (const [name, seed, sale] of cases) {
+      const {db, base, lojaId} = seedStore(mode, seed);
+      const snap = db.snapshot(), commits = db.commits.length;
+      await assert.rejects(edit(db, base, lojaId, sale), e => {
+        assert.equal(e.code, 'cancelled', name);
+        assert.deepEqual(e.details, {code: 'PAYMENT_CHANGE_REQUIRES_CONFIRMATION'}, name);
+        assert.equal(e.message, 'Esta venda possui uma conta a receber ativa. Para alterar a forma de pagamento, ' +
+          'atualize o MasterPalm e confirme a mudança no campo de pagamento. Nenhuma alteração foi feita.');
+        return true;
+      });
+      assertNothingWritten(db, snap, commits);
+    }
+  });
+
+  test(`[${mode}] intent bound to a different saved state fails closed (PAYMENT_STATE_CHANGED)`, async () => {
+    const {db, base, lojaId} = seedStore(mode, {saleExtra: {pagamentoPix: 40, saldoFiado: 60}, receivables: [{valor: 60}]});
+    const snap = db.snapshot(), commits = db.commits.length;
+    await rejectsWith(edit(db, base, lojaId, pixSale([line('a', 1)], 100), {paymentChange: FROM_FIADO}),
+      {code: 'aborted', detail: 'SALE_EDIT_CONFLICT', reason: 'PAYMENT_STATE_CHANGED'});
+    assertNothingWritten(db, snap, commits);
+  });
+
+  test(`[${mode}] invalid paymentChange shapes are rejected`, async () => {
+    for (const paymentChange of [{explicit: false, from: {fiado: true}}, {explicit: true}, {explicit: true, from: {fiado: 'sim'}},
+      {explicit: true, from: {fiado: true, outro: 1}}, {explicit: true, from: {fiado: true}, extra: 1}]) {
+      const {db, base, lojaId} = seedStore(mode);
+      const snap = db.snapshot();
+      await rejectsWith(edit(db, base, lojaId, pixSale([line('a', 1)], 100), {paymentChange}),
+        {detail: 'INVALID_SALE_EDIT', reason: 'INVALID_PAYMENT_CHANGE'});
+      assert.deepEqual(db.snapshot(), snap);
+    }
+  });
+
+  test(`[${mode}] paid sale with an open receivable needs review even for a note-only edit`, async () => {
+    const {db, base, lojaId} = seedStore(mode, {fiado: false, receivables: [{valor: 100}]});
+    const snap = db.snapshot(), commits = db.commits.length;
+    await rejectsWith(edit(db, base, lojaId, {...pixSale([line('a', 1)], 100), observacao: 'nota'}),
+      {reason: 'RECEIVABLE_REQUIRES_REVIEW'});
+    assertNothingWritten(db, snap, commits);
+  });
+
+  test(`[${mode}] note/seller-only edit keeps fiado: receivable action NONE, zero receivable writes`, async () => {
+    const {db, base, lojaId} = seedStore(mode);
+    const before = cr(db, base), from = db.commits.length;
+    const r = await edit(db, base, lojaId, {...fiadoSale([line('a', 1)], 100, {observacao: 'nota nova'}), vendedor: 'Outra'});
+    assert.equal(r.receivable.action, 'NONE');
+    assert.equal(r.receivable.newPaymentMode, 'FIADO');
+    assert.deepEqual(crWrites(db, from), []);
+    assert.deepEqual(cr(db, base), before);
+    const sale = saleDoc(db, base);
+    assert.equal(sale.saldoFiado, 100);
+    assert.equal(sale.pagamentoPix, 0);
+    assert.equal(sale.observacao, 'nota nova');
+  });
+
+  test(`[${mode}] product-only edit keeps fiado and reconciles the amount`, async () => {
+    const {db, base, lojaId} = seedStore(mode, {saleLines: [line('a', 1, 4000), line('b', 1, 4179)], total: 8179});
+    const r = await edit(db, base, lojaId, fiadoSale([line('a', 1, 4000)], 4000));
+    assert.equal(r.receivable.action, 'UPDATE');
+    assert.equal(r.receivable.oldPaymentMode, 'FIADO');
+    assert.equal(r.receivable.newPaymentMode, 'FIADO');
+    assert.equal(cr(db, base).saldoAtual, 4000);
+    assert.equal(saleDoc(db, base).saldoFiado, 4000);
+    assert.equal(saleDoc(db, base).pagamentoPix, 0);
+    assert.equal(stockQty(db, base, 'b'), 11);
+  });
+
+  test(`[${mode}] mixed Pix + fiado: product-only edit keeps the Pix part; explicit change bound to it is accepted`, async () => {
+    const {db, base, lojaId} = seedStore(mode, {saleLines: [line('a', 1, 50), line('b', 1, 50)],
+      saleExtra: {pagamentoPix: 40, saldoFiado: 60}, receivables: [{valor: 60}]});
+    const r = await edit(db, base, lojaId, salePayload([line('a', 1, 50)], {pix: 40, saldoFiado: 10}));
+    assert.equal(r.receivable.action, 'UPDATE');
+    assert.equal(r.receivable.oldPaymentMode, 'MIXED_FIADO');
+    assert.equal(cr(db, base).saldoAtual, 10);
+    const r2 = await edit(db, base, lojaId, pixSale([line('a', 1, 50)], 50), {paymentChange: intent({pix: 40})});
+    assert.equal(r2.receivable.action, 'SOFT_DELETE');
+    assertSoftDeleted(cr(db, base), 10);
+  });
+
+  test(`[${mode}] MIR EDITOR SEQUENCE: six removals without payment intent keep fiado; explicit Pix is separate`, async () => {
+    const {db, base, lojaId} = mirStore(mode);
+    let ids = Object.keys(MIR_PRICES);
+    for (const removed of ['g', 'f', 'e', 'd', 'c', 'b']) {
+      ids = ids.filter(id => id !== removed);
+      const lines = mirLines(ids);
+      const r = await edit(db, base, lojaId, fiadoSale(lines, sum(lines)));
+      assert.equal(r.receivable.action, 'UPDATE', removed);
+      assert.equal(r.receivable.newPaymentMode, 'FIADO', removed);
+      assert.equal(cr(db, base).saldoAtual, sum(lines));
+      assert.equal(stockQty(db, base, removed), 11);
+    }
+    const sale = saleDoc(db, base);
+    assert.equal(sale.saleEditRevision, 6);
+    assert.equal(sale.total, 312);
+    assert.equal(sale.saldoFiado, 312);
+    assert.equal(sale.pagamentoPix, 0);
+    const doc = cr(db, base);
+    assert.equal(doc.cancelada, false);
+    assert.equal(doc.saldoAtual, 312);
+    assert.equal(crDocs(db, base).length, 1);
+
+    const r = await edit(db, base, lojaId, pixSale(mirLines(['a']), 312), {paymentChange: FROM_FIADO});
+    assert.equal(r.receivable.action, 'SOFT_DELETE');
+    assertSoftDeleted(cr(db, base), 312);
+    assert.equal(saleDoc(db, base).saldoFiado, undefined);
+  });
+
+  test(`[${mode}] MIR sequence as sent by 1.0.137 (Pix inferred on every open) never converts`, async () => {
+    const {db, base, lojaId} = mirStore(mode);
+    const snap = db.snapshot(), commits = db.commits.length;
+    let ids = Object.keys(MIR_PRICES);
+    for (const removed of ['g', 'f', 'e', 'd', 'c', 'b']) {
+      ids = ids.filter(id => id !== removed);
+      const lines = mirLines(ids);
+      await rejectsWith(edit(db, base, lojaId, pixSale(lines, sum(lines))),
+        {code: 'cancelled', detail: 'PAYMENT_CHANGE_REQUIRES_CONFIRMATION'});
+    }
+    assertNothingWritten(db, snap, commits);
+  });
+}
+
+test('parsed command carries paymentChange only when sent (idempotency hash of older operations unchanged)', () => {
+  const raw = {saleId: SALE, expectedOriginalLinesHash: 'a'.repeat(64), sale: pixSale([line('a', 1)], 10)};
+  assert.equal('paymentChange' in parseSaleEditPayload(raw), false);
+  assert.deepEqual(parseSaleEditPayload({...raw, paymentChange: {explicit: true, from: {fiado: true, pix: 5}}}).paymentChange,
+    {explicit: true, from: {fiado: true, dinheiro: 0, pix: 5, cartao: 0}});
+});
+
 test('the receivable query runs inside the transaction', async () => {
   const {db, base, lojaId} = seedStore('ACTIVE');
-  await edit(db, base, lojaId, pixSale([line('a', 1)], 100));
+  await edit(db, base, lojaId, pixSale([line('a', 1)], 100), {paymentChange: FROM_FIADO});
   assert.ok(db.queryReads.includes(`${base.path}/contas_receber`));
 });
 

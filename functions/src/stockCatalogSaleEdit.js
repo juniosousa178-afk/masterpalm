@@ -24,6 +24,7 @@ export const SALE_EDIT_REASON = Object.freeze({
   SALE_EDIT_CONFLICT: 'SALE_EDIT_CONFLICT',
   INVALID_SALE_EDIT: 'INVALID_SALE_EDIT',
   OPERATION_PAYLOAD_CONFLICT: 'OPERATION_PAYLOAD_CONFLICT',
+  PAYMENT_CHANGE_REQUIRES_CONFIRMATION: 'PAYMENT_CHANGE_REQUIRES_CONFIRMATION',
 });
 
 export function saleEditError(httpCode, code, reason, message) {
@@ -98,9 +99,34 @@ function parseLine(item, index) {
   return line;
 }
 
+const PAYMENT_STATE_KEYS = Object.freeze(['fiado', 'dinheiro', 'pix', 'cartao']);
+
+/**
+ * Explicit merchant intent to change the payment state, bound to the state the editor started from.
+ * Absent for edits that keep the saved payment state (and for clients before 1.0.138).
+ */
+function parsePaymentChange(raw) {
+  if (!isMap(raw) || Object.keys(raw).some(k => !['explicit', 'from'].includes(k)) || raw.explicit !== true) {
+    throw invalid('INVALID_PAYMENT_CHANGE', 'Invalid paymentChange');
+  }
+  const from = raw.from;
+  if (!isMap(from) || Object.keys(from).some(k => !PAYMENT_STATE_KEYS.includes(k)) || typeof from.fiado !== 'boolean') {
+    throw invalid('INVALID_PAYMENT_CHANGE', 'Invalid paymentChange.from');
+  }
+  return {
+    explicit: true,
+    from: {
+      fiado: from.fiado,
+      dinheiro: money(from.dinheiro ?? 0, 'paymentChange.from.dinheiro'),
+      pix: money(from.pix ?? 0, 'paymentChange.from.pix'),
+      cartao: money(from.cartao ?? 0, 'paymentChange.from.cartao'),
+    },
+  };
+}
+
 /** Client payload: identifiers, the CAS hash of the lines the client edited, and the edited sale fields. */
 export function parseSaleEditPayload(raw) {
-  if (!isMap(raw) || Object.keys(raw).some(k => !['saleId', 'expectedOriginalLinesHash', 'sale'].includes(k))) {
+  if (!isMap(raw) || Object.keys(raw).some(k => !['saleId', 'expectedOriginalLinesHash', 'sale', 'paymentChange'].includes(k))) {
     throw invalid('INVALID_PAYLOAD', 'Unknown or protected saleEdit field');
   }
   const saleId = documentId(raw.saleId, 'saleId');
@@ -150,7 +176,9 @@ export function parseSaleEditPayload(raw) {
     dataVencimentoFiado: isoDate(s.dataVencimentoFiado, 'dataVencimentoFiado'),
     data: isoDate(s.data, 'data'),
   };
-  return {saleId, expectedOriginalLinesHash: raw.expectedOriginalLinesHash, sale};
+  // Only present when sent: the parsed command is the idempotency fingerprint of already-applied edits.
+  const paymentChange = raw.paymentChange === undefined ? null : parsePaymentChange(raw.paymentChange);
+  return {saleId, expectedOriginalLinesHash: raw.expectedOriginalLinesHash, sale, ...(paymentChange ? {paymentChange} : {})};
 }
 
 /** Stored lines are tolerant (legacy keys); quantities must still be positive integers. */
