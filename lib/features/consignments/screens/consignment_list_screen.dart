@@ -168,13 +168,18 @@ class _ConsignmentListScreenState extends State<ConsignmentListScreen> {
       DefaultTabController(length: 2, child: _buildScaffold(context));
 
   Widget _buildScaffold(BuildContext context) {
+    final theme = Theme.of(context);
+    final appBarForeground = theme.appBarTheme.foregroundColor ?? theme.colorScheme.onSurface;
     return Scaffold(
       backgroundColor: MpColors.background,
       appBar: AppBar(
         title: Text(_selecting ? 'Selecionar consignações' : 'Consignados'),
         bottom: _enabled && _lojaId != null
-            ? const TabBar(
-                tabs: [
+            ? TabBar(
+                labelColor: appBarForeground,
+                unselectedLabelColor: appBarForeground.withValues(alpha: 0.7),
+                indicatorColor: appBarForeground,
+                tabs: const [
                   Tab(key: Key('consignment_tab_open'), text: 'Em aberto'),
                   Tab(key: Key('consignment_tab_history'), text: 'Histórico'),
                 ],

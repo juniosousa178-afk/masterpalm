@@ -220,6 +220,31 @@ void main() {
       });
     }
 
+    double contrast(Color a, Color b) {
+      final la = a.computeLuminance(), lb = b.computeLuminance();
+      return (la > lb ? la + 0.05 : lb + 0.05) / (la > lb ? lb + 0.05 : la + 0.05);
+    }
+
+    Color labelColor(WidgetTester tester, String text) => tester
+        .widget<RichText>(find.descendant(of: find.text(text), matching: find.byType(RichText)))
+        .text
+        .style!
+        .color!;
+
+    testWidgets('selected and unselected tab labels are readable on the app AppBar', (tester) async {
+      await pumpList(tester, const Size(390, 844));
+      final bar = tester
+          .widget<Material>(find.descendant(of: find.byType(AppBar), matching: find.byType(Material)).first)
+          .color!;
+      for (final step in [null, 'consignment_tab_history']) {
+        if (step != null) await openHistory(tester);
+        final selected = step == null ? 'Em aberto' : 'Histórico';
+        final other = step == null ? 'Histórico' : 'Em aberto';
+        expect(contrast(labelColor(tester, selected), bar), greaterThanOrEqualTo(4.5), reason: 'selected $selected');
+        expect(contrast(labelColor(tester, other), bar), greaterThanOrEqualTo(3), reason: 'unselected $other');
+      }
+    });
+
     testWidgets('D/E Excluir da lista only for total return', (tester) async {
       await pumpList(tester, const Size(800, 1280));
       await openHistory(tester);
