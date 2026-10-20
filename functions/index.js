@@ -14,6 +14,7 @@ import {executeConsignmentCommand} from "./src/consignmentCommand.js";
 import {handleProjectionRetryEvent} from "./src/consignmentCatalogProjection.js";
 import {mapConsignmentHttp, describeUnclassifiedConsignmentError} from "./src/consignmentProtocol.js";
 import {executeCategoryCommand, mapCategoryError} from "./src/categoryCommand.js";
+import {legacyOrderRedirectTarget} from "./src/publicOrderRedirect.js";
 
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
@@ -4441,6 +4442,10 @@ export const redirectCatalogo = onRequest(
   { cors: true },
   corsWrap(async (req, res) => {
     if (req.method !== "GET") return res.status(405).send("Method not allowed");
+    const orderTarget = legacyOrderRedirectTarget(req.path, req.query);
+    if (orderTarget) {
+      return res.redirect(302, orderTarget);
+    }
     const short = (req.path.replace(/^\/c\/?/, "") || "").trim().toLowerCase();
     if (!short) {
       return res.redirect(302, `${WEB_BASE}/`);

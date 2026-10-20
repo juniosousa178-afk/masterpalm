@@ -1353,8 +1353,10 @@ service cloud.firestore {
         allow create, update, delete: if false;
       }
 
+      // Leitura pública só por ID exato (link do pedido); listar expõe todos os pedidos da loja.
       match /pedido_status_publico/{pedidoId} {
-        allow read: if resource != null;
+        allow get: if resource != null;
+        allow list: if belongsToStore(lojaId);
         allow create, update: if belongsToStore(lojaId)
           && isValidPedidoStatusPublicoWrite(lojaId);
         allow delete: if belongsToStore(lojaId);

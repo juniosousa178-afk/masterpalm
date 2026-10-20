@@ -18,6 +18,7 @@ import 'package:diacritic/diacritic.dart';
 
 import 'package:flutter/services.dart';
 
+import '../../../catalog/checkout_single_flight.dart';
 import '../../../core/catalogo_cupom_visitante_policy.dart';
 import '../../../core/combo_configuravel_resumo.dart';
 import '../../../core/logger.dart';
@@ -258,6 +259,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
 
   // ✅ Flag para evitar duplicação de pedidos
   bool _processandoCheckout = false;
+  final CheckoutSingleFlight _whatsappCheckoutFlight = CheckoutSingleFlight();
 
   /// Erro de pagamento exibido na tela do carrinho (não no catálogo)
   String? _checkoutError;
@@ -4315,134 +4317,136 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                 ),
                 onPressed: _processandoCheckout
                     ? null
-                    : () async {
-                        if (!_validarItensComPreco()) return;
-                        if (!_validarCampos()) return;
-                        if (!await _dialogBeneficioCadastroOuSeguir()) return;
-                        if (!mounted) return;
+                    : () => _whatsappCheckoutFlight.run(() async {
+                          if (!_validarItensComPreco()) return;
+                          if (!_validarCampos()) return;
+                          if (!await _dialogBeneficioCadastroOuSeguir()) return;
+                          if (!mounted) return;
 
-                        // ✅ MARCA COMO PROCESSANDO
-                        setState(() {
-                          _processandoCheckout = true;
-                        });
-                        await Future.delayed(Duration.zero);
+                          // ✅ MARCA COMO PROCESSANDO
+                          setState(() {
+                            _processandoCheckout = true;
+                          });
+                          await Future.delayed(Duration.zero);
 
-                        final cupomIdDesc = _cupomDescontoIdFirestore();
-                        final cupomIdFrete = _cupomFreteIdFirestore();
-                        final clienteLogado =
-                            await ClienteAuthService.getClienteLogado();
-                        final clienteId =
-                            clienteLogado?['clienteId']?.toString();
+                          final cupomIdDesc = _cupomDescontoIdFirestore();
+                          final cupomIdFrete = _cupomFreteIdFirestore();
+                          final clienteLogado =
+                              await ClienteAuthService.getClienteLogado();
+                          final clienteId =
+                              clienteLogado?['clienteId']?.toString();
 
-                        try {
-                          final customer = _customerPayload();
+                          try {
+                            final customer = _customerPayload();
 
-                          // ✅ Pega o frete selecionado completo
-                          final freteSelecionado = _fretesLocal.isNotEmpty &&
-                                  _freteIndex >= 0 &&
-                                  _freteIndex < _fretesLocal.length
-                              ? _fretesLocal[_freteIndex]
-                              : {
-                                  'nome': 'Entrega',
-                                  'valor': 0.0,
-                                  'tipo': 'padrao'
-                                };
+                            // ✅ Pega o frete selecionado completo
+                            final freteSelecionado = _fretesLocal.isNotEmpty &&
+                                    _freteIndex >= 0 &&
+                                    _freteIndex < _fretesLocal.length
+                                ? _fretesLocal[_freteIndex]
+                                : {
+                                    'nome': 'Entrega',
+                                    'valor': 0.0,
+                                    'tipo': 'padrao'
+                                  };
 
-                          final nomeFretePedido = _freteGratis
-                              ? 'Cupom de frete grátis'
-                              : (freteSelecionado['nome'] ??
-                                      freteSelecionado['label'] ??
-                                      'Entrega')
-                                  .toString();
-                          final entrega = {
-                            'nome': nomeFretePedido,
-                            'valor': _totals.valorFreteFinal,
-                            'freteGratis': _freteGratis,
-                            'tipo': freteSelecionado['tipo'] ?? 'padrao',
-                            if (freteSelecionado['plataforma'] != null)
-                              'plataforma': freteSelecionado['plataforma'],
-                            if (freteSelecionado['service_id'] != null)
-                              'service_id': freteSelecionado['service_id'],
-                            if (freteSelecionado['servico_id'] != null)
-                              'servico_id': freteSelecionado['servico_id'],
-                          };
+                            final nomeFretePedido = _freteGratis
+                                ? 'Cupom de frete grátis'
+                                : (freteSelecionado['nome'] ??
+                                        freteSelecionado['label'] ??
+                                        'Entrega')
+                                    .toString();
+                            final entrega = {
+                              'nome': nomeFretePedido,
+                              'valor': _totals.valorFreteFinal,
+                              'freteGratis': _freteGratis,
+                              'tipo': freteSelecionado['tipo'] ?? 'padrao',
+                              if (freteSelecionado['plataforma'] != null)
+                                'plataforma': freteSelecionado['plataforma'],
+                              if (freteSelecionado['service_id'] != null)
+                                'service_id': freteSelecionado['service_id'],
+                              if (freteSelecionado['servico_id'] != null)
+                                'servico_id': freteSelecionado['servico_id'],
+                            };
 
-                          await widget.onCheckoutWhatsapp(
-                            customer: customer,
-                            entrega: entrega,
-                            pagamento: _pagamento,
-                            observacao: _obs.text.trim(),
-                            cupomRoletaCodigo: _cupomRoletaCodigo,
-                            cupomRoletaDesconto: _cupomRoletaDesconto,
-                            premioRoletaDescricao: _premioRoletaDescricao,
-                            cupomCodigo: _cupomCodigoParaPedido(),
-                            cupomFreteCodigo: _cupomFreteCodigoParaPedido(),
-                            descontoCupom: _totals.descontoCupom,
-                            valorTotalCheckout: _totals.total,
-                            onSuccess: (String? pedidoId) async {
-                              if (mounted) Navigator.pop(context);
-                              if (clienteId != null && clienteId.isNotEmpty) {
-                                if (cupomIdDesc != null &&
-                                    cupomIdDesc.isNotEmpty) {
-                                  CupomDescontoService().registrarUso(
-                                    lojaId: widget.lojaId,
-                                    cupomId: cupomIdDesc,
-                                    clienteId: clienteId,
-                                  );
+                            await widget.onCheckoutWhatsapp(
+                              customer: customer,
+                              entrega: entrega,
+                              pagamento: _pagamento,
+                              observacao: _obs.text.trim(),
+                              cupomRoletaCodigo: _cupomRoletaCodigo,
+                              cupomRoletaDesconto: _cupomRoletaDesconto,
+                              premioRoletaDescricao: _premioRoletaDescricao,
+                              cupomCodigo: _cupomCodigoParaPedido(),
+                              cupomFreteCodigo: _cupomFreteCodigoParaPedido(),
+                              descontoCupom: _totals.descontoCupom,
+                              valorTotalCheckout: _totals.total,
+                              onSuccess: (String? pedidoId) async {
+                                if (mounted) Navigator.pop(context);
+                                if (clienteId != null && clienteId.isNotEmpty) {
+                                  if (cupomIdDesc != null &&
+                                      cupomIdDesc.isNotEmpty) {
+                                    CupomDescontoService().registrarUso(
+                                      lojaId: widget.lojaId,
+                                      cupomId: cupomIdDesc,
+                                      clienteId: clienteId,
+                                    );
+                                  }
+                                  if (cupomIdFrete != null &&
+                                      cupomIdFrete.isNotEmpty) {
+                                    CupomDescontoService().registrarUso(
+                                      lojaId: widget.lojaId,
+                                      cupomId: cupomIdFrete,
+                                      clienteId: clienteId,
+                                    );
+                                  }
                                 }
-                                if (cupomIdFrete != null &&
-                                    cupomIdFrete.isNotEmpty) {
-                                  CupomDescontoService().registrarUso(
-                                    lojaId: widget.lojaId,
-                                    cupomId: cupomIdFrete,
-                                    clienteId: clienteId,
-                                  );
+                                final cRoleta = _cupomPorOrigem('roleta_sorte');
+                                if (cRoleta != null) {
+                                  final email = (clienteLogado?['email'] ??
+                                          customer['email'] ??
+                                          '')
+                                      .toString()
+                                      .trim();
+                                  final codigo = _codigoCupomMap(cRoleta);
+                                  if (email.isNotEmpty && codigo.isNotEmpty) {
+                                    await ClienteAuthService
+                                        .marcarCupomRoletaComoUsado(
+                                      lojaId: widget.lojaId,
+                                      email: email,
+                                      codigo: codigo,
+                                    );
+                                  }
                                 }
-                              }
-                              final cRoleta = _cupomPorOrigem('roleta_sorte');
-                              if (cRoleta != null) {
-                                final email = (clienteLogado?['email'] ??
-                                        customer['email'] ??
-                                        '')
-                                    .toString()
-                                    .trim();
-                                final codigo = _codigoCupomMap(cRoleta);
-                                if (email.isNotEmpty && codigo.isNotEmpty) {
-                                  await ClienteAuthService
-                                      .marcarCupomRoletaComoUsado(
-                                    lojaId: widget.lojaId,
-                                    email: email,
-                                    codigo: codigo,
-                                  );
+                                final cIndic = _cupomPorOrigem('cupom_cliente');
+                                if (cIndic != null &&
+                                    (pedidoId ?? '').isNotEmpty) {
+                                  final cupomClienteId =
+                                      (cIndic['id'] ?? '').toString();
+                                  if (cupomClienteId.isNotEmpty) {
+                                    await CuponsService.usarCupom(
+                                      lojaId: widget.lojaId,
+                                      cupomId: cupomClienteId,
+                                      pedidoId: pedidoId!,
+                                    );
+                                  }
                                 }
-                              }
-                              final cIndic = _cupomPorOrigem('cupom_cliente');
-                              if (cIndic != null &&
-                                  (pedidoId ?? '').isNotEmpty) {
-                                final cupomClienteId =
-                                    (cIndic['id'] ?? '').toString();
-                                if (cupomClienteId.isNotEmpty) {
-                                  await CuponsService.usarCupom(
-                                    lojaId: widget.lojaId,
-                                    cupomId: cupomClienteId,
-                                    pedidoId: pedidoId!,
-                                  );
+                              },
+                              showErrorInCart: (msg) {
+                                if (mounted) {
+                                  setState(() => _checkoutError = msg);
                                 }
-                              }
-                            },
-                            showErrorInCart: (msg) {
-                              if (mounted) setState(() => _checkoutError = msg);
-                            },
-                          );
-                        } finally {
-                          // ✅ DESMARCA APÓS PROCESSAMENTO
-                          if (mounted) {
-                            setState(() {
-                              _processandoCheckout = false;
-                            });
+                              },
+                            );
+                          } finally {
+                            // ✅ DESMARCA APÓS PROCESSAMENTO
+                            if (mounted) {
+                              setState(() {
+                                _processandoCheckout = false;
+                              });
+                            }
                           }
-                        }
-                      },
+                        }),
               ),
             ),
 

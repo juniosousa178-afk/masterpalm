@@ -52,7 +52,10 @@ import 'web/platform_stub.dart' if (dart.library.html) 'web/platform_web.dart'
 import 'utils/web_nav_log_observer.dart';
 import 'widgets/admin_web_route_shell.dart';
 
+import 'catalog/public_order_link.dart';
+
 // Telas
+import 'screens/public_order_web_app.dart';
 import 'screens/splash_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
@@ -1466,6 +1469,7 @@ Future<bool> _webShouldMinimalBootstrapForPublicCatalogViewer() async {
 bool _isPublicCatalogUrl() {
   if (!kIsWeb) return false;
   final uri = _initialWebUri ?? Uri.base;
+  if (PublicOrderLink.isPublicOrderPath(uri)) return false;
   final path = uri.path;
 
   // Path direto: /loja/slug (garante que abra o catálogo e não o app web)
@@ -3143,6 +3147,16 @@ Future<void> main() async {
       }
       if (_shouldForceResolveTest(initialUri)) {
         runApp(const _CatalogResolveTestApp());
+        return;
+      }
+
+      // Página pública do pedido: precede o catálogo legado (`?loja=` aqui é o tenant do pedido).
+      if (PublicOrderLink.isPublicOrderPath(initialUri)) {
+        CatalogStartupTrace.mark('CAT_START.runApp.public_order');
+        runApp(PublicOrderWebApp(
+          ref: PublicOrderLink.parse(initialUri),
+          initFirebase: ensureFirebaseInitializedOnce,
+        ));
         return;
       }
 

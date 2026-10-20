@@ -510,8 +510,13 @@
         var f = (hash || '').replace(/^#/, '');
         return f.indexOf('loja/') !== -1 || f.indexOf('/loja/') !== -1;
       }
+      function isPublicOrderPath(path) {
+        var parts = (path || '').split('/').filter(function (s) { return s.length > 0; });
+        return parts.length === 2 && parts[0] === 'pedido';
+      }
       function isPublicCatalogUrl() {
         var path = location.pathname || '/';
+        if (isPublicOrderPath(path)) return false;
         if (hasLojaPath(path)) return true;
         if (hasCatalogQuery(location.search || '')) return true;
         if (hasCatalogHash(location.hash || '')) return true;

@@ -6,6 +6,8 @@ import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../catalog/public_order_link.dart';
+import '../config/app_urls.dart';
 import '../core/premio_roleta_snapshot.dart';
 import '../core/combo_configuravel_resumo.dart';
 import '../core/logger.dart';
@@ -1025,29 +1027,36 @@ class PrePedidoService {
   /// Gera URL pública para visualizar o pré-pedido
   ///
   /// Usa HTTPS para ser clicável no WhatsApp
-  /// Exemplo: https://app.mastepalm.com.br/c/nathy-pratas-e-folheados?pedido=abc123
+  /// Exemplo: https://app.mastepalm.com.br/pedido/abc123?loja=nathy-pratas-e-folheados
   ///
-  /// O AndroidManifest está configurado para interceptar esses links e abrir no app
+  /// `/c/...` é o link curto do catálogo (redirect que descarta a query) — não usar para pedido.
   static String gerarUrlPedido({
     required String prePedidoId,
     required String lojaId,
-    String baseUrl = 'https://app.mastepalm.com.br',
+    String baseUrl = AppUrls.appWebBase,
     bool useCustomScheme = false, // ✅ HTTPS por padrão para ser clicável
   }) {
     if (useCustomScheme) {
       // Custom scheme - só funciona se app estiver instalado
-      return 'masterpalm://pedido/$prePedidoId?loja=$lojaId';
-    } else {
-      // HTTPS - clicável no WhatsApp e abre no app se instalado
-      return '$baseUrl/c/$lojaId?pedido=$prePedidoId';
+      return Uri(
+        scheme: 'masterpalm',
+        host: 'pedido',
+        pathSegments: [prePedidoId],
+        queryParameters: {'loja': lojaId},
+      ).toString();
     }
+    return PublicOrderLink.build(
+      lojaId: lojaId,
+      pedidoId: prePedidoId,
+      baseUrl: baseUrl,
+    ).toString();
   }
 
   /// Formata os dados do pré-pedido para exibição
   static String formatarParaWhatsApp({
     required Map<String, dynamic> prePedido,
     required String lojaId,
-    String baseUrl = 'https://app.mastepalm.com.br',
+    String baseUrl = AppUrls.appWebBase,
     String? lojaSlug,
   }) {
     final buffer = StringBuffer();
@@ -1152,11 +1161,12 @@ class PrePedidoService {
     buffer.writeln('');
 
     // Link do pedido - usa HTTPS para ser clicável no WhatsApp
-    final prePedidoId = prePedido['id'] ?? '';
-    if (prePedidoId.isNotEmpty) {
+    final prePedidoId = (prePedido['id'] ?? '').toString().trim();
+    if (PublicOrderLink.isValidId(prePedidoId) &&
+        PublicOrderLink.isValidId(lojaId.trim())) {
       final url = gerarUrlPedido(
         prePedidoId: prePedidoId,
-        lojaId: lojaId,
+        lojaId: lojaId.trim(),
         baseUrl: baseUrl,
         useCustomScheme: false, // ✅ HTTPS para ser clicável
       );

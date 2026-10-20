@@ -2,6 +2,7 @@
 // O domínio oficial [AppUrls.isDefaultMasterPalmCatalogHost] **não** é domínio próprio
 // de loja: a raiz `/` nunca deve ser classificada como "loja não configurada".
 
+import 'package:master_palm/catalog/public_order_link.dart';
 import 'package:master_palm/config/app_urls.dart';
 
 /// Slug reservado / inválido — nunca tratar como loja real.
@@ -105,6 +106,10 @@ enum CatalogInitialRouteKind {
 
   /// Host candidato a domínio loja, sem mapeamento.
   customDomainNotConfigured,
+
+  /// `/pedido/{pedidoId}?loja={lojaId}` — página pública do pedido. O `?loja=` aqui
+  /// identifica o tenant do pedido e não pode abrir o catálogo legado.
+  publicOrder,
 }
 
 class CatalogRouteDecision {
@@ -143,6 +148,11 @@ class CatalogRouteDecision {
     /// Só usado fora do host default, quando a resolução **já** veio (ex. testes).
     bool? customDomainMappingResolved,
   }) {
+    if (PublicOrderLink.isPublicOrderPath(uri)) {
+      return const CatalogRouteDecision._(
+        kind: CatalogInitialRouteKind.publicOrder,
+      );
+    }
     if (_uriIsPagamentoPublicPath(uri)) {
       return _root;
     }

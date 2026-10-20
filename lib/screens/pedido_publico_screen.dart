@@ -5,32 +5,80 @@ import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 
+import '../catalog/public_order_link.dart';
 import '../core/logger.dart';
 import '../core/pre_pedido_sale_intent.dart';
 import '../repositories/pedido_status_publico_repository.dart';
 
 /// Tela pública para visualizar o status do pedido
-/// Acessível via: https://app.mastepalm.com.br/pedido/{prePedidoId}
+/// Acessível via: https://app.mastepalm.com.br/pedido/{prePedidoId}?loja={lojaId}
 ///
 /// Coordenação M3.2-D: confirmação (código legado comentado) usa
 /// [PrePedidoSaleIntent.saleIntentIdForPedido] + [PrePedidoSaleIntent.origin].
 class PedidoPublicoScreen extends StatefulWidget {
   final String lojaId;
   final String prePedidoId;
+  final PedidoStatusPublicoRepository? repository;
 
   const PedidoPublicoScreen({
     super.key,
     required this.lojaId,
     required this.prePedidoId,
+    this.repository,
   });
+
+  static const String mensagemNaoEncontrado =
+      'Pedido não encontrado ou ainda não disponível. '
+      'Se você acabou de fazer o pedido, aguarde alguns instantes. '
+      'Caso contrário, verifique o link ou entre em contato com a loja.';
+  static const String mensagemLinkInvalido =
+      'Link do pedido inválido. Verifique o link recebido ou entre em contato com a loja.';
+  static const String mensagemFalhaCarregamento =
+      'Não foi possível carregar o pedido agora. Verifique sua conexão e tente novamente.';
 
   @override
   State<PedidoPublicoScreen> createState() => _PedidoPublicoScreenState();
 }
 
+/// Erro sem ação de recarregar (link inválido / falha de inicialização).
+class PedidoPublicoErroScaffold extends StatelessWidget {
+  const PedidoPublicoErroScaffold({super.key, required this.mensagem});
+
+  final String mensagem;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.grey[50],
+      appBar: AppBar(
+        title: const Text('Detalhes do Pedido'),
+        centerTitle: true,
+        elevation: 0,
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.error_outline, size: 64, color: Colors.red[300]),
+              const SizedBox(height: 16),
+              Text(
+                mensagem,
+                style: const TextStyle(fontSize: 18),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _PedidoPublicoScreenState extends State<PedidoPublicoScreen> {
-  final PedidoStatusPublicoRepository _pedidoStatusPublicoRepository =
-      PedidoStatusPublicoRepository();
+  late final PedidoStatusPublicoRepository _pedidoStatusPublicoRepository =
+      widget.repository ?? PedidoStatusPublicoRepository();
   bool _carregando = true;
   Map<String, dynamic>? _prePedido;
   bool _usandoFallbackLegado = false;
@@ -42,7 +90,20 @@ class _PedidoPublicoScreenState extends State<PedidoPublicoScreen> {
     _carregarPedido();
   }
 
+  void _mostrarErro(String mensagem) {
+    if (!mounted) return;
+    setState(() {
+      _erro = mensagem;
+      _carregando = false;
+    });
+  }
+
   Future<void> _carregarPedido() async {
+    if (!PublicOrderLink.isValidId(widget.lojaId) ||
+        !PublicOrderLink.isValidId(widget.prePedidoId)) {
+      _mostrarErro(PedidoPublicoScreen.mensagemLinkInvalido);
+      return;
+    }
     try {
       // ETAPA 9: usa APENAS pedido_status_publico (leitura pública). Sem fallback para pre_pedidos.
       final pedidoPublico =
@@ -51,8 +112,11 @@ class _PedidoPublicoScreenState extends State<PedidoPublicoScreen> {
         pedidoId: widget.prePedidoId,
       );
 
-      if (pedidoPublico != null) {
+      final lojaDoEspelho = (pedidoPublico?['lojaId'] ?? '').toString().trim();
+      final mesmaLoja = lojaDoEspelho.isEmpty || lojaDoEspelho == widget.lojaId;
+      if (pedidoPublico != null && mesmaLoja) {
         logD('[ETAPA9] PedidoPublicoScreen: carregou de pedido_status_publico');
+        if (!mounted) return;
         setState(() {
           _prePedido = _normalizarPedidoParaTela(pedidoPublico);
           _usandoFallbackLegado = false;
@@ -61,18 +125,10 @@ class _PedidoPublicoScreenState extends State<PedidoPublicoScreen> {
         return;
       }
 
-      setState(() {
-        _erro =
-            'Pedido não encontrado ou ainda não disponível. '
-            'Se você acabou de fazer o pedido, aguarde alguns instantes. '
-            'Caso contrário, verifique o link ou entre em contato com a loja.';
-        _carregando = false;
-      });
+      _mostrarErro(PedidoPublicoScreen.mensagemNaoEncontrado);
     } catch (e) {
-      setState(() {
-        _erro = 'Erro ao carregar pedido: $e';
-        _carregando = false;
-      });
+      logD('PedidoPublicoScreen: falha ao carregar (type=${e.runtimeType})');
+      _mostrarErro(PedidoPublicoScreen.mensagemFalhaCarregamento);
     }
   }
 
