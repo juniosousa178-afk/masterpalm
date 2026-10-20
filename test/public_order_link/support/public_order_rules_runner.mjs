@@ -77,22 +77,44 @@ const anon = env.unauthenticatedContext().firestore();
 const outsider = env.authenticatedContext("outsider").firestore();
 const ownerA = env.authenticatedContext(OWNER_A).firestore();
 
-await check("anônimo lê pedido A por ID exato na loja A",
-  assertSucceeds(anon.doc(`lojas/${LOJA_A}/pedido_status_publico/${PEDIDO_A}`).get()));
-await check("anônimo NÃO lê pedido C trocando a loja para A (inexistente)",
-  assertFails(anon.doc(`lojas/${LOJA_A}/pedido_status_publico/${PEDIDO_C}`).get()));
-await check("anônimo NÃO lê pedido A pela loja B",
-  assertFails(anon.doc(`lojas/${LOJA_B}/pedido_status_publico/${PEDIDO_A}`).get()));
-await check("anônimo NÃO lista pedidos da loja A",
-  assertFails(anon.collection(`lojas/${LOJA_A}/pedido_status_publico`).get()));
-await check("anônimo NÃO lista via collectionGroup",
-  assertFails(anon.collectionGroup("pedido_status_publico").get()));
-await check("usuário de outra loja NÃO lista pedidos da loja A",
-  assertFails(outsider.collection(`lojas/${LOJA_A}/pedido_status_publico`).get()));
-await check("dono da loja A lista os pedidos da própria loja",
-  assertSucceeds(ownerA.collection(`lojas/${LOJA_A}/pedido_status_publico`).get()));
-await check("anônimo NÃO escreve no espelho",
-  assertFails(anon.doc(`lojas/${LOJA_A}/pedido_status_publico/${PEDIDO_A}`).set(mirror(LOJA_A, PEDIDO_A))));
+const pub = (db, lojaId, pedidoId) => db.doc(`lojas/${lojaId}/pedido_status_publico/${pedidoId}`);
+const pubCol = (db, lojaId) => db.collection(`lojas/${lojaId}/pedido_status_publico`);
+
+await check("A. anônimo lê pedido A por ID exato na loja A",
+  assertSucceeds(pub(anon, LOJA_A, PEDIDO_A).get()));
+await check("B. anônimo NÃO lista a coleção (loja e collectionGroup)", Promise.all([
+  assertFails(pubCol(anon, LOJA_A).get()),
+  assertFails(anon.collectionGroup("pedido_status_publico").get()),
+]));
+await check("C. anônimo NÃO consulta com filtro", Promise.all([
+  assertFails(pubCol(anon, LOJA_A).where("status", "==", "pendente").get()),
+  assertFails(pubCol(anon, LOJA_A).where("pedidoId", "==", PEDIDO_A).get()),
+  assertFails(anon.collectionGroup("pedido_status_publico").where("lojaId", "==", LOJA_A).get()),
+]));
+await check("D. pedido da loja A com loja B na referência não é revelado", Promise.all([
+  assertFails(pub(anon, LOJA_B, PEDIDO_A).get()),
+  assertFails(pub(anon, LOJA_A, PEDIDO_C).get()),
+]));
+await check("E. ID inexistente não revela nada",
+  assertFails(pub(anon, LOJA_A, "NaoExiste0000000000x").get()));
+await check("F. dono da loja A mantém get, list, escrita válida e delete", (async () => {
+  await assertSucceeds(pub(ownerA, LOJA_A, PEDIDO_A).get());
+  await assertSucceeds(pubCol(ownerA, LOJA_A).get());
+  await assertSucceeds(pub(ownerA, LOJA_A, PEDIDO_B).set(mirror(LOJA_A, PEDIDO_B)));
+  await assertSucceeds(pub(ownerA, LOJA_A, PEDIDO_B).delete());
+})());
+await check("G. lojista de outra loja continua bloqueado em list e escrita", Promise.all([
+  assertFails(pubCol(outsider, LOJA_A).get()),
+  assertFails(pubCol(ownerA, LOJA_B).get()),
+  assertFails(pub(ownerA, LOJA_B, PEDIDO_C).set(mirror(LOJA_B, PEDIDO_C))),
+  assertFails(pub(ownerA, LOJA_B, PEDIDO_C).delete()),
+]));
+await check("H. anônimo NÃO escreve nem apaga o espelho", Promise.all([
+  assertFails(pub(anon, LOJA_A, PEDIDO_A).set(mirror(LOJA_A, PEDIDO_A))),
+  assertFails(pub(anon, LOJA_A, PEDIDO_A).update({status: "pago"})),
+  assertFails(pub(anon, LOJA_A, "NovoAnonimo000000000").set(mirror(LOJA_A, "NovoAnonimo000000000"))),
+  assertFails(pub(anon, LOJA_A, PEDIDO_A).delete()),
+]));
 
 await env.cleanup();
 console.log(`PUBLIC_ORDER_RULES passed=${passed} failed=${failed}`);
