@@ -289,6 +289,79 @@ test('names normalize by case, accents and spacing', () => {
   assert.equal(normalizeCategoryName('ANÉIS'), normalizeCategoryName('aneis'));
 });
 
+function assertPathIntegrity(db, base, lojaId) {
+  const idx = indexOf(db, base, lojaId);
+  for (const {id, data} of cats(db, base)) {
+    assert.equal(data.depth, data.pathIds.length, id);
+    assert.equal(data.pathNames.length, data.pathIds.length, id);
+    assert.equal(data.pathIds.at(-1), id);
+    assert.equal(data.pathNames.at(-1), data.nome);
+    if (data.parentId) {
+      const parent = idx.nodes.get(data.parentId);
+      assert.deepEqual(data.pathIds, [...parent.pathIds, id]);
+      assert.deepEqual(data.pathNames, [...parent.pathNames, data.nome]);
+    } else {
+      assert.equal(data.depth, 1);
+    }
+  }
+}
+
+test('paths are server-derived: client depth/pathIds/pathNames are ignored and stay consistent after rename', async () => {
+  const {db, base, lojaId} = seedStore();
+  const [fem] = await chain(db, lojaId, ['Feminino']);
+  const r = await run(db, lojaId, 'create', {parent: {id: fem.id}, nome: 'Religioso',
+    depth: 6, pathIds: ['forged'], pathNames: ['Forjado'], id: 'forged'});
+  assert.equal(r.category.depth, 2);
+  assert.deepEqual(r.category.pathIds, [fem.id, r.category.id]);
+  assert.notEqual(r.category.id, 'forged');
+  await chain(db, lojaId, ['Masculino']);
+  const [, , aneis] = await chain(db, lojaId, ['Infantil', 'Religioso', 'Anéis']);
+  assertPathIntegrity(db, base, lojaId);
+  await run(db, lojaId, 'rename', {target: {id: aneis.pathIds[1]}, nome: 'Religiosos'});
+  assertPathIntegrity(db, base, lojaId);
+});
+
+test('Feminino > Religioso and Masculino > Religioso coexist; same-parent duplicates are refused', async () => {
+  const {db, base, lojaId} = seedStore();
+  const [fem] = await chain(db, lojaId, ['Feminino']);
+  const [mas] = await chain(db, lojaId, ['Masculino']);
+  const a = await run(db, lojaId, 'create', {parent: {id: fem.id}, nome: 'Religioso'});
+  const b = await run(db, lojaId, 'create', {parent: {id: mas.id}, nome: 'Religioso'});
+  assert.notEqual(a.category.id, b.category.id);
+  for (const dup of ['religioso', ' RELIGIOSO ', 'Religióso', 'Religioso  ']) {
+    await rejects(run(db, lojaId, 'create', {parent: {id: fem.id}, nome: dup}), CATEGORY_CODES.NAME_TAKEN);
+  }
+  await run(db, lojaId, 'rename', {target: {id: b.category.id}, nome: 'Masculino'});
+  const rel2 = await run(db, lojaId, 'create', {parent: {id: mas.id}, nome: 'Crucifixos'});
+  await rejects(run(db, lojaId, 'rename', {target: {id: rel2.category.id}, nome: 'masculino'}), CATEGORY_CODES.NAME_TAKEN);
+  assert.equal(cats(db, base).filter(c => normalizeCategoryName(c.data.nome) === 'religioso').length, 1);
+});
+
+test('reorder writes only sortOrder and updatedAt', async () => {
+  const {db, base, lojaId} = seedStore();
+  const [f] = await chain(db, lojaId, ['Feminino']);
+  const [m] = await chain(db, lojaId, ['Masculino']);
+  const before = new Map(cats(db, base).map(c => [c.id, c.data]));
+  await run(db, lojaId, 'reorder', {parent: null, orderedChildren: [{id: m.id}, {id: f.id}]});
+  for (const {id, data} of cats(db, base)) {
+    const changed = Object.keys({...before.get(id), ...data})
+      .filter(k => JSON.stringify(before.get(id)[k]) !== JSON.stringify(data[k]));
+    for (const k of changed) assert.ok(['sortOrder', 'updatedAt'].includes(k), `${id}.${k}`);
+  }
+});
+
+test('category docs are publicly readable, so they never carry actor uids', async () => {
+  const {db, base, lojaId} = seedStore();
+  const [, rel] = await chain(db, lojaId, ['Feminino', 'Religioso']);
+  await run(db, lojaId, 'rename', {target: {id: rel.id}, nome: 'Religiosos'});
+  await run(db, lojaId, 'archive', {target: {id: rel.id}});
+  for (const {data} of cats(db, base)) {
+    const json = JSON.stringify(data);
+    assert.equal(json.includes('owner'), false, json);
+    for (const k of ['createdBy', 'updatedBy', 'deletedBy', 'uid', 'actorUid']) assert.equal(k in data, false, k);
+  }
+});
+
 test('invalid commands are refused before any read or write', async () => {
   const {db, lojaId} = seedStore();
   await assert.rejects(executeCategoryCommand(db, {protocolVersion: 2, lojaId, operation: 'create', operationId: 'x', payload: {}}, owner),

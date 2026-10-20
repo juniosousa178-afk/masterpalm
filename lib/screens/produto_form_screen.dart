@@ -208,6 +208,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
   List<String> _categoryPathNames = const [];
   CategoryTree? _categoryTree;
   bool _categoryTreeLoading = false;
+  bool _categoryTreeFailed = false;
   final _descricao = TextEditingController();
   final _peso = TextEditingController(text: '0');
   /// Unidade do peso: 'g' (padrão) ou 'kg'
@@ -663,6 +664,9 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         produtosBox = Hive.box<Produto>(nomeBox);
       } else {
         produtosBox = await Hive.openBox<Produto>(nomeBox);
+      }
+      if (mounted && _categoryId.isNotEmpty) {
+        unawaited(_loadCategoryTree(silent: true));
       }
 
       // Carregar embalagens disponíveis
@@ -3676,27 +3680,15 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
 
   /// Widget para criar cards de seção
   ({String id, List<String> pathIds, List<String> pathNames}) _categoryChoiceForSave(
-      String categoria, String subcategoria) {
-    const none = (id: '', pathIds: <String>[], pathNames: <String>[]);
-    if (_categoryId.isEmpty ||
-        !ProductCategoryFields.pathAgreesWithText(
-            _categoryPathNames, categoria, subcategoria)) {
-      return none;
-    }
-    final current = _categoryTree?.node(_categoryId);
-    if (current != null && !current.isVirtual && !current.isDeleted) {
-      return (
-        id: current.id,
-        pathIds: List<String>.from(current.pathIds),
-        pathNames: List<String>.from(current.pathNames),
+      String categoria, String subcategoria) =>
+      ProductCategoryFields.choiceForSave(
+        categoryId: _categoryId,
+        pathIds: _categoryPathIds,
+        pathNames: _categoryPathNames,
+        current: _categoryTree?.node(_categoryId),
+        categoria: categoria,
+        subcategoria: subcategoria,
       );
-    }
-    return (
-      id: _categoryId,
-      pathIds: List<String>.from(_categoryPathIds),
-      pathNames: List<String>.from(_categoryPathNames),
-    );
-  }
 
   void _onCategoryTextChanged() {
     if (mounted && _categoryId.isNotEmpty) setState(() {});
@@ -3707,7 +3699,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       ProductCategoryFields.pathAgreesWithText(
           _categoryPathNames, _categoria.text, _subcategoria.text);
 
-  Future<CategoryTree?> _loadCategoryTree({bool refresh = false}) async {
+  Future<CategoryTree?> _loadCategoryTree(
+      {bool refresh = false, bool silent = false}) async {
     final loja = lojaId;
     if (loja == null) return null;
     if (!refresh && _categoryTree != null) return _categoryTree;
@@ -3718,10 +3711,16 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         products: produtosBox.values.map(CategoryProductRef.fromProduto),
         refresh: refresh,
       );
-      if (mounted) setState(() => _categoryTree = tree);
+      if (mounted) {
+        setState(() {
+          _categoryTree = tree;
+          _categoryTreeFailed = false;
+        });
+      }
       return tree;
     } catch (e) {
-      if (mounted) {
+      if (mounted) setState(() => _categoryTreeFailed = true);
+      if (mounted && !silent) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Não foi possível carregar as categorias: $e')),
         );
@@ -3786,8 +3785,11 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
   Widget _buildCategoryTreeTile() {
     final theme = Theme.of(context);
     final linked = _categoryLinked;
+    // Stored path names may predate a rename: show them only when the tree cannot be read.
+    final awaitingTree = linked && _categoryTree == null && !_categoryTreeFailed;
     final names = linked
-        ? (_categoryTree?.node(_categoryId)?.pathNames ?? _categoryPathNames)
+        ? (_categoryTree?.node(_categoryId)?.pathNames ??
+            (awaitingTree ? const <String>[] : _categoryPathNames))
         : [
             if (_categoria.text.trim().isNotEmpty) _categoria.text.trim(),
             if (_categoria.text.trim().isNotEmpty &&
@@ -3820,7 +3822,9 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             ],
           ),
           const SizedBox(height: 6),
-          if (names.isEmpty)
+          if (awaitingTree)
+            Text('Carregando categoria…', style: theme.textTheme.bodySmall)
+          else if (names.isEmpty)
             Text('Nenhuma categoria escolhida.',
                 style: theme.textTheme.bodySmall)
           else

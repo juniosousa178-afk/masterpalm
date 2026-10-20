@@ -55,6 +55,37 @@ abstract final class ProductCategoryFields {
     return normalizeCategoryName(subcategoria) == normalizeCategoryName(expectedSub);
   }
 
+  /// Trio gravado ao salvar o produto. Ids nunca mudam (sem reparent); nomes atuais só entram quando os
+  /// campos de texto já os acompanham, senão um rename de nível 1/2 desfaria o vínculo na reabertura.
+  static ({String id, List<String> pathIds, List<String> pathNames}) choiceForSave({
+    required String categoryId,
+    required List<String> pathIds,
+    required List<String> pathNames,
+    required CategoryNode? current,
+    required String categoria,
+    required String subcategoria,
+  }) {
+    const none = (id: '', pathIds: <String>[], pathNames: <String>[]);
+    if (categoryId.isEmpty || !pathAgreesWithText(pathNames, categoria, subcategoria)) {
+      return none;
+    }
+    if (current != null &&
+        !current.isVirtual &&
+        !current.isDeleted &&
+        pathAgreesWithText(current.pathNames, categoria, subcategoria)) {
+      return (
+        id: current.id,
+        pathIds: List<String>.from(current.pathIds),
+        pathNames: List<String>.from(current.pathNames),
+      );
+    }
+    return (
+      id: categoryId,
+      pathIds: List<String>.from(pathIds),
+      pathNames: List<String>.from(pathNames),
+    );
+  }
+
   static void clear(Produto p) {
     p.categoryId = '';
     p.categoryPathIds = <String>[];

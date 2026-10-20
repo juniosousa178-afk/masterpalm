@@ -67,7 +67,7 @@ function pickNewId(index, parentId, nome) {
 }
 
 function createNode(ctx, parent, nome, extra = {}) {
-  const {tx, base, index, uid, cmd, writes} = ctx;
+  const {tx, base, index, cmd, writes} = ctx;
   assertCanHaveChild(parent?.depth ?? 0);
   const parentId = parent?.id ?? null;
   const id = pickNewId(index, parentId, nome);
@@ -80,11 +80,12 @@ function createNode(ctx, parent, nome, extra = {}) {
     sortOrder: extra.sortOrder ?? nextSortOrder(index, parentId),
     legacyNames: extra.legacyNames ?? [],
   };
+  // categorias is publicly readable (public catalog): never store actor identifiers here.
   tx.create(base.collection('categorias').doc(id), {
     id, lojaId: index.lojaId, nome, parentId, depth: node.depth, pathIds: node.pathIds, pathNames: node.pathNames,
     isDeleted: false, deletedAt: null, sortOrder: node.sortOrder, legacyNames: node.legacyNames, schemaVersion: 1,
     createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
-    createdBy: uid, operationId: cmd.operationId,
+    operationId: cmd.operationId,
   });
   index.nodes.set(id, node);
   index.allIds.add(id);
@@ -174,7 +175,7 @@ function opRename(ctx) {
 }
 
 function opArchive(ctx) {
-  const {tx, base, index, cmd, uid, writes, products} = ctx;
+  const {tx, base, index, cmd, writes, products} = ctx;
   const resolved = resolveCategoryRef(index, cmd.payload.target);
   if (resolved.virtual) throw new CategoryError(CATEGORY_CODES.HAS_PRODUCTS, CATEGORY_HAS_PRODUCTS_MESSAGE);
   const node = resolved.node;
@@ -185,7 +186,7 @@ function opArchive(ctx) {
     throw new CategoryError(CATEGORY_CODES.HAS_PRODUCTS, CATEGORY_HAS_PRODUCTS_MESSAGE);
   }
   tx.update(base.collection('categorias').doc(node.id), {
-    isDeleted: true, deletedAt: FieldValue.serverTimestamp(), deletedBy: uid, updatedAt: FieldValue.serverTimestamp(),
+    isDeleted: true, deletedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
   });
   writes.push(node.id);
   return {...node, isDeleted: true};
@@ -253,9 +254,9 @@ export async function executeCategoryCommand(db, raw, auth) {
     products = await loadProductCategoryRefs(base);
   }
   return db.runTransaction(async tx => {
-    const uid = await authorizeNoControlEditorial(tx, db, base, auth);
+    await authorizeNoControlEditorial(tx, db, base, auth);
     const index = await loadIndex(tx, base, cmd.lojaId);
-    const ctx = {tx, base, index, uid, cmd, writes: [], products};
+    const ctx = {tx, base, index, cmd, writes: [], products};
     const node = HANDLERS[cmd.operation](ctx);
     return {
       ok: true,
