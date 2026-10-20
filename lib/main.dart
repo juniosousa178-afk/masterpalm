@@ -3155,6 +3155,7 @@ Future<void> main() async {
         CatalogStartupTrace.mark('CAT_START.runApp.public_order');
         runApp(PublicOrderWebApp(
           ref: PublicOrderLink.parse(initialUri),
+          routeName: PublicOrderLink.routeName(initialUri),
           initFirebase: ensureFirebaseInitializedOnce,
         ));
         return;

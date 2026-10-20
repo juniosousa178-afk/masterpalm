@@ -72,4 +72,9 @@ class PublicOrderLink {
     if (!isValidId(pedidoId) || !isValidId(lojaId)) return null;
     return PublicOrderRef(lojaId: lojaId, pedidoId: pedidoId);
   }
+
+  /// Nome da rota reportado ao browser pelo Navigator; com `/` a barra de endereço
+  /// perderia o pedido e o refresh abriria a raiz do app.
+  static String routeName(Uri uri) =>
+      uri.hasQuery ? '${uri.path}?${uri.query}' : uri.path;
 }

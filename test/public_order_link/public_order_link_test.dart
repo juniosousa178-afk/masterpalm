@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:master_palm/catalog/catalog_initial_web_route.dart';
 import 'package:master_palm/catalog/checkout_single_flight.dart';
@@ -10,6 +11,7 @@ import 'package:master_palm/catalog/public_order_link.dart';
 import 'package:master_palm/config/app_urls.dart';
 import 'package:master_palm/repositories/pedido_status_publico_repository.dart';
 import 'package:master_palm/screens/pedido_publico_screen.dart';
+import 'package:master_palm/screens/public_order_web_app.dart';
 import 'package:master_palm/services/pre_pedido_service.dart';
 
 const _lojaA = 'loja-a';
@@ -78,11 +80,15 @@ void main() {
           'https://app.mastepalm.com.br/pedido/$_pedidoA?loja=nathy-pratas-e-folheados');
       expect(url, isNot(contains('/c/')));
       expect(url, isNot(startsWith('https://mastepalm.com.br')));
-      expect(PublicOrderLink.parse(Uri.parse(url)),
-          const PublicOrderRef(lojaId: 'nathy-pratas-e-folheados', pedidoId: _pedidoA));
+      expect(
+          PublicOrderLink.parse(Uri.parse(url)),
+          const PublicOrderRef(
+              lojaId: 'nathy-pratas-e-folheados', pedidoId: _pedidoA));
     });
 
-    test('F. encoding: IDs com maiúsculas, hífen e underscore fazem round-trip exato', () {
+    test(
+        'F. encoding: IDs com maiúsculas, hífen e underscore fazem round-trip exato',
+        () {
       for (final (loja, pedido) in [
         ('LojaABC_1', 'abcDEF0123456789wxyz'),
         ('ericabrisasr-1', 'm3XSKVykTUEgeOmwVvVd'),
@@ -94,7 +100,9 @@ void main() {
       }
     });
 
-    test('F. encoding: caracteres que quebram URL são rejeitados, nunca concatenados', () {
+    test(
+        'F. encoding: caracteres que quebram URL são rejeitados, nunca concatenados',
+        () {
       for (final bad in [
         'loja a',
         'loja&x=1',
@@ -107,9 +115,11 @@ void main() {
         'x' * 129,
       ]) {
         expect(() => PublicOrderLink.build(lojaId: bad, pedidoId: _pedidoA),
-            throwsArgumentError, reason: bad);
+            throwsArgumentError,
+            reason: bad);
         expect(() => PublicOrderLink.build(lojaId: _lojaA, pedidoId: bad),
-            throwsArgumentError, reason: bad);
+            throwsArgumentError,
+            reason: bad);
       }
     });
 
@@ -118,7 +128,11 @@ void main() {
         prePedido: {
           'id': _pedidoA,
           'itens': [
-            {'nome': 'Anel & Cia / "Prata"', 'quantidade': 2, 'precoUnitario': 10.0},
+            {
+              'nome': 'Anel & Cia / "Prata"',
+              'quantidade': 2,
+              'precoUnitario': 10.0
+            },
           ],
           'subtotal': 20.0,
           'frete': {'nome': 'Retirada', 'valor': 0.0},
@@ -139,7 +153,9 @@ void main() {
       expect(msg, isNot(contains('/c/')));
     });
 
-    test('15. texto do wa.me é codificado uma vez; o link volta intacto ao decodificar', () {
+    test(
+        '15. texto do wa.me é codificado uma vez; o link volta intacto ao decodificar',
+        () {
       final msg = PrePedidoService.formatarParaWhatsApp(
         prePedido: {
           'id': _pedidoA,
@@ -150,13 +166,14 @@ void main() {
         },
         lojaId: 'LojaABC_1',
       );
-      final waUrl =
-          Uri.parse('https://wa.me/5511999999999?text=${Uri.encodeComponent(msg.trim())}');
+      final waUrl = Uri.parse(
+          'https://wa.me/5511999999999?text=${Uri.encodeComponent(msg.trim())}');
       final text = waUrl.queryParameters['text']!;
       expect(text, msg.trim());
       expect(text, contains('\nlinha 2 & ? # /'));
       final link = RegExp(r'https://\S+').firstMatch(text)!.group(0)!;
-      expect(link, 'https://app.mastepalm.com.br/pedido/$_pedidoA?loja=LojaABC_1');
+      expect(
+          link, 'https://app.mastepalm.com.br/pedido/$_pedidoA?loja=LojaABC_1');
       expect(link, isNot(contains('%25')));
       expect(PublicOrderLink.parse(Uri.parse(link)),
           const PublicOrderRef(lojaId: 'LojaABC_1', pedidoId: _pedidoA));
@@ -165,7 +182,12 @@ void main() {
     test('H. sem ID definitivo do pedido a mensagem não leva link', () {
       for (final id in [null, '', 'id inválido']) {
         final msg = PrePedidoService.formatarParaWhatsApp(
-          prePedido: {'id': id, 'itens': const [], 'total': 1.0, 'pagamento': 'pix'},
+          prePedido: {
+            'id': id,
+            'itens': const [],
+            'total': 1.0,
+            'pagamento': 'pix'
+          },
           lojaId: _lojaA,
         );
         expect(msg, isNot(contains('Ver pedido')), reason: '$id');
@@ -181,19 +203,24 @@ void main() {
         'https://app.masterpalm.com.br',
         'https://masterpalm-58c46.web.app',
       ]) {
-        final d = _decide('$host/pedido/$_pedidoA?loja=nathy-pratas-e-folheados');
+        final d =
+            _decide('$host/pedido/$_pedidoA?loja=nathy-pratas-e-folheados');
         expect(d.kind, CatalogInitialRouteKind.publicOrder, reason: host);
       }
     });
 
-    test('referência inválida em /pedido/ continua na página do pedido (erro amigável)', () {
+    test(
+        'referência inválida em /pedido/ continua na página do pedido (erro amigável)',
+        () {
       expect(_decide('https://app.mastepalm.com.br/pedido/x').kind,
           CatalogInitialRouteKind.publicOrder);
-      expect(PublicOrderLink.parse(Uri.parse('https://app.mastepalm.com.br/pedido/x')),
-          isNull);
       expect(
           PublicOrderLink.parse(
-              Uri.parse('https://app.mastepalm.com.br/pedido/a%2Fb?loja=loja-a')),
+              Uri.parse('https://app.mastepalm.com.br/pedido/x')),
+          isNull);
+      expect(
+          PublicOrderLink.parse(Uri.parse(
+              'https://app.mastepalm.com.br/pedido/a%2Fb?loja=loja-a')),
           isNull);
     });
 
@@ -206,26 +233,61 @@ void main() {
           CatalogInitialRouteKind.appRoot);
       expect(_decide('https://app.mastepalm.com.br/').kind,
           CatalogInitialRouteKind.appRoot);
-      expect(_decide('https://app.mastepalm.com.br/pagamento/sucesso?loja=x').kind,
+      expect(
+          _decide('https://app.mastepalm.com.br/pagamento/sucesso?loja=x').kind,
           CatalogInitialRouteKind.appRoot);
     });
 
-    test('index.html não trata /pedido/{id}?loja= como primeira pintura de catálogo', () {
+    test(
+        'index.html não trata /pedido/{id}?loja= como primeira pintura de catálogo',
+        () {
       final html = File('web/index.html').readAsStringSync();
       expect(html, contains("if (isPublicOrderPath(path)) return false;"));
       final fnStart = html.indexOf('function isPublicCatalogUrl()');
-      final guard = html.indexOf('isPublicOrderPath(path)) return false', fnStart);
+      final guard =
+          html.indexOf('isPublicOrderPath(path)) return false', fnStart);
       final lojaCheck = html.indexOf('hasLojaPath(path)) return true', fnStart);
       expect(guard, greaterThan(fnStart));
       expect(guard, lessThan(lojaCheck));
     });
 
-    test('main.dart despacha /pedido/ antes de qualquer detecção de catálogo', () {
+    test('main.dart despacha /pedido/ antes de qualquer detecção de catálogo',
+        () {
       final src = File('lib/main.dart').readAsStringSync();
       final orderFastPath = src.indexOf('runApp(PublicOrderWebApp(');
       final catalogFastPath = src.indexOf('FAST PATH CIRÚRGICO');
       expect(orderFastPath, greaterThan(0));
       expect(orderFastPath, lessThan(catalogFastPath));
+    });
+
+    testWidgets(
+        'refresh: a URL anunciada ao browser continua sendo a do pedido',
+        (tester) async {
+      final uri = Uri.parse(
+          'https://app.mastepalm.com.br/pedido/$_pedidoA?loja=nathy-pratas-e-folheados');
+      final announced = <String>[];
+      tester.binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.navigation, (call) async {
+        if (call.method == 'routeInformationUpdated') {
+          announced.add((call.arguments as Map)['uri'].toString());
+        }
+        return null;
+      });
+      addTearDown(() => tester.binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.navigation, null));
+
+      await tester.pumpWidget(PublicOrderWebApp(
+        ref: PublicOrderLink.parse(uri),
+        routeName: PublicOrderLink.routeName(uri),
+        initFirebase: () async => false,
+      ));
+      await tester.pumpAndSettle();
+
+      expect(PublicOrderLink.routeName(uri),
+          '/pedido/$_pedidoA?loja=nathy-pratas-e-folheados');
+      expect(announced, isNotEmpty);
+      expect(announced.last, '/pedido/$_pedidoA?loja=nathy-pratas-e-folheados');
+      expect(announced, isNot(contains('/')));
     });
   });
 
@@ -250,45 +312,58 @@ void main() {
       expect(find.textContaining('margem', findRichText: true), findsNothing);
     });
 
-    testWidgets('B. pedido de outra loja: trocar a loja na URL não revela o pedido',
+    testWidgets(
+        'B. pedido de outra loja: trocar a loja na URL não revela o pedido',
         (tester) async {
       final db = await _fixture();
       await _pumpScreen(tester, db, lojaId: _lojaA, pedidoId: _pedidoC);
-      expect(find.text(PedidoPublicoScreen.mensagemNaoEncontrado), findsOneWidget);
+      expect(
+          find.text(PedidoPublicoScreen.mensagemNaoEncontrado), findsOneWidget);
       expect(find.text('Brinco Pedido C'), findsNothing);
 
       await _pumpScreen(tester, db, lojaId: _lojaB, pedidoId: _pedidoA);
-      expect(find.text(PedidoPublicoScreen.mensagemNaoEncontrado), findsOneWidget);
+      expect(
+          find.text(PedidoPublicoScreen.mensagemNaoEncontrado), findsOneWidget);
       expect(find.text('Anel Pedido A'), findsNothing);
     });
 
-    testWidgets('B. espelho com lojaId divergente do path é recusado', (tester) async {
+    testWidgets('B. espelho com lojaId divergente do path é recusado',
+        (tester) async {
       final db = FakeFirebaseFirestore();
       await db
           .doc('lojas/$_lojaA/pedido_status_publico/$_pedidoA')
           .set(_mirror(_lojaB, _pedidoA, 'Item de outra loja'));
       await _pumpScreen(tester, db, lojaId: _lojaA, pedidoId: _pedidoA);
       expect(find.text('Item de outra loja'), findsNothing);
-      expect(find.text(PedidoPublicoScreen.mensagemNaoEncontrado), findsOneWidget);
+      expect(
+          find.text(PedidoPublicoScreen.mensagemNaoEncontrado), findsOneWidget);
     });
 
-    testWidgets('C. pedido inexistente mostra mensagem amigável', (tester) async {
+    testWidgets('C. pedido inexistente mostra mensagem amigável',
+        (tester) async {
       final db = await _fixture();
-      await _pumpScreen(tester, db, lojaId: _lojaA, pedidoId: 'NaoExiste0000000000x');
-      expect(find.text(PedidoPublicoScreen.mensagemNaoEncontrado), findsOneWidget);
+      await _pumpScreen(tester, db,
+          lojaId: _lojaA, pedidoId: 'NaoExiste0000000000x');
+      expect(
+          find.text(PedidoPublicoScreen.mensagemNaoEncontrado), findsOneWidget);
     });
 
-    testWidgets('D. referência inválida não consulta o Firestore', (tester) async {
+    testWidgets('D. referência inválida não consulta o Firestore',
+        (tester) async {
       final db = await _fixture();
       await _pumpScreen(tester, db, lojaId: 'loja a', pedidoId: _pedidoA);
-      expect(find.text(PedidoPublicoScreen.mensagemLinkInvalido), findsOneWidget);
+      expect(
+          find.text(PedidoPublicoScreen.mensagemLinkInvalido), findsOneWidget);
       expect(find.text('Anel Pedido A'), findsNothing);
     });
   });
 
   group('checkout WhatsApp', () {
-    test('G/H/10/11. pedido é persistido antes do link; falha encerra sem abrir WhatsApp', () {
-      final src = File('lib/screens/public_catalog_screen.dart').readAsStringSync();
+    test(
+        'G/H/10/11. pedido é persistido antes do link; falha encerra sem abrir WhatsApp',
+        () {
+      final src =
+          File('lib/screens/public_catalog_screen.dart').readAsStringSync();
       final start = src.indexOf('onCheckoutWhatsapp: ({');
       final end = src.indexOf('onCheckoutMercadoPago: ({', start);
       final body = src.substring(start, end);
@@ -300,11 +375,12 @@ void main() {
       expect(criar, lessThan(nullGuard));
       expect(nullGuard, lessThan(formatar));
       expect(formatar, lessThan(abrir));
-      final guardBlock = body.substring(nullGuard, body.indexOf('}', nullGuard));
+      final guardBlock =
+          body.substring(nullGuard, body.indexOf('}', nullGuard));
       expect(guardBlock, contains('showErr('));
       expect(guardBlock, contains('return;'));
-      final catchBlock = body.substring(
-          body.indexOf("'❌ Erro ao criar pré-pedido"), formatar);
+      final catchBlock =
+          body.substring(body.indexOf("'❌ Erro ao criar pré-pedido"), formatar);
       expect(catchBlock, contains('return;'));
     });
 
@@ -337,8 +413,9 @@ void main() {
     });
 
     test('I. botão do WhatsApp usa a guarda síncrona', () {
-      final src = File('lib/screens/public_catalog/widgets/carrinho_sheet_web.dart')
-          .readAsStringSync();
+      final src =
+          File('lib/screens/public_catalog/widgets/carrinho_sheet_web.dart')
+              .readAsStringSync();
       expect(src, contains('_whatsappCheckoutFlight.run(() async {'));
     });
   });

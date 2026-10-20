@@ -13,11 +13,16 @@ class PublicOrderWebApp extends StatefulWidget {
   const PublicOrderWebApp({
     super.key,
     required this.ref,
+    required this.routeName,
     required this.initFirebase,
   });
 
   /// `null` quando a URL tem path `/pedido/...` mas a referência é inválida.
   final PublicOrderRef? ref;
+
+  /// Path + query da URL aberta; o Navigator reporta esse nome ao browser
+  /// (com `home:` reportaria `/` e o refresh perderia o pedido).
+  final String routeName;
   final Future<bool> Function() initFirebase;
 
   @override
@@ -38,6 +43,39 @@ class _PublicOrderWebAppState extends State<PublicOrderWebApp> {
     });
   }
 
+  Route<void> _route(String name) => MaterialPageRoute<void>(
+        settings: RouteSettings(name: name),
+        builder: (_) => _body(),
+      );
+
+  Widget _body() {
+    return FutureBuilder<bool>(
+      future: _ready,
+      builder: (context, snap) {
+        final ref = widget.ref;
+        if (ref == null) {
+          return const PedidoPublicoErroScaffold(
+            mensagem: PedidoPublicoScreen.mensagemLinkInvalido,
+          );
+        }
+        if (snap.connectionState != ConnectionState.done) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (snap.data != true) {
+          return const PedidoPublicoErroScaffold(
+            mensagem: PedidoPublicoScreen.mensagemFalhaCarregamento,
+          );
+        }
+        return PedidoPublicoScreen(
+          lojaId: ref.lojaId,
+          prePedidoId: ref.pedidoId,
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -49,31 +87,9 @@ class _PublicOrderWebAppState extends State<PublicOrderWebApp> {
         GlobalCupertinoLocalizations.delegate,
       ],
       supportedLocales: const [Locale('pt', 'BR')],
-      home: FutureBuilder<bool>(
-        future: _ready,
-        builder: (context, snap) {
-          final ref = widget.ref;
-          if (ref == null) {
-            return const PedidoPublicoErroScaffold(
-              mensagem: PedidoPublicoScreen.mensagemLinkInvalido,
-            );
-          }
-          if (snap.connectionState != ConnectionState.done) {
-            return const Scaffold(
-              body: Center(child: CircularProgressIndicator()),
-            );
-          }
-          if (snap.data != true) {
-            return const PedidoPublicoErroScaffold(
-              mensagem: PedidoPublicoScreen.mensagemFalhaCarregamento,
-            );
-          }
-          return PedidoPublicoScreen(
-            lojaId: ref.lojaId,
-            prePedidoId: ref.pedidoId,
-          );
-        },
-      ),
+      initialRoute: widget.routeName,
+      onGenerateInitialRoutes: (name) => [_route(name)],
+      onGenerateRoute: (settings) => _route(settings.name ?? widget.routeName),
     );
   }
 }
