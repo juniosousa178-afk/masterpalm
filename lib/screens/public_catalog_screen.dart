@@ -70,6 +70,10 @@ import 'public_catalog/widgets/catalog_footer.dart';
 import 'public_catalog/widgets/catalog_creator_credit_bar.dart';
 import 'public_catalog/widgets/catalog_loading_state.dart';
 import 'public_catalog/widgets/catalog_search_filters_bar.dart';
+import 'public_catalog/widgets/catalog_category_deep_levels.dart';
+import '../features/categories/category_service.dart';
+import '../features/categories/category_tree.dart';
+import '../features/categories/widgets/category_breadcrumb.dart';
 import 'public_catalog/catalog_variation_filter.dart';
 import 'public_catalog/catalog_url_query_codec.dart';
 import 'public_catalog/catalog_deep_link_resolve.dart';
@@ -637,6 +641,17 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   Timer? _searchDebounce;
   String? _selectedCategory;
   String? _selectedSubcategory;
+
+  /// Níveis 3–6 escolhidos (nomes), válidos só para a base categoria/subcategoria em que foram escolhidos.
+  List<String> _selectedCategoryDeep = const [];
+  String _selectedCategoryDeepBase = '';
+
+  /// Documentos `lojas/{loja}/categorias` (uma leitura por loja). Vazio = modo legado (texto dos produtos).
+  List<Map<String, dynamic>> _catalogCategoryDocs = const [];
+  String? _catalogCategoryDocsLoja;
+  CategoryTree? _catalogCategoryTree;
+  String _catalogCategoryTreeSig = '';
+  final Expando<CategoryProductRef> _catalogCategoryRefs = Expando();
   String _ordenacaoProdutos =
       'nome'; // nome | preco_asc | preco_desc | novidade
   double? _precoMin;
@@ -1089,6 +1104,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     List<Map<String, dynamic>> produtos,
   ) {
     if (cat == null || cat.isEmpty) return const [];
+    final fromTree = _catalogSubcategoriasDaArvore(cat);
+    if (fromTree != null) return fromTree;
     final set = <String>{};
     for (final p in produtos) {
       if (!_produtoTemCategoria(p, cat)) continue;
@@ -1168,12 +1185,181 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
 
   bool _produtoTemCategoria(Map<String, dynamic> p, String? categoria) {
     if (categoria == null || categoria.isEmpty) return true;
-    return _produtoCategoriasAssociadas(p).contains(categoria);
+    if (_produtoCategoriasAssociadas(p).contains(categoria)) return true;
+    return _produtoNaCategoriaDaArvore(p, [categoria]);
   }
 
   bool _produtoTemSubcategoria(Map<String, dynamic> p, String? subcategoria) {
     if (subcategoria == null || subcategoria.isEmpty) return true;
-    return _produtoSubcategoriasAssociadas(p).contains(subcategoria);
+    if (_produtoSubcategoriasAssociadas(p).contains(subcategoria)) return true;
+    final cat = _effectiveCatalogCategoryFilter();
+    return cat != null && _produtoNaCategoriaDaArvore(p, [cat, subcategoria]);
+  }
+
+  /// Níveis 3–6: o produto precisa estar no nó escolhido ou em qualquer descendente.
+  bool _produtoTemCategoriaProfunda(Map<String, dynamic> p) {
+    final deep = _effectiveCategoryDeep;
+    if (deep.isEmpty) return true;
+    final cat = _effectiveCatalogCategoryFilter();
+    final sub = _effectiveCatalogSubcategoryFilter();
+    if (cat == null || sub == null) return true;
+    return _produtoNaCategoriaDaArvore(p, [cat, sub, ...deep]);
+  }
+
+  CategoryProductRef _catalogCategoryRef(Map<String, dynamic> p) =>
+      _catalogCategoryRefs[p] ??=
+          CategoryProductRef.fromMap(p, skipComboLabel: true);
+
+  /// Categoria pai inclui os produtos de todas as subcategorias (árvore da loja).
+  bool _produtoNaCategoriaDaArvore(Map<String, dynamic> p, List<String> names) {
+    final tree = _catalogCategoryTree;
+    if (tree == null) return false;
+    final node = tree.nodeByNamePath(names);
+    return node != null && tree.productMatches(_catalogCategoryRef(p), node.id);
+  }
+
+  List<String> get _effectiveCategoryDeep {
+    if (_selectedCategoryDeep.isEmpty || _catalogCategoryTree == null) {
+      return const [];
+    }
+    return _catalogCategoryDeepBaseKey() == _selectedCategoryDeepBase
+        ? _selectedCategoryDeep
+        : const [];
+  }
+
+  String _catalogCategoryDeepBaseKey() =>
+      '${_effectiveCatalogCategoryFilter() ?? ''}\u0001${_effectiveCatalogSubcategoryFilter() ?? ''}';
+
+  /// Monta a árvore (memória) com os produtos do catálogo; null sem categorias cadastradas.
+  CategoryTree? _catalogCategoryTreeFor(List<Map<String, dynamic>> produtos) {
+    final loja = _catalogCategoryDocsLoja;
+    final docs = _catalogCategoryDocs;
+    if (loja == null || docs.isEmpty) {
+      _catalogCategoryTree = null;
+      _catalogCategoryTreeSig = '';
+      return null;
+    }
+    final sig =
+        '$loja|${identityHashCode(docs)}|$_lastProdutosDocsSig|${produtos.length}';
+    if (sig != _catalogCategoryTreeSig || _catalogCategoryTree == null) {
+      _catalogCategoryTreeSig = sig;
+      _catalogCategoryTree = CategoryTree.build(
+        lojaId: loja,
+        docs: docs,
+        products: produtos.map(_catalogCategoryRef),
+      );
+    }
+    return _catalogCategoryTree;
+  }
+
+  void _ensureCatalogCategoryDocs(String? lojaId) {
+    final loja = (lojaId ?? '').trim();
+    if (loja.isEmpty || _catalogCategoryDocsLoja == loja) return;
+    _catalogCategoryDocsLoja = loja;
+    _catalogCategoryDocs = const [];
+    unawaited(() async {
+      try {
+        final docs = await CategoryService.loadDocs(loja);
+        if (!mounted || _catalogCategoryDocsLoja != loja) return;
+        if (docs.isEmpty) return;
+        setState(() => _catalogCategoryDocs = docs);
+      } catch (e) {
+        logD('[CATÁLOGO] categorias indisponíveis (modo legado): $e');
+      }
+    }());
+  }
+
+  /// Filhos com produtos no catálogo, na ordem da árvore.
+  List<CategoryNode> _catalogCategoryChildrenWithProducts(CategoryNode node) {
+    final tree = _catalogCategoryTree;
+    if (tree == null) return const [];
+    return tree
+        .childrenOf(node.id)
+        .where((c) => tree.productCount(c.id) > 0)
+        .toList();
+  }
+
+  /// Subcategorias (nível 2) vindas da árvore; null quando a categoria não está cadastrada.
+  List<String>? _catalogSubcategoriasDaArvore(String cat) {
+    final tree = _catalogCategoryTree;
+    if (tree == null) return null;
+    final node = tree.nodeByNamePath([cat]);
+    if (node == null || node.isVirtual) return null;
+    return _catalogCategoryChildrenWithProducts(node).map((c) => c.nome).toList();
+  }
+
+  /// Opções de cada nível abaixo da subcategoria (3..6), seguindo as escolhas atuais.
+  ({List<String> parents, List<List<String>> levels}) _catalogDeepLevelOptions() {
+    const none = (parents: <String>[], levels: <List<String>>[]);
+    final tree = _catalogCategoryTree;
+    final cat = _effectiveCatalogCategoryFilter();
+    final sub = _effectiveCatalogSubcategoryFilter();
+    if (tree == null || cat == null || sub == null) return none;
+    var cur = tree.nodeByNamePath([cat, sub]);
+    if (cur == null) return none;
+    final parents = <String>[];
+    final levels = <List<String>>[];
+    final deep = _effectiveCategoryDeep;
+    for (var i = 0; cur != null && cur.depth < kMaxCategoryDepth; i++) {
+      final children = _catalogCategoryChildrenWithProducts(cur);
+      if (children.isEmpty) break;
+      parents.add(cur.nome);
+      levels.add(children.map((c) => c.nome).toList());
+      if (i >= deep.length) break;
+      CategoryNode? next;
+      for (final c in children) {
+        if (c.nome == deep[i]) next = c;
+      }
+      cur = next;
+    }
+    return (parents: parents, levels: levels);
+  }
+
+  void _onCatalogDeepLevelSelected(int level, String? name) {
+    final base = _catalogCategoryDeepBaseKey();
+    final current = _effectiveCategoryDeep;
+    setState(() {
+      _selectedCategoryDeep = [
+        ...current.take(level),
+        if (name != null) name,
+      ];
+      _selectedCategoryDeepBase = base;
+      _currentPageNotifier.value = 0;
+    });
+    _scheduleCatalogScrollToTopAfterFilter();
+  }
+
+  /// "Início > Feminino > Religioso > Anéis" (modo árvore).
+  List<String> _catalogBreadcrumbNames() {
+    final c = _effectiveCatalogCategoryFilter();
+    if (c == null) return const [];
+    final s = _effectiveCatalogSubcategoryFilter();
+    return [c, if (s != null) s, if (s != null) ..._effectiveCategoryDeep];
+  }
+
+  /// -1 = Início; 0 = categoria; 1 = subcategoria; 2.. = níveis profundos.
+  void _onCatalogBreadcrumbTap(int level) {
+    if (level <= 0) {
+      setState(() {
+        if (level < 0) {
+          _selectedCategory = null;
+          _clearFiltrosVariacao();
+        }
+        _selectedSubcategory = null;
+        _selectedCategoryDeep = const [];
+        _currentPageNotifier.value = 0;
+      });
+      _onCatalogCategoryOrSubChanged();
+      return;
+    }
+    final deep = _effectiveCategoryDeep;
+    final base = _catalogCategoryDeepBaseKey();
+    setState(() {
+      _selectedCategoryDeep = deep.take(level - 1).toList();
+      _selectedCategoryDeepBase = base;
+      _currentPageNotifier.value = 0;
+    });
+    _scheduleCatalogScrollToTopAfterFilter();
   }
 
   /// Categoria "Todos" / vazia / sinônimos: mesma experiência da home (banners, mais vendidos, etc.).
@@ -1216,6 +1402,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     if (c == null) return null;
     final s = _effectiveCatalogSubcategoryFilter();
     if (s == null) return c;
+    final deep = _effectiveCategoryDeep;
+    if (deep.isNotEmpty) return [c, s, ...deep].join(' / ');
     return '$c / $s';
   }
 
@@ -1673,6 +1861,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
       ..write('|s=${search.trim()}')
       ..write('|cat=${effCatFilter ?? ''}')
       ..write('|sub=${effSubFilter ?? ''}')
+      ..write('|deep=${_effectiveCategoryDeep.join('\u0001')}')
+      ..write('|tree=$_catalogCategoryTreeSig')
       ..write('|ord=$_ordenacaoProdutos')
       ..write('|pmin=$_precoMin')
       ..write('|pmax=$_precoMax')
@@ -1687,7 +1877,8 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
 
     bool matchCategoriaSub(Map<String, dynamic> p) {
       return _produtoTemCategoria(p, effCatFilter) &&
-          _produtoTemSubcategoria(p, effSubFilter);
+          _produtoTemSubcategoria(p, effSubFilter) &&
+          _produtoTemCategoriaProfunda(p);
     }
 
     final searchLower = search.trim().toLowerCase();
@@ -5743,13 +5934,21 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
 
                     // categorias únicas para o menu lateral
                     // Compatibilidade: lê tanto 'categoria' quanto 'categoriaId'
+                    _ensureCatalogCategoryDocs(_resolvedLojaId);
+                    final categoryTree = _catalogCategoryTreeFor(produtos);
                     final categoriasSet = <String>{};
                     final categoryAliasesByName = <String, Set<String>>{};
                     for (final p in produtos) {
-                      for (final c in _produtoCategoriasAssociadas(p)) {
+                      for (final raw in _produtoCategoriasAssociadas(p)) {
+                        final treeNode =
+                            categoryTree?.activeChildByName(null, raw);
+                        final c = treeNode != null && !treeNode.isVirtual
+                            ? treeNode.nome
+                            : raw;
                         categoriasSet.add(c);
                         final aliases = categoryAliasesByName.putIfAbsent(
                             c, () => <String>{});
+                        if (c != raw) aliases.add(raw.toLowerCase());
                         final cid = (p['categoriaId'] ?? '').toString().trim();
                         if (cid.isNotEmpty) aliases.add(cid);
                         aliases.add(c.toLowerCase());
@@ -5997,7 +6196,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                           }
                                         }
                                         final subcategorias =
-                                            subcategoriasSet.toList()..sort();
+                                            _catalogSubcategoriasDaArvore(
+                                                    cat) ??
+                                                (subcategoriasSet.toList()
+                                                  ..sort());
                                         return [
                                           ListTile(
                                             dense: true,
@@ -6920,6 +7122,10 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                           selectedSubcategory:
                                               _selectedSubcategory,
                                           produtos: produtos,
+                                          subcategoriesForCategory:
+                                              categoryTree == null
+                                                  ? null
+                                                  : _catalogSubcategoriasDaArvore,
                                           textColor: textColor,
                                           cardColor: cardColor,
                                           primaryColor: primaryColor,
@@ -7114,7 +7320,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                               p,
                                               effSubFilter,
                                             );
-                                            return matchCat && matchSubcat;
+                                            return matchCat &&
+                                                matchSubcat &&
+                                                _produtoTemCategoriaProfunda(p);
                                           }
 
                                           final produtosParaOpcoesVariacao =
@@ -7340,22 +7548,72 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                         child: Align(
                                                           alignment: Alignment
                                                               .centerLeft,
-                                                          child: Text(
-                                                            _catalogListagemTituloLinha() ??
-                                                                '',
-                                                            maxLines: 2,
-                                                            overflow:
-                                                                TextOverflow
-                                                                    .ellipsis,
-                                                            style: TextStyle(
-                                                              color: textColor,
-                                                              fontSize: 16,
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .w700,
-                                                            ),
-                                                          ),
+                                                          child: categoryTree !=
+                                                                  null
+                                                              ? CategoryBreadcrumb(
+                                                                  key: const ValueKey(
+                                                                      'catalog_category_breadcrumb'),
+                                                                  names:
+                                                                      _catalogBreadcrumbNames(),
+                                                                  onTapLevel:
+                                                                      _onCatalogBreadcrumbTap,
+                                                                  activeColor:
+                                                                      textColor,
+                                                                  style:
+                                                                      TextStyle(
+                                                                    color:
+                                                                        textColor,
+                                                                    fontSize:
+                                                                        15,
+                                                                    fontWeight:
+                                                                        FontWeight
+                                                                            .w600,
+                                                                  ),
+                                                                )
+                                                              : Text(
+                                                                  _catalogListagemTituloLinha() ??
+                                                                      '',
+                                                                  maxLines: 2,
+                                                                  overflow:
+                                                                      TextOverflow
+                                                                          .ellipsis,
+                                                                  style:
+                                                                      TextStyle(
+                                                                    color:
+                                                                        textColor,
+                                                                    fontSize:
+                                                                        16,
+                                                                    fontWeight:
+                                                                        FontWeight
+                                                                            .w700,
+                                                                  ),
+                                                                ),
                                                         ),
+                                                      ),
+                                                    if (modoListagemCategoria &&
+                                                        categoryTree != null)
+                                                      Builder(
+                                                        builder: (_) {
+                                                          final deepOptions =
+                                                              _catalogDeepLevelOptions();
+                                                          return CatalogCategoryDeepLevels(
+                                                            parentNames:
+                                                                deepOptions
+                                                                    .parents,
+                                                            levels: deepOptions
+                                                                .levels,
+                                                            selected:
+                                                                _effectiveCategoryDeep,
+                                                            onSelect:
+                                                                _onCatalogDeepLevelSelected,
+                                                            textColor:
+                                                                textColor,
+                                                            primaryColor:
+                                                                primaryColor,
+                                                            surfaceColor:
+                                                                cardColor,
+                                                          );
+                                                        },
                                                       ),
                                                     if (useMinimalLayout &&
                                                         exibindoTodosCatalogo)
@@ -8272,6 +8530,11 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                                                           selectedSubcategory:
                                                               _selectedSubcategory,
                                                           produtos: produtos,
+                                                          subcategoriesForCategory:
+                                                              categoryTree ==
+                                                                      null
+                                                                  ? null
+                                                                  : _catalogSubcategoriasDaArvore,
                                                           textColor: textColor,
                                                           cardColor: cardColor,
                                                           primaryColor:

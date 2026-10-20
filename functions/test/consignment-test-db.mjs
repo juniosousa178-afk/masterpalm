@@ -128,6 +128,7 @@ export function createConsignmentTestDb() {
   }
   function makeColl(segments) {
     return {
+      _query: {segments, filters: [], max: undefined},
       doc(id) { return makeRef([...segments, id]); },
       where(field, op, value) { return makeQuery(segments, [], undefined).where(field, op, value); },
       async get() {

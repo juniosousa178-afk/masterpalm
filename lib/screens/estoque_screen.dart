@@ -24,6 +24,11 @@ import '../core/logger.dart';
 import '../core/access_scope_service.dart';
 import '../core/produto_cadastro_gate.dart';
 import '../core/produto_custo_guard.dart';
+import '../features/categories/category_service.dart';
+import '../features/categories/category_tree.dart';
+import '../features/categories/screens/category_tree_screen.dart';
+import '../features/categories/widgets/category_breadcrumb.dart';
+import '../features/categories/widgets/category_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/intl.dart';
@@ -147,6 +152,9 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
   /// Filtros: categoria, subcategoria, publicado (null = todos), sem fotos, recentemente alterados
   String? _filtroCategoria;
   String? _filtroSubcategoria;
+  String? _filtroCategoriaNoId;
+  List<String> _filtroCategoriaNoPath = const [];
+  CategoryTree? _categoryTreeEstoque;
   bool? _filtroPublicado; // null = todos, true = só publicados, false = só não publicados
   bool _filtroSemFotos = false; // true = só produtos sem imagens
   bool _filtroRecentementeAlterados = false; // true = só produtos alterados nas últimas 24 horas
@@ -597,6 +605,13 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     if (_filtroSubcategoria != null &&
         _filtroSubcategoria!.isNotEmpty &&
         _norm(p.subcategoria) != _norm(_filtroSubcategoria!)) {
+      return false;
+    }
+    final categoryTree = _categoryTreeEstoque;
+    if (_filtroCategoriaNoId != null &&
+        categoryTree != null &&
+        !categoryTree.productMatches(
+            CategoryProductRef.fromProduto(p), _filtroCategoriaNoId!)) {
       return false;
     }
     if (_filtroPublicado != null &&
@@ -6015,6 +6030,7 @@ String _formatGradeTexto(Produto p) {
     if (_filtroSubcategoria != null && _filtroSubcategoria!.trim().isNotEmpty) {
       n++;
     }
+    if (_filtroCategoriaNoId != null) n++;
     if (_filtroPublicado != null) n++;
     if (_filtroSemFotos) n++;
     if (_filtroRecentementeAlterados) n++;
@@ -6103,6 +6119,8 @@ String _formatGradeTexto(Produto p) {
                         ],
                       ),
                       const SizedBox(height: 8),
+                      _buildFiltroCategoriaArvore(),
+                      const SizedBox(height: 14),
                       _buildFiltroFieldLabel('Categoria do produto'),
                       const SizedBox(height: 6),
                       _buildFilterDropdown<String?>(
@@ -6201,6 +6219,8 @@ String _formatGradeTexto(Produto p) {
                               setState(() {
                                 _filtroCategoria = null;
                                 _filtroSubcategoria = null;
+                                _filtroCategoriaNoId = null;
+                                _filtroCategoriaNoPath = const [];
                                 _filtroPublicado = null;
                                 _filtroSemFotos = false;
                                 _filtroRecentementeAlterados = false;
@@ -6221,6 +6241,125 @@ String _formatGradeTexto(Produto p) {
               ),
             );
           },
+        );
+      },
+    );
+  }
+
+  Future<CategoryTree?> _carregarArvoreCategoriasEstoque({bool refresh = false}) async {
+    final loja = _lojaId;
+    if (loja == null) return null;
+    try {
+      return await CategoryService.loadTree(
+        loja,
+        products: _produtosVisiveisEstoque(_box.values)
+            .map(CategoryProductRef.fromProduto),
+        refresh: refresh,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Não foi possível carregar as categorias: $e')),
+        );
+      }
+      return null;
+    }
+  }
+
+  void _aplicarFiltroCategoriaArvore(CategoryTree tree, CategoryNode? node) {
+    setState(() {
+      _categoryTreeEstoque = tree;
+      _filtroCategoriaNoId = node?.id;
+      _filtroCategoriaNoPath = node?.pathNames ?? const [];
+      if (node != null) {
+        _filtroCategoria = null;
+        _filtroSubcategoria = null;
+      }
+    });
+  }
+
+  Future<void> _escolherFiltroCategoriaArvore(BuildContext pickerContext) async {
+    final tree = await _carregarArvoreCategoriasEstoque();
+    if (tree == null || !pickerContext.mounted) return;
+    final r = await showCategoryPicker(
+      pickerContext,
+      tree: tree,
+      selectedId: _filtroCategoriaNoId,
+      title: 'Filtrar por categoria',
+    );
+    if (r == null || !mounted) return;
+    _aplicarFiltroCategoriaArvore(tree, r.cleared ? null : r.node);
+  }
+
+  Future<void> _abrirGerenciarCategorias() async {
+    final loja = _lojaId;
+    if (loja == null) return;
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => CategoryTreeScreen(lojaId: loja),
+    ));
+    if (!mounted || _filtroCategoriaNoId == null) return;
+    final tree = await _carregarArvoreCategoriasEstoque(refresh: true);
+    if (tree == null || !mounted) return;
+    final node = tree.node(_filtroCategoriaNoId);
+    _aplicarFiltroCategoriaArvore(
+        tree, node == null || node.isDeleted ? null : node);
+  }
+
+  /// Categoria da árvore: a categoria pai inclui os produtos de todas as subcategorias.
+  Widget _buildFiltroCategoriaArvore() {
+    return StatefulBuilder(
+      builder: (ctx, setLocal) {
+        final names = _filtroCategoriaNoPath;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildFiltroFieldLabel('Categoria (inclui subcategorias)'),
+            const SizedBox(height: 6),
+            if (names.isEmpty)
+              Text('Todas as categorias',
+                  style: TextStyle(fontSize: 13, color: Colors.grey[700]))
+            else
+              CategoryBreadcrumb(
+                key: const ValueKey('estoque_category_filter_breadcrumb'),
+                names: names,
+                rootLabel: null,
+              ),
+            Wrap(
+              spacing: 8,
+              children: [
+                TextButton.icon(
+                  key: const ValueKey('estoque_category_filter_pick'),
+                  onPressed: () async {
+                    await _escolherFiltroCategoriaArvore(ctx);
+                    if (ctx.mounted) setLocal(() {});
+                  },
+                  icon: const Icon(Icons.account_tree_outlined),
+                  label: const Text('Escolher'),
+                ),
+                if (_filtroCategoriaNoId != null)
+                  TextButton(
+                    key: const ValueKey('estoque_category_filter_clear'),
+                    onPressed: () {
+                      setState(() {
+                        _filtroCategoriaNoId = null;
+                        _filtroCategoriaNoPath = const [];
+                      });
+                      setLocal(() {});
+                    },
+                    child: const Text('Limpar'),
+                  ),
+                TextButton.icon(
+                  key: const ValueKey('estoque_category_manage'),
+                  onPressed: () async {
+                    await _abrirGerenciarCategorias();
+                    if (ctx.mounted) setLocal(() {});
+                  },
+                  icon: const Icon(Icons.settings_outlined),
+                  label: const Text('Gerenciar categorias'),
+                ),
+              ],
+            ),
+          ],
         );
       },
     );

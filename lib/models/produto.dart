@@ -215,6 +215,18 @@ class Produto extends HiveObject {
   @HiveField(54)
   String? stockSyncState;
 
+  /// Categoria final na árvore (`lojas/{lojaId}/categorias`); vazio = só os campos legados por nome.
+  @HiveField(55, defaultValue: '')
+  String categoryId;
+
+  /// Caminho da raiz até [categoryId] (até 6 níveis); filtro por categoria pai usa esta lista.
+  @HiveField(56, defaultValue: <String>[])
+  List<String> categoryPathIds;
+
+  /// Nomes do caminho no momento da escolha; exibição usa a árvore atual quando disponível.
+  @HiveField(57, defaultValue: <String>[])
+  List<String> categoryPathNames;
+
   Produto({
     required this.nome,
     required this.custoReal,
@@ -271,6 +283,9 @@ class Produto extends HiveObject {
     this.pendingStockOperationId,
     this.pendingStockBaseRevision,
     this.stockSyncState,
+    this.categoryId = '',
+    this.categoryPathIds = const [],
+    this.categoryPathNames = const [],
   });
 
   bool get ehCombo => tipoProduto == 'combo';

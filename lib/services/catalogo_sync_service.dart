@@ -14,6 +14,7 @@ import '../core/combo_config_canonical.dart';
 import '../core/hive_box_names.dart';
 import '../core/produto_variacao_extra.dart';
 import '../core/logger.dart';
+import '../features/categories/product_category_fields.dart';
 import '../src/blob_fetch_stub.dart' if (dart.library.html) '../src/blob_fetch_web.dart' as blob_fetch;
 import '../models/produto.dart';
 import 'stock_catalog_backend_service.dart';
@@ -394,6 +395,7 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
       'subcategoriasExtras': pdt.subcategoriasExtras,
       'categoriasAssociadas': pdt.categoriasAssociadas,
       'subcategoriasAssociadas': pdt.subcategoriasAssociadas,
+      ...ProductCategoryFields.toMap(pdt),
 
       'quantidade': pdt.quantidade,
       'estoque_atual': pdt.quantidade,

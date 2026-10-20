@@ -43,6 +43,7 @@ import 'produto_stock_catalog_cadastro_sync.dart';
 import 'produto_import_sync_prep_service.dart';
 import '../core/produto_firestore_doc_id_validator.dart';
 import 'produto_pull_skip_guard.dart';
+import '../features/categories/product_category_fields.dart';
 import 'sync_mass_delete_guard.dart';
 import '../src/blob_fetch_stub.dart'
     if (dart.library.html) '../src/blob_fetch_web.dart'
@@ -778,6 +779,9 @@ class ProdutosFirestoreService {
                   ?.map((e) => e.toString())
                   .toList() ??
               const [],
+          categoryId: ProductCategoryFields.idFrom(data),
+          categoryPathIds: ProductCategoryFields.pathIdsFrom(data),
+          categoryPathNames: ProductCategoryFields.pathNamesFrom(data),
           publicadoNoCatalogo: data['publicadoNoCatalogo'] ?? false,
           tamanhos: _dedupeStringListPreserveOrder(
             (data['tamanhos'] as List?)?.map((e) => e.toString()).toList(),
@@ -1776,6 +1780,7 @@ class ProdutosFirestoreService {
         'subcategoria': produto.subcategoria,
         'categoriasExtras': produto.categoriasExtras,
         'subcategoriasExtras': produto.subcategoriasExtras,
+        ...ProductCategoryFields.toMap(produto),
         'descricao': produto.descricao,
         'imagens': imagensFinais, // ✅ Usa URLs do Firebase
         'slug': produto.slug,
@@ -2011,6 +2016,7 @@ class ProdutosFirestoreService {
               'subcategoriasExtras': produto.subcategoriasExtras,
               'categoriasAssociadas': produto.categoriasAssociadas,
               'subcategoriasAssociadas': produto.subcategoriasAssociadas,
+              ...ProductCategoryFields.toMap(produto),
               'emPromocao': produto.emPromocao,
               'percentualPromo': produto.percentualPromo,
               'valorPromo': produto.valorPromo,
@@ -2598,6 +2604,7 @@ class ProdutosFirestoreService {
                     ? raw.map((e) => e.toString()).toList()
                     : <String>[];
               }
+              ProductCategoryFields.applyFromMap(p, data);
               p.descricao = data['descricao'] ?? p.descricao;
               p.imagens =
                   (data['imagens'] as List?)?.cast<String>() ?? p.imagens;
@@ -2779,6 +2786,9 @@ class ProdutosFirestoreService {
                       ?.map((e) => e.toString())
                       .toList() ??
                   const [],
+              categoryId: ProductCategoryFields.idFrom(data),
+              categoryPathIds: ProductCategoryFields.pathIdsFrom(data),
+              categoryPathNames: ProductCategoryFields.pathNamesFrom(data),
               publicadoNoCatalogo: data['publicadoNoCatalogo'] ?? false,
               tamanhos: _dedupeStringListPreserveOrder(
                 (data['tamanhos'] as List?)?.map((e) => e.toString()).toList(),

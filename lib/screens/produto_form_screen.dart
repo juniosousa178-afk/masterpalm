@@ -14,6 +14,12 @@ import '../core/hive_box_names.dart';
 import '../core/produto_cadastro_gate.dart';
 import '../core/produto_form_grade_hydration.dart';
 import '../core/produto_variacao_extra.dart';
+import '../features/categories/category_service.dart';
+import '../features/categories/category_tree.dart';
+import '../features/categories/product_category_fields.dart';
+import '../features/categories/screens/category_tree_screen.dart';
+import '../features/categories/widgets/category_breadcrumb.dart';
+import '../features/categories/widgets/category_picker.dart';
 import '../models/compra_item_pipeline.dart';
 import '../models/produto.dart';
 import '../services/compra_item_pipeline_store.dart';
@@ -197,6 +203,11 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
   final _subcategoriaExtraInput = TextEditingController();
   final Set<String> _categoriasExtrasSelecionadas = <String>{};
   final Set<String> _subcategoriasExtrasSelecionadas = <String>{};
+  String _categoryId = '';
+  List<String> _categoryPathIds = const [];
+  List<String> _categoryPathNames = const [];
+  CategoryTree? _categoryTree;
+  bool _categoryTreeLoading = false;
   final _descricao = TextEditingController();
   final _peso = TextEditingController(text: '0');
   /// Unidade do peso: 'g' (padrão) ou 'kg'
@@ -311,6 +322,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       unawaited(enforceProdutoCadastroOrPop(context));
     });
     _initLojaEBox();
+    _categoria.addListener(_onCategoryTextChanged);
+    _subcategoria.addListener(_onCategoryTextChanged);
 
     final p = widget.produto;
     if (p != null) {
@@ -322,6 +335,9 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       _preco.text = MoedaInputFormatter.format(p.precoFinal);
       _categoria.text = p.categoria;
       _subcategoria.text = p.subcategoria;
+      _categoryId = p.categoryId;
+      _categoryPathIds = List<String>.from(p.categoryPathIds);
+      _categoryPathNames = List<String>.from(p.categoryPathNames);
       _categoriasExtrasSelecionadas
           .addAll(p.categoriasExtras.map((e) => canonicalizeCategoria(e)));
       _subcategoriasExtrasSelecionadas
@@ -873,6 +889,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       _nome.removeListener(_verificarProdutoExistente);
       _categoria.removeListener(_verificarProdutoExistente);
     }
+    _categoria.removeListener(_onCategoryTextChanged);
+    _subcategoria.removeListener(_onCategoryTextChanged);
     _nome.dispose();
     _quantidade.dispose();
     _estoqueMinimo.dispose();
@@ -1895,6 +1913,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         _subcategoriasExtrasSelecionadas,
         subcategoriaPrincipal,
       );
+      final categoryChoice =
+          _categoryChoiceForSave(categoriaPrincipal, subcategoriaPrincipal);
 
       final precoPorTamanhoMap =
           produtoFormBuildPrecoPorTamanhoFromControllers(_precoPorTamanhoCtrl);
@@ -1943,6 +1963,9 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             ..subcategoria = subcategoriaPrincipal
             ..categoriasExtras = categoriasExtras
             ..subcategoriasExtras = subcategoriasExtras
+            ..categoryId = categoryChoice.id
+            ..categoryPathIds = categoryChoice.pathIds
+            ..categoryPathNames = categoryChoice.pathNames
             ..descricao = _descricao.text.trim()
             ..imagens = List.from(_imagensParaPersistir)
             ..publicadoNoCatalogo = _publicar
@@ -2044,6 +2067,9 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             subcategoria: subcategoriaPrincipal,
             categoriasExtras: categoriasExtras,
             subcategoriasExtras: subcategoriasExtras,
+            categoryId: categoryChoice.id,
+            categoryPathIds: categoryChoice.pathIds,
+            categoryPathNames: categoryChoice.pathNames,
             descricao: _descricao.text.trim(),
             dataEntrada: DateTime.now(),
             imagens: List.from(_imagensParaPersistir),
@@ -2121,6 +2147,9 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           ..subcategoria = subcategoriaPrincipal
           ..categoriasExtras = categoriasExtras
           ..subcategoriasExtras = subcategoriasExtras
+          ..categoryId = categoryChoice.id
+          ..categoryPathIds = categoryChoice.pathIds
+          ..categoryPathNames = categoryChoice.pathNames
           ..descricao = _descricao.text.trim()
           ..imagens = List.from(_imagensParaPersistir)
           ..publicadoNoCatalogo = _publicar
@@ -2464,6 +2493,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
                       ),
                       const SizedBox(height: 12),
 
+                      _buildCategoryTreeTile(),
+                      const SizedBox(height: 12),
                       // Categoria e Subcategoria (unificadas: Anel/anel → Anel; ignora acentos)
                       Row(
                         children: [
@@ -3644,6 +3675,182 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   /// Widget para criar cards de seção
+  ({String id, List<String> pathIds, List<String> pathNames}) _categoryChoiceForSave(
+      String categoria, String subcategoria) {
+    const none = (id: '', pathIds: <String>[], pathNames: <String>[]);
+    if (_categoryId.isEmpty ||
+        !ProductCategoryFields.pathAgreesWithText(
+            _categoryPathNames, categoria, subcategoria)) {
+      return none;
+    }
+    final current = _categoryTree?.node(_categoryId);
+    if (current != null && !current.isVirtual && !current.isDeleted) {
+      return (
+        id: current.id,
+        pathIds: List<String>.from(current.pathIds),
+        pathNames: List<String>.from(current.pathNames),
+      );
+    }
+    return (
+      id: _categoryId,
+      pathIds: List<String>.from(_categoryPathIds),
+      pathNames: List<String>.from(_categoryPathNames),
+    );
+  }
+
+  void _onCategoryTextChanged() {
+    if (mounted && _categoryId.isNotEmpty) setState(() {});
+  }
+
+  bool get _categoryLinked =>
+      _categoryId.isNotEmpty &&
+      ProductCategoryFields.pathAgreesWithText(
+          _categoryPathNames, _categoria.text, _subcategoria.text);
+
+  Future<CategoryTree?> _loadCategoryTree({bool refresh = false}) async {
+    final loja = lojaId;
+    if (loja == null) return null;
+    if (!refresh && _categoryTree != null) return _categoryTree;
+    setState(() => _categoryTreeLoading = true);
+    try {
+      final tree = await CategoryService.loadTree(
+        loja,
+        products: produtosBox.values.map(CategoryProductRef.fromProduto),
+        refresh: refresh,
+      );
+      if (mounted) setState(() => _categoryTree = tree);
+      return tree;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Não foi possível carregar as categorias: $e')),
+        );
+      }
+      return null;
+    } finally {
+      if (mounted) setState(() => _categoryTreeLoading = false);
+    }
+  }
+
+  Future<void> _manageCategories() async {
+    final loja = lojaId;
+    if (loja == null) return;
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => CategoryTreeScreen(lojaId: loja),
+    ));
+    if (!mounted) return;
+    await _pickCategory(refresh: true);
+  }
+
+  Future<void> _pickCategory({bool refresh = false}) async {
+    final tree = await _loadCategoryTree(refresh: refresh);
+    if (tree == null || !mounted) return;
+    final selectedId = _categoryLinked
+        ? _categoryId
+        : tree
+            .leafForProduct(CategoryProductRef(
+              categorias: [
+                if (_categoria.text.trim().isNotEmpty) _categoria.text.trim()
+              ],
+              subcategorias: [
+                if (_subcategoria.text.trim().isNotEmpty)
+                  _subcategoria.text.trim()
+              ],
+            ))
+            ?.id;
+    final result = await showCategoryPicker(
+      context,
+      tree: tree,
+      selectedId: selectedId,
+      onManage: () => unawaited(_manageCategories()),
+    );
+    if (result == null || !mounted) return;
+    final node = result.cleared ? null : result.node;
+    if (node != null) {
+      _categoria.text = node.pathNames.first;
+      _subcategoria.text = node.pathNames.length > 1 ? node.pathNames[1] : '';
+    }
+    setState(() {
+      if (node == null || node.isVirtual) {
+        _categoryId = '';
+        _categoryPathIds = const [];
+        _categoryPathNames = const [];
+      } else {
+        _categoryId = node.id;
+        _categoryPathIds = List<String>.from(node.pathIds);
+        _categoryPathNames = List<String>.from(node.pathNames);
+      }
+    });
+  }
+
+  Widget _buildCategoryTreeTile() {
+    final theme = Theme.of(context);
+    final linked = _categoryLinked;
+    final names = linked
+        ? (_categoryTree?.node(_categoryId)?.pathNames ?? _categoryPathNames)
+        : [
+            if (_categoria.text.trim().isNotEmpty) _categoria.text.trim(),
+            if (_categoria.text.trim().isNotEmpty &&
+                _subcategoria.text.trim().isNotEmpty)
+              _subcategoria.text.trim(),
+          ];
+    return Container(
+      key: const ValueKey('produto_category_tile'),
+      padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+      decoration: BoxDecoration(
+        border: Border.all(color: theme.dividerColor),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.account_tree_outlined, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('Categoria (até 6 níveis)',
+                    style: theme.textTheme.titleSmall),
+              ),
+              if (_categoryTreeLoading)
+                const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          if (names.isEmpty)
+            Text('Nenhuma categoria escolhida.',
+                style: theme.textTheme.bodySmall)
+          else
+            CategoryBreadcrumb(
+              key: const ValueKey('produto_category_breadcrumb'),
+              names: names,
+              rootLabel: null,
+            ),
+          Wrap(
+            spacing: 8,
+            children: [
+              TextButton.icon(
+                key: const ValueKey('produto_category_pick'),
+                onPressed: _categoryTreeLoading ? null : () => _pickCategory(),
+                icon: const Icon(Icons.list_alt_outlined),
+                label: const Text('Escolher'),
+              ),
+              TextButton.icon(
+                key: const ValueKey('produto_category_manage'),
+                onPressed: _categoryTreeLoading ? null : _manageCategories,
+                icon: const Icon(Icons.settings_outlined),
+                label: const Text('Gerenciar categorias'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSectionCard({
     required String title,
     required IconData icon,

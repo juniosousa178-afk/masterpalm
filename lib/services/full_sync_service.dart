@@ -21,6 +21,7 @@ import 'importar_vendas_firestore_service.dart';
 import 'financeiro_firestore_service.dart';
 import 'conta_receber_service.dart';
 import 'store_resolver_facade.dart';
+import '../features/categories/product_category_fields.dart';
 
 class FullSyncService {
   FullSyncService._();
@@ -319,6 +320,10 @@ class FullSyncService {
                       List<String>.from(produto.categoriasExtras)
                   ..subcategoriasExtras =
                       List<String>.from(produto.subcategoriasExtras)
+                  ..categoryId = produto.categoryId
+                  ..categoryPathIds = List<String>.from(produto.categoryPathIds)
+                  ..categoryPathNames =
+                      List<String>.from(produto.categoryPathNames)
                   ..imagens = produto.imagens
                   ..publicadoNoCatalogo = produto.publicadoNoCatalogo
                   ..divideSemJuros = produto.divideSemJuros
@@ -517,6 +522,9 @@ class FullSyncService {
       subcategoria: data['subcategoria']?.toString() ?? '',
       categoriasExtras: _parseListString(data['categoriasExtras']),
       subcategoriasExtras: _parseListString(data['subcategoriasExtras']),
+      categoryId: ProductCategoryFields.idFrom(data),
+      categoryPathIds: ProductCategoryFields.pathIdsFrom(data),
+      categoryPathNames: ProductCategoryFields.pathNamesFrom(data),
       imagens: _parseListString(data['imagens']),
       tamanhos: _parseListString(data['tamanhos']),
       estoquePorTamanho: _parseMapStringInt(data['estoquePorTamanho']),

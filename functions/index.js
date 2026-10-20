@@ -13,6 +13,7 @@ import crypto from "node:crypto";
 import {executeConsignmentCommand} from "./src/consignmentCommand.js";
 import {handleProjectionRetryEvent} from "./src/consignmentCatalogProjection.js";
 import {mapConsignmentHttp, describeUnclassifiedConsignmentError} from "./src/consignmentProtocol.js";
+import {executeCategoryCommand, mapCategoryError} from "./src/categoryCommand.js";
 
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
@@ -5502,6 +5503,21 @@ export const consignmentCommand = onCall(
       return await executeConsignmentCommand(db, request.data, request.auth);
     } catch (error) {
       throw consignmentCallableError(error, request.data);
+    }
+  },
+);
+
+export const categoryCommand = onCall(
+  { cors: true, timeoutSeconds: 60, memory: "256MiB", secrets: [] },
+  async (request) => {
+    try {
+      return await executeCategoryCommand(db, request.data, request.auth);
+    } catch (error) {
+      const mapped = mapCategoryError(error);
+      if (mapped.details?.categoryCode === "SERVER") {
+        console.error("[categoryCommand] unclassified_error", error?.message ?? String(error));
+      }
+      throw new HttpsError(mapped.http, mapped.message, mapped.details);
     }
   },
 );

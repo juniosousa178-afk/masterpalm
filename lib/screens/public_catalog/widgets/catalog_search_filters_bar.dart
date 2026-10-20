@@ -125,6 +125,9 @@ class CatalogCategorySubcategoryFilters extends StatelessWidget {
   final void Function(String) onSubcategorySelected;
   final bool verticalLayout;
 
+  /// Árvore de categorias da loja: subcategorias do nível 2 (null = derivar do texto dos produtos).
+  final List<String>? Function(String category)? subcategoriesForCategory;
+
   const CatalogCategorySubcategoryFilters({
     super.key,
     required this.categoriasMenu,
@@ -139,7 +142,21 @@ class CatalogCategorySubcategoryFilters extends StatelessWidget {
     required this.onSubcategorySelectedNull,
     required this.onSubcategorySelected,
     this.verticalLayout = false,
+    this.subcategoriesForCategory,
   });
+
+  List<String> _subcategoriasDe(String category) {
+    final fromTree = subcategoriesForCategory?.call(category);
+    if (fromTree != null) return fromTree;
+    final subcategoriasSet = <String>{};
+    for (final p in produtos) {
+      final c = (p['categoria'] ?? p['categoriaId'] ?? '').toString().trim();
+      final sub =
+          (p['subcategoria'] ?? p['subcategoriaId'] ?? '').toString().trim();
+      if (c == category && sub.isNotEmpty) subcategoriasSet.add(sub);
+    }
+    return subcategoriasSet.toList()..sort();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -229,19 +246,7 @@ class CatalogCategorySubcategoryFilters extends StatelessWidget {
               if (selectedCategory == null) {
                 return const SizedBox.shrink();
               }
-              final subcategoriasSet = <String>{};
-              for (final p in produtos) {
-                final cat = (p['categoria'] ?? p['categoriaId'] ?? '')
-                    .toString()
-                    .trim();
-                final subcat = (p['subcategoria'] ?? p['subcategoriaId'] ?? '')
-                    .toString()
-                    .trim();
-                if (cat == selectedCategory && subcat.isNotEmpty) {
-                  subcategoriasSet.add(subcat);
-                }
-              }
-              final subcategorias = subcategoriasSet.toList()..sort();
+              final subcategorias = _subcategoriasDe(selectedCategory!);
               if (subcategorias.isEmpty) {
                 return const SizedBox.shrink();
               }
@@ -382,13 +387,7 @@ class CatalogCategorySubcategoryFilters extends StatelessWidget {
       ));
       // Subcategorias logo abaixo da categoria quando ela está selecionada
       if (isSelected) {
-        final subcategoriasSet = <String>{};
-        for (final p in produtos) {
-          final c = (p['categoria'] ?? p['categoriaId'] ?? '').toString().trim();
-          final sub = (p['subcategoria'] ?? p['subcategoriaId'] ?? '').toString().trim();
-          if (c == cat && sub.isNotEmpty) subcategoriasSet.add(sub);
-        }
-        final subcategorias = subcategoriasSet.toList()..sort();
+        final subcategorias = _subcategoriasDe(cat);
         if (subcategorias.isNotEmpty) {
           items.add(const SizedBox(height: 8));
           items.add(_buildSidebarItem(

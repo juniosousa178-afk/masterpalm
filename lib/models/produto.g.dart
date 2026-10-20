@@ -77,13 +77,18 @@ class ProdutoAdapter extends TypeAdapter<Produto> {
       pendingStockOperationId: fields[52] as String?,
       pendingStockBaseRevision: fields[53] as int?,
       stockSyncState: fields[54] as String?,
+      categoryId: fields[55] == null ? '' : fields[55] as String,
+      categoryPathIds:
+          fields[56] == null ? [] : (fields[56] as List).cast<String>(),
+      categoryPathNames:
+          fields[57] == null ? [] : (fields[57] as List).cast<String>(),
     );
   }
 
   @override
   void write(BinaryWriter writer, Produto obj) {
     writer
-      ..writeByte(55)
+      ..writeByte(58)
       ..writeByte(0)
       ..write(obj.nome)
       ..writeByte(1)
@@ -193,7 +198,13 @@ class ProdutoAdapter extends TypeAdapter<Produto> {
       ..writeByte(53)
       ..write(obj.pendingStockBaseRevision)
       ..writeByte(54)
-      ..write(obj.stockSyncState);
+      ..write(obj.stockSyncState)
+      ..writeByte(55)
+      ..write(obj.categoryId)
+      ..writeByte(56)
+      ..write(obj.categoryPathIds)
+      ..writeByte(57)
+      ..write(obj.categoryPathNames);
   }
 
   @override

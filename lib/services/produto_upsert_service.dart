@@ -7,6 +7,7 @@ import 'package:hive/hive.dart';
 import '../core/combo_config_canonical.dart';
 import '../core/logger.dart';
 import '../core/produto_custo_guard.dart';
+import '../features/categories/product_category_fields.dart';
 import '../models/produto.dart';
 import '../models/venda.dart';
 import 'combo_receita_normalizacao.dart';
@@ -173,6 +174,7 @@ void _mergeProdutoExistente(
   // Texto/listas/mapas: só sobrescreve quando o novo trouxer dado válido.
   if (_temTexto(novo.nome)) existente.nome = novo.nome;
   if (_temTexto(novo.descricao)) existente.descricao = novo.descricao.trim();
+  ProductCategoryFields.mergeImported(existente: existente, novo: novo);
   if (_temTexto(novo.categoria)) existente.categoria = novo.categoria.trim();
   if (_temTexto(novo.subcategoria)) existente.subcategoria = novo.subcategoria.trim();
   if (_listaComDados(novo.categoriasExtras)) {

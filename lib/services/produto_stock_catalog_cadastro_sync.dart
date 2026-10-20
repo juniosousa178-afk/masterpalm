@@ -11,6 +11,7 @@ import '../core/produto_estoque_grade_snapshot.dart';
 import '../core/produto_form_grade_hydration.dart';
 import '../core/produto_stock_revision.dart';
 import '../core/produto_variacao_extra.dart';
+import '../features/categories/product_category_fields.dart';
 import '../models/produto.dart';
 import 'estoque_transaction_service.dart';
 import 'stock_catalog_backend_service.dart';
@@ -137,6 +138,7 @@ class ProdutoStockCatalogCadastroSync {
       'subcategoriasExtras': produto.subcategoriasExtras,
       'categoriasAssociadas': produto.categoriasAssociadas,
       'subcategoriasAssociadas': produto.subcategoriasAssociadas,
+      ...ProductCategoryFields.toMap(produto),
       'peso': produto.peso,
       'emPromocao': produto.emPromocao,
       'percentualPromo': produto.percentualPromo,
@@ -345,21 +347,48 @@ class ProdutoStockCatalogCadastroSync {
           editorial: editorial,
           definition: intent.definition,
         );
+    Map<String, dynamic> without(Map<String, dynamic> ed, Set<String> keys) =>
+        Map<String, dynamic>.fromEntries(
+            ed.entries.where((e) => !keys.contains(e.key)));
+    var editorial = _categoryFieldsUnsupported
+        ? without(intent.editorial, ProductCategoryFields.keys)
+        : intent.editorial;
     try {
-      return await send(intent.editorial);
+      return await send(editorial);
     } catch (error) {
-      final hasIdentity = intent.editorial.keys
+      final hasCategory =
+          editorial.keys.any(ProductCategoryFields.keys.contains);
+      final hasIdentity = editorial.keys
           .any(StockCatalogBackendService.identityFields.contains);
-      if (!hasIdentity ||
+      if ((!hasCategory && !hasIdentity) ||
           !StockCatalogBackendService.isIdentityFieldUnsupported(error)) {
         rethrow;
       }
       // Rejected before any write, so the same operationId is still unused.
-      return send(Map<String, dynamic>.fromEntries(intent.editorial.entries
-          .where((e) =>
-              !StockCatalogBackendService.identityFields.contains(e.key))));
+      if (hasCategory) {
+        _categoryFieldsUnsupported = true;
+        editorial = without(editorial, ProductCategoryFields.keys);
+        try {
+          return await send(editorial);
+        } catch (retryError) {
+          if (!hasIdentity ||
+              !StockCatalogBackendService.isIdentityFieldUnsupported(
+                  retryError)) {
+            rethrow;
+          }
+        }
+      }
+      return send(
+          without(editorial, StockCatalogBackendService.identityFields));
     }
   }
+
+  /// Servidor sem os campos hierárquicos: não reenviar na sessão (categoria/subcategoria por nome seguem).
+  static bool _categoryFieldsUnsupported = false;
+
+  @visibleForTesting
+  static void debugResetCategoryFieldSupport() =>
+      _categoryFieldsUnsupported = false;
 
   static Future<void> applyBackendResponseToHive({
     required Produto produto,

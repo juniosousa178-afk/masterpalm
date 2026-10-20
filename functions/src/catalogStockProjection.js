@@ -1,4 +1,6 @@
 /** Server stock projection. No Firestore access and no client availability authority. */
+import {validateProductCategoryFields} from './categoryTree.js';
+
 export const PROJECTION_VERSION = 1;
 export const META_COST = '__custoUnitario';
 export const NO_EXTRA = '_sem_extra';
@@ -208,7 +210,8 @@ export const EDITORIAL_FIELDS = Object.freeze([
   'nome','descricao','descricao_curta','preco','preco_venda','precoFinal','precoPorTamanho',
   'imagens','imagem_principal','imagemUrl','imageUrl','fotoThumbUrl','fotoOriginalUrl','slug',
   'categoria','categoriaId','subcategoria','subcategoriaId','categoriasExtras','subcategoriasExtras',
-  'categoriasAssociadas','subcategoriasAssociadas','peso','emPromocao','percentualPromo','valorPromo',
+  'categoriasAssociadas','subcategoriasAssociadas','categoryId','categoryPathIds','categoryPathNames',
+  'peso','emPromocao','percentualPromo','valorPromo',
   'publicadoNoCatalogo','exibir_no_catalogo','ocultar_catalogo','catalog_ativo',
   'priceMin','priceMax','images','imgs','fotos','dataInicioPromo','dataFimPromo',
   'precoComPromocao','promocaoAtiva','descontoComboValor','descontoComboPercentual',
@@ -221,6 +224,7 @@ export function validateEditorial(patch) {
   for (const key of ['publicadoNoCatalogo','exibir_no_catalogo','ocultar_catalogo','catalog_ativo']) {
     if (key in patch && typeof patch[key] !== 'boolean') throw stockError('invalid-argument', 'Invalid publication flag');
   }
+  validateProductCategoryFields(patch, message => { throw stockError('invalid-argument', message); });
   if ('divideSemJuros' in patch && typeof patch.divideSemJuros !== 'boolean') {
     throw stockError('invalid-argument', 'Invalid divideSemJuros');
   }
