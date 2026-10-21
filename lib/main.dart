@@ -53,6 +53,9 @@ import 'utils/web_nav_log_observer.dart';
 import 'widgets/admin_web_route_shell.dart';
 
 import 'catalog/public_order_link.dart';
+import 'features/plans/plan_return_link.dart';
+import 'features/plans/plan_return_status_loader.dart';
+import 'features/plans/plan_return_web_app.dart';
 
 // Telas
 import 'screens/public_order_web_app.dart';
@@ -3157,6 +3160,18 @@ Future<void> main() async {
           ref: PublicOrderLink.parse(initialUri),
           routeName: PublicOrderLink.routeName(initialUri),
           initFirebase: ensureFirebaseInitializedOnce,
+        ));
+        return;
+      }
+
+      // Retorno do checkout de planos (Mercado Pago): precede catálogo e home.
+      if (PlanReturnLink.isPlanReturnPath(initialUri)) {
+        CatalogStartupTrace.mark('CAT_START.runApp.plan_return');
+        runApp(PlanReturnWebApp(
+          ref: PlanReturnLink.parse(initialUri),
+          routeName: PlanReturnLink.routeName(initialUri),
+          loader: productionPlanReturnLoader(ensureFirebaseInitializedOnce),
+          onOpenApp: (_) => web_plat.Web.open('${AppUrls.appWebBase}/', '_self'),
         ));
         return;
       }

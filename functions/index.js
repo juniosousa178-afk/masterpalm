@@ -15,6 +15,12 @@ import {handleProjectionRetryEvent} from "./src/consignmentCatalogProjection.js"
 import {mapConsignmentHttp, describeUnclassifiedConsignmentError} from "./src/consignmentProtocol.js";
 import {executeCategoryCommand, mapCategoryError} from "./src/categoryCommand.js";
 import {legacyOrderRedirectTarget} from "./src/publicOrderRedirect.js";
+import {
+  catalogShortcutBase,
+  catalogShortcutKey,
+  catalogShortcutRootUrl,
+  catalogShortcutStoreUrl,
+} from "./src/catalogShortcutRedirect.js";
 
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
@@ -4436,7 +4442,7 @@ export const publishLojaDraft = onDocumentWritten(
 );
 
 // ============================== LINK CURTO – /c/:short → /loja/:slug ==============================
-const WEB_BASE = process.env.WEB_BASE_URL || "https://app.mastepalm.com.br";
+const WEB_BASE = catalogShortcutBase(process.env.WEB_BASE_URL);
 
 export const redirectCatalogo = onRequest(
   { cors: true },
@@ -4446,15 +4452,15 @@ export const redirectCatalogo = onRequest(
     if (orderTarget) {
       return res.redirect(302, orderTarget);
     }
-    const short = (req.path.replace(/^\/c\/?/, "") || "").trim().toLowerCase();
+    const short = catalogShortcutKey(req.path);
     if (!short) {
-      return res.redirect(302, `${WEB_BASE}/`);
+      return res.redirect(302, catalogShortcutRootUrl(WEB_BASE));
     }
     try {
       const { getRedirectTarget, syncCatalogRedirectIndex } = await import("./src/catalogRedirectIndex.js");
       const target = await getRedirectTarget(db, short);
       if (target && target.slug) {
-        return res.redirect(302, `${WEB_BASE}/loja/${target.slug}`);
+        return res.redirect(302, catalogShortcutStoreUrl(WEB_BASE, target.slug));
       }
       // Fallback: itera lojas (links antigos ainda não no índice)
       const lojasSnap = await db.collection(COLLECTION_LOJAS).get();
@@ -4467,13 +4473,13 @@ export const redirectCatalogo = onRequest(
           try {
             await syncCatalogRedirectIndex(db, doc.id, { slug, linkCurto: d.linkCurto });
           } catch (_) {}
-          return res.redirect(302, `${WEB_BASE}/loja/${slugDisplay}`);
+          return res.redirect(302, catalogShortcutStoreUrl(WEB_BASE, slugDisplay));
         }
       }
-      return res.redirect(302, `${WEB_BASE}/`);
+      return res.redirect(302, catalogShortcutRootUrl(WEB_BASE));
     } catch (e) {
       console.error("redirectCatalogo error:", e);
-      return res.redirect(302, `${WEB_BASE}/`);
+      return res.redirect(302, catalogShortcutRootUrl(WEB_BASE));
     }
   })
 );

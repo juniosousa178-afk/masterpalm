@@ -5,15 +5,30 @@
 import 'package:flutter/material.dart';
 
 import 'core/logger.dart';
+import 'features/plans/plan_return_link.dart';
+import 'features/plans/plan_return_screen.dart';
+import 'features/plans/plan_return_status_loader.dart';
 import 'screens/public_catalog_screen.dart';
 import 'screens/public_catalog/catalog_url_query_codec.dart';
 import 'screens/pagamento_resultado_screen.dart';
 import 'screens/pedido_publico_screen.dart';
 import 'screens/order_review_screen.dart';
 
-/// Rotas dinâmicas: /loja/{id}, /sucesso, /falha, /pagamento/*, /pedido/{orderId}.
+/// Rotas dinâmicas: retorno de planos, /loja/{id}, /sucesso, /falha, /pagamento/*, /pedido/{orderId}.
 Route<dynamic>? onGenerateRoute(RouteSettings settings) {
   final uri = Uri.parse(settings.name ?? '');
+
+  if (PlanReturnLink.isPlanReturnPath(uri)) {
+    return MaterialPageRoute(
+      settings: settings,
+      builder: (_) => PlanReturnScreen(
+        ref: PlanReturnLink.parse(uri),
+        loader: productionPlanReturnLoader(() async => true),
+        onOpenApp: (ctx) =>
+            Navigator.of(ctx).pushNamedAndRemoveUntil('/', (_) => false),
+      ),
+    );
+  }
 
   // ROTA /loja/{id} com suporte a ?ref=vendedorId
   if (settings.name?.startsWith('/loja/') ?? false) {

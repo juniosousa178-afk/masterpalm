@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:cloud_functions/cloud_functions.dart';
 
 import '../core/master_plan_access_models.dart';
+import '../features/plans/plan_return_link.dart';
 import 'checkout_url_opener.dart';
 import 'license_manager.dart';
 import 'planos_service.dart';
@@ -404,10 +405,26 @@ Future<http.Response> _postPlanCreatePreference({
   return resp;
 }
 
+/// Corpo de [planCreatePreferenceCall] / [planCreatePreference]. O `returnUrl` é montado aqui
+/// (domínio do app) para não depender do fallback `WEB_BASE_URL` do backend.
+@visibleForTesting
+Map<String, dynamic> planCreatePreferencePayload({
+  required String plan,
+  required String canonicalPlanId,
+  required String installationId,
+}) {
+  return <String, dynamic>{
+    'plan': plan,
+    'returnUrl':
+        PlanReturnLink.buildOneTimeReturnUrl(planId: canonicalPlanId).toString(),
+    if (installationId.isNotEmpty) 'installationId': installationId,
+  };
+}
+
 /// No Web, [planCreatePreferenceCall] usa auth do SDK (evita 401 quando o browser não envia Bearer ao HTTP).
 Future<Map<String, dynamic>?> _tryPlanCreatePreferenceCallOnWeb({
   required String plan,
-  required String installationId,
+  required Map<String, dynamic> payload,
 }) async {
   if (!kIsWeb) return null;
   try {
@@ -426,10 +443,7 @@ Future<Map<String, dynamic>?> _tryPlanCreatePreferenceCallOnWeb({
     final functions =
         FirebaseFunctions.instanceFor(region: 'southamerica-east1');
     final callable = functions.httpsCallable('planCreatePreferenceCall');
-    final result = await callable.call(<String, dynamic>{
-      'plan': plan,
-      if (installationId.isNotEmpty) 'installationId': installationId,
-    });
+    final result = await callable.call(payload);
     final data = result.data;
     if (data is Map) {
       return Map<String, dynamic>.from(data);
@@ -725,10 +739,16 @@ class CheckoutService {
       debugPrint('[PlanosAuthDiag] pre_http token: $e');
     }
 
+    final payload = planCreatePreferencePayload(
+      plan: plan,
+      canonicalPlanId: canonical,
+      installationId: installationId,
+    );
+
     if (kIsWeb) {
       final viaCall = await _tryPlanCreatePreferenceCallOnWeb(
         plan: plan,
-        installationId: installationId,
+        payload: payload,
       );
       final initFromCall = viaCall?['init_point']?.toString() ?? '';
       if (initFromCall.isNotEmpty) {
@@ -749,10 +769,7 @@ class CheckoutService {
 
     final resp = await _postPlanCreatePreference(
       url: url,
-      body: {
-        'plan': plan,
-        if (installationId.isNotEmpty) 'installationId': installationId,
-      },
+      body: payload,
     );
 
     if (resp.statusCode == 401) {
