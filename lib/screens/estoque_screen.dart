@@ -1107,7 +1107,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Desconto PIX em lote'),
+        title: const Text('Definir desconto no Pix em lote'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -2133,8 +2133,8 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
 
                       _buildAcaoTile(
                         icon: Icons.qr_code,
-                        titulo: 'Desconto PIX em lote',
-                        subtitulo: 'Definir % de desconto no PIX para os selecionados',
+                        titulo: 'Definir desconto no Pix em lote',
+                        subtitulo: 'Aplica um % de desconto no Pix aos selecionados',
                         cor: _primaryColor,
                         onTap: () {
                           Navigator.pop(context);

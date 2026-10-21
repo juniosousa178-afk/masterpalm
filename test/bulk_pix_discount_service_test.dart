@@ -138,6 +138,13 @@ void main() {
       expect(a, isNot(other));
       expect(RegExp(r'^pixrm_[A-Za-z0-9_-]{8,120}$').hasMatch(a), isTrue);
     });
+
+    test('vetor fixo compartilhado com o teste de emulador (Dart == JS)', () {
+      expect(
+        BulkPixDiscountService.operationId(lojaId: 'loja1', bulkId: 'pixbulk_vec', productIds: ['c', 'a', 'b']),
+        'pixrm_c864d44979827ec6aeacb0396ad1ee2206bae864632bee82dd6d275a51f31eb7',
+      );
+    });
   });
 
   group('execução (§6, §19)', () {
