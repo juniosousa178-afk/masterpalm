@@ -320,10 +320,6 @@ class FullSyncService {
                       List<String>.from(produto.categoriasExtras)
                   ..subcategoriasExtras =
                       List<String>.from(produto.subcategoriasExtras)
-                  ..categoryId = produto.categoryId
-                  ..categoryPathIds = List<String>.from(produto.categoryPathIds)
-                  ..categoryPathNames =
-                      List<String>.from(produto.categoryPathNames)
                   ..imagens = produto.imagens
                   ..publicadoNoCatalogo = produto.publicadoNoCatalogo
                   ..divideSemJuros = produto.divideSemJuros
@@ -333,6 +329,7 @@ class FullSyncService {
                       produto.slug.isNotEmpty ? produto.slug : existente.slug
                   ..updatedAt = produto.updatedAt
                   ..idFirebase = doc.id;
+                ProductCategoryFields.copy(produto, existente);
                 ProdutosFirestoreService
                     .applyRemoteVariationFieldsToExistingOnPull(
                   local: existente,
@@ -525,6 +522,7 @@ class FullSyncService {
       categoryId: ProductCategoryFields.idFrom(data),
       categoryPathIds: ProductCategoryFields.pathIdsFrom(data),
       categoryPathNames: ProductCategoryFields.pathNamesFrom(data),
+      categoryAssignments: ProductCategoryFields.assignmentMapsFrom(data),
       imagens: _parseListString(data['imagens']),
       tamanhos: _parseListString(data['tamanhos']),
       estoquePorTamanho: _parseMapStringInt(data['estoquePorTamanho']),

@@ -20,6 +20,11 @@ const String kCategoryCycleDescendantMessage =
     'Uma categoria não pode ser movida para dentro de uma subcategoria dela.';
 const String kCategoryBreadcrumbSeparator = ' > ';
 
+/// Mesmo limite do servidor (`MAX_CATEGORY_ASSIGNMENTS`); acima disso o salvamento é recusado, nunca truncado.
+const int kMaxCategoryAssignments = 20;
+const String kCategoryAssignmentsLimitMessage =
+    'Um produto pode estar em até $kMaxCategoryAssignments categorias.';
+
 final RegExp _spaces = RegExp(r'\s+');
 
 /// Chave de comparação: sem acentos, minúsculas, espaços simples ("Anéis" == "aneis").
@@ -92,13 +97,34 @@ class CategoryNode {
 class CategoryProductRef {
   const CategoryProductRef({
     this.pathIds = const [],
+    this.leafIds = const [],
     this.categorias = const [],
     this.subcategorias = const [],
   });
 
+  /// Caminho legado (trio `categoryPathIds`); só a folha conta.
   final List<String> pathIds;
+
+  /// Folhas de `categoryAssignments` (um produto em vários caminhos).
+  final List<String> leafIds;
   final List<String> categorias;
   final List<String> subcategorias;
+
+  /// Folhas efetivas: atribuições quando existem, senão a folha do trio legado.
+  static List<String> _leavesFromAssignments(dynamic raw) {
+    if (raw is! List) return const [];
+    final out = <String>[];
+    for (final item in raw) {
+      if (item is! Map) continue;
+      var id = (item['categoryId'] ?? '').toString().trim();
+      if (id.isEmpty) {
+        final path = item['pathIds'];
+        if (path is List && path.isNotEmpty) id = path.last.toString().trim();
+      }
+      if (id.isNotEmpty && !out.contains(id)) out.add(id);
+    }
+    return out;
+  }
 
   static List<String> _uniq(Iterable<String> values, {bool skipCombo = false}) {
     final seen = <String>{};
@@ -120,11 +146,15 @@ class CategoryProductRef {
       {bool skipComboLabel = false}) {
     final tipo = (m['tipoProduto'] ?? m['tipo'] ?? '').toString().trim().toLowerCase();
     final skip = skipComboLabel && tipo == 'combo';
+    final leaves = _leavesFromAssignments(m['categoryAssignments']);
     return CategoryProductRef(
-      pathIds: _strings(m['categoryPathIds'])
-          .map((e) => e.trim())
-          .where((e) => e.isNotEmpty)
-          .toList(),
+      pathIds: leaves.isNotEmpty
+          ? const []
+          : _strings(m['categoryPathIds'])
+              .map((e) => e.trim())
+              .where((e) => e.isNotEmpty)
+              .toList(),
+      leafIds: leaves,
       categorias: _uniq([
         (m['categoria'] ?? m['categoriaId'] ?? '').toString(),
         ..._strings(m['categoriasAssociadas']),
@@ -138,11 +168,15 @@ class CategoryProductRef {
     );
   }
 
-  factory CategoryProductRef.fromProduto(Produto p) => CategoryProductRef(
-        pathIds: List<String>.from(p.categoryPathIds),
-        categorias: _uniq([p.categoria, ...p.categoriasExtras]),
-        subcategorias: _uniq([p.subcategoria, ...p.subcategoriasExtras]),
-      );
+  factory CategoryProductRef.fromProduto(Produto p) {
+    final leaves = _leavesFromAssignments(p.categoryAssignments);
+    return CategoryProductRef(
+      pathIds: leaves.isNotEmpty ? const [] : List<String>.from(p.categoryPathIds),
+      leafIds: leaves,
+      categorias: _uniq([p.categoria, ...p.categoriasExtras]),
+      subcategorias: _uniq([p.subcategoria, ...p.subcategoriasExtras]),
+    );
+  }
 }
 
 class CategoryTree {
@@ -351,11 +385,14 @@ class CategoryTree {
     return cur;
   }
 
-  /// Todos os nós (com ancestrais) em que o produto aparece.
+  /// Todos os nós (com ancestrais) em que o produto aparece; vários caminhos viram um único conjunto.
   Set<String> idsForProduct(CategoryProductRef ref) {
     final ids = <String>{};
-    if (ref.pathIds.isNotEmpty) {
-      final leaf = _nodes[ref.pathIds.last];
+    for (final leafId in [
+      ...ref.leafIds,
+      if (ref.pathIds.isNotEmpty) ref.pathIds.last,
+    ]) {
+      final leaf = _nodes[leafId];
       if (leaf != null && !leaf.isDeleted && !leaf.isVirtual) ids.addAll(leaf.pathIds);
     }
     for (final c in ref.categorias) {
@@ -386,6 +423,12 @@ class CategoryTree {
 
   /// Produtos (entre os usados para montar a árvore) na subárvore do nó.
   int productCount(String nodeId) => _counts[nodeId] ?? 0;
+
+  /// Raízes cadastradas que contêm produtos (inclui raízes de caminhos adicionais).
+  List<String> rootNamesWithProducts() => [
+        for (final r in roots)
+          if (!r.isVirtual && productCount(r.id) > 0) r.nome,
+      ];
 
   /// Busca por nome (ou nome antigo), tolerante a acento e plural; resultados com caminho completo.
   List<CategoryNode> search(String query) {

@@ -163,8 +163,11 @@ void main() {
         'categoryPathIds': ['cat_fem', 'cat_rel', 'cat_ane'],
         'categoryPathNames': ['Feminino', 'Religioso', 'Anéis'],
       });
-      p.categoryId = 'cat_outro';
-      expect(ProductCategoryFields.toMap(p)['categoryPathIds'], isEmpty);
+      final legacyIncoerente = Produto.vazio()
+        ..categoryId = 'cat_outro'
+        ..categoryPathIds = ['cat_fem', 'cat_rel', 'cat_ane']
+        ..categoryPathNames = ['Feminino', 'Religioso', 'Anéis'];
+      expect(ProductCategoryFields.toMap(legacyIncoerente)['categoryPathIds'], isEmpty);
       expect(ProductCategoryFields.toMap(Produto.vazio())['categoryId'], '');
     });
 

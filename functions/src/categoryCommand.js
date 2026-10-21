@@ -13,7 +13,7 @@ export const CATEGORY_PROTOCOL_VERSION = 1;
 export const CATEGORY_OPERATIONS = Object.freeze(['create', 'rename', 'archive', 'reorder', 'move']);
 const PRODUCT_COLLECTIONS = ['estoque_produtos', 'draft_produtos', 'produtos'];
 const PRODUCT_CATEGORY_FIELDS = ['categoria', 'subcategoria', 'categoriasExtras', 'subcategoriasExtras',
-  'categoriasAssociadas', 'subcategoriasAssociadas', 'categoryPathIds'];
+  'categoriasAssociadas', 'subcategoriasAssociadas', 'categoryPathIds', 'categoryAssignments'];
 const MAX_REORDER = 200;
 
 const invalid = message => { throw new CategoryError(CATEGORY_CODES.INVALID_ARGUMENT, message, 'invalid-argument'); };

@@ -1,6 +1,7 @@
 /**
- * Hierarchical category fields (categoryId/categoryPathIds/categoryPathNames) survive every server path that
- * re-projects a product: editorial, sale, restock, adjust, replace, catalog publish and consignment projection.
+ * Hierarchical category fields (categoryId/categoryPathIds/categoryPathNames + categoryAssignments) survive every
+ * server path that re-projects a product: editorial, sale, restock, adjust, replace, catalog publish and consignment
+ * projection. Paths are validated against the store's tree, so the fixture seeds it.
  * In-memory only (no production access).
  */
 import test from 'node:test';
@@ -16,6 +17,7 @@ const TRIPLE = Object.freeze({
   categoryPathNames: ['Feminino', 'Religioso', 'Anéis'],
 });
 const KEYS = Object.keys(TRIPLE);
+const ASSIGNMENTS = [{categoryId: 'cat_aneis', pathIds: TRIPLE.categoryPathIds, pathNames: TRIPLE.categoryPathNames}];
 let seq = 0;
 
 function seed({active = false} = {}) {
@@ -24,6 +26,9 @@ function seed({active = false} = {}) {
   const productId = 'anel';
   const base = db.collection('lojas').doc(lojaId);
   db.seed(base, {ownerUid: 'owner', lojaId});
+  TRIPLE.categoryPathIds.forEach((id, i) => db.seed(base.collection('categorias').doc(id), {
+    id, lojaId, nome: TRIPLE.categoryPathNames[i], parentId: i ? TRIPLE.categoryPathIds[i - 1] : null, isDeleted: false,
+  }));
   if (active) {
     db.seed(base.collection('stock_catalog_control').doc('state'), {protocolVersion: 1, mode: 'active', migrationComplete: true});
     db.seed(base.collection('stock_catalog_access').doc('owner'), {enabled: true,
@@ -49,6 +54,8 @@ function assertTriple(db, base, productId, label) {
     const doc = read(db, base, col, productId);
     assert.ok(doc, `${label}: ${col} exists`);
     for (const k of KEYS) assert.deepEqual(doc[k], TRIPLE[k], `${label}: ${col}.${k}`);
+    assert.deepEqual(doc.categoryAssignments, ASSIGNMENTS, `${label}: ${col}.categoryAssignments`);
+    assert.deepEqual(doc.categoryMembershipIds, TRIPLE.categoryPathIds, `${label}: ${col}.categoryMembershipIds`);
   }
 }
 
@@ -93,7 +100,7 @@ test('a draft that lost the fields (older projection) is restored from canonical
     items: [{productId}], editorial: {...TRIPLE}}, owner);
   const draftRef = base.collection('draft_produtos').doc(productId);
   const stripped = {...read(db, base, 'draft_produtos', productId)};
-  for (const k of KEYS) delete stripped[k];
+  for (const k of [...KEYS, 'categoryAssignments', 'categoryMembershipIds']) delete stripped[k];
   db.seed(draftRef, stripped);
   await publishStockProduct(db, lojaId, productId, owner);
   assertTriple(db, base, productId, 'restored by publish');

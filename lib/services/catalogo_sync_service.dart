@@ -395,7 +395,7 @@ static Future<String> _resolveLojaId([String? lojaIdOverride]) async {
       'subcategoriasExtras': pdt.subcategoriasExtras,
       'categoriasAssociadas': pdt.categoriasAssociadas,
       'subcategoriasAssociadas': pdt.subcategoriasAssociadas,
-      ...ProductCategoryFields.toMap(pdt),
+      ...ProductCategoryFields.toFullMap(pdt),
 
       'quantidade': pdt.quantidade,
       'estoque_atual': pdt.quantidade,

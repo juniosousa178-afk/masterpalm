@@ -5954,6 +5954,14 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                         aliases.add(c.toLowerCase());
                       }
                     }
+                    // Produto em vários caminhos: a raiz de cada caminho entra no menu mesmo sem texto.
+                    for (final root in categoryTree?.rootNamesWithProducts() ??
+                        const <String>[]) {
+                      categoriasSet.add(root);
+                      categoryAliasesByName
+                          .putIfAbsent(root, () => <String>{})
+                          .add(root.toLowerCase());
+                    }
                     final categoriasMenu = categoriasSet.toList()..sort();
 
                     // =================== MENU & PÁGINAS ===================

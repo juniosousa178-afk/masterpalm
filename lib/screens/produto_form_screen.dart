@@ -18,8 +18,8 @@ import '../features/categories/category_service.dart';
 import '../features/categories/category_tree.dart';
 import '../features/categories/product_category_fields.dart';
 import '../features/categories/screens/category_tree_screen.dart';
-import '../features/categories/widgets/category_breadcrumb.dart';
 import '../features/categories/widgets/category_picker.dart';
+import '../features/categories/widgets/product_category_assignments_editor.dart';
 import '../models/compra_item_pipeline.dart';
 import '../models/produto.dart';
 import '../services/compra_item_pipeline_store.dart';
@@ -203,9 +203,8 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
   final _subcategoriaExtraInput = TextEditingController();
   final Set<String> _categoriasExtrasSelecionadas = <String>{};
   final Set<String> _subcategoriasExtrasSelecionadas = <String>{};
-  String _categoryId = '';
-  List<String> _categoryPathIds = const [];
-  List<String> _categoryPathNames = const [];
+  /// Caminhos do produto na árvore; o primeiro acompanha os campos Categoria/Subcategoria.
+  List<ProductCategoryAssignment> _categoryAssignments = const [];
   CategoryTree? _categoryTree;
   bool _categoryTreeLoading = false;
   bool _categoryTreeFailed = false;
@@ -336,9 +335,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       _preco.text = MoedaInputFormatter.format(p.precoFinal);
       _categoria.text = p.categoria;
       _subcategoria.text = p.subcategoria;
-      _categoryId = p.categoryId;
-      _categoryPathIds = List<String>.from(p.categoryPathIds);
-      _categoryPathNames = List<String>.from(p.categoryPathNames);
+      _categoryAssignments = ProductCategoryFields.assignmentsOf(p);
       _categoriasExtrasSelecionadas
           .addAll(p.categoriasExtras.map((e) => canonicalizeCategoria(e)));
       _subcategoriasExtrasSelecionadas
@@ -665,7 +662,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       } else {
         produtosBox = await Hive.openBox<Produto>(nomeBox);
       }
-      if (mounted && _categoryId.isNotEmpty) {
+      if (mounted && _categoryAssignments.isNotEmpty) {
         unawaited(_loadCategoryTree(silent: true));
       }
 
@@ -1917,8 +1914,13 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         _subcategoriasExtrasSelecionadas,
         subcategoriaPrincipal,
       );
-      final categoryChoice =
-          _categoryChoiceForSave(categoriaPrincipal, subcategoriaPrincipal);
+      final categoryAssignments =
+          _categoryAssignmentsForSave(categoriaPrincipal, subcategoriaPrincipal);
+      if (categoryAssignments.length > kMaxCategoryAssignments) {
+        setState(() => _salvando = false);
+        _showCategoryMessage(kCategoryAssignmentsLimitMessage);
+        return;
+      }
 
       final precoPorTamanhoMap =
           produtoFormBuildPrecoPorTamanhoFromControllers(_precoPorTamanhoCtrl);
@@ -1967,9 +1969,6 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             ..subcategoria = subcategoriaPrincipal
             ..categoriasExtras = categoriasExtras
             ..subcategoriasExtras = subcategoriasExtras
-            ..categoryId = categoryChoice.id
-            ..categoryPathIds = categoryChoice.pathIds
-            ..categoryPathNames = categoryChoice.pathNames
             ..descricao = _descricao.text.trim()
             ..imagens = List.from(_imagensParaPersistir)
             ..publicadoNoCatalogo = _publicar
@@ -1998,6 +1997,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             ..fornecedor = _fornecedor.text.trim()
             ..precoPorTamanho = precoPorTamanhoMap.isNotEmpty ? precoPorTamanhoMap : null
             ..custoEditadoNoCadastro = true;
+          ProductCategoryFields.setAssignments(existente, categoryAssignments);
 
           if (variacoesMapResolved.isNotEmpty) {
             existente.recalcularQuantidadeTotal();
@@ -2071,9 +2071,6 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             subcategoria: subcategoriaPrincipal,
             categoriasExtras: categoriasExtras,
             subcategoriasExtras: subcategoriasExtras,
-            categoryId: categoryChoice.id,
-            categoryPathIds: categoryChoice.pathIds,
-            categoryPathNames: categoryChoice.pathNames,
             descricao: _descricao.text.trim(),
             dataEntrada: DateTime.now(),
             imagens: List.from(_imagensParaPersistir),
@@ -2113,6 +2110,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
             updatedAt: DateTime.now(),
             custoEditadoNoCadastro: true,
           );
+          ProductCategoryFields.setAssignments(novo, categoryAssignments);
 
           await produtosBox.add(novo);
           remoteStatus = await ProdutoSyncFilaRetryService.syncComRetentativaFila(
@@ -2151,9 +2149,6 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           ..subcategoria = subcategoriaPrincipal
           ..categoriasExtras = categoriasExtras
           ..subcategoriasExtras = subcategoriasExtras
-          ..categoryId = categoryChoice.id
-          ..categoryPathIds = categoryChoice.pathIds
-          ..categoryPathNames = categoryChoice.pathNames
           ..descricao = _descricao.text.trim()
           ..imagens = List.from(_imagensParaPersistir)
           ..publicadoNoCatalogo = _publicar
@@ -2186,6 +2181,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           ..fornecedor = _fornecedor.text.trim()
           ..precoPorTamanho = precoPorTamanhoMap.isNotEmpty ? precoPorTamanhoMap : null
           ..custoEditadoNoCadastro = true;
+        ProductCategoryFields.setAssignments(p, categoryAssignments);
 
         if (variacoesMapResolved.isNotEmpty) {
           p.recalcularQuantidadeTotal();
@@ -3678,26 +3674,36 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
   // WIDGETS AUXILIARES
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  /// Widget para criar cards de seção
-  ({String id, List<String> pathIds, List<String> pathNames}) _categoryChoiceForSave(
-      String categoria, String subcategoria) =>
-      ProductCategoryFields.choiceForSave(
-        categoryId: _categoryId,
-        pathIds: _categoryPathIds,
-        pathNames: _categoryPathNames,
-        current: _categoryTree?.node(_categoryId),
+  List<ProductCategoryAssignment> _categoryAssignmentsForSave(
+          String categoria, String subcategoria) =>
+      ProductCategoryFields.assignmentsForSave(
+        assignments: _categoryAssignments,
+        tree: _categoryTree,
         categoria: categoria,
         subcategoria: subcategoria,
       );
 
   void _onCategoryTextChanged() {
-    if (mounted && _categoryId.isNotEmpty) setState(() {});
+    if (mounted && _categoryAssignments.isNotEmpty) setState(() {});
   }
 
-  bool get _categoryLinked =>
-      _categoryId.isNotEmpty &&
-      ProductCategoryFields.pathAgreesWithText(
-          _categoryPathNames, _categoria.text, _subcategoria.text);
+  /// O primeiro caminho só vale enquanto Categoria/Subcategoria (texto) o acompanham.
+  bool get _primaryCategoryLinked =>
+      _categoryAssignments.isNotEmpty &&
+      ProductCategoryFields.assignmentAgreesWithText(_categoryAssignments.first,
+          _categoryTree, _categoria.text, _subcategoria.text);
+
+  void _syncCategoryTextWithPrimary() {
+    final primary = _categoryAssignments.firstOrNull?.refreshedFrom(_categoryTree);
+    if (primary == null || primary.pathNames.isEmpty) return;
+    _categoria.text = primary.pathNames.first;
+    _subcategoria.text = primary.pathNames.length > 1 ? primary.pathNames[1] : '';
+  }
+
+  void _showCategoryMessage(String message) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
+  }
 
   Future<CategoryTree?> _loadCategoryTree(
       {bool refresh = false, bool silent = false}) async {
@@ -3738,120 +3744,92 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
       builder: (_) => CategoryTreeScreen(lojaId: loja),
     ));
     if (!mounted) return;
-    await _pickCategory(refresh: true);
+    await _loadCategoryTree(refresh: true, silent: true);
   }
 
-  Future<void> _pickCategory({bool refresh = false}) async {
-    final tree = await _loadCategoryTree(refresh: refresh);
+  Future<void> _addCategory() async {
+    final tree = await _loadCategoryTree();
     if (tree == null || !mounted) return;
-    final selectedId = _categoryLinked
-        ? _categoryId
-        : tree
-            .leafForProduct(CategoryProductRef(
-              categorias: [
-                if (_categoria.text.trim().isNotEmpty) _categoria.text.trim()
-              ],
-              subcategorias: [
-                if (_subcategoria.text.trim().isNotEmpty)
-                  _subcategoria.text.trim()
-              ],
-            ))
-            ?.id;
     final result = await showCategoryPicker(
       context,
       tree: tree,
-      selectedId: selectedId,
+      allowClear: false,
+      title: 'Adicionar categoria',
       onManage: () => unawaited(_manageCategories()),
     );
-    if (result == null || !mounted) return;
-    final node = result.cleared ? null : result.node;
-    if (node != null) {
-      _categoria.text = node.pathNames.first;
-      _subcategoria.text = node.pathNames.length > 1 ? node.pathNames[1] : '';
+    final node = result?.node;
+    if (node == null || !mounted) return;
+    if (node.isVirtual && _categoryAssignments.isEmpty) {
+      // Categoria só por texto (loja ainda sem árvore): segue nos campos Categoria/Subcategoria.
+      setState(() {
+        _categoria.text = node.pathNames.first;
+        _subcategoria.text = node.pathNames.length > 1 ? node.pathNames[1] : '';
+      });
+      return;
+    }
+    final previousPrimary = _categoryAssignments.firstOrNull?.categoryId;
+    final added = ProductCategoryFields.addAssignment(_categoryAssignments, node);
+    switch (added.outcome) {
+      case CategoryAddOutcome.virtualNode:
+        _showCategoryMessage('Esta categoria existe só no texto dos produtos. '
+            'Crie-a em “Gerenciar categorias” para usar vários caminhos.');
+        return;
+      case CategoryAddOutcome.duplicate:
+        _showCategoryMessage('Esta categoria já está no produto.');
+        return;
+      case CategoryAddOutcome.coveredByDescendant:
+        _showCategoryMessage(
+            'O produto já aparece em “${node.nome}” por uma subcategoria escolhida.');
+        return;
+      case CategoryAddOutcome.limitReached:
+        _showCategoryMessage(kCategoryAssignmentsLimitMessage);
+        return;
+      case CategoryAddOutcome.replacedAncestor:
+        _showCategoryMessage(
+            'Caminho trocado pelo mais específico: ${node.breadcrumb}.');
+      case CategoryAddOutcome.added:
+        break;
     }
     setState(() {
-      if (node == null || node.isVirtual) {
-        _categoryId = '';
-        _categoryPathIds = const [];
-        _categoryPathNames = const [];
-      } else {
-        _categoryId = node.id;
-        _categoryPathIds = List<String>.from(node.pathIds);
-        _categoryPathNames = List<String>.from(node.pathNames);
+      _categoryAssignments = added.assignments;
+      if (_categoryAssignments.first.categoryId != previousPrimary) {
+        _syncCategoryTextWithPrimary();
+      }
+    });
+  }
+
+  void _removeCategory(String categoryId) {
+    final previousPrimary = _categoryAssignments.firstOrNull?.categoryId;
+    setState(() {
+      _categoryAssignments =
+          ProductCategoryFields.removeAssignment(_categoryAssignments, categoryId);
+      if (_categoryAssignments.isNotEmpty &&
+          _categoryAssignments.first.categoryId != previousPrimary) {
+        _syncCategoryTextWithPrimary();
       }
     });
   }
 
   Widget _buildCategoryTreeTile() {
-    final theme = Theme.of(context);
-    final linked = _categoryLinked;
     // Stored path names may predate a rename: show them only when the tree cannot be read.
-    final awaitingTree = linked && _categoryTree == null && !_categoryTreeFailed;
-    final names = linked
-        ? (_categoryTree?.node(_categoryId)?.pathNames ??
-            (awaitingTree ? const <String>[] : _categoryPathNames))
-        : [
-            if (_categoria.text.trim().isNotEmpty) _categoria.text.trim(),
-            if (_categoria.text.trim().isNotEmpty &&
-                _subcategoria.text.trim().isNotEmpty)
-              _subcategoria.text.trim(),
-          ];
-    return Container(
-      key: const ValueKey('produto_category_tile'),
-      padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
-      decoration: BoxDecoration(
-        border: Border.all(color: theme.dividerColor),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.account_tree_outlined, size: 20),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text('Categoria (até 6 níveis)',
-                    style: theme.textTheme.titleSmall),
-              ),
-              if (_categoryTreeLoading)
-                const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2)),
-            ],
-          ),
-          const SizedBox(height: 6),
-          if (awaitingTree)
-            Text('Carregando categoria…', style: theme.textTheme.bodySmall)
-          else if (names.isEmpty)
-            Text('Nenhuma categoria escolhida.',
-                style: theme.textTheme.bodySmall)
-          else
-            CategoryBreadcrumb(
-              key: const ValueKey('produto_category_breadcrumb'),
-              names: names,
-              rootLabel: null,
-            ),
-          Wrap(
-            spacing: 8,
-            children: [
-              TextButton.icon(
-                key: const ValueKey('produto_category_pick'),
-                onPressed: _categoryTreeLoading ? null : () => _pickCategory(),
-                icon: const Icon(Icons.list_alt_outlined),
-                label: const Text('Escolher'),
-              ),
-              TextButton.icon(
-                key: const ValueKey('produto_category_manage'),
-                onPressed: _categoryTreeLoading ? null : _manageCategories,
-                icon: const Icon(Icons.settings_outlined),
-                label: const Text('Gerenciar categorias'),
-              ),
-            ],
-          ),
-        ],
-      ),
+    final awaitingTree = _categoryAssignments.isNotEmpty &&
+        _categoryTree == null &&
+        !_categoryTreeFailed;
+    final categoria = _categoria.text.trim();
+    final subcategoria = _subcategoria.text.trim();
+    return ProductCategoryAssignmentsEditor(
+      assignments: _categoryAssignments,
+      tree: _categoryTree,
+      primaryLinked: _primaryCategoryLinked,
+      loading: _categoryTreeLoading,
+      awaitingTree: awaitingTree,
+      legacyTextPath: [
+        if (categoria.isNotEmpty) categoria,
+        if (categoria.isNotEmpty && subcategoria.isNotEmpty) subcategoria,
+      ],
+      onAdd: () => unawaited(_addCategory()),
+      onRemove: _removeCategory,
+      onManage: () => unawaited(_manageCategories()),
     );
   }
 

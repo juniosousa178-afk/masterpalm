@@ -82,13 +82,18 @@ class ProdutoAdapter extends TypeAdapter<Produto> {
           fields[56] == null ? [] : (fields[56] as List).cast<String>(),
       categoryPathNames:
           fields[57] == null ? [] : (fields[57] as List).cast<String>(),
+      categoryAssignments: fields[58] == null
+          ? []
+          : (fields[58] as List)
+              .map((dynamic e) => (e as Map).cast<String, dynamic>())
+              .toList(),
     );
   }
 
   @override
   void write(BinaryWriter writer, Produto obj) {
     writer
-      ..writeByte(58)
+      ..writeByte(59)
       ..writeByte(0)
       ..write(obj.nome)
       ..writeByte(1)
@@ -204,7 +209,9 @@ class ProdutoAdapter extends TypeAdapter<Produto> {
       ..writeByte(56)
       ..write(obj.categoryPathIds)
       ..writeByte(57)
-      ..write(obj.categoryPathNames);
+      ..write(obj.categoryPathNames)
+      ..writeByte(58)
+      ..write(obj.categoryAssignments);
   }
 
   @override

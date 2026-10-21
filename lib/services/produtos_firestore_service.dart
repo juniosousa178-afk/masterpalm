@@ -782,6 +782,7 @@ class ProdutosFirestoreService {
           categoryId: ProductCategoryFields.idFrom(data),
           categoryPathIds: ProductCategoryFields.pathIdsFrom(data),
           categoryPathNames: ProductCategoryFields.pathNamesFrom(data),
+          categoryAssignments: ProductCategoryFields.assignmentMapsFrom(data),
           publicadoNoCatalogo: data['publicadoNoCatalogo'] ?? false,
           tamanhos: _dedupeStringListPreserveOrder(
             (data['tamanhos'] as List?)?.map((e) => e.toString()).toList(),
@@ -2789,6 +2790,8 @@ class ProdutosFirestoreService {
               categoryId: ProductCategoryFields.idFrom(data),
               categoryPathIds: ProductCategoryFields.pathIdsFrom(data),
               categoryPathNames: ProductCategoryFields.pathNamesFrom(data),
+              categoryAssignments:
+                  ProductCategoryFields.assignmentMapsFrom(data),
               publicadoNoCatalogo: data['publicadoNoCatalogo'] ?? false,
               tamanhos: _dedupeStringListPreserveOrder(
                 (data['tamanhos'] as List?)?.map((e) => e.toString()).toList(),

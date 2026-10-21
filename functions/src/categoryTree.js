@@ -1,6 +1,7 @@
-// Hierarchical product categories (lojas/{lojaId}/categorias). Pure helpers shared by categoryCommand.
-// Products keep the legacy text fields (categoria/subcategoria/extras); a product without
-// categoryPathIds is placed in the tree by name, so stores with only legacy data need no migration writes.
+// Hierarchical product categories (lojas/{lojaId}/categorias). Pure helpers shared by categoryCommand and
+// stockCatalogCommand. A product may be filed under several paths (categoryAssignments); products saved before
+// that keep a single categoryId/categoryPathIds/categoryPathNames triple, and products without either are placed
+// in the tree by their legacy text fields (categoria/subcategoria/extras), so no migration writes are needed.
 import {createHash} from 'node:crypto';
 
 export const MAX_CATEGORY_DEPTH = 6;
@@ -10,6 +11,14 @@ export const MAX_RENAME_DESCENDANTS = 400;
 export const CATEGORY_DEPTH_LIMIT_MESSAGE = 'Você pode criar categorias em até 6 níveis.';
 export const CATEGORY_HAS_CHILDREN_MESSAGE = 'Esta categoria possui subcategorias.';
 export const CATEGORY_HAS_PRODUCTS_MESSAGE = 'Esta categoria possui produtos. Mova os produtos para outra categoria antes de excluir.';
+/**
+ * Paths per product. Worst case per doc: 20 x 6 ids/names (~25 KB) plus <=120 categoryMembershipIds entries,
+ * far below the 1 MiB doc and 40k index-entry limits; the merchant UI stays a short list of cards.
+ */
+export const MAX_CATEGORY_ASSIGNMENTS = 20;
+export const CATEGORY_ASSIGNMENTS_LIMIT_MESSAGE = `Um produto pode estar em até ${MAX_CATEGORY_ASSIGNMENTS} categorias.`;
+export const LEGACY_PRODUCT_CATEGORY_KEYS = Object.freeze(['categoryId', 'categoryPathIds', 'categoryPathNames']);
+export const PRODUCT_CATEGORY_KEYS = Object.freeze([...LEGACY_PRODUCT_CATEGORY_KEYS, 'categoryAssignments']);
 
 export const CATEGORY_CODES = Object.freeze({
   INVALID_ARGUMENT: 'CATEGORY_INVALID_ARGUMENT',
@@ -22,6 +31,7 @@ export const CATEGORY_CODES = Object.freeze({
   HAS_PRODUCTS: 'CATEGORY_HAS_PRODUCTS',
   REPARENT_DISABLED: 'CATEGORY_REPARENT_DISABLED',
   TOO_MANY_DESCENDANTS: 'CATEGORY_TOO_MANY_DESCENDANTS',
+  TOO_MANY_ASSIGNMENTS: 'CATEGORY_TOO_MANY_ASSIGNMENTS',
   STALE: 'CATEGORY_TREE_STALE',
   PERMISSION_DENIED: 'CATEGORY_PERMISSION_DENIED',
 });
@@ -229,12 +239,34 @@ export function legacyProductNames(product) {
   };
 }
 
-/** Category node ids a product belongs to (its full paths), resolved against the index. */
+const assignmentLeafId = a => {
+  if (!a || typeof a !== 'object' || Array.isArray(a)) return '';
+  if (typeof a.categoryId === 'string' && a.categoryId.trim()) return a.categoryId.trim();
+  return stringList(a.pathIds).at(-1) ?? '';
+};
+
+/**
+ * Leaf ids a stored product is filed under: categoryAssignments when non-empty, else the legacy
+ * categoryPathIds leaf (products saved before multi-category, read without any migration write).
+ */
+export function productAssignmentLeafIds(product) {
+  const leaves = [];
+  for (const a of Array.isArray(product?.categoryAssignments) ? product.categoryAssignments : []) {
+    const id = assignmentLeafId(a);
+    if (id && !leaves.includes(id)) leaves.push(id);
+  }
+  if (leaves.length) return leaves;
+  const pathIds = stringList(product?.categoryPathIds);
+  return pathIds.length ? [pathIds[pathIds.length - 1]] : [];
+}
+
+/** Category node ids a product belongs to (all its paths, with ancestors), resolved against the index. */
 export function productCategoryIds(index, product) {
   const ids = new Set();
-  const pathIds = stringList(product?.categoryPathIds);
-  const leaf = pathIds.length ? index.nodes.get(pathIds[pathIds.length - 1]) : null;
-  if (leaf && !leaf.isDeleted) leaf.pathIds.forEach(id => ids.add(id));
+  for (const leafId of productAssignmentLeafIds(product)) {
+    const leaf = index.nodes.get(leafId);
+    if (leaf && !leaf.isDeleted) leaf.pathIds.forEach(id => ids.add(id));
+  }
   const {categorias, subcategorias} = legacyProductNames(product);
   for (const c of categorias) {
     const root = findActiveChildByName(index, null, c);
@@ -274,4 +306,104 @@ export function validateProductCategoryFields(patch, onError) {
   if ('categoryPathNames' in patch) {
     if (patch.categoryPathNames.some(n => !n.trim() || n.length > MAX_CATEGORY_NAME_LENGTH)) err('Invalid categoryPathNames');
   }
+  if ('categoryAssignments' in patch) {
+    const list = patch.categoryAssignments;
+    if (!Array.isArray(list)) err('Invalid categoryAssignments');
+    // Refused, never truncated: the merchant must remove paths explicitly.
+    if (list.length > MAX_CATEGORY_ASSIGNMENTS) err(CATEGORY_ASSIGNMENTS_LIMIT_MESSAGE);
+    for (const a of list) {
+      if (!a || typeof a !== 'object' || Array.isArray(a)) err('Invalid categoryAssignments');
+      if (!isValidCategoryId(assignmentLeafId(a))) err('Invalid categoryAssignments');
+      for (const key of ['pathIds', 'pathNames']) {
+        if (key in a && (!Array.isArray(a[key]) || a[key].length > MAX_CATEGORY_DEPTH ||
+          a[key].some(s => typeof s !== 'string' || s.length > 128))) err('Invalid categoryAssignments');
+      }
+      if ('lojaId' in a && typeof a.lojaId !== 'string') err('Invalid categoryAssignments');
+    }
+  }
+}
+
+/**
+ * Canonical category fields for a product patch, derived from the store's current tree. Client paths/names
+ * are never trusted: only the leaf ids count. Returns null when the patch carries no category key.
+ *
+ * - `categoryAssignments` (new clients): every leaf must be an active node of this store.
+ * - legacy triple only (APKs before multi-category): its leaf is the primary path; the other stored paths are
+ *   kept, so an old client editing an unrelated field never drops paths it cannot see.
+ * - A stored leaf that is no longer resolvable is kept as stored instead of failing an unrelated edit.
+ * Duplicate leaves collapse; a leaf that is an ancestor of another selected leaf is dropped (the product
+ * already appears there through the more specific path). The triple mirrors the first path.
+ */
+export function canonicalProductCategoryPatch(index, patch, existing = {}) {
+  if (!PRODUCT_CATEGORY_KEYS.some(k => k in patch)) return null;
+  const storedLeaves = productAssignmentLeafIds(existing);
+  let requested;
+  if ('categoryAssignments' in patch) {
+    for (const a of patch.categoryAssignments) {
+      if (typeof a.lojaId === 'string' && a.lojaId !== index.lojaId) {
+        fail(CATEGORY_CODES.CROSS_TENANT, 'Categoria de outra loja.', 'permission-denied');
+      }
+    }
+    requested = patch.categoryAssignments.map(assignmentLeafId);
+  } else {
+    const legacyLeaf = 'categoryPathIds' in patch
+      ? (stringList(patch.categoryPathIds).at(-1) ?? '')
+      : String(patch.categoryId ?? '').trim();
+    if (!legacyLeaf) requested = storedLeaves.slice(1);
+    else if (storedLeaves.includes(legacyLeaf)) requested = storedLeaves;
+    else requested = [legacyLeaf, ...storedLeaves.slice(1)];
+  }
+  const stored = storedAssignments(existing);
+  const resolved = [];
+  for (const id of requested) {
+    const q = index.quarantined.get(id);
+    const node = index.nodes.get(id);
+    if (node && !node.isDeleted) {
+      resolved.push({categoryId: id, pathIds: [...node.pathIds], pathNames: [...node.pathNames]});
+      continue;
+    }
+    const keep = stored.get(id);
+    if (keep && q !== CATEGORY_CODES.CROSS_TENANT) {
+      resolved.push(keep);
+      continue;
+    }
+    if (q === CATEGORY_CODES.CROSS_TENANT) fail(q, 'Categoria de outra loja.', 'permission-denied');
+    if (q === CATEGORY_CODES.DEPTH_LIMIT) fail(q, CATEGORY_DEPTH_LIMIT_MESSAGE);
+    if (q === CATEGORY_CODES.CYCLE) fail(q, 'Estrutura de categorias inválida (ciclo).');
+    fail(CATEGORY_CODES.NOT_FOUND, 'Categoria não encontrada.', 'not-found');
+  }
+  const assignments = normalizeCategoryAssignments(resolved);
+  if (assignments.length > MAX_CATEGORY_ASSIGNMENTS) {
+    fail(CATEGORY_CODES.TOO_MANY_ASSIGNMENTS, CATEGORY_ASSIGNMENTS_LIMIT_MESSAGE, 'invalid-argument');
+  }
+  const primary = assignments[0];
+  return {
+    categoryAssignments: assignments,
+    categoryMembershipIds: [...new Set(assignments.flatMap(a => a.pathIds))],
+    categoryId: primary?.categoryId ?? '',
+    categoryPathIds: primary ? [...primary.pathIds] : [],
+    categoryPathNames: primary ? [...primary.pathNames] : [],
+  };
+}
+
+/** Dedupe by leaf (first wins) and drop any leaf that is an ancestor of another selected leaf; order kept. */
+export function normalizeCategoryAssignments(assignments) {
+  const seen = new Set();
+  const unique = assignments.filter(a => a.categoryId && !seen.has(a.categoryId) && seen.add(a.categoryId));
+  return unique.filter(a => !unique.some(b => b.categoryId !== a.categoryId && b.pathIds.includes(a.categoryId)));
+}
+
+function storedAssignments(existing) {
+  const out = new Map();
+  for (const a of Array.isArray(existing?.categoryAssignments) ? existing.categoryAssignments : []) {
+    const id = assignmentLeafId(a);
+    const pathIds = stringList(a?.pathIds);
+    if (id && pathIds.at(-1) === id) out.set(id, {categoryId: id, pathIds, pathNames: stringList(a?.pathNames)});
+  }
+  const legacyIds = stringList(existing?.categoryPathIds);
+  const legacyLeaf = legacyIds.at(-1);
+  if (legacyLeaf && !out.has(legacyLeaf)) {
+    out.set(legacyLeaf, {categoryId: legacyLeaf, pathIds: legacyIds, pathNames: stringList(existing?.categoryPathNames)});
+  }
+  return out;
 }

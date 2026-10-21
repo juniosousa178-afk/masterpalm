@@ -227,6 +227,11 @@ class Produto extends HiveObject {
   @HiveField(57, defaultValue: <String>[])
   List<String> categoryPathNames;
 
+  /// Todos os caminhos do produto (`{categoryId, pathIds, pathNames}`), derivados pelo servidor;
+  /// o trio acima espelha o primeiro. Vazio = produto antigo, lido pelo trio.
+  @HiveField(58, defaultValue: <Map<String, dynamic>>[])
+  List<Map<String, dynamic>> categoryAssignments;
+
   Produto({
     required this.nome,
     required this.custoReal,
@@ -286,6 +291,7 @@ class Produto extends HiveObject {
     this.categoryId = '',
     this.categoryPathIds = const [],
     this.categoryPathNames = const [],
+    this.categoryAssignments = const [],
   });
 
   bool get ehCombo => tipoProduto == 'combo';

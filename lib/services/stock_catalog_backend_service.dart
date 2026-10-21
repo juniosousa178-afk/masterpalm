@@ -399,6 +399,7 @@ class StockCatalogBackendService {
     'categoryId',
     'categoryPathIds',
     'categoryPathNames',
+    'categoryAssignments',
     'peso',
     'emPromocao',
     'percentualPromo',

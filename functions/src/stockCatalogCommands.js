@@ -4,6 +4,7 @@ import {FieldValue} from 'firebase-admin/firestore';
 import {documentId, storeRef, requireAuthenticated, authorizeStockCommand, authorizePublish, SERVER_PAYMENT_AUTH} from './stockCatalogAccess.js';
 import {isMap, stockError, normalizeStock, projectCatalog, quantity, resolveKey, resolveExtraKey, splitEditorialPayload, inferStockKind, buildCommercialLiveOnlyPatch, commercialFieldsSnapshot, COMMERCIAL_EDITORIAL_FIELDS} from './catalogStockProjection.js';
 import {PRODUCT_VALIDATION_FAILED, REASON, makeIssue, productValidationError, gradeKeyLabel} from './productValidationErrors.js';
+import {CategoryError, PRODUCT_CATEGORY_KEYS, buildCategoryIndex, canonicalProductCategoryPatch} from './categoryTree.js';
 import {ATOMIC_PDV_SALE_FLAG, parseAtomicPdvSale, buildCanonicalEstoqueVendaDoc} from './stockCatalogPdvSale.js';
 import {
   SALE_EDIT_KIND,
@@ -451,6 +452,24 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
       const ok = new Map([...records.entries()].filter(([, r]) => r && r.data));
       if (ok.size) comboOrder(ok);
     }
+    // Category paths are derived from the store's current tree (one read, only when the payload has them).
+    let categoryIndex = null;
+    if (['editorial','create','replace'].includes(command.kind) && PRODUCT_CATEGORY_KEYS.some(k => k in command.editorial)) {
+      const snap = await tx.get(base.collection('categorias'));
+      categoryIndex = buildCategoryIndex(snap.docs.map(d => ({id: d.id, data: d.data()})), command.lojaId);
+    }
+    const withCategories = (patch, existing) => {
+      if (!categoryIndex) return patch;
+      try {
+        const canonical = canonicalProductCategoryPatch(categoryIndex, patch, existing);
+        return canonical ? {...patch, ...canonical} : patch;
+      } catch (error) {
+        if (!(error instanceof CategoryError)) throw error;
+        const e = stockError(error.http, error.message);
+        e.details = {code: error.categoryCode};
+        throw e;
+      }
+    };
     // Combo lines expand through client-side recipes; the server cannot prove which
     // components a saved combo line consumed, so a changed combo line fails closed.
     if (isSaleEdit) {
@@ -479,7 +498,8 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
       const r = records.get(item.productId);
       if (!r || r.softFail || !r.data) throw stockError('failed-precondition', 'Product unavailable');
       if (command.kind === 'editorial') {
-        const {editorial: patch, identity} = splitEditorialPayload(command.editorial);
+        const {editorial: raw, identity} = splitEditorialPayload(command.editorial);
+        const patch = withCategories(raw, {...r.data, ...r.editorial});
         r.editorial = {...r.editorial, ...patch}; r.data = {...r.data, ...patch, ...identity}; return;
       }
       if (['adjust','replace','delete','undo','tombstoneVariation','clearVariationTombstone','physicalReconciliation'].includes(command.kind) && item.expectedRevision !== r.originalRevision) {
@@ -487,7 +507,8 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
         throw saleEditError('aborted', SALE_EDIT_REASON.STOCK_CHANGED, null, 'Stock revision conflict');
       }
       if (command.kind === 'create') {
-        const {editorial, identity} = splitEditorialPayload(command.editorial);
+        const {editorial: raw, identity} = splitEditorialPayload(command.editorial);
+        const editorial = withCategories(raw, {});
         r.editorial = editorial; r.data = {...r.data, ...editorial, ...identity}; return;
       }
       if (command.kind === 'physicalReconciliation') {
@@ -499,7 +520,8 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
         // No missing field inherits an old grade during explicit schema/count replacement.
         if (r.data.pendingSoftDelete) throw stockError('failed-precondition', 'Restore deleted product before editing');
         const candidate = {...r.data, ...newDefinition, stockRevision: r.originalRevision};
-        const {editorial: patch, identity} = splitEditorialPayload(command.editorial);
+        const {editorial: raw, identity} = splitEditorialPayload(command.editorial);
+        const patch = withCategories(raw, {...r.data, ...r.editorial});
         r.data = {...normalizeStock(candidate), ...patch, ...identity}; r.editorial = {...r.editorial, ...patch}; return;
       }
       if (command.kind === 'delete' || command.kind === 'undo') {

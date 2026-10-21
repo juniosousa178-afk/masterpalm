@@ -211,14 +211,18 @@ export const EDITORIAL_FIELDS = Object.freeze([
   'imagens','imagem_principal','imagemUrl','imageUrl','fotoThumbUrl','fotoOriginalUrl','slug',
   'categoria','categoriaId','subcategoria','subcategoriaId','categoriasExtras','subcategoriasExtras',
   'categoriasAssociadas','subcategoriasAssociadas','categoryId','categoryPathIds','categoryPathNames',
+  'categoryAssignments','categoryMembershipIds',
   'peso','emPromocao','percentualPromo','valorPromo',
   'publicadoNoCatalogo','exibir_no_catalogo','ocultar_catalogo','catalog_ativo',
   'priceMin','priceMax','images','imgs','fotos','dataInicioPromo','dataFimPromo',
   'precoComPromocao','promocaoAtiva','descontoComboValor','descontoComboPercentual',
   'divideSemJuros','percentualDescontoPix','maxParcelasSemJuros',
 ]);
+/** Projected like editorial fields, but only the server writes them (derived from categoryAssignments). */
+export const SERVER_DERIVED_EDITORIAL_FIELDS = Object.freeze(['categoryMembershipIds']);
 export function validateEditorial(patch) {
-  if (!isMap(patch) || Object.keys(patch).some(k => !EDITORIAL_FIELDS.includes(k))) {
+  if (!isMap(patch) || Object.keys(patch).some(k =>
+    !EDITORIAL_FIELDS.includes(k) || SERVER_DERIVED_EDITORIAL_FIELDS.includes(k))) {
     throw stockError('invalid-argument', 'Protected or unknown editorial field');
   }
   for (const key of ['publicadoNoCatalogo','exibir_no_catalogo','ocultar_catalogo','catalog_ativo']) {

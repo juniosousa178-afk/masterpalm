@@ -7,6 +7,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
+import '../core/logger.dart';
 import '../core/produto_estoque_grade_snapshot.dart';
 import '../core/produto_form_grade_hydration.dart';
 import '../core/produto_stock_revision.dart';
@@ -138,7 +139,7 @@ class ProdutoStockCatalogCadastroSync {
       'subcategoriasExtras': produto.subcategoriasExtras,
       'categoriasAssociadas': produto.categoriasAssociadas,
       'subcategoriasAssociadas': produto.subcategoriasAssociadas,
-      ...ProductCategoryFields.toMap(produto),
+      ...ProductCategoryFields.toFullMap(produto),
       'peso': produto.peso,
       'emPromocao': produto.emPromocao,
       'percentualPromo': produto.percentualPromo,
@@ -350,32 +351,44 @@ class ProdutoStockCatalogCadastroSync {
     Map<String, dynamic> without(Map<String, dynamic> ed, Set<String> keys) =>
         Map<String, dynamic>.fromEntries(
             ed.entries.where((e) => !keys.contains(e.key)));
+    const assignments = {ProductCategoryFields.assignmentsKey};
     var editorial = _categoryFieldsUnsupported
         ? without(intent.editorial, ProductCategoryFields.keys)
-        : intent.editorial;
+        : _categoryAssignmentsUnsupported
+            ? without(intent.editorial, assignments)
+            : intent.editorial;
+    bool unsupported(Object e) =>
+        StockCatalogBackendService.isIdentityFieldUnsupported(e);
     try {
       return await send(editorial);
     } catch (error) {
+      final hasAssignments = editorial.keys.any(assignments.contains);
       final hasCategory =
           editorial.keys.any(ProductCategoryFields.keys.contains);
       final hasIdentity = editorial.keys
           .any(StockCatalogBackendService.identityFields.contains);
-      if ((!hasCategory && !hasIdentity) ||
-          !StockCatalogBackendService.isIdentityFieldUnsupported(error)) {
+      if ((!hasCategory && !hasIdentity) || !unsupported(error)) {
         rethrow;
       }
       // Rejected before any write, so the same operationId is still unused.
+      // Servidor anterior a vários caminhos: o primeiro caminho segue no trio.
+      if (hasAssignments) {
+        _categoryAssignmentsUnsupported = true;
+        logW('[CATEGORIAS] servidor sem categoryAssignments: só o primeiro caminho foi enviado');
+        editorial = without(editorial, assignments);
+        try {
+          return await send(editorial);
+        } catch (retryError) {
+          if (!unsupported(retryError)) rethrow;
+        }
+      }
       if (hasCategory) {
         _categoryFieldsUnsupported = true;
         editorial = without(editorial, ProductCategoryFields.keys);
         try {
           return await send(editorial);
         } catch (retryError) {
-          if (!hasIdentity ||
-              !StockCatalogBackendService.isIdentityFieldUnsupported(
-                  retryError)) {
-            rethrow;
-          }
+          if (!hasIdentity || !unsupported(retryError)) rethrow;
         }
       }
       return send(
@@ -386,9 +399,14 @@ class ProdutoStockCatalogCadastroSync {
   /// Servidor sem os campos hierárquicos: não reenviar na sessão (categoria/subcategoria por nome seguem).
   static bool _categoryFieldsUnsupported = false;
 
+  /// Servidor com o trio, mas sem `categoryAssignments`.
+  static bool _categoryAssignmentsUnsupported = false;
+
   @visibleForTesting
-  static void debugResetCategoryFieldSupport() =>
-      _categoryFieldsUnsupported = false;
+  static void debugResetCategoryFieldSupport() {
+    _categoryFieldsUnsupported = false;
+    _categoryAssignmentsUnsupported = false;
+  }
 
   static Future<void> applyBackendResponseToHive({
     required Produto produto,
@@ -405,6 +423,9 @@ class ProdutoStockCatalogCadastroSync {
         result: result,
       );
     }
+    if (applyCanonicalCategoryFields(produto, response) && produto.isInBox) {
+      await produto.save();
+    }
     if (hasPendingStockMutation(produto) &&
         produto.pendingStockOperationId == response['operationId']) {
       // Editorial-only responses may omit stock rows for this product.
@@ -415,6 +436,23 @@ class ProdutoStockCatalogCadastroSync {
       );
       if (produto.isInBox) await produto.save();
     }
+  }
+
+  /// Caminhos normalizados pelo servidor (sem duplicata/ancestral, nomes atuais) voltam ao Hive.
+  @visibleForTesting
+  static bool applyCanonicalCategoryFields(
+      Produto produto, Map<String, dynamic> response) {
+    final ids = {produto.idFirebase.trim(), produto.slug.trim()}..remove('');
+    final rows = response['products'];
+    if (ids.isEmpty || rows is! List) return false;
+    for (final row in rows) {
+      if (row is! Map || !ids.contains(row['productId'])) continue;
+      final data = Map<String, dynamic>.from(row);
+      if (!data.containsKey(ProductCategoryFields.assignmentsKey)) return false;
+      ProductCategoryFields.applyFromMap(produto, data);
+      return true;
+    }
+    return false;
   }
 
   static bool isRetryableTransportError(Object error) {
