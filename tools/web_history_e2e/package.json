@@ -1,0 +1,13 @@
+{
+  "name": "web-history-e2e",
+  "private": true,
+  "type": "module",
+  "description": "Regressão de histórico do browser (deep link, refresh, Voltar/Avançar, copiar/colar) do Flutter web.",
+  "scripts": {
+    "serve": "node serve_spa.mjs ../../build/web 8790",
+    "test": "node history_matrix.mjs http://localhost:8790"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^23.11.1"
+  }
+}

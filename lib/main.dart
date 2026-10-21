@@ -56,6 +56,7 @@ import 'catalog/public_order_link.dart';
 import 'features/plans/plan_return_link.dart';
 import 'features/plans/plan_return_status_loader.dart';
 import 'features/plans/plan_return_web_app.dart';
+import 'web/browser_url_history.dart';
 
 // Telas
 import 'screens/public_order_web_app.dart';
@@ -2644,6 +2645,19 @@ class CatalogWebRoot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final routeName = currentBrowserRouteName();
+    return BrowserUrlHome(
+      home: PublicCatalogScreen(
+        lojaId: lojaId,
+        vendedorRef: vendedorRef,
+        indicacaoClienteRef: indicacaoRef,
+        initialProdutoId: produtoRef,
+      ),
+      child: _catalogApp(routeName),
+    );
+  }
+
+  Widget _catalogApp(String routeName) {
     return MaterialApp(
       navigatorKey: navigatorKey,
       debugShowCheckedModeBanner: false,
@@ -2680,12 +2694,10 @@ class CatalogWebRoot extends StatelessWidget {
         '/home': (_) => const HomeScreen(),
         '/login': (_) => const LoginScreen(),
       },
-      home: PublicCatalogScreen(
-        lojaId: lojaId,
-        vendedorRef: vendedorRef,
-        indicacaoClienteRef: indicacaoRef,
-        initialProdutoId: produtoRef,
-      ),
+      initialRoute: routeName,
+      onGenerateInitialRoutes: (name) => [browserUrlHomeRoute(name)],
+      onGenerateRoute: (s) =>
+          s.name == routeName ? browserUrlHomeRoute(routeName) : null,
     );
   }
 }

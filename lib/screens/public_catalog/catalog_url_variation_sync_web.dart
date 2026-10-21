@@ -19,7 +19,8 @@ String _ordInternalFromQueryMap(Map<String, String> qp) {
 
 /// Atualiza na query apenas chaves do catálogo público, preservando `ref`, `cart`, etc.
 /// `page` nomeado (ex.: dicas) não é removido quando [page] é null (só limpa valor numérico).
-/// Usa [history.replaceState] — não empilha histórico.
+/// Usa [history.replaceState] — não empilha histórico e mantém o `state` da entrada
+/// (marcador do histórico do Flutter web; com `null` o refresh duplicava entradas).
 void catalogSyncPublicCatalogQueryUri({
   String? cat,
   String? sub,
@@ -125,5 +126,5 @@ void catalogSyncPublicCatalogQueryUri({
   final path = u.path;
   final fragment = u.hasFragment ? '#${u.fragment}' : '';
   final relative = '$path${newQuery.isNotEmpty ? '?$newQuery' : ''}$fragment';
-  html.window.history.replaceState(null, '', relative);
+  html.window.history.replaceState(html.window.history.state, '', relative);
 }

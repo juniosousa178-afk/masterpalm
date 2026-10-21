@@ -16,6 +16,7 @@ import '../debug/bootstrap_diagnostics.dart';
 import '../debug/catalog_startup_trace.dart';
 import '../screens/public_catalog/widgets/catalog_unified_loading.dart';
 import '../themes/app_colors.dart';
+import '../web/browser_url_history.dart';
 import '../web/platform_stub.dart'
     if (dart.library.html) '../web/platform_web.dart' as plat;
 
@@ -188,17 +189,23 @@ class CatalogBootstrapLoadingApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(seedColor: AppColors.primary),
-        scaffoldBackgroundColor: const Color(0xFFF0F2F5),
-      ),
+    final routeName = currentBrowserRouteName();
+    return BrowserUrlHome(
       home: CatalogBootstrapLoadingScreen(
         nomeLoja: nomeLoja,
         logoUrl: logoUrl,
         loadingContext: loadingContext,
+      ),
+      child: MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(
+          useMaterial3: true,
+          colorScheme: ColorScheme.fromSeed(seedColor: AppColors.primary),
+          scaffoldBackgroundColor: const Color(0xFFF0F2F5),
+        ),
+        initialRoute: routeName,
+        onGenerateInitialRoutes: (name) => [browserUrlHomeRoute(name)],
+        onGenerateRoute: (s) => browserUrlHomeRoute(s.name ?? routeName),
       ),
     );
   }
@@ -373,57 +380,64 @@ class _PublicCatalogBootstrapAppState extends State<PublicCatalogBootstrapApp> {
     final diag = kIsWeb && Uri.base.queryParameters['diag'] == '1';
     if (_bootstrapErrorMessage != null) {
       _scheduleHtmlLoaderHandoff('catalog_error');
-      return MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          useMaterial3: true,
-          colorScheme: ColorScheme.fromSeed(seedColor: AppColors.primary),
-        ),
-        home: Scaffold(
-          body: SafeArea(
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.store_mall_directory_outlined,
-                      size: 60,
-                      color: Colors.grey.shade600,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      _bootstrapErrorMessage!,
+      final routeName = currentBrowserRouteName();
+      final errorPage = Scaffold(
+        body: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.store_mall_directory_outlined,
+                    size: 60,
+                    color: Colors.grey.shade600,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    _bootstrapErrorMessage!,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  if (diag && _bootstrapTechnicalMessage != null) ...[
+                    const SizedBox(height: 10),
+                    SelectableText(
+                      'buildId=$kCatalogDiagBuildId\n'
+                      'host=${Uri.base.host}\n'
+                      'path=${Uri.base.path}\n'
+                      'query=${Uri.base.query}\n'
+                      'userAgent=${plat.Web.userAgent()}\n'
+                      'error=$_bootstrapTechnicalMessage\n'
+                      'stack=${_bootstrapStack ?? ''}',
                       textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    if (diag && _bootstrapTechnicalMessage != null) ...[
-                      const SizedBox(height: 10),
-                      SelectableText(
-                        'buildId=$kCatalogDiagBuildId\n'
-                        'host=${Uri.base.host}\n'
-                        'path=${Uri.base.path}\n'
-                        'query=${Uri.base.query}\n'
-                        'userAgent=${plat.Web.userAgent()}\n'
-                        'error=$_bootstrapTechnicalMessage\n'
-                        'stack=${_bootstrapStack ?? ''}',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Colors.grey.shade700,
-                            ),
-                      ),
-                    ],
-                    const SizedBox(height: 20),
-                    FilledButton(
-                      onPressed: _startBootstrap,
-                      child: const Text('Tentar novamente'),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Colors.grey.shade700,
+                          ),
                     ),
                   ],
-                ),
+                  const SizedBox(height: 20),
+                  FilledButton(
+                    onPressed: _startBootstrap,
+                    child: const Text('Tentar novamente'),
+                  ),
+                ],
               ),
             ),
           ),
+        ),
+      );
+      return BrowserUrlHome(
+        home: errorPage,
+        child: MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: ThemeData(
+            useMaterial3: true,
+            colorScheme: ColorScheme.fromSeed(seedColor: AppColors.primary),
+          ),
+          initialRoute: routeName,
+          onGenerateInitialRoutes: (name) => [browserUrlHomeRoute(name)],
+          onGenerateRoute: (s) => browserUrlHomeRoute(s.name ?? routeName),
         ),
       );
     }
