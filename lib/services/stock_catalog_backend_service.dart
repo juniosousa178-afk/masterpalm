@@ -527,6 +527,31 @@ class StockCatalogBackendService {
     );
   }
 
+  /// The server reads the canonical products and clears only `percentualDescontoPix`;
+  /// no price, stock or category value travels in this payload.
+  static Future<Map<String, dynamic>> removePixDiscount({
+    required String lojaId,
+    required String operationId,
+    required List<String> productIds,
+    String? bulkId,
+  }) {
+    const build = '$kClientAppVersion+$kClientBuildId';
+    return _send(
+      lojaId: lojaId,
+      operationId: operationId,
+      kind: 'removePixDiscount',
+      rawPayload: <String, dynamic>{
+        'protocolVersion': 1,
+        'lojaId': _id(lojaId),
+        'operationId': _id(operationId),
+        'kind': 'removePixDiscount',
+        'productIds': productIds.map(_id).toList(),
+        if (bulkId != null) 'bulkId': _id(bulkId),
+        if (_clientBuildValido.hasMatch(build)) 'clientBuild': build,
+      },
+    );
+  }
+
   static final _clientBuildValido = RegExp(r'^[A-Za-z0-9._+:\-]{1,80}$');
 
   static Future<Map<String, dynamic>> _send({

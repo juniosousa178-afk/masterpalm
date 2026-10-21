@@ -65,6 +65,7 @@ import 'barcode_scanner_screen.dart';
 import 'nova_venda/variacao_selection_sheet.dart';
 import 'public_catalog_screen.dart';
 import '../services/catalog_publish_service.dart';
+import '../services/bulk_pix_discount_service.dart';
 import '../services/marketplace_service.dart';
 import '../services/movimentacao_estoque_service.dart';
 import '../services/estoque_service.dart';
@@ -81,6 +82,7 @@ import '../services/ai_loja_service.dart';
 import '../services/ia_uso_limite_service.dart';
 import '../services/produto_exclusao_remota_service.dart';
 import '../widgets/app_help_icon_button.dart';
+import '../widgets/bulk_pix_discount_dialogs.dart';
 import '../services/produto_sync_recovery_access.dart';
 import 'produto_sync_recovery_screen.dart';
 import 'catalogo_sync_diagnostics_screen.dart';
@@ -1172,6 +1174,127 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     }
   }
 
+  String get _rotuloSelecionados {
+    final n = _produtosSelecionados.length;
+    return n == 1 ? '1 produto selecionado' : '$n produtos selecionados';
+  }
+
+  /// Ação em lote: o servidor zera apenas `percentualDescontoPix`; preço, estoque e promoções ficam iguais.
+  Future<void> _removerDescontoPixLote() async {
+    if (_publicando) return;
+    if (_produtosSelecionados.isEmpty) {
+      _showSnackBar('Nenhum produto selecionado', isError: true);
+      return;
+    }
+    final lojaId = (await _lojaIdParaLote())?.trim() ?? '';
+    if (!mounted) return;
+    if (lojaId.isEmpty) {
+      _showSnackBar('Loja não identificada. Nenhuma alteração foi feita.', isError: true);
+      return;
+    }
+    final visiveis = _produtosListagemEstoque(_box.values)
+        .map((p) => p.key?.toString())
+        .whereType<String>()
+        .toSet();
+    final candidatos = <BulkPixCandidato>[];
+    for (final key in _hiveKeysSelecionados()) {
+      final p = _box.get(key);
+      if (p != null) candidatos.add(BulkPixCandidato.fromProduto(key, p));
+    }
+    final preview = BulkPixPreview.calcular(
+      candidatos,
+      foraDoFiltro: _produtosSelecionados.where((k) => !visiveis.contains(k)).length,
+    );
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (_) => BulkPixPreviewDialog(preview: preview),
+    );
+    if (confirmar != true || !mounted || _publicando) return;
+    final hiveKeysPorDocId = <String, List<int>>{};
+    final nomes = <String, String>{};
+    for (final c in candidatos) {
+      if (c.docId.isEmpty) continue;
+      hiveKeysPorDocId.putIfAbsent(c.docId, () => []).add(c.hiveKey);
+      nomes[c.docId] = c.nome;
+    }
+    await _executarRemocaoDescontoPix(
+      lojaId: lojaId,
+      docIds: preview.docIds,
+      bulkId: BulkPixDiscountService.novoBulkId(),
+      hiveKeysPorDocId: hiveKeysPorDocId,
+      nomes: nomes,
+    );
+  }
+
+  Future<void> _executarRemocaoDescontoPix({
+    required String lojaId,
+    required List<String> docIds,
+    required String bulkId,
+    required Map<String, List<int>> hiveKeysPorDocId,
+    required Map<String, String> nomes,
+  }) async {
+    setState(() => _publicando = true);
+    final progresso = ValueNotifier<String>('Removendo desconto no Pix…');
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => BulkPixProgressDialog(progresso: progresso),
+    );
+    BulkPixResultado? resultado;
+    try {
+      resultado = await BulkPixDiscountService.executar(
+        lojaId: lojaId,
+        docIds: docIds,
+        bulkId: bulkId,
+        nomes: nomes,
+        onProgresso: (feitos, total) =>
+            progresso.value = 'Removendo desconto no Pix… $feitos de $total',
+      );
+      try {
+        await BulkPixDiscountService.aplicarNoHive(
+          box: _box,
+          hiveKeysPorDocId: hiveKeysPorDocId,
+          docIds: {...resultado.atualizados, ...resultado.semAlteracao},
+        );
+      } catch (e, st) {
+        logE('[ESTOQUE_LOTE] remover desconto Pix: falha ao refletir no Hive (type=${e.runtimeType})',
+            error: e, st: st);
+      }
+    } catch (e, st) {
+      logE('[ESTOQUE_LOTE] remover desconto Pix falhou (type=${e.runtimeType})', error: e, st: st);
+    } finally {
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        setState(() => _publicando = false);
+      }
+    }
+    if (!mounted) return;
+    final r = resultado;
+    if (r == null) {
+      _showSnackBar('Não foi possível remover o desconto no Pix. Nenhuma alteração confirmada.', isError: true);
+      return;
+    }
+    final tentarDeNovo = await showDialog<bool>(
+      context: context,
+      builder: (_) => BulkPixResultadoDialog(resultado: r),
+    );
+    if (!mounted) return;
+    if (r.sucessoTotal) {
+      setState(() {
+        _produtosSelecionados.clear();
+        _modoSelecao = false;
+      });
+    } else if (tentarDeNovo == true) {
+      await _executarRemocaoDescontoPix(
+        lojaId: lojaId,
+        docIds: r.idsParaNovaTentativa,
+        bulkId: bulkId,
+        hiveKeysPorDocId: hiveKeysPorDocId,
+        nomes: nomes,
+      );
+    }
+  }
+
   /// Ação em lote: ativar promoção (% ou valor fixo) e período opcional.
   Future<void> _promocaoEmLote() async {
     if (_produtosSelecionados.isEmpty) {
@@ -1894,7 +2017,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
                             ),
                           ),
                           Text(
-                            '${_produtosSelecionados.length} produto(s) selecionado(s)',
+                            _rotuloSelecionados,
                             style: TextStyle(
                               fontSize: 13,
                               color: Colors.grey[600],
@@ -2016,6 +2139,17 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
                         onTap: () {
                           Navigator.pop(context);
                           _descontoPixLote();
+                        },
+                      ),
+
+                      _buildAcaoTile(
+                        icon: Icons.money_off,
+                        titulo: 'Remover desconto no Pix',
+                        subtitulo: 'Tira só o desconto no Pix; preço normal, estoque e promoções não mudam',
+                        cor: _warningColor,
+                        onTap: () {
+                          Navigator.pop(context);
+                          _removerDescontoPixLote();
                         },
                       ),
 
@@ -4911,7 +5045,8 @@ String _formatGradeTexto(Produto p) {
         centerTitle: false,
         title: _modoSelecao
             ? Text(
-                '${_produtosSelecionados.length} selecionado(s)',
+                _rotuloSelecionados,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(color: _surfaceColor, fontWeight: FontWeight.bold),
               )
             : Row(
@@ -4931,7 +5066,7 @@ String _formatGradeTexto(Produto p) {
                 child: const Icon(Icons.check_box, color: _primaryColor, size: 20),
               ),
               onPressed: _selecionarTodos,
-              tooltip: 'Selecionar todos',
+              tooltip: 'Selecionar todos do filtro atual',
             ),
             IconButton(
               icon: Container(

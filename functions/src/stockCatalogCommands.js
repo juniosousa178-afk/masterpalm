@@ -21,6 +21,7 @@ import {
   REMOVED_VARIATION_DEBIT,
 } from './stockCatalogSaleEdit.js';
 import {loadSaleEditReceivables, planSaleEditReceivable} from './stockCatalogSaleEditReceivable.js';
+import {BULK_PIX_KIND, executeBulkRemovePixDiscountInTransaction} from './stockCatalogBulkPix.js';
 import {
   parseReconciliation,
   applyPhysicalReconciliation,
@@ -186,6 +187,9 @@ export async function runStockTransaction(db, callback) {
 
 /** No network work inside callbacks except transaction reads/writes. */
 export async function executeStockCommand(db, raw, auth) {
+  if (isMap(raw) && raw.kind === BULK_PIX_KIND) {
+    return runStockTransaction(db, tx => executeBulkRemovePixDiscountInTransaction(tx, db, raw, auth));
+  }
   return runStockTransaction(db, tx => executeStockCommandInTransaction(tx, db, raw, auth));
 }
 
