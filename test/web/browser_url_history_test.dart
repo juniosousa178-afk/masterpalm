@@ -105,6 +105,32 @@ void main() {
       );
     });
 
+    test('só a url vazia é tratada; rotas reais ficam idênticas ao PathUrlStrategy', () {
+      const routes = [
+        '/',
+        '/home',
+        '/login',
+        '/loja/minha-loja',
+        '/loja/minha-loja?cat=aneis&ord=preco',
+        '/pedido/abc123?loja=minha-loja',
+        '/assinatura/plano-pro/retorno',
+        '/planos/retorno',
+        '/planos/retorno?status=approved',
+        '/assinatura/troca/chg_1/retorno',
+      ];
+      for (final route in routes) {
+        expect(
+          landingPreservingExternalUrl(route,
+              pathname: '/outra/pagina',
+              search: '?x=1',
+              hash: '#y',
+              fallback: pathStrategy),
+          pathStrategy(route),
+          reason: route,
+        );
+      }
+    });
+
     test('rotas nomeadas seguem o PathUrlStrategy', () {
       final seen = <String>[];
       final out = landingPreservingExternalUrl('/home',
