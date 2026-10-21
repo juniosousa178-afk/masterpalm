@@ -153,6 +153,70 @@ void main() {
     });
   });
 
+  group('documento forjado por escrita direta (gate §4/§6)', () {
+    List<Map<String, dynamic>> docsComIntrusos() => [
+          ..._docs(),
+          doc('cat_outra', 'Outra Loja', lojaId: 'intrusa'),
+          for (var i = 1; i <= 7; i++) doc('cat_d$i', 'Nível $i', parentId: i == 1 ? null : 'cat_d${i - 1}'),
+        ];
+
+    Set<String> classifica(Map<String, dynamic> produto) {
+      final ref = CategoryProductRef.fromMap(produto);
+      final t = CategoryTree.build(lojaId: 'mirjoias', docs: docsComIntrusos(), products: [ref]);
+      return t.idsForProduct(ref);
+    }
+
+    test('A–D: id inexistente, de outra loja, caminho forjado e nível 7 não classificam; F válido sim', () {
+      final ids = classifica({
+        'categoryAssignments': [
+          {'categoryId': 'nao_existe', 'pathIds': ['nao_existe'], 'pathNames': ['Fantasma']}, // A
+          {'categoryId': 'cat_outra', 'pathIds': ['cat_outra'], 'pathNames': ['Outra Loja']}, // B
+          {'categoryId': 'cat_mae', 'pathIds': ['cat_masc', 'cat_mae'], 'pathNames': ['Masculino', 'X']}, // C
+          {'categoryId': 'cat_d7', 'pathIds': ['cat_d1', 'cat_d7'], 'pathNames': ['N1', 'N7']}, // D
+          {'categoryId': 'cat_fp925'}, // F
+        ],
+      });
+      expect(ids, {'cat_fem', 'cat_fcol', 'cat_fp925', 'cat_pres', 'cat_mae'});
+      expect(ids.intersection({'nao_existe', 'cat_outra', 'cat_masc', 'cat_d7', 'cat_d1'}), isEmpty);
+    });
+
+    test('E: categoryMembershipIds forjado não vale como classificação', () {
+      final ids = classifica({
+        'categoryAssignments': [
+          {'categoryId': 'cat_fp925'},
+        ],
+        'categoryMembershipIds': ['cat_masc', 'cat_rel', 'cat_cruz'],
+      });
+      expect(ids, {'cat_fem', 'cat_fcol', 'cat_fp925'});
+    });
+
+    test('caminhos só inválidos: produto não ganha nó; texto legado continua valendo', () {
+      final ids = classifica({
+        'categoria': 'Masculino',
+        'categoryAssignments': [
+          {'categoryId': 'cat_outra'},
+        ],
+      });
+      expect(ids, {'cat_masc'});
+    });
+
+    test('20 caminhos: classificação em memória, uma única montagem da árvore', () {
+      final docs = [
+        for (var i = 0; i < kMaxCategoryAssignments; i++) doc('c$i', 'Categoria $i'),
+      ];
+      final ref = CategoryProductRef.fromMap({
+        'categoryAssignments': [
+          for (var i = 0; i < kMaxCategoryAssignments; i++) {'categoryId': 'c$i'},
+        ],
+      });
+      final t = CategoryTree.build(lojaId: 'mirjoias', docs: docs, products: [ref]);
+      expect(t.idsForProduct(ref), hasLength(kMaxCategoryAssignments));
+      for (var i = 0; i < kMaxCategoryAssignments; i++) {
+        expect(t.productCount('c$i'), 1);
+      }
+    });
+  });
+
   group('compatibilidade legado (§9/§10)', () {
     test('produto só com o trio vale como uma atribuição (sem migração)', () {
       final base = _tree();

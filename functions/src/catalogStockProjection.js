@@ -1,5 +1,5 @@
 /** Server stock projection. No Firestore access and no client availability authority. */
-import {validateProductCategoryFields} from './categoryTree.js';
+import {projectedCategoryFields, validateProductCategoryFields} from './categoryTree.js';
 
 export const PROJECTION_VERSION = 1;
 export const META_COST = '__custoUnitario';
@@ -382,6 +382,9 @@ export function projectCatalog(canonical, editorial, productId) {
   const meta = Object.fromEntries(
     EDITORIAL_FIELDS.filter(k => k in resolvedEditorial).map(k => [k, resolvedEditorial[k]]),
   );
+  if ('categoryAssignments' in meta || 'categoryMembershipIds' in meta) {
+    Object.assign(meta, projectedCategoryFields(meta));
+  }
   Object.assign(meta, mergeCommercialEditorialFields(resolvedEditorial, stock));
   const stockFields = ['quantidade','variacoes','estoquePorTamanho','estoquePorCor','tamanhos','cores',
     'variacoesExtraTipo','tipoProduto','stockKind','itensCombo','comboConfig'];

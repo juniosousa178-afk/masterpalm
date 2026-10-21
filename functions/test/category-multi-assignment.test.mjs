@@ -201,8 +201,14 @@ test('more than the limit is refused explicitly (never truncated); exactly the l
     assert.equal(e.message, CATEGORY_ASSIGNMENTS_LIMIT_MESSAGE);
     return true;
   });
+  ctx.db.queryReads.length = 0;
   await assign(ctx, 'lim2', many.slice(0, MAX_CATEGORY_ASSIGNMENTS));
   assert.equal(read(ctx.db, ctx.base, 'produtos', ctx.productId).categoryAssignments.length, MAX_CATEGORY_ASSIGNMENTS);
+  assert.deepEqual(ctx.db.queryReads.filter(q => q.includes('categorias')), [`${ctx.base.path}/categorias`],
+    '20 paths: one tree read, no query per path');
+  ctx.db.queryReads.length = 0;
+  await publishStockProduct(ctx.db, ctx.lojaId, ctx.productId, owner);
+  assert.equal(ctx.db.queryReads.some(q => q.includes('categorias')), false, 'publish never reads the tree');
 });
 
 test('categoryMembershipIds is server-derived: a client-sent value is refused', async () => {
@@ -369,4 +375,48 @@ test('public projection carries only category ids/names, never internal data', a
   assert.ok(live.categoryMembershipIds.every(id => typeof id === 'string'));
   const json = JSON.stringify({a: live.categoryAssignments, m: live.categoryMembershipIds});
   for (const leak of ['owner', 'uid', 'custo', 'lojaId', 'legacyNames', 'sortOrder']) assert.equal(json.includes(leak), false, leak);
+});
+
+test('forged direct stock write: projection keeps only well-formed paths and re-derives membership', async () => {
+  for (const active of [false, true]) {
+    const ctx = seed({active});
+    const stockRef = ctx.base.collection('estoque_produtos').doc(ctx.productId);
+    const deep = Array.from({length: 7}, (_, i) => `d${i}`);
+    ctx.db.seed(stockRef, {...read(ctx.db, ctx.base, 'estoque_produtos', ctx.productId),
+      categoryAssignments: [
+        {categoryId: 'nao_existe', pathIds: ['nao_existe'], pathNames: ['Fantasma']},                  // A
+        {categoryId: 'outra_loja_cat', pathIds: ['outra_loja_cat'], pathNames: ['Outra'], lojaId: 'x'},  // B
+        {categoryId: 'rel_cruz', pathIds: ['mas', 'rel_cruz'], pathNames: ['Masculino']},                 // C
+        {categoryId: 'd6', pathIds: deep, pathNames: deep},                                               // D
+        {...A('fem_prata'), ownerUid: 'owner'},                                                           // F (+ extra key)
+      ],
+      categoryMembershipIds: ['mas', 'pres', 'qualquer'],                                                 // E
+    });
+    if (active) await executeStockCommand(ctx.db, {protocolVersion: 1, lojaId: ctx.lojaId, kind: 'sale', operationId: 'fs1',
+      items: [{productId: ctx.productId, quantity: 1}]}, owner);
+    await publishStockProduct(ctx.db, ctx.lojaId, ctx.productId, owner);
+    for (const col of ['draft_produtos', 'produtos']) {
+      const doc = read(ctx.db, ctx.base, col, ctx.productId);
+      const label = `${active ? 'ACTIVE' : 'NO_CONTROL'} ${col}`;
+      assert.deepEqual(doc.categoryAssignments.map(a => a.categoryId), ['nao_existe', 'outra_loja_cat', 'fem_prata'], label);
+      for (const a of doc.categoryAssignments) assert.deepEqual(Object.keys(a).sort(), ['categoryId', 'pathIds', 'pathNames'], label);
+      assert.deepEqual(doc.categoryMembershipIds, ['nao_existe', 'outra_loja_cat', ...PATH.fem_prata[0]], label);
+    }
+    // A/B are well-formed but unknown to this store's tree: they classify nothing (server side, as on the client).
+    const index = buildCategoryIndex(cats(ctx.db, ctx.base), ctx.lojaId);
+    const ids = productCategoryIds(index, read(ctx.db, ctx.base, 'produtos', ctx.productId));
+    assert.deepEqual([...ids].sort(), [...PATH.fem_prata[0]].sort());
+  }
+});
+
+test('old APK save keeps only well-formed stored paths; forged stored ones are not re-published', async () => {
+  const ctx = seed();
+  await assign(ctx, 'ok1', ['fem_prata', 'rel_cruz']);
+  const stockRef = ctx.base.collection('estoque_produtos').doc(ctx.productId);
+  const stored = read(ctx.db, ctx.base, 'estoque_produtos', ctx.productId);
+  ctx.db.seed(stockRef, {...stored, categoryAssignments: [...stored.categoryAssignments,
+    {categoryId: 'apagada', pathIds: ['x', 'apagada'], pathNames: ['Só um nome']}]});
+  await executeStockCommand(ctx.db, editorial(ctx.lojaId, ctx.productId, 'old1', {
+    categoryId: 'fem_prata', categoryPathIds: PATH.fem_prata[0], categoryPathNames: PATH.fem_prata[1]}), owner);
+  assertAssignments(ctx, [A('fem_prata'), A('rel_cruz')], 'old APK same leaf');
 });

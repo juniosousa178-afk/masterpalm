@@ -338,6 +338,7 @@ export function canonicalProductCategoryPatch(index, patch, existing = {}) {
   if (!PRODUCT_CATEGORY_KEYS.some(k => k in patch)) return null;
   const storedLeaves = productAssignmentLeafIds(existing);
   let requested;
+  let explicit;
   if ('categoryAssignments' in patch) {
     for (const a of patch.categoryAssignments) {
       if (typeof a.lojaId === 'string' && a.lojaId !== index.lojaId) {
@@ -345,6 +346,7 @@ export function canonicalProductCategoryPatch(index, patch, existing = {}) {
       }
     }
     requested = patch.categoryAssignments.map(assignmentLeafId);
+    explicit = new Set(requested);
   } else {
     const legacyLeaf = 'categoryPathIds' in patch
       ? (stringList(patch.categoryPathIds).at(-1) ?? '')
@@ -352,6 +354,7 @@ export function canonicalProductCategoryPatch(index, patch, existing = {}) {
     if (!legacyLeaf) requested = storedLeaves.slice(1);
     else if (storedLeaves.includes(legacyLeaf)) requested = storedLeaves;
     else requested = [legacyLeaf, ...storedLeaves.slice(1)];
+    explicit = new Set(legacyLeaf ? [legacyLeaf] : []);
   }
   const stored = storedAssignments(existing);
   const resolved = [];
@@ -367,6 +370,8 @@ export function canonicalProductCategoryPatch(index, patch, existing = {}) {
       resolved.push(keep);
       continue;
     }
+    // A stored path the client did not send (old APK) that is malformed or foreign is dropped, not an error.
+    if (!explicit.has(id)) continue;
     if (q === CATEGORY_CODES.CROSS_TENANT) fail(q, 'Categoria de outra loja.', 'permission-denied');
     if (q === CATEGORY_CODES.DEPTH_LIMIT) fail(q, CATEGORY_DEPTH_LIMIT_MESSAGE);
     if (q === CATEGORY_CODES.CYCLE) fail(q, 'Estrutura de categorias inválida (ciclo).');
@@ -393,12 +398,40 @@ export function normalizeCategoryAssignments(assignments) {
   return unique.filter(a => !unique.some(b => b.categoryId !== a.categoryId && b.pathIds.includes(a.categoryId)));
 }
 
+/**
+ * Stored path in the public shape ({categoryId, pathIds, pathNames} only), or null when malformed: 1..6 unique
+ * valid ids ending at categoryId, one non-empty name per level. Shape only; existence is checked against the tree.
+ */
+export function wellFormedCategoryAssignment(a) {
+  if (!a || typeof a !== 'object' || Array.isArray(a)) return null;
+  const {categoryId, pathIds, pathNames} = a;
+  if (!Array.isArray(pathIds) || !Array.isArray(pathNames)) return null;
+  if (pathIds.length < 1 || pathIds.length > MAX_CATEGORY_DEPTH || pathNames.length !== pathIds.length) return null;
+  if (!pathIds.every(isValidCategoryId) || new Set(pathIds).size !== pathIds.length) return null;
+  if (categoryId !== pathIds[pathIds.length - 1]) return null;
+  if (!pathNames.every(n => typeof n === 'string' && n.trim() && n.length <= MAX_CATEGORY_NAME_LENGTH)) return null;
+  return {categoryId, pathIds: [...pathIds], pathNames: [...pathNames]};
+}
+
+/**
+ * Category fields as projected to draft/live. Stored values may come from direct owner writes, so malformed paths
+ * are dropped and categoryMembershipIds is always re-derived from the kept paths (never copied).
+ */
+export function projectedCategoryFields(source) {
+  const raw = Array.isArray(source?.categoryAssignments) ? source.categoryAssignments : [];
+  const kept = raw.length > MAX_CATEGORY_ASSIGNMENTS ? [] : raw.map(wellFormedCategoryAssignment).filter(Boolean);
+  const assignments = normalizeCategoryAssignments(kept);
+  return {
+    categoryAssignments: assignments,
+    categoryMembershipIds: [...new Set(assignments.flatMap(a => a.pathIds))],
+  };
+}
+
 function storedAssignments(existing) {
   const out = new Map();
   for (const a of Array.isArray(existing?.categoryAssignments) ? existing.categoryAssignments : []) {
-    const id = assignmentLeafId(a);
-    const pathIds = stringList(a?.pathIds);
-    if (id && pathIds.at(-1) === id) out.set(id, {categoryId: id, pathIds, pathNames: stringList(a?.pathNames)});
+    const kept = wellFormedCategoryAssignment(a);
+    if (kept) out.set(kept.categoryId, kept);
   }
   const legacyIds = stringList(existing?.categoryPathIds);
   const legacyLeaf = legacyIds.at(-1);
