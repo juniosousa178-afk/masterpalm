@@ -590,6 +590,24 @@ service cloud.firestore {
             || resource.data.governancaStatus != 'substituido');
     }
 
+    function prePedidoCampoPreenchido(d, k) {
+      let v = d.get(k, null);
+      return v != null && (!(v is string) || v.size() > 0);
+    }
+
+    // Pré-pedido pago/vendido (gateway ou confirmação manual): o vínculo de venda/pagamento é imutável
+    // para clientes. Builds antigos confirmam sem reler o pedido; isto impede sobrescrever a venda canónica.
+    function isPrePedidoVinculoVendaPreservado() {
+      let travado = resource.data.get('paidAt', null) != null
+        || prePedidoCampoPreenchido(resource.data, 'paymentId')
+        || prePedidoCampoPreenchido(resource.data, 'vendaId')
+        || prePedidoCampoPreenchido(resource.data, 'saleId')
+        || prePedidoCampoPreenchido(resource.data, 'saleOperationId');
+      return !travado
+        || !request.resource.data.diff(resource.data).affectedKeys()
+          .hasAny(['vendaId', 'saleId', 'saleOperationId', 'paymentId', 'paidAt']);
+    }
+
     function isValidPedidoTempCreate() {
       return request.resource.data.size() <= 35
         && (!request.resource.data.keys().hasAny(['lojaId'])
@@ -1341,9 +1359,10 @@ service cloud.firestore {
         allow read: if belongsToStore(lojaId);
         allow create: if isValidPrePedidoCreate()
           && request.resource.data.lojaId == lojaId;
-        allow update: if isAdminOrSystem()
-          || (resource.data.lojaId == lojaId
-              && isValidPrePedidoGovernancaSubstituicao());
+        allow update: if (isAdminOrSystem()
+            || (resource.data.lojaId == lojaId
+                && isValidPrePedidoGovernancaSubstituicao()))
+          && isPrePedidoVinculoVendaPreservado();
         allow delete: if isAdminOrSystem();
       }
 
