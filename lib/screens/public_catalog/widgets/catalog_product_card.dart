@@ -10,8 +10,10 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/produto_variacao_extra.dart';
 import '../../../services/catalog_share_service.dart';
 import '../../../utils/platform_adaptive.dart';
+import '../catalog_card_variation_preview_data.dart';
 import '../catalog_product_card_size.dart';
 import '../catalog_theme_extension.dart';
+import 'catalog_card_variation_preview.dart';
 import 'catalog_gallery_view.dart';
 import 'catalog_image_placeholder.dart';
 import 'catalog_product_details_sheet.dart';
@@ -816,6 +818,15 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
             : 'R\$ ${_fmt2(_precoParaParcelamento * (1 - widget.percentualDescontoPix / 100))} - PIX ${widget.percentualDescontoPix == widget.percentualDescontoPix.truncateToDouble() ? widget.percentualDescontoPix.toInt() : _fmt2(widget.percentualDescontoPix)}% off')
         : '';
     final hasLinhaSecundaria = hasPix || hasParcelamento;
+    final variationPreview = (widget.compact || widget.ehCombo)
+        ? null
+        : CatalogCardVariationPreviewData.fromCardInputs(
+            variacoes: widget.variacoes,
+            estoquePorTamanho: widget.estoquePorTamanho,
+            estoquePorCor: widget.estoquePorCor,
+            tamanhosOrdem: widget.produtoCatalogoMap?['tamanhos'],
+            coresOrdem: widget.produtoCatalogoMap?['cores'],
+          );
     // Clássico (visual minimal): rodapé com altura intrínseca + leve sobreposição na faixa clara do contain.
     final bool tightClassicFooter = classicMv && !widget.compact;
 
@@ -1003,6 +1014,11 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                                           ),
                                       ],
                                     )),
+                            if (variationPreview != null)
+                              CatalogCardVariationPreview(
+                                data: variationPreview,
+                                textColor: productNameColor,
+                              ),
                         ],
                       ),
                     ),
@@ -1595,11 +1611,17 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                     ])
               : null,
         ),
-        child: Column(
+        child: _withVariationFooterRoom(
+          enabled: variationPreview != null && !tightClassicFooter,
+          imageFlex: imageFlex,
+          contentFlex: contentFlex,
+          builder: (footerBaseHeight) => Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Expanded(
-              flex: tightClassicFooter ? 1 : imageFlex,
+              flex: tightClassicFooter || footerBaseHeight != null
+                  ? 1
+                  : imageFlex,
               child: ClipRRect(
                 borderRadius: BorderRadius.only(
                   topLeft: Radius.circular(widget.borderRadius),
@@ -1723,6 +1745,15 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
                 flex: 0,
                 child: catalogFooterWidget,
               )
+            else if (footerBaseHeight != null)
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: footerBaseHeight,
+                  maxHeight:
+                      footerBaseHeight + CatalogCardVariationPreview.height,
+                ),
+                child: catalogFooterWidget,
+              )
             else
               Expanded(
                 flex: contentFlex,
@@ -1731,7 +1762,28 @@ class _CatalogProductCardState extends State<CatalogProductCard> {
 
           ],
         ),
+        ),
       ),
+    );
+  }
+
+  /// Rodapé flex com prévia de variações: parte da altura que teria sem prévia e
+  /// cresce até [CatalogCardVariationPreview.height] só se o conteúdo precisar;
+  /// a foto cede apenas esse excedente e o FittedBox não muda de escala.
+  Widget _withVariationFooterRoom({
+    required bool enabled,
+    required int imageFlex,
+    required int contentFlex,
+    required Widget Function(double? footerBaseHeight) builder,
+  }) {
+    if (!enabled) return builder(null);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (!constraints.hasBoundedHeight) return builder(null);
+        return builder(
+          constraints.maxHeight * contentFlex / (imageFlex + contentFlex),
+        );
+      },
     );
   }
 }
