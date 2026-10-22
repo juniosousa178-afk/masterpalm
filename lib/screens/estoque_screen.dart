@@ -83,6 +83,7 @@ import '../services/ia_uso_limite_service.dart';
 import '../services/produto_exclusao_remota_service.dart';
 import '../widgets/app_help_icon_button.dart';
 import '../widgets/bulk_pix_discount_dialogs.dart';
+import '../widgets/estoque_acoes_lote_sheet.dart';
 import '../services/produto_sync_recovery_access.dart';
 import 'produto_sync_recovery_screen.dart';
 import 'catalogo_sync_diagnostics_screen.dart';
@@ -1959,263 +1960,39 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     );
   }
 
-  void _mostrarMenuAcoes() {
+  Future<void> _mostrarMenuAcoes() async {
     if (!_podeEditarEstoque) {
       _showSnackBar('Consulta apenas: vendedor não pode editar estoque', isError: true);
       return;
     }
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) => SafeArea(
-        child: Container(
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.85,
-          ),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Handle
-              Container(
-                margin: const EdgeInsets.only(top: 12, bottom: 8),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-
-              // Header
-              Padding(
-                padding: const EdgeInsets.all(20),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: _primaryColor.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(Icons.flash_on, color: _primaryColor),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Ações em Lote',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          Text(
-                            _rotuloSelecionados,
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.grey[600],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ],
-                ),
-              ),
-
-              const Divider(height: 1),
-
-              // Ações - AGORA ROLÁVEL
-              Flexible(
-                child: SingleChildScrollView(
-                  child: Column(
-                    children: [
-                      _buildAcaoTile(
-                        icon: Icons.add_shopping_cart,
-                        titulo: 'Adicionar ao Catálogo',
-                        subtitulo: 'Publicar produtos no catálogo web',
-                        cor: _successColor,
-                        onTap: () {
-                          Navigator.pop(context);
-                          _adicionarAoCatalogoLote();
-                        },
-                      ),
-
-                      _buildAcaoTile(
-                        icon: Icons.remove_shopping_cart,
-                        titulo: 'Remover do Catálogo',
-                        subtitulo: 'Despublicar do catálogo web',
-                        cor: _warningColor,
-                        onTap: () {
-                          Navigator.pop(context);
-                          _removerDoCatalogoLote();
-                        },
-                      ),
-
-                      _buildAcaoTile(
-                        icon: Icons.shopping_bag,
-                        titulo: 'Mercado Livre',
-                        subtitulo: 'Adicionar ao Mercado Livre',
-                        cor: const Color(0xFFFFF159),
-                        onTap: () {
-                          Navigator.pop(context);
-                          _adicionarAoMarketplace('Mercado Livre');
-                        },
-                      ),
-
-                      _buildAcaoTile(
-                        icon: Icons.video_library,
-                        titulo: 'TikTok Shop',
-                        subtitulo: 'Adicionar ao TikTok Shop',
-                        cor: Colors.black,
-                        onTap: () {
-                          Navigator.pop(context);
-                          _adicionarAoMarketplace('TikTok Shop');
-                        },
-                      ),
-
-                      _buildAcaoTile(
-                        icon: Icons.store,
-                        titulo: 'Shopee',
-                        subtitulo: 'Adicionar à Shopee',
-                        cor: const Color(0xFFEE4D2D),
-                        onTap: () {
-                          Navigator.pop(context);
-                          _adicionarAoMarketplace('Shopee');
-                        },
-                      ),
-
-                      const Divider(height: 1),
-
-                      _buildAcaoTile(
-                        icon: Icons.category,
-                        titulo: 'Alterar Categoria em Lote',
-                        subtitulo: 'Definir mesma categoria para todos',
-                        cor: _primaryColor,
-                        onTap: () {
-                          Navigator.pop(context);
-                          _alterarCategoriaLote();
-                        },
-                      ),
-
-                      _buildAcaoTile(
-                        icon: Icons.label,
-                        titulo: 'Alterar Subcategoria em Lote',
-                        subtitulo: 'Definir mesma subcategoria para todos',
-                        cor: _primaryColor,
-                        onTap: () {
-                          Navigator.pop(context);
-                          _alterarSubcategoriaLote();
-                        },
-                      ),
-
-                      _buildAcaoTile(
-                        icon: Icons.credit_card,
-                        titulo: 'Dividir sem juros em lote',
-                        subtitulo: 'Ativar parcelamento sem juros nos selecionados',
-                        cor: _successColor,
-                        onTap: () {
-                          Navigator.pop(context);
-                          _dividirSemJurosLote();
-                        },
-                      ),
-
-                      _buildAcaoTile(
-                        icon: Icons.qr_code,
-                        titulo: 'Definir desconto no Pix em lote',
-                        subtitulo: 'Aplica um % de desconto no Pix aos selecionados',
-                        cor: _primaryColor,
-                        onTap: () {
-                          Navigator.pop(context);
-                          _descontoPixLote();
-                        },
-                      ),
-
-                      _buildAcaoTile(
-                        icon: Icons.money_off,
-                        titulo: 'Remover desconto no Pix',
-                        subtitulo: 'Tira só o desconto no Pix; preço normal, estoque e promoções não mudam',
-                        cor: _warningColor,
-                        onTap: () {
-                          Navigator.pop(context);
-                          _removerDescontoPixLote();
-                        },
-                      ),
-
-                      _buildAcaoTile(
-                        icon: Icons.local_offer_outlined,
-                        titulo: 'Promoção em lote',
-                        subtitulo: 'Ativar promoção (% ou R\$ fixo) nos selecionados',
-                        cor: const Color(0xFFFF6D00),
-                        onTap: () {
-                          Navigator.pop(context);
-                          _promocaoEmLote();
-                        },
-                      ),
-
-                      const Divider(height: 1),
-
-                      _buildAcaoTile(
-                        icon: Icons.delete,
-                        titulo: 'Excluir Produtos',
-                        subtitulo: 'Remover permanentemente do estoque',
-                        cor: _errorColor,
-                        onTap: () {
-                          Navigator.pop(context);
-                          _excluirSelecionados();
-                        },
-                      ),
-
-                      const SizedBox(height: 20),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAcaoTile({
-    required IconData icon,
-    required String titulo,
-    required String subtitulo,
-    required Color cor,
-    required VoidCallback onTap,
-  }) {
-    return ListTile(
-      leading: Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: cor.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Icon(icon, color: cor, size: 22),
-      ),
-      title: Text(
-        titulo,
-        style: const TextStyle(fontWeight: FontWeight.w600),
-      ),
-      subtitle: Text(
-        subtitulo,
-        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-      ),
-      trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-      onTap: onTap,
-    );
+    final acao = await EstoqueAcoesLoteSheet.mostrar(context, rotuloSelecionados: _rotuloSelecionados);
+    if (acao == null || !mounted) return;
+    switch (acao) {
+      case EstoqueAcaoLote.adicionarCatalogo:
+        _adicionarAoCatalogoLote();
+      case EstoqueAcaoLote.removerCatalogo:
+        _removerDoCatalogoLote();
+      case EstoqueAcaoLote.mercadoLivre:
+        _adicionarAoMarketplace('Mercado Livre');
+      case EstoqueAcaoLote.tiktokShop:
+        _adicionarAoMarketplace('TikTok Shop');
+      case EstoqueAcaoLote.shopee:
+        _adicionarAoMarketplace('Shopee');
+      case EstoqueAcaoLote.alterarCategoria:
+        _alterarCategoriaLote();
+      case EstoqueAcaoLote.alterarSubcategoria:
+        _alterarSubcategoriaLote();
+      case EstoqueAcaoLote.dividirSemJuros:
+        _dividirSemJurosLote();
+      case EstoqueAcaoLote.definirDescontoPix:
+        _descontoPixLote();
+      case EstoqueAcaoLote.removerDescontoPix:
+        _removerDescontoPixLote();
+      case EstoqueAcaoLote.promocao:
+        _promocaoEmLote();
+      case EstoqueAcaoLote.excluir:
+        _excluirSelecionados();
+    }
   }
 
   /// Busca produto por código de barras (ou slug). Retorna lista de (key, produto).
