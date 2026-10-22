@@ -1,7 +1,10 @@
 import process from "node:process";
+import { pathToFileURL } from "node:url";
 
 import { applicationDefault, initializeApp } from "firebase-admin/app";
 import { FieldPath, getFirestore } from "firebase-admin/firestore";
+
+import { preservePublicOrderItemImages } from "./src/publicOrderItemImages.js";
 
 function parseArgs(argv) {
   const args = {
@@ -57,14 +60,17 @@ function normalizeOptionalString(value) {
   return resolved.length > 0 ? resolved : null;
 }
 
-function buildPedidoStatusPublico(lojaId, pedidoId, data = {}) {
+export function buildPedidoStatusPublico(lojaId, pedidoId, data = {}, previousItensResumo = undefined) {
   const itens = Array.isArray(data.itens) ? data.itens : [];
-  const itensResumo = itens
-    .map((item) => ({
-      nome: normalizeOptionalString(item?.nome) || "",
-      quantidade: Number(item?.quantidade) || 1,
-    }))
-    .filter((item) => item.nome.length > 0);
+  const itensResumo = preservePublicOrderItemImages(
+    itens
+      .map((item) => ({
+        nome: normalizeOptionalString(item?.nome) || "",
+        quantidade: Number(item?.quantidade) || 1,
+      }))
+      .filter((item) => item.nome.length > 0),
+    previousItensResumo,
+  );
 
   const frete = data.frete && typeof data.frete === "object" ? data.frete : {};
   const payload = {
@@ -192,7 +198,9 @@ async function main() {
   console.log(`  proximo_startAfter: ${lastDoc.id}`);
 }
 
-main().catch((error) => {
-  console.error("[backfill] Falha fatal:", error);
-  process.exitCode = 1;
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    console.error("[backfill] Falha fatal:", error);
+    process.exitCode = 1;
+  });
+}

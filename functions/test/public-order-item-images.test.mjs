@@ -5,6 +5,7 @@ import {readFileSync} from "node:fs";
 import {
   PUBLIC_ORDER_IMAGE_DERIVATION_WINDOW_MS,
   catalogProductImages,
+  isOrderWithinImageWindow,
   isSafeProductDocId,
   resolvePublicOrderItemImages,
   sanitizePublicOrderImageUrl,
@@ -42,15 +43,18 @@ function fakeDb(docs, {failGetAll = false} = {}) {
     },
   });
   const col = (path) => ({doc: (id) => ref(`${path}/${id}`)});
-  return {
+  const db = {
     reads,
+    getAllCalls: 0,
     collection: (c) => col(c),
     getAll: async (...refs) => {
+      db.getAllCalls += 1;
       if (failGetAll) throw Object.assign(new Error("unavailable"), {code: 14});
       refs.forEach((r) => reads.push(r.path));
       return refs.map((r) => snap(r.path));
     },
   };
+  return db;
 }
 
 const mirrorPath = (loja = LOJA_A) => `lojas/${loja}/pedido_status_publico/${PEDIDO}`;
@@ -324,4 +328,115 @@ test("wiring: trigger usa o snapshot; espelho e portal mantêm o resto do payloa
   const builder = src.slice(bStart, src.indexOf("\n}\n", bStart));
   assert.match(builder, /nome: normalizeOptionalString\(item\?\.nome\) \|\| "",\n\s+quantidade: Number\(item\?\.quantidade\) \|\| 1,\n\s+\}\)\)/);
   assert.ok(!builder.includes("imagem"));
+});
+
+test("janela de 15 min: 14m59s e 15m00s derivam (inclusivo), 15m01s não", async () => {
+  const sec = 1000;
+  assert.equal(PUBLIC_ORDER_IMAGE_DERIVATION_WINDOW_MS, 900 * sec);
+  const cases = [
+    [14 * 60 + 59, true],
+    [15 * 60, true],
+    [15 * 60 + 1, false],
+  ];
+  for (const [age, derives] of cases) {
+    assert.equal(isOrderWithinImageWindow(ts(NOW - age * sec), NOW), derives, `${age}s`);
+    const docs = catalogo();
+    docs.set(mirrorPath(), {itensResumo: [{nome: "Anel Pedra Lux", quantidade: 1}]});
+    const db = fakeDb(docs);
+    const out = await run(db, [itemAnel], {isNewOrder: false, dataCriacao: ts(NOW - age * sec)});
+    assert.equal(out[0].imagem, derives ? IMG_ANEL : undefined, `${age}s`);
+    assert.equal(db.getAllCalls, derives ? 1 : 0, `${age}s`);
+  }
+  assert.equal(isOrderWithinImageWindow(undefined, NOW), false);
+  assert.equal(isOrderWithinImageWindow({seconds: 1}, NOW), false);
+});
+
+function catalogoComN(n) {
+  const docs = new Map();
+  const itens = [];
+  for (let i = 0; i < n; i += 1) {
+    const id = `prod-${i}`;
+    const img = storage(LOJA_A, `${id}%2F00_1.jpg`);
+    docs.set(produtoPath(LOJA_A, id), {imagens: [img]});
+    itens.push({productId: id, nome: `Produto ${i}`, quantidade: 1, imagemSnapshot: img});
+  }
+  return {docs, itens};
+}
+
+for (const n of [1, 10, 50]) {
+  test(`leituras: pedido novo com ${n} itens = 1 leitura do espelho + ${n} produtos num único getAll`, async () => {
+    const {docs, itens} = catalogoComN(n);
+    const db = fakeDb(docs);
+    const out = await run(db, itens);
+    assert.equal(out.filter((i) => i.imagem).length, n);
+    assert.equal(db.getAllCalls, 1);
+    assert.equal(db.reads.filter((p) => p.includes("/produtos/")).length, n);
+    assert.equal(db.reads.filter((p) => p === mirrorPath()).length, 1);
+    assert.ok(db.reads.every((p) => p === mirrorPath() || p.startsWith(`lojas/${LOJA_A}/produtos/`)));
+  });
+
+  test(`leituras: espelho com snapshot (${n} itens) = 0 leituras de produtos`, async () => {
+    const {docs, itens} = catalogoComN(n);
+    docs.set(mirrorPath(), {
+      itensResumo: itens.map((i) => ({nome: i.nome, quantidade: 1, imagem: i.imagemSnapshot})),
+    });
+    for (const dataCriacao of [ts(NOW - 60 * 1000), ts(NOW - 3 * 24 * 3600 * 1000)]) {
+      const db = fakeDb(docs);
+      const out = await run(db, itens, {isNewOrder: false, dataCriacao});
+      assert.equal(out.filter((i) => i.imagem).length, n);
+      assert.equal(db.getAllCalls, 0);
+      assert.deepEqual(db.reads, [mirrorPath()]);
+    }
+  });
+}
+
+test("mais de 50 itens: nenhuma imagem, nenhuma leitura de produto (determinístico)", async () => {
+  const {docs, itens} = catalogoComN(51);
+  for (let i = 0; i < 2; i += 1) {
+    const db = fakeDb(docs);
+    const out = await run(db, itens);
+    assert.equal(out.length, 51);
+    assert.ok(out.every((it) => !("imagem" in it)));
+    assert.equal(db.getAllCalls, 0);
+    assert.deepEqual(db.reads, [mirrorPath()]);
+  }
+});
+
+test("URLs codificadas e invulgares", () => {
+  for (const ok of [
+    "https://x.com/a%20b.jpg",
+    "https://x.com/a%0d%0aSet-Cookie.jpg",
+    "https://x.com/a%22onerror%3D.jpg",
+    "https://x.com/a.jpg#frag",
+    "https://x.com:8443/a.jpg",
+    "HTTPS://X.COM/a.jpg",
+    "https://xn--exmple-cua.com/a.jpg",
+    `https://x.com/${"a".repeat(2000)}`,
+  ]) {
+    assert.equal(sanitizePublicOrderImageUrl(ok), ok, ok.slice(0, 40));
+  }
+  assert.equal(sanitizePublicOrderImageUrl("  https://x.com/a.jpg\n"), "https://x.com/a.jpg");
+  for (const bad of [
+    "https://x.com/a\tb.jpg",
+    "https://x.com/a\u0000.jpg",
+    "https:\\\\x.com\\a.jpg",
+    "https://x.com:443@evil.example/a.jpg",
+    "https://@x.com/a.jpg",
+    "https:x.com/a.jpg",
+    "https:/x.com/a.jpg",
+    "https:///x.com/a.jpg",
+    "https://?x=1",
+    "ftp://x.com/a.jpg",
+    "blob:https://x.com/uuid",
+    "file:///C:/a.jpg",
+    "https://",
+    "https://x.com/a`b.jpg",
+    "https://x.com/a'b.jpg",
+    "",
+    null,
+    {},
+    ["https://x.com/a.jpg"],
+  ]) {
+    assert.equal(sanitizePublicOrderImageUrl(bad), "", JSON.stringify(bad));
+  }
 });

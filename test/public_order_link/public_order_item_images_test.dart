@@ -110,6 +110,43 @@ void main() {
       expect(publicOrderItemImageUrl(' $_imgAnel '), _imgAnel);
     });
 
+    test('URLs codificadas e invulgares: mesma regra do servidor', () {
+      for (final ok in [
+        'https://x.com/a%20b.jpg',
+        'https://x.com/a%0d%0aSet-Cookie.jpg',
+        'https://x.com/a%22onerror%3D.jpg',
+        'https://x.com/a.jpg#frag',
+        'https://x.com:8443/a.jpg',
+        'HTTPS://X.COM/a.jpg',
+        'https://xn--exmple-cua.com/a.jpg',
+        'https://x.com/${'a' * 2000}',
+      ]) {
+        expect(publicOrderItemImageUrl(ok), ok, reason: ok);
+      }
+      for (final bad in [
+        'https://x.com/a\tb.jpg',
+        'https://x.com/a\u0000.jpg',
+        r'https:\\x.com\a.jpg',
+        'https://x.com:443@evil.example/a.jpg',
+        'https://@x.com/a.jpg',
+        'https:x.com/a.jpg',
+        'https:/x.com/a.jpg',
+        'https:///x.com/a.jpg',
+        'https://?x=1',
+        'ftp://x.com/a.jpg',
+        'blob:https://x.com/uuid',
+        'file:///C:/a.jpg',
+        'https://',
+        'https://x.com/a`b.jpg',
+        "https://x.com/a'b.jpg",
+        'https://x.com/${'a' * 2050}',
+        null,
+        <String>['https://x.com/a.jpg'],
+      ]) {
+        expect(publicOrderItemImageUrl(bad), isNull, reason: '$bad');
+      }
+    });
+
     test('fromPedidoPrivado não publica a imagem do carrinho; copia só do espelho', () {
       final pedido = {
         'status': 'pendente',

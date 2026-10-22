@@ -1,8 +1,11 @@
 import process from "node:process";
 import crypto from "node:crypto";
+import { pathToFileURL } from "node:url";
 
 import { applicationDefault, initializeApp } from "firebase-admin/app";
 import { FieldPath, getFirestore, Timestamp } from "firebase-admin/firestore";
+
+import { preservePublicOrderItemImages } from "./src/publicOrderItemImages.js";
 
 const MODE_CLIENTES_TOKEN = "clientes-sem-portal-token";
 const MODE_CLIENTES_PORTAL_PERFIL = "clientes-portal-perfil";
@@ -151,14 +154,17 @@ function deepEqual(a, b) {
   return JSON.stringify(canonicalize(a)) === JSON.stringify(canonicalize(b));
 }
 
-function buildPedidoStatusPublico(lojaId, pedidoId, data = {}) {
+export function buildPedidoStatusPublico(lojaId, pedidoId, data = {}, previousItensResumo = undefined) {
   const itens = Array.isArray(data.itens) ? data.itens : [];
-  const itensResumo = itens
-    .map((item) => ({
-      nome: normalizeOptionalString(item?.nome) || "",
-      quantidade: Number(item?.quantidade) || 1,
-    }))
-    .filter((item) => item.nome.length > 0);
+  const itensResumo = preservePublicOrderItemImages(
+    itens
+      .map((item) => ({
+        nome: normalizeOptionalString(item?.nome) || "",
+        quantidade: Number(item?.quantidade) || 1,
+      }))
+      .filter((item) => item.nome.length > 0),
+    previousItensResumo,
+  );
 
   const frete = data.frete && typeof data.frete === "object" ? data.frete : {};
   const payload = {
@@ -466,7 +472,7 @@ async function runClientesPortalPedidos({ db, lojaId, limit, startAfter, dryRun 
   return stats;
 }
 
-async function runPedidoStatusPublico({ db, lojaId, limit, startAfter, dryRun }) {
+export async function runPedidoStatusPublico({ db, lojaId, limit, startAfter, dryRun }) {
   const stats = createStats(MODE_PEDIDO_STATUS_PUBLICO, startAfter);
   let query = db
     .collection("lojas")
@@ -486,19 +492,20 @@ async function runPedidoStatusPublico({ db, lojaId, limit, startAfter, dryRun })
     stats.analisados += 1;
     stats.proximoCursor = doc.id;
     try {
-      const desired = buildPedidoStatusPublico(lojaId, doc.id, doc.data() || {});
-      if (!desired.pedidoId || !desired.lojaId) {
-        stats.invalidos += 1;
-        stats.skipped += 1;
-        continue;
-      }
-
       const publicRef = db
         .collection("lojas")
         .doc(lojaId)
         .collection("pedido_status_publico")
         .doc(doc.id);
       const currentSnap = await publicRef.get();
+      const current = currentSnap.exists ? currentSnap.data() || {} : {};
+
+      const desired = buildPedidoStatusPublico(lojaId, doc.id, doc.data() || {}, current.itensResumo);
+      if (!desired.pedidoId || !desired.lojaId) {
+        stats.invalidos += 1;
+        stats.skipped += 1;
+        continue;
+      }
 
       if (!currentSnap.exists) {
         stats.created += 1;
@@ -508,7 +515,6 @@ async function runPedidoStatusPublico({ db, lojaId, limit, startAfter, dryRun })
         continue;
       }
 
-      const current = currentSnap.data() || {};
       if (deepEqual(current, desired)) {
         stats.skipped += 1;
         continue;
@@ -608,7 +614,9 @@ async function main() {
   logSummary(stats);
 }
 
-main().catch((error) => {
-  console.error("[backfill] Falha fatal:", error);
-  process.exitCode = 1;
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    console.error("[backfill] Falha fatal:", error);
+    process.exitCode = 1;
+  });
+}

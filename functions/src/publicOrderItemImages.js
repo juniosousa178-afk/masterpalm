@@ -24,6 +24,9 @@ export function sanitizePublicOrderImageUrl(value) {
   if (typeof value !== "string") return "";
   const url = value.trim();
   if (!url || url.length > MAX_IMAGE_URL_LENGTH || UNSAFE_URL_CHARS.test(url)) return "";
+  if (!/^https:\/\//i.test(url)) return "";
+  const authority = url.slice("https://".length).split(/[/?#]/)[0];
+  if (!authority || authority.includes("@")) return "";
   let parsed;
   try {
     parsed = new URL(url);
@@ -99,6 +102,28 @@ function withImage(resumo, imagem) {
   return item;
 }
 
+/** Foto já gravada no espelho, só se o item na mesma posição tiver o mesmo nome. */
+function carriedImages(resumo, previousItensResumo) {
+  const previous = Array.isArray(previousItensResumo) ? previousItensResumo : [];
+  return resumo.map((r, i) => {
+    const prev = previous[i];
+    if (!prev || typeof prev !== "object") return "";
+    if ((prev.nome == null ? "" : String(prev.nome).trim()) !== r.nome) return "";
+    return sanitizePublicOrderImageUrl(prev[PUBLIC_ORDER_ITEM_IMAGE_FIELD]);
+  });
+}
+
+/**
+ * Para quem regrava o espelho fora do trigger (backfills): mantém a foto já gravada e
+ * nunca deriva uma nova nem lê produtos.
+ */
+export function preservePublicOrderItemImages(itensResumo, previousItensResumo) {
+  const resumo = Array.isArray(itensResumo) ? itensResumo : [];
+  if (resumo.length > MAX_ITEMS) return resumo.map((r) => withImage(r, ""));
+  const images = carriedImages(resumo, previousItensResumo);
+  return resumo.map((r, i) => withImage(r, images[i]));
+}
+
 export function isOrderWithinImageWindow(dataCriacao, nowMs) {
   const createdMs = typeof dataCriacao?.toMillis === "function" ? dataCriacao.toMillis() : NaN;
   if (!Number.isFinite(createdMs)) return false;
@@ -128,13 +153,7 @@ export async function resolvePublicOrderItemImages({
     && sources.every((s, i) => s.nome === resumo[i]?.nome);
   if (!aligned) return resumo.map((r) => withImage(r, ""));
 
-  const previous = Array.isArray(previousItensResumo) ? previousItensResumo : [];
-  const images = resumo.map((r, i) => {
-    const prev = previous[i];
-    if (!prev || typeof prev !== "object") return "";
-    if ((prev.nome == null ? "" : String(prev.nome).trim()) !== r.nome) return "";
-    return sanitizePublicOrderImageUrl(prev[PUBLIC_ORDER_ITEM_IMAGE_FIELD]);
-  });
+  const images = carriedImages(resumo, previousItensResumo);
 
   if (allowDerivation) {
     const pending = sources
