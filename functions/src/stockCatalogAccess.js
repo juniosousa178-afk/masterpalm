@@ -181,12 +181,32 @@ export async function authorizeNoControlPublish(tx, db, base, auth) {
 }
 
 /**
+ * Mercado Pago webhook identity: only an in-process reference to the frozen
+ * SERVER_PAYMENT_AUTH object, only plain `sale`, only on ACTIVE/NO_CONTROL stores.
+ * A client-supplied {uid: 'stock-catalog-payment'} is a different object and never matches.
+ */
+async function authorizeServerPaymentSale(tx, base, route, permission, kind) {
+  if (kind !== 'sale' || permission !== 'sale') {
+    throw stockError('permission-denied', 'Reserved server identity');
+  }
+  if (route !== 'ACTIVE' && route !== 'NO_CONTROL') {
+    throw stockError('failed-precondition', 'Stock protocol unavailable or migration incomplete');
+  }
+  const loja = await tx.get(base);
+  if (!loja.exists) throw stockError('permission-denied', 'Store not found');
+  return {uid: SERVER_PAYMENT_AUTH.uid, route, legacyCompat: route === 'NO_CONTROL'};
+}
+
+/**
  * Resolve route + authorize.
  * ACTIVE → grants; NO_CONTROL → kind-scoped membership; anything else → fail closed.
  */
 export async function authorizeStockCommand(tx, db, base, auth, permission, kind) {
   const control = await tx.get(base.collection('stock_catalog_control').doc('state'));
   const route = classifyStockControlState(control);
+  if (auth === SERVER_PAYMENT_AUTH) {
+    return authorizeServerPaymentSale(tx, base, route, permission, kind);
+  }
   if (route === 'ACTIVE') {
     const uid = await authorizeStockTransaction(tx, base, auth, permission);
     return {uid, route, legacyCompat: false};

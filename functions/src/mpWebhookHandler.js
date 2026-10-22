@@ -1,21 +1,20 @@
 /**
- * Handler do Webhook Mercado Pago – MasterPalm
+ * Handler do Webhook Mercado Pago (catálogo) – MasterPalm
+ *
+ * Sequência (pagamento aprovado):
+ *   API MP (token da loja) → correlação pedido/loja → venda canônica (stockCatalogCommand
+ *   `sale` + `atomicPdvSale`, identidade SERVER_PAYMENT_AUTH) → estoque → pedido pago +
+ *   marcador `_mp_webhook_processed/{paymentId}` (mesma transação) → efeitos pós-commit.
  *
  * Garantias:
- * - Idempotência por paymentId (reenvios não duplicam processamento)
- * - Token correto por lojaId (multi-tenant)
- * - Baixa de estoque apenas uma vez (transação atômica)
- * - Gravação de auditoria em payments/ e espelho estoque_vendas: falhas são logadas
- *   e não impedem o restante (transação já commitada; admin/WhatsApp seguem quando aplicável)
- *
- * Fluxo:
- * 1. Verifica se paymentId já foi processado (early return 200)
- * 2. Resolve lojaId e token (global ou por loja)
- * 3. Busca payment na API MP
- * 4. Transação: marca processado + atualiza pedido + baixa estoque
- * 5. Pós-pagamento promocional (campanha / número da sorte): mpWebhookPromo.js
+ * - Status vem apenas da API MP; corpo do webhook e URL de retorno não são autoridade.
+ * - No máximo 1 venda e 1 baixa por pagamento (operationId determinístico + marcador transacional).
+ * - Pedido já confirmado (venda manual, vendaId, intenção de venda do app, paidAt) → 0 venda/estoque/e-mail.
+ * - Efeitos pós-commit só com paymentApplied=true; cada efeito tem estado próprio no marcador
+ *   e só é marcado como enviado após sucesso (reentregas não duplicam).
  */
 
+import { randomUUID } from "node:crypto";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import nodemailer from "nodemailer";
 import {
@@ -26,11 +25,28 @@ import {
   ativarPremioRoletaPosPagamentoMp,
   ativarPremioRoletaPosPagamentoMpRecovery,
 } from "./mpWebhookPremioRoleta.js";
-import {
-  orderTotalToCents,
-  validateMpPaymentAgainstOrder,
-} from "./catalogMpOrderHelpers.js";
+import { orderTotalToCents } from "./catalogMpOrderHelpers.js";
 import { emitWebhookLog } from "./mpStructuredLogsMp.js";
+import { executeStockCommandInTransaction, runStockTransaction } from "./stockCatalogCommands.js";
+import { SERVER_PAYMENT_AUTH } from "./stockCatalogAccess.js";
+import {
+  MP_PAYMENT_SALE_PROTOCOL,
+  MP_CATALOG_AUTO_SALE_NOT_BEFORE_ISO,
+  MP_POST_EFFECTS_RETRY_WINDOW_MS,
+  normalizeMpPaymentId,
+  mpPaymentSaleOperationId,
+  prePedidoSaleIntentId,
+  paymentMetadataLojaId,
+  paymentApprovedAtMs,
+  validateCatalogPaymentCorrelation,
+  classifyOrderForAutoSale,
+  classifySaleIntent,
+  buildCanonicalSaleCommandFromOrder,
+  isDeterministicStockError,
+  stockErrorReason,
+  maskEmailsInText,
+  blockedReasonText,
+} from "./mpCatalogPaymentSale.js";
 
 /** Lazy: evita getFirestore() antes de initializeApp() no deploy/analyze */
 function getDb() {
@@ -41,6 +57,11 @@ const COLLECTION_LOJAS = process.env.COLLECTION_LOJAS || "lojas";
 const WEBHOOK_PROCESSED_COL = "_mp_webhook_processed";
 /** Forense suporte: falhas de validação (sem raw MP). Não bloqueia _mp_webhook_processed. */
 const WEBHOOK_VALIDATION_REJECTS_COL = "_mp_webhook_validation_rejects";
+const ORDER_COLLECTIONS = ["pedidos", "pre_pedidos", "pedidos_pendentes"];
+/** Escritas do webhook que entram na transação do comando de estoque: pedido, marcador, intenção. */
+const SALE_TX_RESERVED_WRITES = 3;
+const POST_EFFECTS_CLAIM_TTL_MS = 5 * 60 * 1000;
+const POST_EFFECTS_MAX_ATTEMPTS = 5;
 
 /**
  * Registro mínimo consultável para snapshot (sem PII, sem payload bruto).
@@ -156,642 +177,393 @@ export async function resolveLojaAndPayment(paymentId) {
   return { payment: null, lojaId: null };
 }
 
-/**
- * Busca lojaId pelo orderId (usa order_loja_index; fallback varre pedidos/pre_pedidos)
- */
-async function findLojaIdByOrderId(orderId) {
-  const { resolveLojaIdByOrderId } = await import("./orderLojaIndex.js");
-  return resolveLojaIdByOrderId(getDb(), orderId);
+async function fetchPaymentForStore(lojaId, paymentId) {
+  const token = await getLojaMpToken(lojaId);
+  if (!token || token.length < 10) return null;
+  return fetchPaymentFromMp(paymentId, token);
+}
+
+async function sendWhatsAppOrderConfirmationHttp({ lojaId, phone, message }) {
+  const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
+  if (!projectId) return { ok: false, error: "project_id_missing" };
+  const cfUrl = `https://southamerica-east1-${projectId}.cloudfunctions.net/sendWhatsAppOrderConfirmation`;
+  const r = await fetchWithTimeout(
+    cfUrl,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lojaId, phone, message }),
+    },
+    15000
+  );
+  return r.ok ? { ok: true } : { ok: false, error: `http_${r.status}` };
+}
+
+function defaultDeps(mailOpts, overrides) {
+  const smtpUser = String(mailOpts.smtpUser || "").trim();
+  const smtpPass = String(mailOpts.smtpPass || "").trim();
+  let transporter = null;
+  return {
+    db: overrides.db ?? getDb(),
+    findPayment: resolveLojaAndPayment,
+    fetchPaymentForStore,
+    smtpUser,
+    sendMail: smtpUser && smtpPass
+      ? async (msg) => {
+        transporter ??= nodemailer.createTransport({
+          service: "gmail",
+          auth: { user: smtpUser, pass: smtpPass },
+        });
+        await transporter.sendMail(msg);
+      }
+      : null,
+    sendWhatsApp: sendWhatsAppOrderConfirmationHttp,
+    promo: {
+      registrar: registrarPromocaoPosPagamentoMp,
+      registrarRecovery: registrarPromocaoPosPagamentoMpRecovery,
+      premio: ativarPremioRoletaPosPagamentoMp,
+      premioRecovery: ativarPremioRoletaPosPagamentoMpRecovery,
+    },
+    now: () => Date.now(),
+    autoSaleNotBeforeMs: Date.parse(MP_CATALOG_AUTO_SALE_NOT_BEFORE_ISO),
+  };
+}
+
+function lojaRef(db, lojaId) {
+  return db.collection(COLLECTION_LOJAS).doc(String(lojaId));
+}
+
+async function findOrder(db, lojaId, orderId) {
+  for (const collection of ORDER_COLLECTIONS) {
+    const ref = lojaRef(db, lojaId).collection(collection).doc(String(orderId));
+    const snap = await ref.get();
+    if (snap.exists) return { ref, collection, order: snap.data() || {} };
+  }
+  return null;
+}
+
+async function rejectAndLog(db, { paymentId, lojaId, orderId, reason, payment, expectedCents }) {
+  emitWebhookLog({
+    event: "mpWebhook_validation_failed",
+    severity: "warn",
+    reason,
+    paymentId: String(paymentId),
+    ...(orderId != null ? { orderId: String(orderId) } : {}),
+    ...(lojaId != null ? { lojaId: String(lojaId) } : {}),
+  });
+  if (!lojaId || !orderId) return;
+  try {
+    await persistWebhookValidationReject(db, {
+      paymentId,
+      lojaId,
+      orderId,
+      externalReference: payment?.external_reference ?? orderId,
+      validationReason: reason,
+      paymentStatus: payment?.status,
+      paymentMethod: payment?.payment_method_id,
+      amountExpectedCents: expectedCents ?? null,
+      amountReceivedCents: orderTotalToCents(payment?.transaction_amount),
+      currencyId: payment?.currency_id ?? null,
+    });
+  } catch (e) {
+    console.warn("[mpWebhook] persist validation reject:", e && e.message);
+  }
 }
 
 /**
- * Processa o webhook de pagamento MP.
- * Retorna true se processou (ou já estava processado), false se ignorado.
- *
- * Idempotência: transação atômica garante que paymentId é processado apenas uma vez.
- * Token: resolve estritamente por loja (OAuth/legado da própria loja).
+ * Loja dona do pagamento: o token que encontrou o pagamento e `metadata.loja_id` devem coincidir.
+ * Se divergirem, só aceita a loja do metadata quando o token dela também enxerga o pagamento.
  */
-/**
- * @param {string} paymentId
- * @param {{ smtpUser?: string; smtpPass?: string }} [mailOpts] — e-mail pós-aprovação (secrets no index mpWebhook)
- */
-export async function processMpWebhook(paymentId, mailOpts = {}) {
-  if (!paymentId) return false;
-
-  const smtpUser = (mailOpts.smtpUser || "").trim();
-  const smtpPass = (mailOpts.smtpPass || "").trim();
-
-  // 1) Resolver loja e buscar payment (token correto por loja)
-  const { payment, lojaId } = await resolveLojaAndPayment(paymentId);
-
-  if (!payment) {
-    emitWebhookLog({
-      event: "mpWebhook_validation_failed",
-      severity: "warn",
-      reason: "payment_not_found",
-      paymentId: String(paymentId),
-    });
-    return false;
+async function resolveStoreAndPayment(deps, paymentId) {
+  const found = await deps.findPayment(paymentId);
+  if (!found?.payment || !found.lojaId) return { ok: false, reason: "payment_not_found" };
+  let { payment, lojaId } = found;
+  if (String(payment.id ?? "") !== paymentId) return { ok: false, reason: "payment_id_mismatch", lojaId };
+  const metaLoja = paymentMetadataLojaId(payment);
+  if (!metaLoja) return { ok: false, reason: "metadata_loja_missing", lojaId, payment };
+  if (metaLoja !== String(lojaId)) {
+    const viaMeta = await deps.fetchPaymentForStore(metaLoja, paymentId);
+    if (!viaMeta || String(viaMeta.id ?? "") !== paymentId) {
+      return { ok: false, reason: "payment_store_mismatch", lojaId, payment };
+    }
+    payment = viaMeta;
+    lojaId = metaLoja;
   }
+  return { ok: true, payment, lojaId: String(lojaId) };
+}
 
-  const orderId = payment.external_reference;
-  const status = payment.status;
-  emitWebhookLog({
-    event: "mpWebhook_received",
-    severity: "info",
+function markerBase({ paymentId, lojaId, orderId, collection, payment }) {
+  return {
+    protocol: MP_PAYMENT_SALE_PROTOCOL,
     paymentId: String(paymentId),
-    paymentStatus: status != null ? String(status) : undefined,
-    paymentMethod: payment.payment_method_id != null ? String(payment.payment_method_id) : undefined,
-    externalReference: orderId != null ? String(orderId) : undefined,
-    lojaId: payment?.metadata?.lojaId != null ? String(payment.metadata.lojaId) : undefined,
-  });
-
-  let resolvedLojaId = lojaId || payment?.metadata?.lojaId || null;
-  if (!resolvedLojaId && orderId) {
-    resolvedLojaId = await findLojaIdByOrderId(orderId);
-  }
-
-  if (!orderId || !resolvedLojaId) {
-    emitWebhookLog({
-      event: "mpWebhook_validation_failed",
-      severity: "warn",
-      reason: "orderId_or_lojaId_missing",
-      paymentId: String(paymentId),
-      externalReference: orderId != null ? String(orderId) : undefined,
-      lojaId: resolvedLojaId != null ? String(resolvedLojaId) : undefined,
-    });
-    return false;
-  }
-
-  const db = getDb();
-  const orderRef = db
-    .collection(COLLECTION_LOJAS)
-    .doc(resolvedLojaId)
-    .collection("pedidos")
-    .doc(orderId);
-  const prePedidoRef = db
-    .collection(COLLECTION_LOJAS)
-    .doc(resolvedLojaId)
-    .collection("pre_pedidos")
-    .doc(orderId);
-  const pedidoPendenteRef = db
-    .collection(COLLECTION_LOJAS)
-    .doc(resolvedLojaId)
-    .collection("pedidos_pendentes")
-    .doc(orderId);
-
-  const webhookProcessedRef = db.collection(WEBHOOK_PROCESSED_COL).doc(String(paymentId));
-
-  // 2) Early check: se já processamos, retornar imediatamente (evita transação desnecessária)
-  const existingProcessed = await webhookProcessedRef.get();
-  if (existingProcessed.exists) {
-    emitWebhookLog({
-      event: "mpWebhook_duplicate_ignored",
-      severity: "info",
-      paymentId: String(paymentId),
-      orderId: String(orderId),
-      lojaId: String(resolvedLojaId),
-      paymentStatus: status != null ? String(status) : undefined,
-      externalReference: String(orderId),
-    });
-    try {
-      await webhookProcessedRef.set(
-        {
-          lastDuplicateWebhookAt: nowTs,
-          lastDuplicateWebhookOutcome: "noop_redelivery_after_processed",
-          updatedAt: nowTs,
-        },
-        { merge: true },
-      );
-    } catch (e) {
-      console.warn("[mpWebhook] merge duplicate delivery meta:", e && e.message);
-    }
-    // Recuperação: estoque já foi processado numa entrega anterior; campanha pode ter falhado depois.
-    if (status === "approved") {
-      const pdata = existingProcessed.data() || {};
-      if (pdata.orderId && pdata.lojaId) {
-        try {
-          await registrarPromocaoPosPagamentoMpRecovery(getDb(), {
-            lojaId: pdata.lojaId,
-            orderId: pdata.orderId,
-            paymentId,
-          });
-        } catch (re) {
-          console.error("[PROMO-ERROR] recovery após processed", re && re.message);
-        }
-        try {
-          await ativarPremioRoletaPosPagamentoMpRecovery(getDb(), {
-            lojaId: pdata.lojaId,
-            orderId: pdata.orderId,
-            paymentId,
-          });
-        } catch (re) {
-          console.error("[PREMIO-ERROR] recovery após processed", re && re.message);
-        }
-      } else {
-        console.log("[PROMO-SKIP] recovery: _mp_webhook_processed sem orderId/lojaId");
-      }
-    }
-    return true;
-  }
-
-  // 3) Registrar status no payments (auditoria) — não bloquear fluxo principal se falhar (regras/tamanho).
-  try {
-    await getDb()
-      .collection(COLLECTION_LOJAS)
-      .doc(resolvedLojaId)
-      .collection("payments")
-      .doc(String(paymentId))
-      .set(
-        {
-          kind: "payment",
-          orderId,
-          lojaId: resolvedLojaId,
-          status,
-          amount: payment.transaction_amount,
-          raw: payment,
-          updatedAt: nowTs,
-        },
-        { merge: true }
-      );
-  } catch (auditErr) {
-    emitWebhookLog({
-      event: "mpWebhook_payments_audit_write_failed",
-      severity: "warn",
-      paymentId: String(paymentId),
-      orderId: String(orderId),
-      lojaId: String(resolvedLojaId),
-      err: String(auditErr?.message || auditErr),
-    });
-  }
-
-  // 4) Se aprovado: transação atômica (marca processado + pedido + estoque)
-  if (status !== "approved") {
-    return true;
-  }
-
-  let orderSnap = await orderRef.get();
-  let isPrePedido = false;
-  let isPedidoPendente = false;
-  if (!orderSnap.exists) {
-    orderSnap = await prePedidoRef.get();
-    isPrePedido = orderSnap.exists;
-  }
-  if (!orderSnap.exists) {
-    orderSnap = await pedidoPendenteRef.get();
-    isPedidoPendente = orderSnap.exists;
-  }
-  if (!orderSnap.exists) {
-    emitWebhookLog({
-      event: "mpWebhook_validation_failed",
-      severity: "warn",
-      reason: "order_document_not_found",
-      paymentId: String(paymentId),
-      orderId: String(orderId),
-      lojaId: String(resolvedLojaId),
-      externalReference: String(orderId),
-    });
-    try {
-      await persistWebhookValidationReject(getDb(), {
-        paymentId,
-        lojaId: resolvedLojaId,
-        orderId,
-        externalReference: orderId,
-        validationReason: "order_document_not_found",
-        paymentStatus: status,
-        paymentMethod: payment.payment_method_id,
-        amountExpectedCents: null,
-        amountReceivedCents: orderTotalToCents(payment.transaction_amount),
-      });
-    } catch (e) {
-      console.warn("[mpWebhook] persist validation reject (order missing):", e && e.message);
-    }
-    return false;
-  }
-
-  const orderRefToUse = orderSnap.ref;
-  const order = orderSnap.data() || {};
-
-  const expectedCents = orderTotalToCents(order.total);
-  const pv = validateMpPaymentAgainstOrder({
-    payment,
-    expectedCents,
-    resolvedLojaId,
+    lojaId: String(lojaId),
     orderId: String(orderId),
-  });
-  if (!pv.ok) {
-    emitWebhookLog({
-      event: "mpWebhook_payment_validation_failed",
-      severity: "error",
-      reason: pv.code,
-      paymentId: String(paymentId),
-      orderId: String(orderId),
-      lojaId: String(resolvedLojaId),
-      externalReference: String(orderId),
-      amountExpectedCents: expectedCents,
-      amountReceivedCents:
-        pv.paidCents != null ? Number(pv.paidCents) : orderTotalToCents(payment.transaction_amount) ?? undefined,
-    });
-    try {
-      const recv =
-        pv.paidCents != null ? Number(pv.paidCents) : orderTotalToCents(payment.transaction_amount);
-      await persistWebhookValidationReject(getDb(), {
-        paymentId,
-        lojaId: resolvedLojaId,
-        orderId,
-        externalReference: orderId,
-        validationReason: String(pv.code),
-        paymentStatus: status,
-        paymentMethod: payment.payment_method_id,
-        amountExpectedCents: expectedCents,
-        amountReceivedCents: recv != null ? recv : null,
-        currencyId:
-          pv.currency != null ? pv.currency : payment.currency_id != null ? payment.currency_id : null,
-      });
-    } catch (e) {
-      console.warn("[mpWebhook] persist validation reject:", e && e.message);
-    }
-    return false;
-  }
-
-  emitWebhookLog({
-    event: "mpWebhook_payment_approved",
-    severity: "info",
-    paymentId: String(paymentId),
-    orderId: String(orderId),
-    lojaId: String(resolvedLojaId),
-    externalReference: String(orderId),
+    orderCollection: collection,
     paymentStatus: "approved",
-    amountExpectedCents: expectedCents,
-    amountReceivedCents: expectedCents,
-  });
+    paymentMethod: payment?.payment_method_id != null ? String(payment.payment_method_id) : null,
+    paymentApprovedAt: payment?.date_approved != null ? String(payment.date_approved) : null,
+    processedAt: nowTs,
+    updatedAt: nowTs,
+  };
+}
 
-  const alreadyPaid = !!order.paidAt;
-
-  if (alreadyPaid) {
-    await webhookProcessedRef.set(
-      {
-        paymentId: String(paymentId),
-        processedAt: nowTs,
-        orderId,
-        lojaId: resolvedLojaId,
-        status: "already_paid",
-        effectiveOutcome: "noop_order_already_paid",
-        updatedAt: nowTs,
-      },
-      { merge: true },
-    );
-    if (status === "approved") {
-      try {
-        await registrarPromocaoPosPagamentoMpRecovery(getDb(), {
-          lojaId: resolvedLojaId,
-          orderId,
-          paymentId,
-        });
-      } catch (e) {
-        console.error("[PROMO-ERROR] already_paid recovery", e && e.message);
-      }
-      try {
-        await ativarPremioRoletaPosPagamentoMpRecovery(getDb(), {
-          lojaId: resolvedLojaId,
-          orderId,
-          paymentId,
-        });
-      } catch (e) {
-        console.error("[PREMIO-ERROR] already_paid recovery", e && e.message);
-      }
-    }
-    return true;
+class SaleNotApplicable extends Error {
+  constructor(reason) {
+    super(reason);
+    this.reason = reason;
   }
+}
 
-  const items = order.items || order.itens || [];
+/**
+ * Transação principal: leituras (marcador, pedido, intenção) → comando canônico (leituras+escritas)
+ * → pedido pago + intenção + marcador. Erros determinísticos do comando abortam sem escrita.
+ */
+async function applyApprovedPaymentTransaction(deps, ctx) {
+  const { db } = deps;
+  const { paymentId, lojaId, orderId, orderRef, collection, payment, paidCents, markerRef } = ctx;
+  const intentRef = collection === "pre_pedidos"
+    ? lojaRef(db, lojaId).collection("sale_intents").doc(prePedidoSaleIntentId(orderId))
+    : null;
+  const operationId = mpPaymentSaleOperationId(paymentId);
 
-  emitWebhookLog({
-    event: "mpWebhook_stock_update_started",
-    severity: "info",
-    paymentId: String(paymentId),
-    orderId: String(orderId),
-    lojaId: String(resolvedLojaId),
-    externalReference: String(orderId),
-  });
+  return runStockTransaction(db, async (tx) => {
+    const marker = await tx.get(markerRef);
+    if (marker.exists) return { outcome: "duplicate", paymentApplied: false, marker: marker.data() };
+    const orderSnap = await tx.get(orderRef);
+    const intentSnap = intentRef ? await tx.get(intentRef) : null;
+    const base = markerBase({ paymentId, lojaId, orderId, collection, payment });
 
-  // Transação atômica: garante que apenas uma execução processa (evita duplicar baixa de estoque)
-  try {
-    await getDb().runTransaction(async (tx) => {
-    const procDoc = await tx.get(webhookProcessedRef);
-    if (procDoc.exists) {
-      return; // Já processado por outra requisição
+    const order = orderSnap.exists ? orderSnap.data() || {} : null;
+    const state = classifyOrderForAutoSale(order, paymentId);
+    if (state.state === "missing") throw new SaleNotApplicable(state.reason);
+    if (state.state === "already_business_confirmed") {
+      tx.set(markerRef, { ...base, status: "already_business_confirmed", reason: state.reason });
+      return { outcome: "already_business_confirmed", reason: state.reason, paymentApplied: false };
     }
-
-    const ordDoc = await tx.get(orderRefToUse);
-    const ord = ordDoc.exists ? ordDoc.data() : {};
-    if (ord.paidAt) {
-      tx.set(
-        webhookProcessedRef,
-        {
-          paymentId: String(paymentId),
-          processedAt: nowTs,
-          orderId,
-          lojaId: resolvedLojaId,
-          status: "already_paid",
-          effectiveOutcome: "noop_concurrent_order_already_paid",
-          updatedAt: nowTs,
-        },
-        { merge: true },
-      );
-      return;
+    const intent = classifySaleIntent(intentSnap?.exists ? intentSnap.data() : null);
+    if (intent.blocking) {
+      tx.set(markerRef, { ...base, status: "already_business_confirmed", reason: intent.reason });
+      return { outcome: "already_business_confirmed", reason: intent.reason, paymentApplied: false };
     }
+    if (state.state === "blocked") throw new SaleNotApplicable(state.reason);
 
-    tx.set(webhookProcessedRef, {
-      paymentId: String(paymentId),
-      orderId,
-      lojaId: resolvedLojaId,
-      processedAt: nowTs,
-      status: "done",
-      effectiveOutcome: "applied_order_paid_new_effect",
-      updatedAt: nowTs,
-    }, { merge: true });
+    const built = buildCanonicalSaleCommandFromOrder({ lojaId, orderId, paymentId, payment, order, paidCents });
+    if (!built.ok) throw new SaleNotApplicable(built.reason);
 
-    const updatePayload = {
+    const result = await executeStockCommandInTransaction(
+      tx, db, built.command, SERVER_PAYMENT_AUTH, SALE_TX_RESERVED_WRITES,
+    );
+
+    const orderPatch = {
       status: "paid",
       paidAt: nowTs,
+      paymentId: String(paymentId),
+      paymentMethod: payment.payment_method_id != null ? String(payment.payment_method_id) : null,
+      mpPaymentStatus: "approved",
+      vendaId: operationId,
+      saleId: operationId,
+      saleOperationId: operationId,
       updatedAt: nowTs,
-      paymentId: String(paymentId),
-      paymentMethod: payment.payment_method_id,
+      dataAtualizacao: nowTs,
     };
-    if (isPrePedido || isPedidoPendente) {
-      updatePayload.statusPagamento = "aprovado";
-    }
-    tx.set(orderRefToUse, updatePayload, { merge: true });
-
-    for (const it of items) {
-      const pId = it.productId || it.produtosId || it.id || it.slug;
-      if (!pId) continue;
-      const qty = Number(it.qty ?? it.quantidade ?? 0);
-      if (qty <= 0) continue;
-
-      const tamanho = (it.tamanho ?? "").toString().trim();
-      const cor = (it.cor ?? "").toString().trim();
-      const temVariacao = tamanho || cor;
-
-      const produtosRef = db
-        .collection(COLLECTION_LOJAS)
-        .doc(resolvedLojaId)
-        .collection("produtos")
-        .doc(String(pId));
-      const estoqueRef = db
-        .collection(COLLECTION_LOJAS)
-        .doc(resolvedLojaId)
-        .collection("estoque_produtos")
-        .doc(String(pId));
-
-      let updateProdutos = {};
-      let updateEstoque = {};
-
-      // Priorizar estoque_produtos como fonte (alinhado com app/admin). Fallback para produtos.
-      const estoqueSnap = await tx.get(estoqueRef);
-      const prodSnap = await tx.get(produtosRef);
-      const data = (estoqueSnap.exists && estoqueSnap.data())
-        ? estoqueSnap.data()
-        : (prodSnap.exists && prodSnap.data())
-          ? prodSnap.data()
-          : {};
-
-      if (temVariacao) {
-        const variacoesRaw = data.variacoes;
-        const estoquePorTamanhoRaw = data.estoquePorTamanho;
-
-        const variacoes = variacoesRaw && typeof variacoesRaw === "object"
-          ? JSON.parse(JSON.stringify(variacoesRaw))
-          : null;
-        const estoquePorTamanho = estoquePorTamanhoRaw && typeof estoquePorTamanhoRaw === "object"
-          ? JSON.parse(JSON.stringify(estoquePorTamanhoRaw))
-          : null;
-
-        const usaVariacoes = variacoes && Object.keys(variacoes).length > 0 && tamanho && cor;
-        const temEstoquePorTamanho = estoquePorTamanho && Object.keys(estoquePorTamanho).length > 0 && tamanho;
-
-        if (usaVariacoes) {
-          const mapaTamanho = variacoes[tamanho];
-          if (mapaTamanho && typeof mapaTamanho === "object") {
-            const disponivel = (mapaTamanho[cor] ?? 0) | 0;
-            const novo = Math.max(0, disponivel - qty);
-            if (novo > 0) {
-              mapaTamanho[cor] = novo;
-            } else {
-              delete mapaTamanho[cor];
-            }
-            if (Object.keys(mapaTamanho).length === 0) delete variacoes[tamanho];
-            const qtdTotal = Object.values(variacoes).reduce((acc, m) => acc + Object.values(m).reduce((a, b) => a + (b | 0), 0), 0);
-            updateProdutos = { variacoes, quantidade: qtdTotal, estoque: qtdTotal, estoque_atual: qtdTotal, updatedAt: nowTs };
-            if (qtdTotal <= 0) updateProdutos.ativo = false;
-            updateEstoque = { variacoes, quantidade: qtdTotal, updatedAt: nowTs };
-          }
-        } else if (temEstoquePorTamanho) {
-          const disponivel = (estoquePorTamanho[tamanho] ?? 0) | 0;
-          const novo = Math.max(0, disponivel - qty);
-          if (novo > 0) {
-            estoquePorTamanho[tamanho] = novo;
-          } else {
-            delete estoquePorTamanho[tamanho];
-          }
-          const qtdTotal = Object.values(estoquePorTamanho).reduce((a, b) => a + (b | 0), 0);
-          updateProdutos = { estoquePorTamanho, quantidade: qtdTotal, estoque: qtdTotal, estoque_atual: qtdTotal, updatedAt: nowTs };
-          if (qtdTotal <= 0) updateProdutos.ativo = false;
-          updateEstoque = { estoquePorTamanho, quantidade: qtdTotal, updatedAt: nowTs };
-        }
-      }
-
-      if (Object.keys(updateProdutos).length === 0) {
-        const currentQty = (data.quantidade ?? data.estoque ?? 0) | 0;
-        const novoEstoque = Math.max(0, currentQty - qty);
-        updateProdutos = { estoque: novoEstoque, quantidade: novoEstoque, estoque_atual: novoEstoque, updatedAt: nowTs };
-        if (novoEstoque <= 0) updateProdutos.ativo = false;
-        updateEstoque = { quantidade: novoEstoque, updatedAt: nowTs };
-      }
-
-      tx.set(produtosRef, updateProdutos, { merge: true });
-      tx.set(estoqueRef, updateEstoque, { merge: true });
-    }
-    });
-  } catch (txErr) {
-    emitWebhookLog({
-      event: "mpWebhook_stock_update_error",
-      severity: "error",
-      paymentId: String(paymentId),
-      orderId: String(orderId),
-      lojaId: String(resolvedLojaId),
-      externalReference: String(orderId),
-      err: String(txErr?.message || txErr),
-    });
-    throw txErr;
-  }
-
-  emitWebhookLog({
-    event: "mpWebhook_stock_update_success",
-    severity: "info",
-    paymentId: String(paymentId),
-    orderId: String(orderId),
-    lojaId: String(resolvedLojaId),
-    externalReference: String(orderId),
-  });
-  emitWebhookLog({
-    event: "mpWebhook_order_marked_paid",
-    severity: "info",
-    paymentId: String(paymentId),
-    orderId: String(orderId),
-    lojaId: String(resolvedLojaId),
-    externalReference: String(orderId),
-    amountExpectedCents: expectedCents,
-  });
-
-  // Campanha + número da sorte (fonte oficial MP catálogo). Idempotente por paymentId (_mp_webhook_promo_processed).
-  try {
-    await registrarPromocaoPosPagamentoMp(getDb(), {
-      lojaId: resolvedLojaId,
-      orderId,
-      paymentId,
-      orderData: order,
-      orderRef: orderRefToUse,
-    });
-  } catch (promoErr) {
-    console.error("[PROMO-ERROR] pós-transação principal", promoErr && promoErr.message);
-  }
-
-  try {
-    await ativarPremioRoletaPosPagamentoMp(getDb(), {
-      lojaId: resolvedLojaId,
-      orderId,
-      paymentId,
-      orderData: order,
-      orderRef: orderRefToUse,
-    });
-  } catch (premioErr) {
-    console.error("[PREMIO-ERROR] pós-transação principal", premioErr && premioErr.message);
-  }
-
-  // Catálogo: pre_pedidos + pedidos_pendentes → mesma venda idempotente em estoque_vendas
-  const mirrorEstoqueVendas = isPrePedido || isPedidoPendente;
-  if (mirrorEstoqueVendas) {
-    const cliente = order.cliente || {};
-    const clienteNome = cliente.nome || "Cliente";
-    const total = Number(order.total || 0);
-    const itensVenda = (order.itens || []).map((it) => ({
-      produtoNome: it.nome || "",
-      quantidade: Number(it.quantidade || 0),
-      tamanho: (it.tamanho || "").toString(),
-      cor: (it.cor || "").toString(),
-      precoUnitario: Number(it.precoUnitario || 0),
-      precoTotal: Number((it.precoUnitario || 0) * (it.quantidade || 0)),
-    }));
-    const vendaId = `mp_${orderId}_${paymentId}`;
-    const estoqueVendasRef = db
-      .collection(COLLECTION_LOJAS)
-      .doc(resolvedLojaId)
-      .collection("estoque_vendas")
-      .doc(vendaId);
-    try {
-      await estoqueVendasRef.set(
-        {
-          id: vendaId,
-          lojaId: resolvedLojaId,
-          data: nowTs,
-          total,
-          desconto: 0,
-          descontoValor: 0,
-          formasPagamento: "Mercado Pago",
-          frete: Number((order.frete || {}).valor || 0),
-          clienteNome,
-          produtosDescricao: itensVenda.map((i) => `${i.quantidade}x ${i.produtoNome}`).join(", "),
-          quantidade: itensVenda.reduce((s, i) => s + i.quantidade, 0),
-          preco: total - Number((order.frete || {}).valor || 0),
-          tamanho: "",
-          vendedor: "Catálogo Web",
-          observacao: order.observacao || "",
-          pagamentoDinheiro: 0,
-          pagamentoPix: 0,
-          pagamentoCartao: total,
-          taxas: 0,
-          custoProdutos: 0,
-          itens: itensVenda,
-          clienteId: (cliente.id || "").toString(),
-          createdAt: nowTs,
-          updatedAt: nowTs,
-          status: "concluida",
-          statusVenda: "concluida",
-          paymentId: String(paymentId),
-          orderId: String(orderId),
-          prePedidoId: String(orderId),
-          origemPrePedido: orderId,
-          origemVenda: "mp_webhook",
-        },
-        { merge: true }
-      );
-    } catch (mirrorErr) {
-      emitWebhookLog({
-        event: "mpWebhook_estoque_vendas_mirror_failed",
-        severity: "error",
-        paymentId: String(paymentId),
-        orderId: String(orderId),
-        lojaId: String(resolvedLojaId),
-        err: String(mirrorErr?.message || mirrorErr),
+    if (collection !== "pedidos") orderPatch.statusPagamento = "aprovado";
+    tx.update(orderRef, orderPatch);
+    if (intentRef) {
+      tx.set(intentRef, {
+        protocolVersion: 1,
+        saleIntentId: prePedidoSaleIntentId(orderId),
+        lojaId: String(lojaId),
+        origin: "mp_webhook",
+        operationId,
+        status: "completed",
+        stockEffectHash: `mp_payment:${paymentId}`,
+        createdAt: nowTs,
+        updatedAt: nowTs,
       });
     }
+    tx.set(markerRef, {
+      ...base,
+      status: "applied",
+      effectiveOutcome: result.alreadyApplied ? "applied_sale_replayed" : "applied_canonical_sale",
+      saleOperationId: operationId,
+      postEffectsAttempts: 0,
+    });
+    return {
+      outcome: "applied",
+      paymentApplied: result.alreadyApplied !== true,
+      saleOperationId: operationId,
+      order,
+    };
+  });
+}
 
-    // Notificar admin
+/** Venda automática impossível (determinístico): marcador `sale_blocked`, pedido fica para confirmação manual. */
+async function recordSaleBlockedTransaction(deps, ctx, reason) {
+  const { db } = deps;
+  const { paymentId, lojaId, orderId, orderRef, collection, payment, markerRef } = ctx;
+  const intentRef = collection === "pre_pedidos"
+    ? lojaRef(db, lojaId).collection("sale_intents").doc(prePedidoSaleIntentId(orderId))
+    : null;
+  return db.runTransaction(async (tx) => {
+    const marker = await tx.get(markerRef);
+    if (marker.exists) return { outcome: "duplicate", paymentApplied: false, marker: marker.data() };
+    const orderSnap = await tx.get(orderRef);
+    const intentSnap = intentRef ? await tx.get(intentRef) : null;
+    const base = markerBase({ paymentId, lojaId, orderId, collection, payment });
+    const order = orderSnap.exists ? orderSnap.data() || {} : null;
+    const state = classifyOrderForAutoSale(order, paymentId);
+    if (state.state === "missing") {
+      return { outcome: "order_missing", paymentApplied: false };
+    }
+    if (state.state === "already_business_confirmed") {
+      tx.set(markerRef, { ...base, status: "already_business_confirmed", reason: state.reason });
+      return { outcome: "already_business_confirmed", reason: state.reason, paymentApplied: false };
+    }
+    const intent = classifySaleIntent(intentSnap?.exists ? intentSnap.data() : null);
+    if (intent.blocking) {
+      tx.set(markerRef, { ...base, status: "already_business_confirmed", reason: intent.reason });
+      return { outcome: "already_business_confirmed", reason: intent.reason, paymentApplied: false };
+    }
+    tx.set(markerRef, { ...base, status: "sale_blocked", reason, postEffectsAttempts: 0 });
+    // Campos fora de paymentId/paidAt/statusPagamento: o app continua permitindo confirmação manual.
+    tx.update(orderRef, {
+      mpAutoSale: {
+        status: "blocked",
+        reason,
+        paymentId: String(paymentId),
+        at: nowTs,
+      },
+    });
+    return { outcome: "sale_blocked", reason, paymentApplied: false, order };
+  });
+}
+
+function postEffectKeys(status) {
+  return status === "applied"
+    ? ["adminNotification", "whatsapp", "customerPaidEmail", "merchantPaidEmail"]
+    : ["adminNotification", "merchantPaidEmail"];
+}
+
+function effectDone(marker, key) {
+  return marker[`${key}SentAt`] != null || marker[`${key}Skipped`] != null;
+}
+
+/** Reserva transacional do lote de efeitos pós-commit (um executor por vez, com TTL). */
+async function claimPostEffects(deps, markerRef) {
+  const claimId = randomUUID();
+  const now = deps.now();
+  return deps.db.runTransaction(async (tx) => {
+    const snap = await tx.get(markerRef);
+    if (!snap.exists) return null;
+    const m = snap.data() || {};
+    if (m.protocol !== MP_PAYMENT_SALE_PROTOCOL) return null;
+    if (m.status !== "applied" && m.status !== "sale_blocked") return null;
+    const pending = postEffectKeys(m.status).filter((k) => !effectDone(m, k));
+    if (!pending.length) return null;
+    const claimedAt = Number(m.postEffectsClaimedAtMs || 0);
+    if (claimedAt && now - claimedAt < POST_EFFECTS_CLAIM_TTL_MS) return null;
+    const attempts = Number(m.postEffectsAttempts || 0);
+    if (attempts >= POST_EFFECTS_MAX_ATTEMPTS) return null;
+    tx.set(markerRef, {
+      postEffectsClaimId: claimId,
+      postEffectsClaimedAtMs: now,
+      postEffectsAttempts: attempts + 1,
+      updatedAt: nowTs,
+    }, { merge: true });
+    return { claimId, marker: m, pending };
+  });
+}
+
+function brl(v) {
+  return Number(v || 0).toFixed(2).replace(".", ",");
+}
+
+/** Precedência: ownerEmail → adminEmail → owner.email. */
+export function resolveMerchantEmail(lojaData) {
+  const d = lojaData || {};
+  let email = String(d.ownerEmail || d.adminEmail || "").trim();
+  if (!email && d.owner && typeof d.owner === "object") email = String(d.owner.email || "").trim();
+  return email.includes("@") ? email.toLowerCase() : "";
+}
+
+async function runPostEffects(deps, ctx) {
+  const { db } = deps;
+  const { markerRef, paymentId } = ctx;
+  const claim = await claimPostEffects(deps, markerRef);
+  if (!claim) return { ran: false };
+  const m = claim.marker;
+  const lojaId = String(m.lojaId);
+  const orderId = String(m.orderId);
+  const blocked = m.status === "sale_blocked";
+
+  const lojaSnap = await lojaRef(db, lojaId).get();
+  const lojaData = lojaSnap.exists ? lojaSnap.data() || {} : {};
+  const lojaNome = String(lojaData.nome || "Loja").trim() || "Loja";
+  const orderSnap = await lojaRef(db, lojaId).collection(m.orderCollection || "pre_pedidos").doc(orderId).get();
+  const order = orderSnap.exists ? orderSnap.data() || {} : {};
+  const cliente = order.cliente && typeof order.cliente === "object" ? order.cliente : {};
+  const clienteNome = String(cliente.nome || "Cliente").trim() || "Cliente";
+  const clienteEmail = String(cliente.email || "").trim().toLowerCase();
+  const total = Number(order.total || 0);
+
+  const results = {};
+  const record = (key, outcome) => {
+    if (outcome.sent) {
+      results[`${key}SentAt`] = nowTs;
+      results[`${key}Error`] = null;
+    } else if (outcome.skipped) {
+      results[`${key}Skipped`] = outcome.skipped;
+    } else {
+      results[`${key}Error`] = maskEmailsInText(String(outcome.error || "error")).slice(0, 300);
+      results[`${key}LastAttemptAt`] = nowTs;
+    }
+  };
+
+  for (const key of claim.pending) {
     try {
-      const lojaDoc = await db.collection(COLLECTION_LOJAS).doc(resolvedLojaId).get();
-      const lojaData = lojaDoc.exists ? lojaDoc.data() || {} : {};
-      const adminUid = lojaData.ownerUid || lojaData.adminUid || "";
-      const adminEmail = lojaData.ownerEmail || lojaData.adminEmail || "";
-      if (adminUid) {
-        await db
-          .collection(COLLECTION_LOJAS)
-          .doc(resolvedLojaId)
-          .collection("notificacoes")
-          .add({
+      if (key === "adminNotification") {
+        const adminUid = String(lojaData.ownerUid || lojaData.adminUid || "");
+        if (!adminUid) { record(key, { skipped: "owner_uid_missing" }); continue; }
+        const ref = lojaRef(db, lojaId).collection("notificacoes").doc(`mp_paid_${paymentId}`);
+        const doc = blocked
+          ? {
             destinatarioUid: adminUid,
-            destinatarioEmail: adminEmail,
+            tipo: "pagamentoAprovadoAcaoNecessaria",
+            titulo: "⚠️ Pagamento aprovado — confirme o pedido",
+            mensagem: `Cliente: ${clienteNome}\nValor: R$ ${brl(total)}\n\nA venda não foi registrada automaticamente: ${blockedReasonText(m.reason)}.`,
+          }
+          : {
+            destinatarioUid: adminUid,
             tipo: "novaVenda",
             titulo: "🎉 NOVO PEDIDO PAGO! Parabéns!",
-            mensagem: `Cliente: ${clienteNome}\nValor: R$ ${total.toFixed(2).replace(".", ",")}\n\n✅ PAGAMENTO CONFIRMADO - Dinheiro na conta!`,
+            mensagem: `Cliente: ${clienteNome}\nValor: R$ ${brl(total)}\n\n✅ PAGAMENTO CONFIRMADO - Venda registrada e estoque atualizado.`,
+          };
+        try {
+          await ref.create({
+            ...doc,
             pedidoId: orderId,
-            storeId: resolvedLojaId,
+            storeId: lojaId,
             valor: total,
             criadaEm: nowTs,
             lida: false,
             dados: { clienteNome, origem: "catalogo_web", pagamentoConfirmado: true },
           });
-      }
-    } catch (notifErr) {
-      console.warn("[mpWebhook] Erro ao notificar admin:", notifErr.message);
-    }
-  }
+        } catch (e) {
+          if (!(e?.code === 6 || e?.code === "already-exists")) throw e;
+        }
+        record(key, { sent: true });
+      } else if (key === "whatsapp") {
+        const telefone = String(cliente.telefone || "").trim().replace(/\D/g, "");
+        if (telefone.length < 10) { record(key, { skipped: "customer_phone_missing" }); continue; }
+        const itens = order.items || order.itens || [];
+        const itensLinhas = itens
+          .map((it) => `➡ ${Number(it.qty ?? it.quantidade ?? 1)}x ${String(it.name || it.nome || "")}`)
+          .join("\n");
+        const formaPagamento = String(order.pagamento || "Mercado Pago");
+        const endereco = String(cliente.enderecoFormatado || cliente.endereco || "Não informado");
+        const message = `Olá ${clienteNome}, aqui é o atendente virtual da *${lojaNome.toUpperCase()}*.
 
-  // Enviar confirmação de pedido por WhatsApp (formato tipo DELIGELI)
-  try {
-    const cliente = order.cliente || {};
-    const telefone = (cliente.telefone || "").toString().trim().replace(/\D/g, "");
-    const nome = (cliente.nome || "Cliente").toString();
-    if (telefone.length >= 10) {
-      const lojaDoc = await getDb().collection(COLLECTION_LOJAS).doc(resolvedLojaId).get();
-      const lojaNome = lojaDoc.exists ? (lojaDoc.data().nome || resolvedLojaId) : resolvedLojaId;
-      const itens = order.items || order.itens || [];
-      const itensLinhas = itens
-        .map((it) => {
-          const qtd = Number(it.qty ?? it.quantidade ?? 1);
-          const nomeItem = (it.name || it.nome || "").toString();
-          return `➡ ${qtd}x ${nomeItem}`;
-        })
-        .join("\n");
-      const total = Number(order.total || 0);
-      const formaPagamento = (order.pagamento || "Mercado Pago").toString();
-      const endereco = (cliente.enderecoFormatado || cliente.endereco || "Não informado").toString();
-      const tempoEntrega = "45 - 60min";
-
-      const message = `Olá ${nome}, aqui é o atendente virtual da *${String(lojaNome).toUpperCase()}*.
-
-Vim te avisar que seu pedido foi realizado com sucesso e já está em preparo. 😊
+Vim te avisar que seu pagamento foi aprovado e o pedido foi confirmado. 😊
 Fique tranquilo(a) que vou enviar as atualizações do status do seu pedido por aqui.
 
 *Nº do pedido* ${orderId}
@@ -801,107 +573,281 @@ ${itensLinhas || "—"}
 
 *Forma de pagamento:* ${formaPagamento}
 
-*Tempo de entrega:* ${tempoEntrega}
-
 *Local de entrega:* ${endereco}
 
-*Total do pedido:* R$ ${total.toFixed(2).replace(".", ",")}
+*Total do pedido:* R$ ${brl(total)}
 
 Obrigado por comprar conosco! 💜`;
-
-      const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
-      if (projectId) {
-        const cfUrl = `https://southamerica-east1-${projectId}.cloudfunctions.net/sendWhatsAppOrderConfirmation`;
-        const r = await fetchWithTimeout(
-          cfUrl,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              lojaId: resolvedLojaId,
-              phone: cliente.telefone || telefone,
-              message,
-            }),
-          },
-          15000
-        );
-        if (r.ok) {
-          console.log("[mpWebhook] WhatsApp confirmação enviado para", telefone);
-        } else {
-          console.warn("[mpWebhook] WhatsApp confirmação falhou:", r.status, await r.text());
-        }
-      }
-    }
-  } catch (whatsappErr) {
-    console.warn("[mpWebhook] Erro ao enviar WhatsApp (não crítico):", whatsappErr.message);
-  }
-
-  // E-mail: pagamento aprovado — cliente + vendedor (SMTP igual onPrePedidoCreated)
-  if (smtpUser && smtpPass) {
-    try {
-      const cliente = order.cliente || {};
-      const clienteNome = (cliente.nome || "Cliente").toString().trim() || "Cliente";
-      const clienteEmail = (cliente.email || "").toString().trim().toLowerCase();
-      const total = Number(order.total || 0);
-      const valorStr = total.toFixed(2).replace(".", ",");
-
-      const lojaDoc = await getDb().collection(COLLECTION_LOJAS).doc(resolvedLojaId).get();
-      const lojaData = lojaDoc.exists ? lojaDoc.data() || {} : {};
-      const lojaNome = (lojaData.nome || "Loja").toString().trim() || "Loja";
-      let adminEmail = (lojaData.ownerEmail || lojaData.adminEmail || "").toString().trim();
-      if (!adminEmail && lojaData.owner && typeof lojaData.owner === "object") {
-        adminEmail = (lojaData.owner.email || "").toString().trim();
-      }
-
-      const transporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: { user: smtpUser, pass: smtpPass },
-      });
-
-      if (clienteEmail && clienteEmail.includes("@")) {
-        const corpoCliente =
-          `Olá, ${clienteNome}!\n\n` +
-          `Seu pagamento foi aprovado e o pedido foi confirmado.\n\n` +
-          `Pedido: ${orderId}\n` +
-          `Total: R$ ${valorStr}\n\n` +
-          `Em breve a loja pode entrar em contato com atualizações do envio.\n\n` +
-          `Obrigado por comprar conosco!`;
-        await transporter.sendMail({
-          from: `"${lojaNome}" <${smtpUser}>`,
+        const r = await deps.sendWhatsApp({ lojaId, phone: cliente.telefone || telefone, message });
+        record(key, r?.ok ? { sent: true } : { error: r?.error || "whatsapp_failed" });
+      } else if (key === "customerPaidEmail") {
+        if (!deps.sendMail) { record(key, { error: "smtp_not_configured" }); continue; }
+        if (!clienteEmail.includes("@")) { record(key, { skipped: "customer_email_missing" }); continue; }
+        await deps.sendMail({
+          from: `"${lojaNome}" <${deps.smtpUser}>`,
           to: clienteEmail,
           subject: `Pagamento confirmado — pedido ${orderId}`,
-          text: corpoCliente,
+          text:
+            `Olá, ${clienteNome}!\n\n` +
+            `Seu pagamento foi aprovado e o pedido foi confirmado.\n\n` +
+            `Pedido: ${orderId}\n` +
+            `Total: R$ ${brl(total)}\n\n` +
+            `Em breve a loja pode entrar em contato com atualizações do envio.\n\n` +
+            `Obrigado por comprar conosco!`,
         });
-        console.log("[mpWebhook] E-mail cliente (pagamento aprovado):", clienteEmail);
-      } else {
-        console.log("[mpWebhook] Cliente sem e-mail válido — e-mail de confirmação não enviado ao comprador");
-      }
-
-      if (adminEmail && adminEmail.includes("@")) {
-        const corpoAdmin =
-          `Pagamento aprovado no Mercado Pago.\n\n` +
-          `Pedido / referência: ${orderId}\n` +
-          `Cliente: ${clienteNome}\n` +
-          `E-mail do cliente: ${clienteEmail || "(não informado)"}\n` +
-          `Valor: R$ ${valorStr}\n` +
-          `ID pagamento MP: ${paymentId}\n\n` +
-          `Consulte os detalhes no painel da loja.`;
-        await transporter.sendMail({
-          from: `"MasterPalm" <${smtpUser}>`,
-          to: adminEmail.toLowerCase(),
-          subject: `Pedido pago — ${orderId} — ${lojaNome}`,
-          text: corpoAdmin,
+        record(key, { sent: true });
+      } else if (key === "merchantPaidEmail") {
+        if (!deps.sendMail) { record(key, { error: "smtp_not_configured" }); continue; }
+        const merchantEmail = resolveMerchantEmail(lojaData);
+        if (!merchantEmail) { record(key, { skipped: "merchant_email_missing" }); continue; }
+        const linhas = [
+          blocked
+            ? "Pagamento aprovado no Mercado Pago — AÇÃO NECESSÁRIA."
+            : "Pagamento aprovado no Mercado Pago.",
+          "",
+          `Pedido / referência: ${orderId}`,
+          `Cliente: ${clienteNome}`,
+          `E-mail do cliente: ${clienteEmail || "(não informado)"}`,
+          `Valor: R$ ${brl(total)}`,
+          `ID pagamento MP: ${paymentId}`,
+          "",
+          blocked
+            ? `A venda NÃO foi registrada automaticamente e o estoque NÃO foi baixado: ${blockedReasonText(m.reason)}.\nConfirme o pedido manualmente no painel da loja.`
+            : "A venda foi registrada automaticamente e o estoque foi atualizado.\nConsulte os detalhes no painel da loja.",
+        ];
+        await deps.sendMail({
+          from: `"MasterPalm" <${deps.smtpUser}>`,
+          to: merchantEmail,
+          subject: blocked
+            ? `Pagamento aprovado — confirme o pedido ${orderId} — ${lojaNome}`
+            : `Pedido pago — ${orderId} — ${lojaNome}`,
+          text: linhas.join("\n"),
         });
-        console.log("[mpWebhook] E-mail vendedor (pagamento aprovado):", adminEmail);
-      } else {
-        console.log("[mpWebhook] Loja sem e-mail do dono — e-mail ao vendedor não enviado");
+        record(key, { sent: true });
       }
-    } catch (mailErr) {
-      console.warn("[mpWebhook] E-mail pós-aprovacao (não crítico):", mailErr && mailErr.message);
+    } catch (e) {
+      record(key, { error: `${e?.code ? `${e.code}: ` : ""}${e?.message || e}` });
     }
-  } else {
-    console.log("[mpWebhook] SMTP não configurado — e-mails de pagamento aprovado não enviados");
   }
 
+  await markerRef.set({ ...results, postEffectsClaimedAtMs: null, updatedAt: nowTs }, { merge: true });
+  emitWebhookLog({
+    event: "mpWebhook_post_effects_done",
+    severity: Object.keys(results).some((k) => k.endsWith("Error") && results[k]) ? "warn" : "info",
+    paymentId: String(paymentId),
+    lojaId,
+    orderId,
+    outcome: m.status,
+    effects: Object.fromEntries(claim.pending.map((k) => [
+      k,
+      results[`${k}SentAt`] ? "sent" : results[`${k}Skipped`] ? `skipped:${results[`${k}Skipped`]}` : "failed",
+    ])),
+  });
+  return { ran: true, results };
+}
+
+async function runPromo(deps, kind, args) {
+  const db = deps.db;
+  const fns = kind === "recovery"
+    ? [deps.promo.registrarRecovery, deps.promo.premioRecovery]
+    : [deps.promo.registrar, deps.promo.premio];
+  for (const fn of fns) {
+    if (!fn) continue;
+    try {
+      await fn(db, args);
+    } catch (e) {
+      console.error("[PROMO-ERROR] pós-venda MP", e && e.message);
+    }
+  }
+}
+
+function withinRetryWindow(deps, payment) {
+  const approvedMs = paymentApprovedAtMs(payment);
+  return approvedMs != null && deps.now() - approvedMs <= MP_POST_EFFECTS_RETRY_WINDOW_MS;
+}
+
+/** Reentrega após marcador: só retoma efeitos pendentes do protocolo atual, dentro da janela. */
+async function handleRedelivery(deps, ctx, markerData) {
+  const { markerRef, paymentId, payment } = ctx;
+  emitWebhookLog({
+    event: "mpWebhook_duplicate_ignored",
+    severity: "info",
+    paymentId: String(paymentId),
+    lojaId: markerData?.lojaId != null ? String(markerData.lojaId) : undefined,
+    orderId: markerData?.orderId != null ? String(markerData.orderId) : undefined,
+    markerStatus: markerData?.status != null ? String(markerData.status) : undefined,
+  });
+  try {
+    await markerRef.set(
+      { lastDuplicateWebhookAt: nowTs, lastDuplicateWebhookOutcome: "noop_redelivery_after_processed", updatedAt: nowTs },
+      { merge: true },
+    );
+  } catch (e) {
+    console.warn("[mpWebhook] merge duplicate delivery meta:", e && e.message);
+  }
+  if (markerData?.protocol !== MP_PAYMENT_SALE_PROTOCOL) return;
+  if (markerData.status !== "applied" && markerData.status !== "sale_blocked") return;
+  if (String(payment?.status ?? "") !== "approved") return;
+  if (!withinRetryWindow(deps, payment)) return;
+  if (markerData.status === "applied") {
+    const orderRef = lojaRef(deps.db, markerData.lojaId)
+      .collection(markerData.orderCollection || "pre_pedidos").doc(String(markerData.orderId));
+    await runPromo(deps, "recovery", { lojaId: markerData.lojaId, orderId: markerData.orderId, paymentId, orderRef });
+  }
+  await runPostEffects(deps, ctx);
+}
+
+/**
+ * Processa o webhook de pagamento MP (catálogo).
+ * Retorna true se processou (ou já estava processado / sem efeito por regra), false se rejeitado.
+ *
+ * @param {string} paymentIdRaw — data.id validado pelo HMAC da borda
+ * @param {{ smtpUser?: string; smtpPass?: string }} [mailOpts]
+ * @param {object} [overrides] — testes: db, findPayment, fetchPaymentForStore, sendMail, sendWhatsApp, promo, now
+ */
+export async function processMpWebhook(paymentIdRaw, mailOpts = {}, overrides = {}) {
+  const paymentId = normalizeMpPaymentId(paymentIdRaw);
+  if (!paymentId) return false;
+  const deps = { ...defaultDeps(mailOpts, overrides), ...overrides };
+  const { db } = deps;
+
+  const resolved = await resolveStoreAndPayment(deps, paymentId);
+  if (!resolved.ok) {
+    await rejectAndLog(db, {
+      paymentId,
+      lojaId: resolved.lojaId,
+      orderId: resolved.payment?.external_reference,
+      reason: resolved.reason,
+      payment: resolved.payment,
+    });
+    return false;
+  }
+  const { payment, lojaId } = resolved;
+  const status = payment.status != null ? String(payment.status) : "";
+  const orderId = String(payment.external_reference ?? "").trim();
+  emitWebhookLog({
+    event: "mpWebhook_received",
+    severity: "info",
+    paymentId,
+    paymentStatus: status || undefined,
+    paymentMethod: payment.payment_method_id != null ? String(payment.payment_method_id) : undefined,
+    externalReference: orderId || undefined,
+    lojaId,
+  });
+  if (!orderId || orderId.includes("/")) {
+    await rejectAndLog(db, { paymentId, lojaId, orderId: null, reason: "external_reference_missing", payment });
+    return false;
+  }
+
+  const markerRef = db.collection(WEBHOOK_PROCESSED_COL).doc(paymentId);
+  const ctxBase = { paymentId, lojaId, orderId, payment, markerRef };
+  const existing = await markerRef.get();
+  if (existing.exists) {
+    await handleRedelivery(deps, ctxBase, existing.data() || {});
+    return true;
+  }
+
+  try {
+    await lojaRef(db, lojaId).collection("payments").doc(paymentId).set(
+      {
+        kind: "payment",
+        orderId,
+        lojaId,
+        status,
+        amount: payment.transaction_amount,
+        raw: payment,
+        updatedAt: nowTs,
+      },
+      { merge: true },
+    );
+  } catch (auditErr) {
+    emitWebhookLog({
+      event: "mpWebhook_payments_audit_write_failed",
+      severity: "warn",
+      paymentId,
+      orderId,
+      lojaId,
+      err: String(auditErr?.message || auditErr),
+    });
+  }
+
+  if (status !== "approved") return true;
+
+  const approvedMs = paymentApprovedAtMs(payment);
+  if (approvedMs == null || approvedMs < deps.autoSaleNotBeforeMs) {
+    await rejectAndLog(db, { paymentId, lojaId, orderId, reason: "historical_payment_not_auto_applied", payment });
+    return true;
+  }
+
+  const found = await findOrder(db, lojaId, orderId);
+  if (!found) {
+    await rejectAndLog(db, { paymentId, lojaId, orderId, reason: "order_document_not_found", payment });
+    return false;
+  }
+  const corr = validateCatalogPaymentCorrelation({ payment, lojaId, orderId, order: found.order });
+  if (!corr.ok) {
+    await rejectAndLog(db, {
+      paymentId, lojaId, orderId, reason: corr.code, payment,
+      expectedCents: orderTotalToCents(found.order.total),
+    });
+    return false;
+  }
+
+  const ctx = {
+    ...ctxBase,
+    orderRef: found.ref,
+    collection: found.collection,
+    paidCents: corr.paidCents,
+  };
+  let txResult;
+  try {
+    txResult = await applyApprovedPaymentTransaction(deps, ctx);
+  } catch (e) {
+    if (e instanceof SaleNotApplicable && e.reason === "order_document_not_found") {
+      await rejectAndLog(db, { paymentId, lojaId, orderId, reason: e.reason, payment });
+      return false;
+    }
+    if (!(e instanceof SaleNotApplicable) && !isDeterministicStockError(e)) {
+      emitWebhookLog({
+        event: "mpWebhook_sale_transaction_error",
+        severity: "error",
+        paymentId,
+        orderId,
+        lojaId,
+        err: String(e?.message || e).slice(0, 300),
+      });
+      throw e;
+    }
+    const reason = e instanceof SaleNotApplicable ? e.reason : stockErrorReason(e);
+    txResult = await recordSaleBlockedTransaction(deps, ctx, reason);
+  }
+
+  emitWebhookLog({
+    event: "mpWebhook_payment_outcome",
+    severity: txResult.outcome === "sale_blocked" ? "warn" : "info",
+    paymentId,
+    orderId,
+    lojaId,
+    outcome: txResult.outcome,
+    paymentApplied: txResult.paymentApplied === true,
+    ...(txResult.reason ? { reason: txResult.reason } : {}),
+  });
+
+  if (txResult.outcome === "duplicate") {
+    await handleRedelivery(deps, ctxBase, txResult.marker || {});
+    return true;
+  }
+  if (txResult.outcome === "order_missing") {
+    await rejectAndLog(db, { paymentId, lojaId, orderId, reason: "order_document_not_found", payment });
+    return false;
+  }
+  if (txResult.outcome === "applied" && txResult.paymentApplied === true) {
+    await runPromo(deps, "first", {
+      lojaId, orderId, paymentId, orderData: txResult.order, orderRef: found.ref,
+    });
+    await runPostEffects(deps, ctx);
+  } else if (txResult.outcome === "sale_blocked") {
+    await runPostEffects(deps, ctx);
+  }
   return true;
 }
