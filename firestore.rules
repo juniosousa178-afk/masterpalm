@@ -9,13 +9,13 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Admin raiz por e-mail (programador com acesso total)
+    // Admin raiz por e-mail (programador com acesso total). Só contas existentes: um e-mail root
+    // sem conta Auth pode ser registado por qualquer pessoa.
     function isRootAdmin() {
       return request.auth != null
         && request.auth.token.email in [
           "masterpalm26@gmail.com",
-          "masterpalm@gmail.com",
-          "admin@masterpalm.com"
+          "masterpalm@gmail.com"
         ];
     }
 
@@ -25,44 +25,23 @@ service cloud.firestore {
         && emailDocId == request.auth.token.email;
     }
 
-    // Admin / Programador baseado na coleção "usuarios"
-    function isUserAdminTipo() {
-      return isSignedIn() && (
-        isRootAdmin() ||
-        (
-          exists(
-            /databases/$(database)/documents/usuarios/$(request.auth.token.email)
-          ) &&
-          get(
-            /databases/$(database)/documents/usuarios/$(request.auth.token.email)
-          ).data.tipo in ['admin', 'programador']
-        )
-      );
-    }
-
-    // ✅ NOVO: Admin / Programador baseado na coleção "users/{uid}"
-    function isUserAdminByUid() {
-      return isSignedIn() &&
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'programador'];
-    }
-
+    // Autoridade de plataforma (cross-tenant). users.role / usuarios.tipo são graváveis pelo
+    // próprio cliente e NÃO conferem autoridade; dentro de lojas/{lojaId} usar isStoreAdmin(lojaId).
     function isAdminOrSystem() {
-      return isRootAdmin() || isUserAdminTipo() || isUserAdminByUid();
+      return isRootAdmin();
     }
 
-    // Apenas programador ou root: telas de config geral (master, mestre). Admin NAO tem acesso.
+    // Apenas root: telas de config geral (master, mestre).
     function isProgramadorOrRoot() {
-      return isRootAdmin() ||
-        (
-          isSignedIn() &&
-          (
-            (exists(/databases/$(database)/documents/usuarios/$(request.auth.token.email))
-              && get(/databases/$(database)/documents/usuarios/$(request.auth.token.email)).data.tipo == 'programador')
-            || (exists(/databases/$(database)/documents/users/$(request.auth.uid))
-              && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'programador')
-          )
-        );
+      return isRootAdmin();
+    }
+
+    // Dono/admin desta loja (não inclui vendedor) ou plataforma.
+    function isStoreAdmin(lojaId) {
+      return isAdminOrSystem()
+        || isOwnerOfStore(lojaId)
+        || isLojaMemberElevated(lojaId)
+        || userResolvedStoreMatches(lojaId);
     }
 
     // ✅ NOVO: Verifica se é vendedor da loja
@@ -87,11 +66,7 @@ service cloud.firestore {
     }
 
     function belongsToStore(lojaId) {
-      return isAdminOrSystem()
-        || isOwnerOfStore(lojaId)
-        || isSellerOfStore(lojaId)
-        || userResolvedStoreMatches(lojaId)
-        || isLojaMemberElevated(lojaId);
+      return isStoreAdmin(lojaId) || isSellerOfStore(lojaId);
     }
 
     // R8.4 — enforcement monotônico de stockRevision em estoque_produtos
@@ -487,11 +462,6 @@ service cloud.firestore {
     }
 
     // -------- Planos / assinatura: cliente não escala para plano pago nem override manual --------
-    function userPlanManualTamperAttempt() {
-      return request.resource.data.diff(resource.data).affectedKeys()
-        .hasAny(['manualOverride', 'manual_grant', 'manualCourtesyGrant']);
-    }
-
     function stringPlanLower(s) {
       return s is string ? s.lower() : '';
     }
@@ -501,15 +471,6 @@ service cloud.firestore {
       return x == 'pro_monthly' || x == 'pro_yearly' || x == 'lifetime'
         || x == 'basic_monthly' || x == 'intermediate_monthly'
         || x == 'mensal' || x == 'anual';
-    }
-
-    function userSelfSafePlanUpdate() {
-      return !userPlanManualTamperAttempt()
-        && (
-          !('currentPlanId' in request.resource.data)
-          || !isPaidPlanIdUser(request.resource.data.currentPlanId)
-          || request.resource.data.currentPlanId == resource.data.get('currentPlanId', '')
-        );
     }
 
     // =========================
@@ -606,6 +567,24 @@ service cloud.firestore {
       return !travado
         || !request.resource.data.diff(resource.data).affectedKeys()
           .hasAny(['vendaId', 'saleId', 'saleOperationId', 'paymentId', 'paidAt']);
+    }
+
+    // Vincular venda a um pré-pedido exige a intenção de venda (reserveOrJoin) já gravada.
+    // Builds sem sale_intents (<= 1.0.79) confirmavam sem baixa de estoque e sem reler o pedido.
+    function isPrePedidoVinculoVendaComIntencao(lojaId, pedidoId) {
+      return !request.resource.data.diff(resource.data).affectedKeys()
+          .hasAny(['vendaId', 'saleId', 'saleOperationId'])
+        || exists(/databases/$(database)/documents/lojas/$(lojaId)/sale_intents/$('pre_pedido:' + pedidoId));
+    }
+
+    // Venda nova só com evidência de baixa canónica: stockOperationId (>= 1.0.103), operação de estoque
+    // do servidor com o mesmo id (>= 1.0.84) ou marcador de baixa do pós-pagamento (TX cliente).
+    // Builds sem nenhuma destas (<= 1.0.79) gravavam venda sem baixa (venda órfã).
+    function isCanonicalEstoqueVendaCreate(lojaId, vendaId) {
+      let op = request.resource.data.get('stockOperationId', null);
+      return (op is string && op.size() > 0 && op.size() <= 128)
+        || exists(/databases/$(database)/documents/lojas/$(lojaId)/stock_catalog_operations/$(vendaId))
+        || exists(/databases/$(database)/documents/lojas/$(lojaId)/estoque_baixa_pagamento/$(vendaId));
     }
 
     function isValidPedidoTempCreate() {
@@ -843,10 +822,123 @@ service cloud.firestore {
     // =========================
     // LEGADO: usuarios/{email}
     // =========================
+    // -------- users / usuarios: ponteiros de loja e campos de papel --------
+    // store_id/storeId alimentam userResolvedStoreMatches e a autorização nas Functions;
+    // lojaId/ownerOf/ownerStoreId resolvem a loja no app. Só lojas que o autor administra.
+    function isNonEmptyStr(v) {
+      return v is string && v.size() > 0;
+    }
+
+    function userDocLojaAdministrada(v) {
+      return isNonEmptyStr(v) && v.size() <= 128
+        && (isOwnerOfStore(v) || isLojaMemberElevated(v));
+    }
+
+    function userDocPtrNovoOk(k) {
+      let v = request.resource.data.get(k, null);
+      return v == null || v == ''
+        || (resource != null && resource.data.get(k, null) == v)
+        || userDocLojaAdministrada(v);
+    }
+
+    function userDocPtrsNovosOk() {
+      return userDocPtrNovoOk('store_id')
+        && userDocPtrNovoOk('storeId')
+        && userDocPtrNovoOk('lojaId')
+        && userDocPtrNovoOk('ownerOf')
+        && userDocPtrNovoOk('ownerStoreId');
+    }
+
+    function userDocPtrAdministradoOuVazio(d, k) {
+      let v = d.get(k, null);
+      return v == null || v == '' || userDocLojaAdministrada(v);
+    }
+
+    // Doc de outra pessoa (equipa da loja): tem loja, todas as lojas referidas são do autor e não é
+    // o perfil de um dono (ownerOf), que só o próprio ou a plataforma alteram.
+    function userDocDaEquipaDoAutor(d) {
+      return !isNonEmptyStr(d.get('ownerOf', null))
+        && (isNonEmptyStr(d.get('store_id', null))
+          || isNonEmptyStr(d.get('storeId', null))
+          || isNonEmptyStr(d.get('lojaId', null))
+          || isNonEmptyStr(d.get('ownerStoreId', null)))
+        && userDocPtrAdministradoOuVazio(d, 'store_id')
+        && userDocPtrAdministradoOuVazio(d, 'storeId')
+        && userDocPtrAdministradoOuVazio(d, 'lojaId')
+        && userDocPtrAdministradoOuVazio(d, 'ownerStoreId');
+    }
+
+    function userDocCamposPrivilegiados() {
+      return ['role', 'tipo', 'tipo_usuario', 'is_root', 'isRoot', 'unlimitedAccess',
+        'grantedBy', 'grantedAt', 'revokedBy', 'revokedAt'];
+    }
+
+    function userDocPapelNaoPlataforma(d) {
+      return d.get('role', '') != 'programador'
+        && d.get('tipo', '') != 'programador'
+        && d.get('tipo_usuario', '') != 'programador'
+        && d.get('is_root', false) != true
+        && d.get('isRoot', false) != true
+        && d.get('unlimitedAccess', false) != true;
+    }
+
+    function userDocChavesAlteradas() {
+      return resource == null
+        ? request.resource.data.keys()
+        : request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    // Papel já definido não é reescrito pelo cliente; nunca papel de plataforma.
+    function userDocPapelSeguro() {
+      return !userDocChavesAlteradas().hasAny(userDocCamposPrivilegiados())
+        || (
+          userDocPapelNaoPlataforma(request.resource.data)
+          && (resource == null
+            || ((resource.data.get('role', '') == '' || resource.data.get('role', '') == request.resource.data.get('role', ''))
+              && (resource.data.get('tipo', '') == '' || resource.data.get('tipo', '') == request.resource.data.get('tipo', ''))))
+        );
+    }
+
+    function userDocPlanoSeguro() {
+      let d = request.resource.data;
+      return (resource == null
+          ? (d.get('manualOverride', false) == false
+            && d.get('manual_grant', false) == false
+            && d.get('manualCourtesyGrant', false) == false)
+          : !userDocChavesAlteradas().hasAny(['manualOverride', 'manual_grant', 'manualCourtesyGrant']))
+        && (
+          !('currentPlanId' in request.resource.data)
+          || !isPaidPlanIdUser(request.resource.data.currentPlanId)
+          || (resource != null && request.resource.data.currentPlanId == resource.data.get('currentPlanId', ''))
+        );
+    }
+
+    function userDocEscritaPropriaOk() {
+      return userDocPtrsNovosOk() && userDocPapelSeguro() && userDocPlanoSeguro();
+    }
+
+    function userDocEscritaEquipaOk() {
+      return (resource == null || userDocDaEquipaDoAutor(resource.data))
+        && userDocDaEquipaDoAutor(request.resource.data)
+        && userDocPapelNaoPlataforma(request.resource.data)
+        && userDocPlanoSeguro();
+    }
+
     match /usuarios/{emailDocId} {
-      allow read: if isSignedIn();
-      allow create, update, delete:
-        if isSelfUserDoc(emailDocId) || isAdminOrSystem();
+      // Contém dados pessoais (e credenciais legadas): nunca leitura aberta entre lojas.
+      allow read:
+        if isAdminOrSystem()
+        || isSelfUserDoc(emailDocId)
+        || (isSignedIn() && resource.data.get('authUid', null) == request.auth.uid)
+        || (isSignedIn() && userDocDaEquipaDoAutor(resource.data));
+      allow create, update:
+        if isAdminOrSystem()
+        || (isSelfUserDoc(emailDocId) && userDocEscritaPropriaOk())
+        || (isSignedIn() && !isSelfUserDoc(emailDocId) && userDocEscritaEquipaOk());
+      allow delete:
+        if isAdminOrSystem()
+        || isSelfUserDoc(emailDocId)
+        || (isSignedIn() && userDocDaEquipaDoAutor(resource.data));
     }
 
     // =========================
@@ -855,26 +947,18 @@ service cloud.firestore {
     match /users/{userId} {
       allow read:
         if (isSignedIn() && request.auth.uid == userId)
-        || isAdminOrSystem();
+        || isAdminOrSystem()
+        || (isSignedIn() && userDocDaEquipaDoAutor(resource.data));
 
-      allow create:
+      allow create, update:
         if isAdminOrSystem()
-        || (
-          isSignedIn()
-          && request.auth.uid == userId
-          && (
-            !('currentPlanId' in request.resource.data)
-            || !isPaidPlanIdUser(request.resource.data.currentPlanId)
-          )
-        );
-
-      allow update:
-        if isAdminOrSystem()
-        || (isSignedIn() && request.auth.uid == userId && userSelfSafePlanUpdate());
+        || (isSignedIn() && request.auth.uid == userId && userDocEscritaPropriaOk())
+        || (isSignedIn() && request.auth.uid != userId && userDocEscritaEquipaOk());
 
       allow delete:
         if (isSignedIn() && request.auth.uid == userId)
-        || isAdminOrSystem();
+        || isAdminOrSystem()
+        || (isSignedIn() && userDocDaEquipaDoAutor(resource.data));
 
       match /subscriptions/{subId} {
         allow read:
@@ -916,6 +1000,15 @@ service cloud.firestore {
         );
     }
 
+    // ownerUid só muda pela plataforma ou no backfill de loja sem dono para o próprio utilizador.
+    function isLojaOwnerUidPreservado() {
+      let prev = resource.data.get('ownerUid', null);
+      let next = request.resource.data.get('ownerUid', null);
+      return next == prev
+        || isAdminOrSystem()
+        || ((prev == null || prev == '') && next == request.auth.uid);
+    }
+
     // Criação da primeira loja: usuário logado cria loja onde ele é owner (conta nova Google/cadastro)
     function canCreateFirstStore() {
       return isSignedIn()
@@ -933,7 +1026,8 @@ service cloud.firestore {
         && (!('published' in resource.data) || resource.data.published == true)
         || isSignedIn();
       allow create: if canCreateFirstStore() || isAdminOrSystem();
-      allow update, delete: if isAdminOrSystem();
+      allow update: if isStoreAdmin(lojaId) && isLojaOwnerUidPreservado();
+      allow delete: if isAdminOrSystem() || isOwnerOfStore(lojaId);
 
       // config/payments: segredos (MP token etc.) — não expor ao catálogo anônimo.
       // config/payments_public: espelho sem tokens (PagamentosService.syncPaymentsPublic).
@@ -942,34 +1036,34 @@ service cloud.firestore {
         allow read: if configId == 'fretes_secrets'
           ? false
           : configId == 'payments'
-          ? (isAdminOrSystem() || (isSignedIn() && canManageStoreConfig(lojaId)))
+          ? (isStoreAdmin(lojaId) || (isSignedIn() && canManageStoreConfig(lojaId)))
           : true;
         allow create: if configId == 'fretes_secrets'
           ? false
           : configId == 'payments_public'
-          ? ((isAdminOrSystem() || canManageStoreConfig(lojaId)) && paymentsPublicWithoutSecrets())
+          ? ((isStoreAdmin(lojaId) || canManageStoreConfig(lojaId)) && paymentsPublicWithoutSecrets())
           : configId == 'fretes'
-          ? ((isAdminOrSystem() || canManageStoreConfig(lojaId)) && fretesPublicClientWriteOk())
-          : (isAdminOrSystem() || canManageStoreConfig(lojaId));
+          ? ((isStoreAdmin(lojaId) || canManageStoreConfig(lojaId)) && fretesPublicClientWriteOk())
+          : (isStoreAdmin(lojaId) || canManageStoreConfig(lojaId));
         allow update: if configId == 'fretes_secrets'
           ? false
           : configId == 'payments_public'
-          ? ((isAdminOrSystem() || canManageStoreConfig(lojaId)) && paymentsPublicWithoutSecrets())
+          ? ((isStoreAdmin(lojaId) || canManageStoreConfig(lojaId)) && paymentsPublicWithoutSecrets())
           : configId == 'fretes'
-          ? ((isAdminOrSystem() || canManageStoreConfig(lojaId)) && fretesPublicClientWriteOk())
-          : (isAdminOrSystem() || canManageStoreConfig(lojaId));
+          ? ((isStoreAdmin(lojaId) || canManageStoreConfig(lojaId)) && fretesPublicClientWriteOk())
+          : (isStoreAdmin(lojaId) || canManageStoreConfig(lojaId));
         allow delete: if configId == 'fretes_secrets'
           ? false
-          : (isAdminOrSystem() || canManageStoreConfig(lojaId));
+          : (isStoreAdmin(lojaId) || canManageStoreConfig(lojaId));
       }
 
       match /settings/{settingsId} {
-        allow read: if isAdminOrSystem();
-        allow write: if isAdminOrSystem();
+        allow read: if isStoreAdmin(lojaId);
+        allow write: if isStoreAdmin(lojaId);
       }
 
       match /draft_config/{draftId} {
-        allow read, write: if isAdminOrSystem();
+        allow read, write: if isStoreAdmin(lojaId);
       }
 
       // Workflow domínio do catálogo (somente leitura no cliente; escrita via Cloud Functions).
@@ -1001,88 +1095,88 @@ service cloud.firestore {
 
       // Rascunho: produtos (simples e combo) com imagens, itensCombo, variacoes
       match /draft_produtos/{prodId} {
-        allow read, write: if isAdminOrSystem();
+        allow read, write: if isStoreAdmin(lojaId);
       }
 
       match /produtos_rascunho/{prodId} {
-        allow read, write: if isAdminOrSystem();
+        allow read, write: if isStoreAdmin(lojaId);
       }
 
       match /members/{memberId} {
         allow read:
-          if isAdminOrSystem()
+          if isStoreAdmin(lojaId)
           || (isSignedIn() && request.auth.uid == memberId);
 
         // Conta nova: dono adiciona a si mesmo como member (owner)
         allow create:
-          if isAdminOrSystem()
+          if isStoreAdmin(lojaId)
           || (isSignedIn()
               && request.auth.uid == memberId
               && request.resource.data.role == 'owner'
               && request.resource.data.email == request.auth.token.email
               && exists(/databases/$(database)/documents/lojas/$(lojaId))
               && get(/databases/$(database)/documents/lojas/$(lojaId)).data.ownerUid == request.auth.uid);
-        allow update, delete: if isAdminOrSystem();
+        allow update, delete: if isStoreAdmin(lojaId);
       }
 
       match /vendedores/{vendedorId} {
         allow read:
-          if isAdminOrSystem()
+          if isStoreAdmin(lojaId)
           || (isSignedIn() && request.auth.uid == vendedorId);
 
-        allow create, update, delete: if isAdminOrSystem();
+        allow create, update, delete: if isStoreAdmin(lojaId);
       }
 
       match /notificacoes/{notifId} {
         allow read:
-          if isAdminOrSystem()
+          if isStoreAdmin(lojaId)
           || (isSignedIn() && resource.data.destinatarioUid == request.auth.uid);
 
-        allow create: if isAdminOrSystem();
+        allow create: if isStoreAdmin(lojaId);
 
         allow update:
-          if isAdminOrSystem()
+          if isStoreAdmin(lojaId)
           || (isSignedIn()
               && resource.data.destinatarioUid == request.auth.uid
               && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lida']));
 
-        allow delete: if isAdminOrSystem();
+        allow delete: if isStoreAdmin(lojaId);
       }
 
       match /categorias/{catId} {
         allow read: if resource != null;
-        allow create, update, delete: if isAdminOrSystem();
+        allow create, update, delete: if isStoreAdmin(lojaId);
 
         match /subcategoria/{subId} {
           allow read: if resource != null;
-          allow create, update, delete: if isAdminOrSystem();
+          allow create, update, delete: if isStoreAdmin(lojaId);
         }
       }
 
       match /subcategorias/{subId} {
         allow read: if resource != null;
-        allow create, update, delete: if isAdminOrSystem();
+        allow create, update, delete: if isStoreAdmin(lojaId);
       }
 
       // Catalogo publico: produtos (simples e combo) com imagens, itensCombo, variacoes
       match /produtos/{prodId} {
         allow read: if resource != null;
-        allow create, delete: if isAdminOrSystem();
+        allow create, delete: if isStoreAdmin(lojaId);
         // Update: admin total OU dono/vendedor apenas incrementando vendasCatalogoTotal (denorm pós-venda catálogo)
-        allow update: if isAdminOrSystem()
+        allow update: if isStoreAdmin(lojaId)
           || (belongsToStore(lojaId) && isVendasCatalogoTotalOnlySafeUpdate());
       }
 
       // Só o espelho publicado para o catálogo (denormalizado; sem escrita pública list/get).
       match /produtos_publicos/{produtoId} {
         allow read: if true;
-        allow create, update, delete: if isAdminOrSystem() || belongsToStore(lojaId);
+        allow create, update, delete: if isStoreAdmin(lojaId) || belongsToStore(lojaId);
       }
 
       match /vendas/{vendaId} {
-        allow read: if isAdminOrSystem();
-        allow create: if isSignedIn();
-        allow update, delete: if isAdminOrSystem();
+        allow read: if isStoreAdmin(lojaId);
+        allow create: if belongsToStore(lojaId);
+        allow update, delete: if isStoreAdmin(lojaId);
       }
 
       // clientes: admin/vendedor leem; visitante sem auth pode get/update só em doc ec_* (bootstrap portal).
@@ -1096,7 +1190,7 @@ service cloud.firestore {
               && request.resource.data.portalToken == resource.data.portalToken
               && request.resource.data.size() <= 30)
           || isGuestBootstrapClientePortalTokenFill(clienteId);
-        allow delete: if isAdminOrSystem();
+        allow delete: if isStoreAdmin(lojaId);
       }
 
       match /clientes_portal/{portalToken} {
@@ -1113,11 +1207,11 @@ service cloud.firestore {
       match /clientes_catalogo/{email}/cupons/{cupomId} {
         allow read: if resource != null;
         allow create: if isValidClienteCatalogoCupomCreate();
-        allow update, delete: if isAdminOrSystem();
+        allow update, delete: if isStoreAdmin(lojaId);
       }
 
       match /fornecedores/{fornecedorId} {
-        allow read, write: if isAdminOrSystem();
+        allow read, write: if isStoreAdmin(lojaId);
       }
 
       // Contador de uso diário da IA por loja (perguntas, descricao, financeiro)
@@ -1157,7 +1251,8 @@ service cloud.firestore {
 
       // Vendas (Nova Venda): inclui combos com itensComboComSelecao
       match /estoque_vendas/{vendaId} {
-        allow read, write: if belongsToStore(lojaId) || sellerHasPermission(lojaId, 'vendas');
+        allow read, update, delete: if belongsToStore(lojaId);
+        allow create: if belongsToStore(lojaId) && isCanonicalEstoqueVendaCreate(lojaId, vendaId);
       }
 
       match /fechamentos_mensais/{fechamentoId} {
@@ -1246,10 +1341,10 @@ service cloud.firestore {
         allow read: if belongsToStore(lojaId)
           && resource != null
           && resource.data.storeId == lojaId;
-        allow create, update: if isAdminOrSystem()
+        allow create, update: if isStoreAdmin(lojaId)
           && request.resource.data.storeId == lojaId
           && request.resource.data.payablesRemoteMirrorEnabled is bool;
-        allow delete: if isAdminOrSystem();
+        allow delete: if isStoreAdmin(lojaId);
       }
 
       // Controle operacional de compras por fornecedor (conferência; sync app).
@@ -1307,21 +1402,21 @@ service cloud.firestore {
       }
 
       match /payments/{payId} {
-        allow read, write: if isAdminOrSystem();
+        allow read, write: if isStoreAdmin(lojaId);
       }
 
       match /cupons/{cupomId} {
         allow read: if resource != null;
-        allow create, update, delete: if isAdminOrSystem();
+        allow create, update, delete: if isStoreAdmin(lojaId);
       }
 
       match /canais_publicos/{canalId} {
         allow read: if resource != null;
-        allow write: if isAdminOrSystem();
+        allow write: if isStoreAdmin(lojaId);
       }
 
       match /canais/{canalId} {
-        allow read, write: if isAdminOrSystem();
+        allow read, write: if isStoreAdmin(lojaId);
       }
 
       match /campanhas_sorteio/{campanhaId} {
@@ -1346,24 +1441,25 @@ service cloud.firestore {
 
       match /campanhas_sorteio_config/{configDocId} {
         allow read: if resource != null;
-        allow write: if isAdminOrSystem();
+        allow write: if isStoreAdmin(lojaId);
       }
 
       match /roleta_vendas/{vendaId} {
-        allow read: if isAdminOrSystem();
+        allow read: if isStoreAdmin(lojaId);
         allow create: if isSignedIn();
-        allow update, delete: if isAdminOrSystem();
+        allow update, delete: if isStoreAdmin(lojaId);
       }
 
       match /pre_pedidos/{pedidoId} {
         allow read: if belongsToStore(lojaId);
         allow create: if isValidPrePedidoCreate()
           && request.resource.data.lojaId == lojaId;
-        allow update: if (isAdminOrSystem()
+        allow update: if (isStoreAdmin(lojaId)
             || (resource.data.lojaId == lojaId
                 && isValidPrePedidoGovernancaSubstituicao()))
-          && isPrePedidoVinculoVendaPreservado();
-        allow delete: if isAdminOrSystem();
+          && isPrePedidoVinculoVendaPreservado()
+          && isPrePedidoVinculoVendaComIntencao(lojaId, pedidoId);
+        allow delete: if isStoreAdmin(lojaId);
       }
 
       // Pré-pedidos de envio externos — somente admin/dono lê; escrita só via Functions.
@@ -1391,31 +1487,31 @@ service cloud.firestore {
       match /cupons_clientes/{cupomId} {
         allow read: if resource != null;
         allow create: if isValidCupomClienteCreate();
-        allow update: if isAdminOrSystem();
-        allow delete: if isAdminOrSystem();
+        allow update: if isStoreAdmin(lojaId);
+        allow delete: if isStoreAdmin(lojaId);
       }
 
       match /configuracoes/{configId} {
-        allow read: if isSignedIn();
-        allow write: if isAdminOrSystem();
+        allow read: if belongsToStore(lojaId);
+        allow write: if isStoreAdmin(lojaId);
       }
 
       match /comissoes_vendedores/{vendedorUid} {
-        allow read: if isSignedIn();
-        allow write: if isAdminOrSystem();
+        allow read: if belongsToStore(lojaId);
+        allow write: if isStoreAdmin(lojaId);
       }
 
       match /comissoes/{comissaoId} {
-        allow read: if isSignedIn();
-        allow create: if isSignedIn();
-        allow update, delete: if isAdminOrSystem();
+        allow read: if belongsToStore(lojaId);
+        allow create: if belongsToStore(lojaId);
+        allow update, delete: if isStoreAdmin(lojaId);
       }
 
       match /trackings/{trackingId} {
         allow read: if resource != null;
         allow create: if isSignedIn();
         allow update: if isSignedIn();
-        allow delete: if isAdminOrSystem();
+        allow delete: if isStoreAdmin(lojaId);
       }
 
       // Histórico de movimentação de estoque da loja
@@ -1440,7 +1536,7 @@ service cloud.firestore {
           && request.resource.data.lojaId == lojaId
           && isLegacyMarkerUpdate();
 
-        allow delete: if isAdminOrSystem() && isLegacyMarkerDelete();
+        allow delete: if isStoreAdmin(lojaId) && isLegacyMarkerDelete();
       }
 
       // M3.2-A — coordenação remota de intenção de venda (saleIntentId).
@@ -1472,7 +1568,7 @@ service cloud.firestore {
           && requestLojaIdMatchesPathIfPresent(lojaId);
         allow update: if belongsToStore(lojaId)
           && requestLojaIdMatchesPathIfPresent(lojaId);
-        allow delete: if isAdminOrSystem();
+        allow delete: if isStoreAdmin(lojaId);
       }
 
       // METAS DE VENDEDORES — sync no Firestore (trocar de aparelho)

@@ -3,6 +3,8 @@
  * Replica as escritas de `_confirmarPedido` @585c792: registrarVendaCatalogo(baixarEstoque:false) →
  * syncVenda (estoque_vendas/{uuid}) → confirmarPrePedido (pre_pedidos update) → PosPagamento._baixarEstoque
  * (transação estoque_produtos update+set merge + produtos set merge, sem stockRevision).
+ * Contrato: a venda sem evidência de baixa canónica e o vínculo de venda sem sale_intent são negados,
+ * pelo que o cliente legado não grava nada e o mpWebhook faz a única venda (1 venda, 1 baixa).
  * Exige FIRESTORE_EMULATOR_HOST (firebase emulators:exec).
  */
 import { readFileSync } from "node:fs";
@@ -185,22 +187,21 @@ async function main() {
       const before = await snapshotState(env, lojaId, orderId);
       const w = await legacyConfirm(env, { lojaId, orderId, uid: ADMIN_UID, staleOrder: orderPending(lojaId, orderId) });
       const after = await snapshotState(env, lojaId, orderId);
-      record("A_admin.writes", w, { estoqueVendasSet: "ALLOWED", prePedidoUpdate: "DENIED", stockTransaction: "DENIED" });
-      // Resíduo aceite: venda órfã sem relação com o pre_pedido e sem baixa (builds < 2026-07-06).
-      record("A_admin.RESIDUAL_ORPHAN_SALE_RECORD", after.sales - before.sales, 1);
+      record("A_admin.writes", w, { estoqueVendasSet: "DENIED", prePedidoUpdate: "DENIED", stockTransaction: "DENIED" });
+      record("A_admin.RESIDUAL_ORPHAN_SALE_RECORD", after.sales - before.sales, 0);
       record("A_admin.ADDITIONAL_STOCK_DEBIT", before.stockQty - after.stockQty, 0);
       record("A_admin.order_canonical_preserved", [after.orderStatus, after.orderVendaId], ["paid", OP_ID]);
     }
 
-    // A' — dono sem users.role (só ownerUid): pre_pedidos negado, venda ainda permitida.
+    // A' — dono sem users.role (só ownerUid): mesmo contrato.
     {
       const lojaId = "loja_A_owner";
       const orderId = await seedStore(env, { lojaId, ownerUid: OWNER_UID, adminRole: false, webhookApplied: true });
       const before = await snapshotState(env, lojaId, orderId);
       const w = await legacyConfirm(env, { lojaId, orderId, uid: OWNER_UID, staleOrder: orderPending(lojaId, orderId) });
       const after = await snapshotState(env, lojaId, orderId);
-      record("A_owner.writes", w, { estoqueVendasSet: "ALLOWED", prePedidoUpdate: "DENIED", stockTransaction: "DENIED" });
-      record("A_owner.RESIDUAL_ORPHAN_SALE_RECORD", after.sales - before.sales, 1);
+      record("A_owner.writes", w, { estoqueVendasSet: "DENIED", prePedidoUpdate: "DENIED", stockTransaction: "DENIED" });
+      record("A_owner.RESIDUAL_ORPHAN_SALE_RECORD", after.sales - before.sales, 0);
       record("A_owner.ADDITIONAL_STOCK_DEBIT", before.stockQty - after.stockQty, 0);
     }
 
@@ -212,8 +213,8 @@ async function main() {
       await applyWebhookCanonicalSale(env, lojaId, orderId);
       const w = await legacyConfirm(env, { lojaId, orderId, uid: ADMIN_UID, staleOrder: stale });
       const after = await snapshotState(env, lojaId, orderId);
-      record("B_concurrent.writes", w, { estoqueVendasSet: "ALLOWED", prePedidoUpdate: "DENIED", stockTransaction: "DENIED" });
-      record("B_concurrent.TOTAL_SALE_RECORDS_incl_residual", after.sales, 2);
+      record("B_concurrent.writes", w, { estoqueVendasSet: "DENIED", prePedidoUpdate: "DENIED", stockTransaction: "DENIED" });
+      record("B_concurrent.TOTAL_SALE_RECORDS", after.sales, 1);
       record("B_concurrent.TOTAL_STOCK_DEBITS", 10 - after.stockQty, 1);
       record("B_concurrent.order_canonical_preserved", [after.orderStatus, after.orderVendaId], ["paid", OP_ID]);
     }
@@ -235,25 +236,26 @@ async function main() {
         },
       );
       const after = await snapshotState(env, lojaId, orderId);
-      record("B2_saleFirstRace.webhook_sees_legacy_sale", webhookDecision, "payable");
-      record("B2_saleFirstRace.writes", w, { estoqueVendasSet: "ALLOWED", prePedidoUpdate: "DENIED", stockTransaction: "DENIED" });
-      record("B2_saleFirstRace.TOTAL_SALES_and_DEBITS", [after.sales, 10 - after.stockQty], [2, 1]);
+      record("B2_saleFirstRace.webhook_decision", webhookDecision, "payable");
+      record("B2_saleFirstRace.writes", w, { estoqueVendasSet: "DENIED", prePedidoUpdate: "DENIED", stockTransaction: "DENIED" });
+      record("B2_saleFirstRace.TOTAL_SALES_and_DEBITS", [after.sales, 10 - after.stockQty], [1, 1]);
       record("B2_saleFirstRace.order_canonical_preserved", [after.orderStatus, after.orderVendaId], ["paid", OP_ID]);
     }
 
-    // C — legado completa antes do webhook (admin): pedido fica confirmado → webhook não vende.
+    // C — legado antes do webhook (users.role=admin): nada gravado, pedido continua pendente → webhook vende.
     {
       const lojaId = "loja_C_admin";
       const orderId = await seedStore(env, { lojaId, ownerUid: ADMIN_UID, adminRole: true, webhookApplied: false });
       const w = await legacyConfirm(env, { lojaId, orderId, uid: ADMIN_UID, staleOrder: orderPending(lojaId, orderId) });
       const mid = await snapshotState(env, lojaId, orderId);
-      const decision = classifyOrderForAutoSale(mid.order, PAYMENT_ID);
-      record("C_admin.writes", w, { estoqueVendasSet: "ALLOWED", prePedidoUpdate: "ALLOWED", stockTransaction: "DENIED" });
-      record("C_admin.webhook_decision", decision.state, "already_business_confirmed");
-      record("C_admin.TOTAL_SALES_and_DEBITS", [mid.sales, 10 - mid.stockQty], [1, 0]);
+      record("C_admin.writes", w, { estoqueVendasSet: "DENIED", prePedidoUpdate: "DENIED", stockTransaction: "DENIED" });
+      record("C_admin.webhook_decision", classifyOrderForAutoSale(mid.order, PAYMENT_ID).state, "payable");
+      await applyWebhookCanonicalSale(env, lojaId, orderId);
+      const after = await snapshotState(env, lojaId, orderId);
+      record("C_admin.TOTAL_SALES_and_DEBITS", [after.sales, 10 - after.stockQty], [1, 1]);
     }
 
-    // C' — legado antes do webhook (dono sem role): pedido continua pendente → webhook vende também.
+    // C' — legado antes do webhook (dono sem role): mesmo contrato.
     {
       const lojaId = "loja_C_owner";
       const orderId = await seedStore(env, { lojaId, ownerUid: OWNER_UID, adminRole: false, webhookApplied: false });
@@ -262,7 +264,7 @@ async function main() {
       record("C_owner.webhook_decision", classifyOrderForAutoSale(mid.order, PAYMENT_ID).state, "payable");
       await applyWebhookCanonicalSale(env, lojaId, orderId);
       const after = await snapshotState(env, lojaId, orderId);
-      record("C_owner.TOTAL_SALES_and_DEBITS", [after.sales, 10 - after.stockQty], [2, 1]);
+      record("C_owner.TOTAL_SALES_and_DEBITS", [after.sales, 10 - after.stockQty], [1, 1]);
     }
 
     // R — regressão: escritas do app atual em pre_pedidos continuam válidas; vínculo pago imutável.
@@ -270,11 +272,19 @@ async function main() {
       const lojaId = "loja_R_admin";
       const paidId = await seedStore(env, { lojaId, ownerUid: ADMIN_UID, adminRole: true, webhookApplied: true });
       const pendingId = "order_R_pending";
+      const legacyPendingId = "order_R_pending_legacy";
       const manualId = "order_R_manual";
       await env.withSecurityRulesDisabled(async (ctx) => {
-        const col = ctx.firestore().collection("lojas").doc(lojaId).collection("pre_pedidos");
+        const loja = ctx.firestore().collection("lojas").doc(lojaId);
+        const col = loja.collection("pre_pedidos");
         await col.doc(pendingId).set(orderPending(lojaId, pendingId));
+        await col.doc(legacyPendingId).set(orderPending(lojaId, legacyPendingId));
         await col.doc(manualId).set({ ...orderPending(lojaId, manualId), status: "confirmado", vendaId: "venda-manual-1" });
+        // App atual: reserveOrJoin da intenção antes de estoque, venda e vínculo no pedido.
+        await loja.collection("sale_intents").doc(`pre_pedido:${pendingId}`).set({
+          protocolVersion: 1, saleIntentId: `pre_pedido:${pendingId}`, lojaId, origin: "pre_pedido",
+          operationId: "venda-nova-1", status: "sale_persisted", stockEffectHash: "h", createdAt: ts(), updatedAt: ts(),
+        });
       });
       const col = env.authenticatedContext(ADMIN_UID, { email: `${ADMIN_UID}@example.test` })
         .firestore().collection("lojas").doc(lojaId).collection("pre_pedidos");
@@ -285,6 +295,8 @@ async function main() {
         publicConfirmOnPaid: await attempt(() => col.doc(paidId).update({ status: "confirmado", dataConfirmacao: ts(), dataAtualizacao: ts() })),
         governancaSubstituicaoOnPaid: await attempt(() => col.doc(paidId).update({ governancaStatus: "substituido", substituidoPor: "order_substituto_1", substituidoEm: ts(), dataAtualizacao: ts() })),
         currentManualConfirmOnPending: await attempt(() => col.doc(pendingId).update({ status: "confirmado", vendaId: "venda-nova-1", dataAtualizacao: ts() })),
+        legacyConfirmWithoutIntentOnPending: await attempt(() => col.doc(legacyPendingId).update({ status: "confirmado", vendaId: "legacy-uuid", dataAtualizacao: ts() })),
+        statusOnlyOnPendingWithoutIntent: await attempt(() => col.doc(legacyPendingId).update({ status: "cancelado", dataAtualizacao: ts() })),
         reconfirmManualChangesVendaId: await attempt(() => col.doc(manualId).update({ status: "confirmado", vendaId: "venda-manual-2", dataAtualizacao: ts() })),
         deleteVendaIdOnPaid: await attempt(() => col.doc(paidId).update({ vendaId: del })),
         clearPaidAtOnPaid: await attempt(() => col.doc(paidId).update({ paidAt: null })),
@@ -297,6 +309,8 @@ async function main() {
         publicConfirmOnPaid: "ALLOWED",
         governancaSubstituicaoOnPaid: "ALLOWED",
         currentManualConfirmOnPending: "ALLOWED",
+        legacyConfirmWithoutIntentOnPending: "DENIED",
+        statusOnlyOnPendingWithoutIntent: "ALLOWED",
         reconfirmManualChangesVendaId: "DENIED",
         deleteVendaIdOnPaid: "DENIED",
         clearPaidAtOnPaid: "DENIED",

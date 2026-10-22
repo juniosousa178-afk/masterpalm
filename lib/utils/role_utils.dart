@@ -11,7 +11,6 @@ import 'package:flutter/foundation.dart';
 const Set<String> rootEmails = {
   'masterpalm26@gmail.com',
   'masterpalm@gmail.com', // fallback para migração
-  'admin@masterpalm.com',
 };
 
 /// Tipos de usuário válidos

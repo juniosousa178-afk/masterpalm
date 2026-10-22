@@ -5,7 +5,6 @@
 export const ROOT_ACCOUNT_EMAILS = Object.freeze([
   "masterpalm26@gmail.com",
   "masterpalm@gmail.com",
-  "admin@masterpalm.com",
 ]);
 
 export function isRootAccountEmail(email) {

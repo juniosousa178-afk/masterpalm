@@ -151,17 +151,21 @@ describe("classifyExpiredPaidSchedulerDoc", () => {
   });
 
   it("skip_protected: qualquer email em ROOT_ACCOUNT_EMAILS", () => {
-    assert.equal(isRootAccountEmail("admin@masterpalm.com"), true);
+    assert.equal(isRootAccountEmail("masterpalm26@gmail.com"), true);
     const d = classifyExpiredPaidSchedulerDoc(
       {
         currentPlanId: "pro_monthly",
         currentPeriodEnd: ts(PAST),
-        email: "admin@masterpalm.com",
+        email: "masterpalm26@gmail.com",
       },
-      "admin@masterpalm.com",
+      "masterpalm26@gmail.com",
       new Date(),
     );
     assert.equal(d, "skip_protected");
+  });
+
+  it("admin@masterpalm.com não é root (sem conta Auth; registável por terceiros)", () => {
+    assert.equal(isRootAccountEmail("admin@masterpalm.com"), false);
   });
 
   it("skip_protected: isRoot flag", () => {
