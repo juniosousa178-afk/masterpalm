@@ -9,10 +9,15 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {dirname, join} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {Timestamp} from 'firebase-admin/firestore';
 import {processMpWebhook} from '../src/mpWebhookHandler.js';
 import {executeStockCommand} from '../src/stockCatalogCommands.js';
 import {SERVER_PAYMENT_AUTH} from '../src/stockCatalogAccess.js';
-import {MP_CATALOG_AUTO_SALE_NOT_BEFORE_ISO, mpPaymentSaleOperationId} from '../src/mpCatalogPaymentSale.js';
+import {
+  MP_CATALOG_AUTO_SALE_CUTOVER_ENV,
+  mpPaymentSaleOperationId,
+  parseAutoSaleCutoverUtc,
+} from '../src/mpCatalogPaymentSale.js';
 import {createMpWebhookTestDb} from './_mpWebhookTestDb.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -21,8 +26,10 @@ const OTHER = 'loja_mp_b';
 const ORDER = 'ord_catalogo_1';
 const PID = '1330000001';
 const OP = mpPaymentSaleOperationId(PID);
+const CUTOVER = Date.parse('2026-10-23T09:00:00.000Z');
+const ORDER_CREATED = Date.parse('2026-10-23T10:00:00.000Z');
 const NOW = Date.parse('2026-10-23T12:00:00.000Z');
-const APPROVED_AT = '2026-10-23T11:58:00.000-03:00';
+const APPROVED_AT = '2026-10-23T08:58:00.000-03:00';
 
 const PRODUCTS = {
   'p-simple': {nome: 'Brinco', quantidade: 5, stockKind: 'simple', stockRevision: 3, variacoes: {}},
@@ -61,6 +68,7 @@ function harness({
   storeVisibility = null,
   smtpFails = false,
   noOrder = false,
+  orderCreateTimeMs = ORDER_CREATED,
 } = {}) {
   const db = createMpWebhookTestDb();
   for (const lojaId of [LOJA, OTHER]) {
@@ -87,8 +95,9 @@ function harness({
       total: 100, subtotal: 90, frete: {nome: 'Entrega', valor: 10, gratis: false}, pagamento: 'PIX',
       cliente: {nome: 'Cliente Teste', email: 'cliente@example.test', telefone: '(11) 99999-0000'},
       itens: products.map(p => (typeof p === 'string' ? item(p) : p)),
+      dataCriacao: Timestamp.fromMillis(orderCreateTimeMs),
       ...order,
-    });
+    }, {createTimeMs: orderCreateTimeMs});
   }
   const mails = [];
   const whatsapps = [];
@@ -116,6 +125,7 @@ function harness({
       premioRecovery: async (_db, a) => promo.push(['premioRecovery', a.paymentId]),
     },
     now: () => NOW,
+    cutoverMs: CUTOVER,
   };
   const base = db.collection('lojas').doc(LOJA);
   const h = {
@@ -131,6 +141,7 @@ function harness({
     merchantMails: () => mails.filter(m => m.from.startsWith('"MasterPalm"')),
     customerMails: () => mails.filter(m => !m.from.startsWith('"MasterPalm"')),
     intent: () => db.getData(base.collection('sale_intents').doc(`pre_pedido:${ORDER}`)),
+    reject: (pid = PID) => db.getData(db.collection('_mp_webhook_validation_rejects').doc(pid)),
   };
   return h;
 }
@@ -282,13 +293,107 @@ test('URL de retorno (?status=approved) não é autoridade: tela de resultado n�
   assert.doesNotMatch(dart, /FirebaseFirestore|\.collection\(|\.set\(|\.update\(|httpsCallable|mpWebhook/);
 });
 
-test('pagamento aprovado antes do corte histórico: 0 efeitos (sem reparo histórico)', async () => {
-  const before = new Date(Date.parse(MP_CATALOG_AUTO_SALE_NOT_BEFORE_ISO) - 60_000).toISOString();
-  const h = harness({payments: {[PID]: {lojaId: LOJA, payment: mpPayment({approvedAt: before})}}});
+// ---------------------------------------------------------------- corte (cutover) — bloqueador de release
+
+/** Histórico: 0 venda/estoque/e-mail, nenhum marcador, pedido byte-a-byte inalterado. */
+async function assertHistoricalUntouched(h, reason) {
+  const before = h.order();
   assert.equal(await h.run(), true);
   assertNoEffects(h);
   assert.equal(h.marker(), undefined);
-  assert.equal(h.order().paidAt, undefined);
+  assert.equal(h.intent(), undefined);
+  assert.deepEqual(h.order(), before);
+  if (reason) assert.equal(h.reject().validationReason, reason);
+}
+
+test('pedido criado antes do corte (2026-08-15) + webhook/aprovação após o deploy: AUTO_SALE=0', async () => {
+  const old = Date.parse('2026-08-15T14:00:00.000Z');
+  const h = harness({orderCreateTimeMs: old});
+  await assertHistoricalUntouched(h, 'order_created_before_cutover');
+  for (let i = 0; i < 3; i++) await h.run();
+  assertNoEffects(h);
+  assert.equal(h.marker(), undefined);
+});
+
+test('pedido e aprovação após o corte: elegível (POST_CUTOVER_ORDER_POST_CUTOVER_APPROVAL_ELIGIBLE)', async () => {
+  const h = harness();
+  await h.run();
+  assert.equal(h.sales().length, 1);
+  assert.equal(h.order().status, 'paid');
+});
+
+test('aprovação MP antes do corte (pedido novo): 0 efeitos', async () => {
+  const before = new Date(CUTOVER - 60_000).toISOString();
+  const h = harness({payments: {[PID]: {lojaId: LOJA, payment: mpPayment({approvedAt: before})}}});
+  await assertHistoricalUntouched(h, 'payment_approved_before_cutover');
+});
+
+for (const [name, approvedAt, reason] of [
+  ['date_approved ausente', null, 'payment_approval_time_invalid'],
+  ['date_approved sem fuso (ambíguo)', '2026-10-23T11:58:00.000', 'payment_approval_time_invalid'],
+  ['date_approved inválido', 'ontem', 'payment_approval_time_invalid'],
+]) {
+  test(`aprovação: ${name} → fail closed`, async () => {
+    const payment = {...mpPayment(), date_approved: approvedAt};
+    const h = harness({payments: {[PID]: {lojaId: LOJA, payment}}});
+    await assertHistoricalUntouched(h, reason);
+  });
+}
+
+for (const [name, order, createTimeMs, reason] of [
+  ['dataCriacao antes do corte com createTime novo', {dataCriacao: Timestamp.fromMillis(CUTOVER - 1)}, ORDER_CREATED, 'order_created_before_cutover'],
+  ['createdAt antes do corte', {createdAt: Timestamp.fromMillis(CUTOVER - 1)}, ORDER_CREATED, 'order_created_before_cutover'],
+  ['createTime antes do corte com dataCriacao nova', {}, CUTOVER - 1, 'order_created_before_cutover'],
+  ['dataCriacao como string (inválido)', {dataCriacao: '2026-10-23T10:00:00Z'}, ORDER_CREATED, 'order_creation_time_invalid'],
+  ['sem dataCriacao/createdAt', {dataCriacao: null}, ORDER_CREATED, 'order_creation_time_missing'],
+]) {
+  test(`criação do pedido: ${name} → fail closed`, async () => {
+    const h = harness({order, orderCreateTimeMs: createTimeMs});
+    await assertHistoricalUntouched(h, reason);
+  });
+}
+
+test('corte não configurado/inválido: nenhuma venda automática', async () => {
+  for (const cutoverMs of [null, undefined, NaN]) {
+    const h = harness();
+    await h.run(PID, {cutoverMs});
+    assertNoEffects(h);
+    assert.equal(h.marker(), undefined);
+    assert.equal(h.order().status, 'pendente');
+  }
+});
+
+test('corte lido do ambiente (MP_CATALOG_AUTO_SALE_CUTOVER_UTC); webhook recebido não é autoridade', async () => {
+  const prev = process.env[MP_CATALOG_AUTO_SALE_CUTOVER_ENV];
+  try {
+    const noCut = harness();
+    const {cutoverMs: _a, ...depsNoCut} = noCut.deps;
+    delete process.env[MP_CATALOG_AUTO_SALE_CUTOVER_ENV];
+    await processMpWebhook(PID, {}, depsNoCut);
+    assertNoEffects(noCut);
+
+    const h = harness();
+    const {cutoverMs: _b, ...deps} = h.deps;
+    process.env[MP_CATALOG_AUTO_SALE_CUTOVER_ENV] = new Date(CUTOVER).toISOString();
+    await processMpWebhook(PID, {}, {...deps, now: () => CUTOVER + 365 * 86400000});
+    assert.equal(h.sales().length, 1);
+
+    const late = harness({orderCreateTimeMs: CUTOVER - 1});
+    const {cutoverMs: _c, ...depsLate} = late.deps;
+    await processMpWebhook(PID, {}, {...depsLate, now: () => CUTOVER + 3600000});
+    assertNoEffects(late);
+  } finally {
+    if (prev === undefined) delete process.env[MP_CATALOG_AUTO_SALE_CUTOVER_ENV];
+    else process.env[MP_CATALOG_AUTO_SALE_CUTOVER_ENV] = prev;
+  }
+});
+
+test('parseAutoSaleCutoverUtc: só ISO-8601 UTC com Z', () => {
+  assert.equal(parseAutoSaleCutoverUtc('2026-10-22T16:30:00Z'), Date.parse('2026-10-22T16:30:00Z'));
+  assert.equal(parseAutoSaleCutoverUtc('2026-10-22T16:30:00.123Z'), Date.parse('2026-10-22T16:30:00.123Z'));
+  for (const bad of ['', null, undefined, '2026-10-22', '2026-10-22T16:30:00', '2026-10-22T16:30:00-03:00', 'agora', '1792700000000']) {
+    assert.equal(parseAutoSaleCutoverUtc(bad), null, String(bad));
+  }
 });
 
 // ---------------------------------------------------------------- já confirmado / bloqueador de release
@@ -411,8 +516,15 @@ for (const [name, payment, order] of [
   ['external_reference errado', mpPayment({ext: 'outro_pedido'}), {}],
   ['external_reference ausente', mpPayment({ext: ''}), {}],
   ['metadata sem loja', mpPayment({metadata: {}}), {}],
+  ['metadata loja_id e lojaId conflitantes', mpPayment({metadata: {loja_id: LOJA, lojaId: OTHER}}), {}],
+  ['metadata lojaId legado conflitando com loja_id', mpPayment({metadata: {loja_id: OTHER, lojaId: LOJA}}), {}],
   ['valor divergente', mpPayment({amount: 1}), {}],
+  ['valor +0,01', mpPayment({amount: 100.01}), {}],
+  ['valor -0,01', mpPayment({amount: 99.99}), {}],
+  ['valor com 3 casas decimais', mpPayment({amount: 100.004}), {}],
+  ['valor ausente', mpPayment({amount: null}), {}],
   ['moeda divergente', {...mpPayment(), currency_id: 'USD'}, {}],
+  ['moeda ausente', {...mpPayment(), currency_id: undefined}, {}],
   ['lojaId do pedido divergente', mpPayment(), {lojaId: OTHER}],
 ]) {
   test(`correlação: ${name} → fail closed`, async () => {
@@ -423,6 +535,50 @@ for (const [name, payment, order] of [
     assert.equal(h.order().paidAt, undefined);
   });
 }
+
+for (const [name, metadata] of [
+  ['só lojaId (legado)', {lojaId: LOJA}],
+  ['loja_id e lojaId iguais', {loja_id: LOJA, lojaId: LOJA}],
+]) {
+  test(`metadata compatível: ${name} → venda`, async () => {
+    const h = harness({payments: {[PID]: {lojaId: LOJA, payment: mpPayment({metadata})}}});
+    assert.equal(await h.run(), true);
+    assert.equal(h.sales().length, 1);
+  });
+}
+
+test('valor exato em centavos com total do pedido em ponto flutuante (99.9 + 0.1): venda', async () => {
+  const h = harness({order: {total: 99.9 + 0.1}});
+  await h.run();
+  assert.equal(h.sales().length, 1);
+});
+
+test('venda canônica já correlacionada: marcador perdido → intenção bloqueia; sem intenção → replay da operação, 0 extra', async () => {
+  const h = harness();
+  await h.run();
+  const mails = h.mails.length;
+  const markerRef = h.db.collection('_mp_webhook_processed').doc(PID);
+  const intentRef = h.base.collection('sale_intents').doc(`pre_pedido:${ORDER}`);
+  await h.db.runTransaction(async tx => { tx.delete(markerRef); });
+  await h.run();
+  assert.equal(h.marker().status, 'already_business_confirmed');
+  assert.equal(h.sales().length, 1);
+  assert.equal(h.stock('p-simple').quantidade, 4);
+
+  await h.db.runTransaction(async tx => {
+    tx.delete(markerRef);
+    tx.delete(intentRef);
+    tx.update(h.orderRef, {status: 'pendente', statusPagamento: 'pendente', paidAt: null, paymentId: null,
+      vendaId: null, saleId: null, mpPaymentStatus: null});
+  });
+  await h.run();
+  assert.equal(h.sales().length, 1);
+  assert.equal(h.ops().length, 1);
+  assert.equal(h.stock('p-simple').quantidade, 4);
+  assert.equal(h.stock('p-simple').stockRevision, 4);
+  assert.equal(h.marker().effectiveOutcome, 'applied_sale_replayed');
+  assert.equal(h.mails.length, mails);
+});
 
 test('pedido inexistente → fail closed', async () => {
   const h = harness({noOrder: true});

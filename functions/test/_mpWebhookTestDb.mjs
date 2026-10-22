@@ -34,7 +34,7 @@ export function createMpWebhookTestDb() {
     inner,
     collection(name) { return wrapColl(inner.collection(name)); },
     runTransaction: fn => inner.runTransaction(fn),
-    seed: (ref, data) => inner.seed(ref, data),
+    seed: (ref, data, opts) => inner.seed(ref, data, opts),
     getData: ref => inner.getData(ref),
     exists: ref => inner.exists(ref),
     get commits() { return inner.commits; },

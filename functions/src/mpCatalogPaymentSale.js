@@ -9,13 +9,69 @@ import { orderTotalToCents } from "./catalogMpOrderHelpers.js";
 export const MP_PAYMENT_SALE_PROTOCOL = "canonical_sale_v1";
 
 /**
- * Pagamentos aprovados antes deste instante não geram venda/estoque/e-mail automáticos
- * (pedidos do período sem webhook ficam para reparo dedicado).
+ * Instante de corte (UTC, ISO-8601 com `Z`) gravado uma única vez imediatamente antes do deploy.
+ * Venda automática exige aprovação MP e criação do pedido >= corte; ausente/inválido → nenhuma venda automática.
  */
-export const MP_CATALOG_AUTO_SALE_NOT_BEFORE_ISO = "2026-10-22T00:00:00.000Z";
+export const MP_CATALOG_AUTO_SALE_CUTOVER_ENV = "MP_CATALOG_AUTO_SALE_CUTOVER_UTC";
 
 /** Reentregas fora desta janela não reenviam e-mail/WhatsApp/notificação pendentes. */
 export const MP_POST_EFFECTS_RETRY_WINDOW_MS = 72 * 60 * 60 * 1000;
+
+const CUTOVER_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
+const OFFSET_DATETIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
+
+export function parseAutoSaleCutoverUtc(raw) {
+  const s = String(raw ?? "").trim();
+  if (!CUTOVER_RE.test(s)) return null;
+  const ms = Date.parse(s);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+/** Timestamp do Firestore (ou Date) → ms; strings/números não são aceitos como data de criação. */
+export function timestampLikeToMs(v) {
+  if (v == null) return null;
+  if (typeof v.toMillis === "function") {
+    const ms = v.toMillis();
+    return Number.isFinite(ms) ? ms : null;
+  }
+  if (v instanceof Date) {
+    const ms = v.getTime();
+    return Number.isFinite(ms) ? ms : null;
+  }
+  return null;
+}
+
+/** Aprovação autoritativa: `date_approved` da API MP com fuso explícito e >= corte. */
+export function evaluatePaymentCutover({ payment, cutoverMs }) {
+  if (!Number.isFinite(cutoverMs)) return { ok: false, reason: "auto_sale_cutover_not_configured" };
+  const approvedMs = paymentApprovedAtMs(payment);
+  if (approvedMs == null) return { ok: false, reason: "payment_approval_time_invalid" };
+  if (approvedMs < cutoverMs) return { ok: false, reason: "payment_approved_before_cutover" };
+  return { ok: true, approvedMs };
+}
+
+const ORDER_CREATION_FIELDS = ["dataCriacao", "createdAt"];
+
+/**
+ * Criação do pedido: `createTime` do documento (servidor, imutável) e todo campo de criação
+ * declarado (`dataCriacao`/`createdAt`) devem existir, ser Timestamp e ser >= corte.
+ */
+export function evaluateOrderCutover({ createTimeMs, order, cutoverMs }) {
+  if (!Number.isFinite(cutoverMs)) return { ok: false, reason: "auto_sale_cutover_not_configured" };
+  if (!Number.isFinite(createTimeMs)) return { ok: false, reason: "order_create_time_missing" };
+  if (createTimeMs < cutoverMs) return { ok: false, reason: "order_created_before_cutover" };
+  let declared = 0;
+  for (const field of ORDER_CREATION_FIELDS) {
+    const raw = order?.[field];
+    if (raw == null) continue;
+    declared++;
+    const ms = timestampLikeToMs(raw);
+    if (ms == null) return { ok: false, reason: "order_creation_time_invalid" };
+    if (ms < cutoverMs) return { ok: false, reason: "order_created_before_cutover" };
+  }
+  if (declared === 0) return { ok: false, reason: "order_creation_time_missing" };
+  return { ok: true };
+}
 
 const PAYMENT_ID_RE = /^[0-9]{1,32}$/;
 
@@ -36,19 +92,34 @@ export function prePedidoSaleIntentId(orderId) {
   return `pre_pedido:${String(orderId).trim()}`;
 }
 
-/** A API MP devolve metadata em snake_case (`loja_id`); `lojaId` mantido por compatibilidade. */
-export function paymentMetadataLojaId(payment) {
+/**
+ * Loja no metadata do pagamento. A API MP devolve snake_case (`loja_id`); `lojaId` aceito por
+ * compatibilidade. Se ambos vierem, precisam coincidir.
+ * @returns {{ lojaId: string | null, conflict: boolean }}
+ */
+export function resolvePaymentMetadataLojaId(payment) {
   const md = payment && typeof payment.metadata === "object" && payment.metadata ? payment.metadata : {};
-  const v = md.loja_id ?? md.lojaId;
-  const s = v == null ? "" : String(v).trim();
-  return s || null;
+  const values = [md.loja_id, md.lojaId]
+    .map((v) => (v == null ? "" : String(v).trim()))
+    .filter(Boolean);
+  if (values.length === 0) return { lojaId: null, conflict: false };
+  if (values.some((v) => v !== values[0])) return { lojaId: null, conflict: true };
+  return { lojaId: values[0], conflict: false };
 }
 
 export function paymentApprovedAtMs(payment) {
   const raw = payment?.date_approved;
-  if (raw == null || raw === "") return null;
-  const ms = Date.parse(String(raw));
+  if (typeof raw !== "string" || !OFFSET_DATETIME_RE.test(raw.trim())) return null;
+  const ms = Date.parse(raw.trim());
   return Number.isFinite(ms) ? ms : null;
+}
+
+/** `transaction_amount` → centavos exatos; mais de 2 casas decimais é inválido. */
+export function paymentAmountToCents(amount) {
+  const n = typeof amount === "number" ? amount : typeof amount === "string" && amount.trim() ? Number(amount) : NaN;
+  if (!Number.isFinite(n)) return null;
+  const cents = Math.round(n * 100);
+  return Math.abs(n * 100 - cents) < 1e-6 ? cents : null;
 }
 
 export function isPixPayment(payment) {
@@ -65,21 +136,22 @@ export function validateCatalogPaymentCorrelation({ payment, lojaId, orderId, or
   const ext = String(payment?.external_reference ?? "").trim();
   if (!ext) return { ok: false, code: "external_reference_missing" };
   if (ext !== String(orderId)) return { ok: false, code: "external_reference_mismatch" };
-  const metaLoja = paymentMetadataLojaId(payment);
-  if (!metaLoja) return { ok: false, code: "metadata_loja_missing" };
-  if (metaLoja !== String(lojaId)) return { ok: false, code: "loja_metadata_mismatch" };
+  const meta = resolvePaymentMetadataLojaId(payment);
+  if (meta.conflict) return { ok: false, code: "metadata_loja_conflict" };
+  if (!meta.lojaId) return { ok: false, code: "metadata_loja_missing" };
+  if (meta.lojaId !== String(lojaId)) return { ok: false, code: "loja_metadata_mismatch" };
   const orderLoja = order?.lojaId == null ? "" : String(order.lojaId).trim();
   if (orderLoja && orderLoja !== String(lojaId)) return { ok: false, code: "order_loja_mismatch" };
   const expectedCents = orderTotalToCents(order?.total);
   if (expectedCents == null || expectedCents < 1) return { ok: false, code: "order_total_invalid" };
-  const tid = payment?.transaction_amount;
-  const paidCents = typeof tid === "number" ? Math.round(tid * 100 + Number.EPSILON) : orderTotalToCents(tid);
-  if (paidCents == null) return { ok: false, code: "payment_amount_missing" };
+  const paidCents = paymentAmountToCents(payment?.transaction_amount);
+  if (paidCents == null) return { ok: false, code: "payment_amount_invalid" };
   if (paidCents !== expectedCents) {
     return { ok: false, code: "amount_mismatch", expectedCents, paidCents };
   }
-  const cur = payment?.currency_id;
-  if (cur != null && String(cur).toUpperCase() !== "BRL") return { ok: false, code: "currency_mismatch" };
+  if (String(payment?.currency_id ?? "").trim().toUpperCase() !== "BRL") {
+    return { ok: false, code: "currency_mismatch" };
+  }
   return { ok: true, expectedCents, paidCents };
 }
 

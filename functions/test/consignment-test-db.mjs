@@ -149,12 +149,17 @@ export function createConsignmentTestDb() {
     };
   }
 
+  /** Server-assigned document createTime (ms), immutable across updates, like Firestore. */
+  const createTimes = new Map();
+
   function snapFrom(working, ref) {
     const d = working.get(ref.path);
+    const ct = d !== undefined && store.has(ref.path) ? createTimes.get(ref.path) : undefined;
     return {
       exists: d !== undefined,
       id: ref.id,
       ref,
+      createTime: ct === undefined ? undefined : Timestamp.fromMillis(ct),
       data: () => (d === undefined ? undefined : cloneData(d)),
     };
   }
@@ -162,9 +167,18 @@ export function createConsignmentTestDb() {
   const db = {
     _store: store,
     collection(name) { return makeColl([name]); },
-    seed(ref, data) { store.set(ref.path, cloneData(data)); bump(ref.path); },
+    seed(ref, data, {createTimeMs} = {}) {
+      if (createTimeMs !== undefined) createTimes.set(ref.path, createTimeMs);
+      else if (!createTimes.has(ref.path)) createTimes.set(ref.path, Date.now());
+      store.set(ref.path, cloneData(data));
+      bump(ref.path);
+    },
     /** Non-transactional write from another client; aborts transactions that already read this doc. */
-    concurrentWrite(ref, data) { store.set(ref.path, cloneData(data)); bump(ref.path); },
+    concurrentWrite(ref, data) {
+      if (!store.has(ref.path)) createTimes.set(ref.path, Date.now());
+      store.set(ref.path, cloneData(data));
+      bump(ref.path);
+    },
     getData(ref) { return store.has(ref.path) ? cloneData(store.get(ref.path)) : undefined; },
     exists(ref) { return store.has(ref.path); },
     snapshot() {
@@ -250,8 +264,13 @@ export function createConsignmentTestDb() {
         }
         const touched = new Set(ops.map(o => o.path));
         for (const path of touched) {
-          if (working.has(path)) store.set(path, cloneData(working.get(path)));
-          else store.delete(path);
+          if (working.has(path)) {
+            if (!store.has(path)) createTimes.set(path, Date.now());
+            store.set(path, cloneData(working.get(path)));
+          } else {
+            store.delete(path);
+            createTimes.delete(path);
+          }
           bump(path);
         }
         db.lastCommit = stats;

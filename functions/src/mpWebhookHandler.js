@@ -8,6 +8,8 @@
  *
  * Garantias:
  * - Status vem apenas da API MP; corpo do webhook e URL de retorno não são autoridade.
+ * - Corte (MP_CATALOG_AUTO_SALE_CUTOVER_UTC): venda automática só se a aprovação MP e a criação do
+ *   pedido forem >= corte; corte ausente/inválido ou pedido histórico → nenhuma escrita no pedido.
  * - No máximo 1 venda e 1 baixa por pagamento (operationId determinístico + marcador transacional).
  * - Pedido já confirmado (venda manual, vendaId, intenção de venda do app, paidAt) → 0 venda/estoque/e-mail.
  * - Efeitos pós-commit só com paymentApplied=true; cada efeito tem estado próprio no marcador
@@ -31,13 +33,17 @@ import { executeStockCommandInTransaction, runStockTransaction } from "./stockCa
 import { SERVER_PAYMENT_AUTH } from "./stockCatalogAccess.js";
 import {
   MP_PAYMENT_SALE_PROTOCOL,
-  MP_CATALOG_AUTO_SALE_NOT_BEFORE_ISO,
+  MP_CATALOG_AUTO_SALE_CUTOVER_ENV,
   MP_POST_EFFECTS_RETRY_WINDOW_MS,
   normalizeMpPaymentId,
   mpPaymentSaleOperationId,
   prePedidoSaleIntentId,
-  paymentMetadataLojaId,
+  resolvePaymentMetadataLojaId,
   paymentApprovedAtMs,
+  parseAutoSaleCutoverUtc,
+  evaluatePaymentCutover,
+  evaluateOrderCutover,
+  timestampLikeToMs,
   validateCatalogPaymentCorrelation,
   classifyOrderForAutoSale,
   classifySaleIntent,
@@ -225,7 +231,7 @@ function defaultDeps(mailOpts, overrides) {
       premioRecovery: ativarPremioRoletaPosPagamentoMpRecovery,
     },
     now: () => Date.now(),
-    autoSaleNotBeforeMs: Date.parse(MP_CATALOG_AUTO_SALE_NOT_BEFORE_ISO),
+    cutoverMs: parseAutoSaleCutoverUtc(process.env[MP_CATALOG_AUTO_SALE_CUTOVER_ENV]),
   };
 }
 
@@ -237,7 +243,9 @@ async function findOrder(db, lojaId, orderId) {
   for (const collection of ORDER_COLLECTIONS) {
     const ref = lojaRef(db, lojaId).collection(collection).doc(String(orderId));
     const snap = await ref.get();
-    if (snap.exists) return { ref, collection, order: snap.data() || {} };
+    if (snap.exists) {
+      return { ref, collection, order: snap.data() || {}, createTimeMs: timestampLikeToMs(snap.createTime) };
+    }
   }
   return null;
 }
@@ -279,7 +287,9 @@ async function resolveStoreAndPayment(deps, paymentId) {
   if (!found?.payment || !found.lojaId) return { ok: false, reason: "payment_not_found" };
   let { payment, lojaId } = found;
   if (String(payment.id ?? "") !== paymentId) return { ok: false, reason: "payment_id_mismatch", lojaId };
-  const metaLoja = paymentMetadataLojaId(payment);
+  const meta = resolvePaymentMetadataLojaId(payment);
+  if (meta.conflict) return { ok: false, reason: "metadata_loja_conflict", lojaId, payment };
+  const metaLoja = meta.lojaId;
   if (!metaLoja) return { ok: false, reason: "metadata_loja_missing", lojaId, payment };
   if (metaLoja !== String(lojaId)) {
     const viaMeta = await deps.fetchPaymentForStore(metaLoja, paymentId);
@@ -336,6 +346,10 @@ async function applyApprovedPaymentTransaction(deps, ctx) {
     const order = orderSnap.exists ? orderSnap.data() || {} : null;
     const state = classifyOrderForAutoSale(order, paymentId);
     if (state.state === "missing") throw new SaleNotApplicable(state.reason);
+    const cut = evaluateOrderCutover({
+      createTimeMs: timestampLikeToMs(orderSnap.createTime), order, cutoverMs: deps.cutoverMs,
+    });
+    if (!cut.ok) return { outcome: "historical_order", reason: cut.reason, paymentApplied: false };
     if (state.state === "already_business_confirmed") {
       tx.set(markerRef, { ...base, status: "already_business_confirmed", reason: state.reason });
       return { outcome: "already_business_confirmed", reason: state.reason, paymentApplied: false };
@@ -379,6 +393,7 @@ async function applyApprovedPaymentTransaction(deps, ctx) {
         stockEffectHash: `mp_payment:${paymentId}`,
         createdAt: nowTs,
         updatedAt: nowTs,
+        completedAt: nowTs,
       });
     }
     tx.set(markerRef, {
@@ -415,6 +430,10 @@ async function recordSaleBlockedTransaction(deps, ctx, reason) {
     if (state.state === "missing") {
       return { outcome: "order_missing", paymentApplied: false };
     }
+    const cut = evaluateOrderCutover({
+      createTimeMs: timestampLikeToMs(orderSnap.createTime), order, cutoverMs: deps.cutoverMs,
+    });
+    if (!cut.ok) return { outcome: "historical_order", reason: cut.reason, paymentApplied: false };
     if (state.state === "already_business_confirmed") {
       tx.set(markerRef, { ...base, status: "already_business_confirmed", reason: state.reason });
       return { outcome: "already_business_confirmed", reason: state.reason, paymentApplied: false };
@@ -773,9 +792,9 @@ export async function processMpWebhook(paymentIdRaw, mailOpts = {}, overrides = 
 
   if (status !== "approved") return true;
 
-  const approvedMs = paymentApprovedAtMs(payment);
-  if (approvedMs == null || approvedMs < deps.autoSaleNotBeforeMs) {
-    await rejectAndLog(db, { paymentId, lojaId, orderId, reason: "historical_payment_not_auto_applied", payment });
+  const paymentCut = evaluatePaymentCutover({ payment, cutoverMs: deps.cutoverMs });
+  if (!paymentCut.ok) {
+    await rejectAndLog(db, { paymentId, lojaId, orderId, reason: paymentCut.reason, payment });
     return true;
   }
 
@@ -783,6 +802,13 @@ export async function processMpWebhook(paymentIdRaw, mailOpts = {}, overrides = 
   if (!found) {
     await rejectAndLog(db, { paymentId, lojaId, orderId, reason: "order_document_not_found", payment });
     return false;
+  }
+  const orderCut = evaluateOrderCutover({
+    createTimeMs: found.createTimeMs, order: found.order, cutoverMs: deps.cutoverMs,
+  });
+  if (!orderCut.ok) {
+    await rejectAndLog(db, { paymentId, lojaId, orderId, reason: orderCut.reason, payment });
+    return true;
   }
   const corr = validateCatalogPaymentCorrelation({ payment, lojaId, orderId, order: found.order });
   if (!corr.ok) {
@@ -840,6 +866,10 @@ export async function processMpWebhook(paymentIdRaw, mailOpts = {}, overrides = 
   if (txResult.outcome === "order_missing") {
     await rejectAndLog(db, { paymentId, lojaId, orderId, reason: "order_document_not_found", payment });
     return false;
+  }
+  if (txResult.outcome === "historical_order") {
+    await rejectAndLog(db, { paymentId, lojaId, orderId, reason: txResult.reason, payment });
+    return true;
   }
   if (txResult.outcome === "applied" && txResult.paymentApplied === true) {
     await runPromo(deps, "first", {
