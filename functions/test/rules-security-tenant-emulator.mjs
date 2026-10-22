@@ -93,6 +93,7 @@ async function seed() {
       await db.collection("usuarios").doc(emailOf(owner)).set({ authUid: owner, email: emailOf(owner), tipo: "admin", store_id: id, ownerStoreId: id });
     }
     await db.collection("lojas").doc(A).collection("members").doc(U.memberAdminA).set({ role: "admin", email: emailOf(U.memberAdminA) });
+    await db.collection("lojas").doc(A).collection("vendedores").doc("seller_a2").set({ uid: "seller_a2", ativo: true, storeId: A, permissoes: { vendas: true } });
     // Contas que hoje se autopromovem: role/tipo admin e programador gravados pelo próprio cliente.
     await db.collection("users").doc(U.evil).set({ uid: U.evil, role: "admin" });
     await db.collection("usuarios").doc(emailOf(U.evil)).set({ authUid: U.evil, tipo: "admin" });
@@ -300,12 +301,17 @@ async function main() {
         readOwnUsuarios: () => sA.collection("usuarios").doc(emailOf(U.sellerA)).get(),
         queryOwnUsuariosByAuthUid: () => sA.collection("usuarios").where("authUid", "==", U.sellerA).limit(1).get(),
         selfFcmToken: () => sA.collection("users").doc(U.sellerA).set({ fcmToken: "t" }, { merge: true }),
+        // Reparo de login legado: recria usuarios/{email} copiando o perfil achado por authUid.
+        legacyLoginRepairUsuarios: () => dbAs("seller_a2").collection("usuarios").doc(emailOf("seller_a2")).set({
+          authUid: "seller_a2", tipo: "vendedor", store_id: A, ownerStoreId: A, email: emailOf("seller_a2"),
+        }, { merge: true }),
       }, "ALLOWED");
       await matrix("SAME_STORE.seller_limits", {
         writeCategoria: () => l.collection("categorias").doc("cat_seller").set({ nome: "x" }),
         writePayments: () => l.collection("config").doc("payments").set({ provider: "x" }),
         updateLojaNome: () => l.update({ nome: "x" }),
         readOwnerUser: () => sA.collection("users").doc(U.ownerA).get(),
+        pointOwnProfileToOtherStore: () => sA.collection("users").doc(U.sellerA).set({ store_id: B }, { merge: true }),
       }, "DENIED");
     }
     {

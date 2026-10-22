@@ -834,11 +834,20 @@ service cloud.firestore {
         && (isOwnerOfStore(v) || isLojaMemberElevated(v));
     }
 
+    // Vendedor ativo aponta o próprio perfil para a loja onde vende; só lojas com dono, para que o
+    // ponteiro não ative userResolvedStoreMatches.
+    function userDocLojaOndeVendeComDono(v) {
+      return isNonEmptyStr(v) && v.size() <= 128
+        && isSellerOfStore(v)
+        && isNonEmptyStr(get(/databases/$(database)/documents/lojas/$(v)).data.get('ownerUid', null));
+    }
+
     function userDocPtrNovoOk(k) {
       let v = request.resource.data.get(k, null);
       return v == null || v == ''
         || (resource != null && resource.data.get(k, null) == v)
-        || userDocLojaAdministrada(v);
+        || userDocLojaAdministrada(v)
+        || userDocLojaOndeVendeComDono(v);
     }
 
     function userDocPtrsNovosOk() {
