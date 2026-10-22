@@ -122,17 +122,25 @@ async function snapshotState(env, lojaId, orderId) {
 }
 
 /** Escritas exatas do cliente @585c792 a partir de um mapa de pre_pedido possivelmente obsoleto. */
-async function legacyConfirm(env, { lojaId, orderId, uid, staleOrder }) {
-  const db = env.authenticatedContext(uid, { email: `${uid}@example.test` }).firestore();
-  const loja = db.collection("lojas").doc(lojaId);
-  const vendaId = `legacy-uuid-${lojaId}`;
-  const out = {};
+async function legacyConfirm(env, opts, { betweenSaleAndOrderUpdate } = {}) {
+  const out = await legacySaleWrite(env, opts);
+  if (betweenSaleAndOrderUpdate) await betweenSaleAndOrderUpdate();
+  return { ...out, ...(await legacyOrderAndStock(env, opts)) };
+}
 
+function legacyDb(env, { lojaId, uid }) {
+  const db = env.authenticatedContext(uid, { email: `${uid}@example.test` }).firestore();
+  return { db, loja: db.collection("lojas").doc(lojaId), vendaId: `legacy-uuid-${lojaId}` };
+}
+
+async function legacySaleWrite(env, { lojaId, uid, staleOrder }) {
+  const { loja, vendaId } = legacyDb(env, { lojaId, uid });
+  const out = {};
   out.estoqueVendasSet = await attempt(async () => {
     await loja.collection("estoque_vendas").doc(vendaId).get();
     await loja.collection("estoque_vendas").doc(vendaId).set({
       id: vendaId, lojaId, data: firebase.firestore.Timestamp.now(), total: staleOrder.total, desconto: 0,
-      formasPagamento: staleOrder.pagamento, frete: 0, clienteNome: "Cliente Sintetico",
+      descontoValor: 0, formasPagamento: staleOrder.pagamento, frete: 0, clienteNome: "Cliente Sintetico",
       produtosDescricao: "Anel teste", quantidade: 1, preco: staleOrder.subtotal, tamanho: "",
       vendedor: "Loja online", observacao: "", pagamentoDinheiro: 0, pagamentoPix: staleOrder.total,
       pagamentoCartao: 0, taxas: 0, custoProdutos: 0,
@@ -140,7 +148,12 @@ async function legacyConfirm(env, { lojaId, orderId, uid, staleOrder }) {
       clienteId: null, cancelada: false, estornada: false, createdAt: ts(), updatedAt: ts(), status: "concluida",
     }, { merge: true });
   });
+  return out;
+}
 
+async function legacyOrderAndStock(env, { lojaId, orderId, uid }) {
+  const { db, loja, vendaId } = legacyDb(env, { lojaId, uid });
+  const out = {};
   out.prePedidoUpdate = await attempt(() =>
     loja.collection("pre_pedidos").doc(orderId).update({ status: "confirmado", vendaId, dataAtualizacao: ts() }),
   );
@@ -203,6 +216,29 @@ async function main() {
       record("B_concurrent.TOTAL_SALE_RECORDS_incl_residual", after.sales, 2);
       record("B_concurrent.TOTAL_STOCK_DEBITS", 10 - after.stockQty, 1);
       record("B_concurrent.order_canonical_preserved", [after.orderStatus, after.orderVendaId], ["paid", OP_ID]);
+    }
+
+    // B2 — corrida venda-primeiro: legado grava estoque_vendas, webhook commita, legado tenta pedido + estoque.
+    {
+      const lojaId = "loja_B2_admin";
+      const orderId = await seedStore(env, { lojaId, ownerUid: ADMIN_UID, adminRole: true, webhookApplied: false });
+      let webhookDecision;
+      const w = await legacyConfirm(
+        env,
+        { lojaId, orderId, uid: ADMIN_UID, staleOrder: orderPending(lojaId, orderId) },
+        {
+          betweenSaleAndOrderUpdate: async () => {
+            const mid = await snapshotState(env, lojaId, orderId);
+            webhookDecision = classifyOrderForAutoSale(mid.order, PAYMENT_ID).state;
+            await applyWebhookCanonicalSale(env, lojaId, orderId);
+          },
+        },
+      );
+      const after = await snapshotState(env, lojaId, orderId);
+      record("B2_saleFirstRace.webhook_sees_legacy_sale", webhookDecision, "payable");
+      record("B2_saleFirstRace.writes", w, { estoqueVendasSet: "ALLOWED", prePedidoUpdate: "DENIED", stockTransaction: "DENIED" });
+      record("B2_saleFirstRace.TOTAL_SALES_and_DEBITS", [after.sales, 10 - after.stockQty], [2, 1]);
+      record("B2_saleFirstRace.order_canonical_preserved", [after.orderStatus, after.orderVendaId], ["paid", OP_ID]);
     }
 
     // C — legado completa antes do webhook (admin): pedido fica confirmado → webhook não vende.
