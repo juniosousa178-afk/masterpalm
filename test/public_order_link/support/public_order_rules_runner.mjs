@@ -116,6 +116,31 @@ await check("H. anônimo NÃO escreve nem apaga o espelho", Promise.all([
   assertFails(pub(anon, LOJA_A, PEDIDO_A).delete()),
 ]));
 
+const IMG = "https://firebasestorage.googleapis.com/v0/b/demo/o/lojas%2Floja-a%2Fprodutos%2Fanel.jpg?alt=media&token=t";
+const PEDIDO_FOTO = "PedidoFotoaaaaaaaaaa";
+const mirrorComFoto = (lojaId, pedidoId) => ({
+  ...mirror(lojaId, pedidoId),
+  itensResumo: [{ nome: "Anel", quantidade: 1, imagem: IMG }],
+});
+await env.withSecurityRulesDisabled(async (ctx) => {
+  await ctx.firestore().doc(`lojas/${LOJA_A}/pedido_status_publico/${PEDIDO_FOTO}`)
+    .set(mirrorComFoto(LOJA_A, PEDIDO_FOTO));
+});
+await check("I. espelho com foto: anônimo lê por ID exato e recebe a imagem", (async () => {
+  const snap = await assertSucceeds(pub(anon, LOJA_A, PEDIDO_FOTO).get());
+  if (snap.data().itensResumo[0].imagem !== IMG) throw new Error("imagem ausente");
+})());
+await check("J. espelho com foto: anônimo continua sem listar/consultar e sem escrever", Promise.all([
+  assertFails(pubCol(anon, LOJA_A).get()),
+  assertFails(pubCol(anon, LOJA_A).where("status", "==", "pendente").get()),
+  assertFails(pub(anon, LOJA_A, PEDIDO_FOTO).set(mirrorComFoto(LOJA_A, PEDIDO_FOTO))),
+  assertFails(pub(anon, LOJA_A, PEDIDO_FOTO).update({ itensResumo: [] })),
+]));
+await check("K. dono da loja grava espelho com foto (cancelamento no app) sem mudar Rules", Promise.all([
+  assertSucceeds(pub(ownerA, LOJA_A, PEDIDO_FOTO).set({ ...mirrorComFoto(LOJA_A, PEDIDO_FOTO), status: "cancelado" })),
+  assertFails(pub(ownerA, LOJA_B, PEDIDO_FOTO).set(mirrorComFoto(LOJA_B, PEDIDO_FOTO))),
+]));
+
 await env.cleanup();
 console.log(`PUBLIC_ORDER_RULES passed=${passed} failed=${failed}`);
 process.exit(failed === 0 ? 0 : 1);

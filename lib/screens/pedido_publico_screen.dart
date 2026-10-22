@@ -5,10 +5,12 @@ import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 
+import '../catalog/public_order_item_image.dart';
 import '../catalog/public_order_link.dart';
 import '../core/logger.dart';
 import '../core/pre_pedido_sale_intent.dart';
 import '../repositories/pedido_status_publico_repository.dart';
+import '../widgets/public_order_item_thumbnail.dart';
 
 /// Tela pública para visualizar o status do pedido
 /// Acessível via: https://app.mastepalm.com.br/pedido/{prePedidoId}?loja={lojaId}
@@ -20,11 +22,15 @@ class PedidoPublicoScreen extends StatefulWidget {
   final String prePedidoId;
   final PedidoStatusPublicoRepository? repository;
 
+  /// Testes: substitui o [NetworkImage] das fotos dos itens.
+  final ImageProvider Function(String url)? itemImageProviderFor;
+
   const PedidoPublicoScreen({
     super.key,
     required this.lojaId,
     required this.prePedidoId,
     this.repository,
+    this.itemImageProviderFor,
   });
 
   static const String mensagemNaoEncontrado =
@@ -549,10 +555,15 @@ class _PedidoPublicoScreenState extends State<PedidoPublicoScreen> {
       return itensResumo
           .map(_asMap)
           .where((item) => item.isNotEmpty)
-          .map((item) => {
-                'nome': (item['nome'] ?? '').toString(),
-                'quantidade': (item['quantidade'] as num?)?.toInt() ?? 1,
-              })
+          .map((item) {
+            final imagem =
+                publicOrderItemImageUrl(item[kPublicOrderItemImageField]);
+            return {
+              'nome': (item['nome'] ?? '').toString(),
+              'quantidade': (item['quantidade'] as num?)?.toInt() ?? 1,
+              if (imagem != null) kPublicOrderItemImageField: imagem,
+            };
+          })
           .where((item) => (item['nome'] ?? '').toString().trim().isNotEmpty)
           .toList(growable: false);
     }
@@ -965,12 +976,14 @@ class _PedidoPublicoScreenState extends State<PedidoPublicoScreen> {
               children: [
                 Icon(icone, size: 20, color: Colors.grey[700]),
                 const SizedBox(width: 8),
-                Text(
-                  titulo,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey[800],
+                Flexible(
+                  child: Text(
+                    titulo,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey[800],
+                    ),
                   ),
                 ),
               ],
@@ -999,14 +1012,9 @@ class _PedidoPublicoScreenState extends State<PedidoPublicoScreen> {
       ),
       child: Row(
         children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: Colors.grey[300],
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Icon(Icons.shopping_bag, color: Colors.grey),
+          PublicOrderItemThumbnail(
+            imageUrl: item[kPublicOrderItemImageField] as String?,
+            imageProviderFor: widget.itemImageProviderFor,
           ),
           const SizedBox(width: 12),
 

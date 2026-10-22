@@ -104,7 +104,13 @@ class PedidoStatusPublicoRepository {
     String? overrideCodigoRastreio,
     String? overrideFreteNome,
     bool merge = true,
-  }) {
+  }) async {
+    PedidoStatusPublico? atual;
+    try {
+      atual = await getByPedidoId(lojaId: lojaId, pedidoId: pedidoId);
+    } catch (_) {
+      atual = null;
+    }
     final status = PedidoStatusPublico.fromPedidoPrivado(
       pedidoId: pedidoId,
       lojaId: lojaId,
@@ -114,6 +120,7 @@ class PedidoStatusPublicoRepository {
       overrideDataAtualizacao: overrideDataAtualizacao,
       overrideCodigoRastreio: overrideCodigoRastreio,
       overrideFreteNome: overrideFreteNome,
+      previousItensResumo: atual?.itensResumo ?? const [],
     );
     return save(
       lojaId: lojaId,

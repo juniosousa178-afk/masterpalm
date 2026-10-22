@@ -1,16 +1,21 @@
+import '../catalog/public_order_item_image.dart';
+
 class PedidoStatusPublicoItemResumo {
   const PedidoStatusPublicoItemResumo({
     required this.nome,
     required this.quantidade,
+    this.imagem,
   });
 
   final String nome;
   final int quantidade;
+  final String? imagem;
 
   factory PedidoStatusPublicoItemResumo.fromMap(Map<String, dynamic> map) {
     return PedidoStatusPublicoItemResumo(
       nome: (map['nome'] ?? '').toString(),
       quantidade: (map['quantidade'] as num?)?.toInt() ?? 0,
+      imagem: publicOrderItemImageUrl(map[kPublicOrderItemImageField]),
     );
   }
 
@@ -18,6 +23,7 @@ class PedidoStatusPublicoItemResumo {
     return {
       'nome': nome,
       'quantidade': quantidade,
+      if (imagem != null) kPublicOrderItemImageField: imagem,
     };
   }
 }
@@ -68,6 +74,8 @@ class PedidoStatusPublico {
     );
   }
 
+  /// [previousItensResumo]: itens do espelho atual. A imagem só vem dele (mesma posição e
+  /// mesmo nome); as imagens do pedido privado vêm do carrinho e não são publicadas.
   factory PedidoStatusPublico.fromPedidoPrivado({
     required String pedidoId,
     required String lojaId,
@@ -77,9 +85,10 @@ class PedidoStatusPublico {
     Object? overrideDataAtualizacao,
     String? overrideCodigoRastreio,
     String? overrideFreteNome,
+    List<PedidoStatusPublicoItemResumo> previousItensResumo = const [],
   }) {
     final itens = (pedidoData['itens'] as List?) ?? const [];
-    final itensResumo = itens
+    final semImagem = itens
         .whereType<Map>()
         .map((item) {
           final itemMap = Map<String, dynamic>.from(item);
@@ -90,6 +99,17 @@ class PedidoStatusPublico {
         })
         .where((item) => item.nome.trim().isNotEmpty)
         .toList(growable: false);
+    final itensResumo = [
+      for (var i = 0; i < semImagem.length; i++)
+        PedidoStatusPublicoItemResumo(
+          nome: semImagem[i].nome,
+          quantidade: semImagem[i].quantidade,
+          imagem: i < previousItensResumo.length &&
+                  previousItensResumo[i].nome.trim() == semImagem[i].nome.trim()
+              ? previousItensResumo[i].imagem
+              : null,
+        ),
+    ];
 
     final frete = pedidoData['frete'];
     final freteMap = frete is Map ? Map<String, dynamic>.from(frete) : null;

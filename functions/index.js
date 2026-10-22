@@ -15,6 +15,7 @@ import {handleProjectionRetryEvent} from "./src/consignmentCatalogProjection.js"
 import {mapConsignmentHttp, describeUnclassifiedConsignmentError} from "./src/consignmentProtocol.js";
 import {executeCategoryCommand, mapCategoryError} from "./src/categoryCommand.js";
 import {legacyOrderRedirectTarget} from "./src/publicOrderRedirect.js";
+import {withPublicOrderItemImages} from "./src/publicOrderItemImages.js";
 import {
   catalogShortcutBase,
   catalogShortcutKey,
@@ -4145,12 +4146,19 @@ export const syncPedidoStatusPublico = onDocumentWritten(
     try {
       const afterData = after.data() || {};
       const payload = buildPedidoStatusPublico(lojaId, pedidoId, afterData);
-      await db
+      const mirrorRef = db
         .collection(COLLECTION_LOJAS)
         .doc(lojaId)
         .collection(COLLECTION_PEDIDO_STATUS_PUBLICO)
-        .doc(pedidoId)
-        .set(payload, { merge: false });
+        .doc(pedidoId);
+      payload.itensResumo = await withPublicOrderItemImages(db, {
+        lojaId,
+        pedidoData: afterData,
+        itensResumo: payload.itensResumo,
+        mirrorRef,
+        isNewOrder: !event.data?.before?.exists,
+      });
+      await mirrorRef.set(payload, { merge: false });
       await upsertClientePortalFromPedido(lojaId, pedidoId, afterData);
       await writeOrderLojaIndex(db, pedidoId, lojaId, "pre_pedidos");
       console.log("[syncPedidoStatusPublico] Espelho público atualizado:", pedidoId);
