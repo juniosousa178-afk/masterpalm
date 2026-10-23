@@ -24,6 +24,7 @@ class Web {
 
   static HtmlWindowBase? open(String url, String name) => null;
   static String locationHref() => '';
+  static void historyReplaceUrl(String relativeUrl) {}
   static void setLocationHash(String hash) {}
   static void setTitle(String t) {}
 

@@ -33,6 +33,11 @@ class Web {
 
   static String locationHref() => html.window.location.href;
 
+  /// Troca a URL atual sem empilhar histórico, mantendo o `state` da entrada
+  /// (marcador do histórico do Flutter web).
+  static void historyReplaceUrl(String relativeUrl) => html.window.history
+      .replaceState(html.window.history.state, '', relativeUrl);
+
   static void setLocationHash(String hash) => html.window.location.hash = hash;
 
   static void setTitle(String t) => html.document.title = t;

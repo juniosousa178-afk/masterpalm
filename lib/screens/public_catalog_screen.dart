@@ -25,6 +25,7 @@ import 'auth/login_screen_cliente.dart';
 import 'package:master_palm/screens/auth/cadastro_screen_cliente.dart';
 import 'auth/perfil_cliente_screen_novo.dart';
 import '../services/cliente_auth_service.dart';
+import '../services/catalog_cart_persistence.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/catalog_cache_service.dart';
 import '../services/catalog_config_published_v3_bridge.dart';
@@ -39,6 +40,7 @@ import '../utils/pix_brcode.dart';
 import '../widgets/pix_qr_dialog.dart' show showPixQrDialog;
 import '../core/combo_config_canonical.dart';
 import '../catalog/catalog_layout_config.dart';
+import '../catalog/catalog_payment_return_link.dart';
 import '../debug/catalog_normal_trace.dart';
 import '../debug/catalog_startup_trace.dart';
 import 'public_catalog/catalog_helpers.dart';
@@ -720,6 +722,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   bool _normalTraceRenderSuccessLogged = false;
 
   final List<Map<String, dynamic>> _cart = [];
+  CatalogPaymentReturn? _paymentReturn;
+  bool _paymentReturnCartHandled = false;
+  bool _paymentReturnNoticeShown = false;
   bool _publicando = false;
 
   /// Último pré-pedido criado nesta sessão do carrinho (evita vários pedidos ao trocar forma de pagamento)
@@ -906,6 +911,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
         'is_web': kIsWeb,
       },
     );
+    if (!widget.preview) {
+      _paymentReturn = CatalogPaymentReturnLink.takePendingFor(widget.lojaId);
+    }
     _initPendingCatalogFiltersFromUrl();
     _currentPageNotifier.addListener(_onCatalogPageNotifierChanged);
     _catalogScrollController.addListener(_onCatalogScroll);
@@ -937,6 +945,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   void _deferSecondaryPublicCatalogLoads() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      _showPaymentReturnNotice();
       _loadRecentIds();
       _loadClienteAndFavoritos();
       final lid = _resolvedLojaId;
@@ -2181,10 +2190,64 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     });
   }
 
+  /// Retorno aprovado do MP esvazia só o carrinho desta loja, uma vez por abertura.
+  /// Pagamento/venda/estoque continuam sendo decididos pelo webhook.
+  Future<void> _applyPaymentReturnCartRule(String lojaId) async {
+    final ret = _paymentReturn;
+    if (ret == null || _paymentReturnCartHandled) return;
+    _paymentReturnCartHandled = true;
+    if (!ret.clearsCart) return;
+    await CatalogCartPersistence.clearAfterSuccessfulCatalogPayment(lojaId);
+    if (mounted) setState(_cart.clear);
+  }
+
+  void _showPaymentReturnNotice() {
+    final ret = _paymentReturn;
+    if (ret == null || _paymentReturnNoticeShown || !mounted) return;
+    _paymentReturnNoticeShown = true;
+    final Color? background;
+    final IconData icon;
+    switch (ret.status) {
+      case CatalogPaymentReturnStatus.sucesso:
+        background = null;
+        icon = Icons.check_circle_outline;
+        break;
+      case CatalogPaymentReturnStatus.pendente:
+        background = Colors.orange.shade800;
+        icon = Icons.hourglass_top;
+        break;
+      case CatalogPaymentReturnStatus.falha:
+        background = Colors.red.shade700;
+        icon = Icons.error_outline;
+        break;
+    }
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(
+        key: const ValueKey('catalog_payment_return_notice'),
+        backgroundColor: background,
+        duration: const Duration(seconds: 8),
+        behavior: SnackBarBehavior.floating,
+        content: Row(
+          children: [
+            Icon(icon, color: Colors.white),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                CatalogPaymentReturnLink.message(ret.status),
+                style: const TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _loadClienteAndFavoritos() async {
     final cliente = await ClienteAuthService.getClienteLogado();
     final lojaSessao = await ClienteAuthService.getLojaId();
     final lid = _resolvedLojaId;
+    if (lid != null) await _applyPaymentReturnCartRule(lid);
     if (cliente != null && lojaSessao == lid && lid != null) {
       final cid = cliente['clienteId']?.toString();
       final email = cliente['email']?.toString().trim() ?? '';
@@ -4306,14 +4369,13 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                             'paymentMethods': {
                               'installments': maxInstallmentsSemJuros,
                             },
-                          'backUrls': {
-                            'success':
-                                '$paymentOrigin/pagamento/sucesso?loja=$lojaId',
-                            'failure':
-                                '$paymentOrigin/pagamento/falha?loja=$lojaId',
-                            'pending':
-                                '$paymentOrigin/pagamento/pendente?loja=$lojaId',
-                          },
+                          'backUrls': CatalogPaymentReturnLink.backUrls(
+                            origin: paymentOrigin,
+                            storeRef: CatalogPaymentReturnLink.storeRefForReturn(
+                              currentUri: Uri.base,
+                              lojaId: lojaId,
+                            ),
+                          ),
                         },
                       };
                       final response = await HttpClientHelper.post(

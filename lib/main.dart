@@ -52,6 +52,7 @@ import 'web/platform_stub.dart' if (dart.library.html) 'web/platform_web.dart'
 import 'utils/web_nav_log_observer.dart';
 import 'widgets/admin_web_route_shell.dart';
 
+import 'catalog/catalog_payment_return_link.dart';
 import 'catalog/public_order_link.dart';
 import 'features/plans/plan_return_link.dart';
 import 'features/plans/plan_return_status_loader.dart';
@@ -3080,7 +3081,15 @@ Future<void> main() async {
     if (kIsWeb) {
       url_strategy.usePathUrlStrategy();
       // Captura URL inicial para decisão catálogo vs app (evita redirect durante bootstrap)
-      final initialUri = Uri.base;
+      var initialUri = Uri.base;
+      // Retorno MP do catálogo (inclusive o antigo `/pagamento/*?loja=`) abre a loja, nunca o
+      // MyApp/login; a URL é limpa aqui, antes do motor web gravar a entrada de histórico.
+      final catalogPaymentReturnUrl =
+          CatalogPaymentReturnLink.consumeInitialUri(initialUri);
+      if (catalogPaymentReturnUrl != null) {
+        web_plat.Web.historyReplaceUrl(catalogPaymentReturnUrl);
+        initialUri = initialUri.resolve(catalogPaymentReturnUrl);
+      }
       _initialWebUri = initialUri;
       if (initialUri.queryParameters['diag'] == '1' &&
           initialUri.queryParameters['appStartTrace'] == '1') {
