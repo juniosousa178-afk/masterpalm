@@ -1183,7 +1183,8 @@ export const estornarBaixaContaReceber = onCall(
         db,
         auth: request.auth,
         data: request.data,
-        isRootAccountEmail,
+        isRootAccountEmail: (email) =>
+          request.auth?.token?.email_verified === true && isRootAccountEmail(email),
       });
     } catch (err) {
       if (err instanceof HttpsError) throw err;
