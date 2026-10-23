@@ -17,5 +17,12 @@ export function isPlatformAdminToken(token) {
   return token?.email_verified === true && isRootAccountEmail(token?.email);
 }
 
+/** Autoridade de plataforma sem ID token (jobs): registro do Firebase Auth (Admin) com e-mail root verificado e conta ativa. */
+export function isPlatformAdminAuthUser(user) {
+  return user?.disabled === false
+    && user?.emailVerified === true
+    && isRootAccountEmail(user?.email);
+}
+
 /** E-mail principal usado em scripts legados — também está em ROOT_ACCOUNT_EMAILS */
 export const ROOT_EMAIL = "masterpalm26@gmail.com";

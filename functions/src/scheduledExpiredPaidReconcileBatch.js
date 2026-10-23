@@ -8,7 +8,8 @@ import {
   normalizeCanonicalPlanId,
   PAID_PLANS_WITH_RENEWAL,
 } from "../ensureUserPlan.js";
-import { isRootAccountEmail } from "./rootAccounts.js";
+import { getAuth } from "firebase-admin/auth";
+import { isPlatformAdminAuthUser, isRootAccountEmail } from "./rootAccounts.js";
 
 /**
  * @typedef {'skip_not_paid' | 'skip_invalid_period' | 'skip_protected' | 'process'} SchedulerDocDecision
@@ -19,9 +20,10 @@ import { isRootAccountEmail } from "./rootAccounts.js";
  * @param {Record<string, unknown>} data
  * @param {string} email
  * @param {Date} now
+ * @param {{ verifiedRoot?: boolean }} [opts] verifiedRoot só a partir do Firebase Auth (Admin), nunca do perfil
  * @returns {SchedulerDocDecision}
  */
-export function classifyExpiredPaidSchedulerDoc(data, email, now) {
+export function classifyExpiredPaidSchedulerDoc(data, email, now, { verifiedRoot = false } = {}) {
   const canonical = normalizeCanonicalPlanId(
     String(data?.currentPlanId || data?.plan || ""),
   );
@@ -36,10 +38,7 @@ export function classifyExpiredPaidSchedulerDoc(data, email, now) {
     return "skip_invalid_period";
   }
 
-  if (data?.isRoot === true) return "skip_protected";
-  if (isRootAccountEmail(email)) {
-    return "skip_protected";
-  }
+  if (verifiedRoot === true) return "skip_protected";
   if (data?.manual_grant?.type === "lifetime") return "skip_protected";
   if (data?.manualOverride && data.manualOverride.enabled === true) {
     return "skip_protected";
@@ -49,6 +48,37 @@ export function classifyExpiredPaidSchedulerDoc(data, email, now) {
 }
 
 /**
+ * Perfil que alega root (`isRoot` ou e-mail root em users/{uid}). Campos do perfil são graváveis
+ * pelo cliente ou podem estar desatualizados: só indicam quem consultar no Auth, nunca autorizam.
+ */
+export function isSchedulerRootCandidate(data, email) {
+  return data?.isRoot === true || isRootAccountEmail(email);
+}
+
+/**
+ * Root só se o registro do Firebase Auth do próprio uid confirmar. Qualquer falha → não root.
+ * @returns {Promise<{ root: boolean, reason: string }>}
+ */
+export async function resolveSchedulerRootAuthority({ uid, getAuthUser }) {
+  let user;
+  try {
+    user = await getAuthUser(uid);
+  } catch (err) {
+    return {
+      root: false,
+      reason: err?.code === "auth/user-not-found" ? "auth_user_not_found" : "auth_lookup_failed",
+    };
+  }
+  if (isPlatformAdminAuthUser(user)) return { root: true, reason: "auth_verified_root" };
+  if (!user?.email) return { root: false, reason: "auth_email_missing" };
+  if (!isRootAccountEmail(user.email)) return { root: false, reason: "auth_email_not_root" };
+  if (user.emailVerified !== true) return { root: false, reason: "auth_email_unverified" };
+  return { root: false, reason: "auth_account_disabled" };
+}
+
+const defaultGetAuthUser = (uid) => getAuth().getUser(uid);
+
+/**
  * Executa uma passagem do job a partir de um QuerySnapshot já obtido (testável / injetável).
  *
  * @param {object} opts
@@ -56,6 +86,7 @@ export function classifyExpiredPaidSchedulerDoc(data, email, now) {
  * @param {Date} opts.now
  * @param {import('firebase-admin/firestore').QuerySnapshot} opts.snap
  * @param {typeof computePlanState} [opts.computePlanStateImpl]
+ * @param {(uid: string) => Promise<import('firebase-admin/auth').UserRecord>} [opts.getAuthUser]
  * @returns {Promise<Record<string, unknown>>}
  */
 export async function runScheduledReconcileBatch({
@@ -63,6 +94,7 @@ export async function runScheduledReconcileBatch({
   now,
   snap,
   computePlanStateImpl = computePlanState,
+  getAuthUser = defaultGetAuthUser,
 }) {
   const stats = {
     evt: "scheduled_expired_paid_plan_reconcile",
@@ -74,6 +106,8 @@ export async function runScheduledReconcileBatch({
     reconcileRuns: 0,
     downgradedToFreeLimited: 0,
     failed: 0,
+    rootAuthLookups: 0,
+    rootCandidatesRejected: 0,
   };
 
   for (const doc of snap.docs) {
@@ -84,7 +118,23 @@ export async function runScheduledReconcileBatch({
     try {
       stats.evaluated++;
 
-      const decision = classifyExpiredPaidSchedulerDoc(data, email, now);
+      let decision = classifyExpiredPaidSchedulerDoc(data, email, now);
+      if (decision === "process" && isSchedulerRootCandidate(data, email)) {
+        stats.rootAuthLookups++;
+        const authority = await resolveSchedulerRootAuthority({ uid, getAuthUser });
+        if (authority.root) {
+          decision = classifyExpiredPaidSchedulerDoc(data, email, now, { verifiedRoot: true });
+        } else {
+          stats.rootCandidatesRejected++;
+          console.warn(
+            JSON.stringify({
+              evt: "scheduled_expired_paid_plan_root_claim_rejected",
+              uid,
+              reason: authority.reason,
+            }),
+          );
+        }
+      }
       if (decision === "skip_not_paid") {
         stats.skippedNotPaidPlan++;
         continue;

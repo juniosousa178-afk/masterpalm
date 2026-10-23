@@ -234,4 +234,72 @@ describe("E2E scheduled reconcile (Firestore emulator + computePlanState real)",
     assert.equal(afterData.currentPlanId, "free_limited");
     assert.equal(afterData.trialUsed, beforeData.trialUsed);
   });
+
+  async function seedRootClaimProfile(uid) {
+    await db
+      .collection("users")
+      .doc(uid)
+      .set({
+        email: "masterpalm26@gmail.com",
+        isRoot: true,
+        currentPlanId: "pro_monthly",
+        status: "active",
+        trialing: false,
+        currentPeriodEnd: Timestamp.fromDate(pastDate()),
+        trialUsed: true,
+        cancelAtPeriodEnd: true,
+      });
+    const now = new Date();
+    const snap = snapshotForUids(await queryExpiredBatch(db, now), [uid]);
+    assert.equal(snap.docs.length, 1);
+    return { now, snap };
+  }
+
+  it("4) perfil alega root, Auth é usuário comum → downgrade normal", async () => {
+    const uid = `e2e_spoof_${Date.now()}`;
+    uidsToCleanup.push(uid);
+    const { now, snap } = await seedRootClaimProfile(uid);
+    const lookups = [];
+
+    const stats = await runScheduledReconcileBatch({
+      db,
+      now,
+      snap,
+      getAuthUser: async (u) => {
+        lookups.push(u);
+        return { uid: u, email: "user@example.com", emailVerified: true, disabled: false };
+      },
+    });
+
+    assert.deepEqual(lookups, [uid]);
+    assert.equal(stats.skippedProtected, 0);
+    assert.equal(stats.reconcileRuns, 1);
+    assert.equal(stats.downgradedToFreeLimited, 1);
+    assert.equal(stats.failed, 0);
+    const d = (await db.collection("users").doc(uid).get()).data();
+    assert.equal(d.currentPlanId, "free_limited");
+  });
+
+  it("5) root canônico verificado e ativo no Auth → isento", async () => {
+    const uid = `e2e_root_${Date.now()}`;
+    uidsToCleanup.push(uid);
+    const { now, snap } = await seedRootClaimProfile(uid);
+
+    const stats = await runScheduledReconcileBatch({
+      db,
+      now,
+      snap,
+      getAuthUser: async (u) => ({
+        uid: u,
+        email: "masterpalm26@gmail.com",
+        emailVerified: true,
+        disabled: false,
+      }),
+    });
+
+    assert.equal(stats.skippedProtected, 1);
+    assert.equal(stats.reconcileRuns, 0);
+    const d = (await db.collection("users").doc(uid).get()).data();
+    assert.equal(d.currentPlanId, "pro_monthly");
+  });
 });
