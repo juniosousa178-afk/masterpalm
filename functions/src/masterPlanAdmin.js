@@ -1027,6 +1027,7 @@ export async function runGetMyPlanEffectiveAccess({ db, request }) {
   }
   const uid = request.auth.uid;
   const email = normalizeEmail(request.auth.token?.email || "");
+  const emailVerified = Boolean(email) && request.auth.token?.email_verified === true;
 
   const userRef = db.collection("users").doc(uid);
   const snap = await userRef.get();
@@ -1040,6 +1041,7 @@ export async function runGetMyPlanEffectiveAccess({ db, request }) {
     email: email || normalizeEmail(userData.email || ""),
     userData,
     courtesyGrant,
+    emailVerified,
   });
 
   return {

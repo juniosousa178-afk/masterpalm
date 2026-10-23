@@ -244,6 +244,7 @@ function isTrialActive(canonicalPlan, userData, renewAt, now) {
  * @param {object} opts.userData
  * @param {Date} [opts.now]
  * @param {object|null} [opts.courtesyGrant]
+ * @param {boolean} [opts.emailVerified] true só quando `email` vem do token com email_verified
  */
 export function resolveEffectivePlanAccess({
   uid,
@@ -251,6 +252,7 @@ export function resolveEffectivePlanAccess({
   userData,
   now = new Date(),
   courtesyGrant = null,
+  emailVerified = false,
 }) {
   const data = userData && typeof userData === "object" ? userData : {};
   const em = String(email || data.email || "").trim().toLowerCase();
@@ -314,7 +316,7 @@ export function resolveEffectivePlanAccess({
   }
 
   // 2. Root lifetime
-  if (isRootAccountEmail(em)) {
+  if (emailVerified === true && isRootAccountEmail(em)) {
     return {
       ...base,
       effectivePlanId: "lifetime",

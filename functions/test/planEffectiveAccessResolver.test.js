@@ -44,11 +44,42 @@ describe("resolveEffectivePlanAccess — precedência", () => {
     const r = resolveEffectivePlanAccess({
       uid: "u1",
       email: "masterpalm26@gmail.com",
+      emailVerified: true,
       userData: baseUser({ currentPlanId: "free_limited" }),
     });
     assert.equal(r.accessSource, "root_lifetime");
     assert.equal(r.effectivePlanId, "lifetime");
     assert.equal(r.effectiveStatus, "active");
+  });
+
+  it("6b. root sem email verificado não recebe root_lifetime", () => {
+    const r = resolveEffectivePlanAccess({
+      uid: "u1b",
+      email: "masterpalm26@gmail.com",
+      userData: baseUser({ currentPlanId: "free_limited" }),
+    });
+    assert.notEqual(r.accessSource, "root_lifetime");
+  });
+
+  it("6c. email root apenas no perfil (sem token) não recebe root_lifetime", () => {
+    const r = resolveEffectivePlanAccess({
+      uid: "u1c",
+      email: "",
+      userData: baseUser({ currentPlanId: "free_limited", email: "masterpalm26@gmail.com" }),
+    });
+    assert.notEqual(r.accessSource, "root_lifetime");
+  });
+
+  it("6d. ex-root verificado não recebe root_lifetime", () => {
+    for (const email of ["masterpalm@gmail.com", "admin@masterpalm.com"]) {
+      const r = resolveEffectivePlanAccess({
+        uid: "u1d",
+        email,
+        emailVerified: true,
+        userData: baseUser({ currentPlanId: "free_limited" }),
+      });
+      assert.notEqual(r.accessSource, "root_lifetime");
+    }
   });
 
   it("7. courtesyGrant temporária válida vence assinatura paga", () => {
