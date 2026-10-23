@@ -43,7 +43,6 @@ As Functions abaixo foram migradas para Node 22 por troca de runtime via API (se
 
 | Function | Situação |
 |---|---|
-| `mpCatalogPayment` | **Protegida.** Handler do repositório reconciliado com a revisão live `mpcatalogpayment-00100-red` (normalização de valor PIX e tratamento de erro de valor do provedor; paridade por fixtures em `test/mpCatalogPaymentPix.emulator.test.mjs`). Deploy só com decisão explícita. |
 | `planWebhook` | Live publicado a partir de um commit diferente do repositório. |
 | `createPreference`, `planCreatePreference`, `planCreatePreferenceCall` | Handlers live diferentes do repositório. |
 | `calcularSuperFrete`, `superFreteQuote` | Frete: código live diferente. |
@@ -56,6 +55,7 @@ As Functions abaixo foram migradas para Node 22 por troca de runtime via API (se
 ### Configuração que o CLI mudaria
 
 - **`WEB_BASE_URL`:** 28 Functions estão fixadas na versão 3 do secret. Um deploy pelo CLI as passaria para a versão mais recente. Só fazer isso com decisão explícita sobre a URL base.
+- **`mpCatalogPayment`:** o código do repositório é igual ao live (`mpcatalogpayment-00100-red`: handler e dependências com o mesmo sha256, paridade por fixtures), mas a configuração não. O live está fixado em `WEB_BASE_URL:3` e `MP_ACCESS_TOKEN:27`; o deploy pelo CLI vincularia a versão mais recente de cada secret. Continua protegida: deploy só com decisão explícita e depois de `npm run test:mp-catalog-payment` (em `functions/`) passar.
 - **`cancelPlanSubscription`, `reactivatePlanSubscription`:** o deploy acrescentaria `USE_RECURRING_PLAN_BILLING`, que essas Functions leem, e mudaria o comportamento.
 - Demais Functions migradas por troca de runtime (frete, domínio de catálogo, triggers de loja/site/portal/pagamentos públicos, thumbnails, OAuth do Mercado Pago, `mpWebhook`, `devCreateOrder`, `gerarCupomNumeroSorte`, `provisionSubdomain`, `sendWhatsAppOrderConfirmation`): revisar o diff de código e de env/secrets contra o live antes do primeiro deploy pelo CLI.
 
