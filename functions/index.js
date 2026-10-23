@@ -63,6 +63,8 @@ import {
   resolveCatalogOrderForMp,
   isOrderPayableForMp,
   orderTotalToCents,
+  normalizeBrlTransactionAmountForMpPix,
+  mpCatalogPixProviderErrorIsAmountRelated,
 } from "./src/catalogMpOrderHelpers.js";
 import {
   normalizeEmail,
@@ -1848,7 +1850,28 @@ export const mpCatalogPayment = onRequest(
 
       if (t === "pix") {
         const { descricao, email, cpf } = body;
-        const numValor = expectedTotal;
+        const pixAmountNorm = normalizeBrlTransactionAmountForMpPix(expectedTotal);
+        if (!pixAmountNorm.ok) {
+          emitCatalogPaymentLog({
+            event: "mpCatalogPayment_validation_failed",
+            severity: "warn",
+            outcome: "validation_fail",
+            reason: "pix_amount_invalid",
+            lojaId: String(lojaId),
+            orderId: String(orderId),
+            type: t,
+            correlationId,
+            externalReference: String(orderId),
+            amountExpectedCents: orderTotalToCents(expectedTotal),
+          });
+          if (lockHeld && catalogIdemKey) await releaseMpCatalogPaymentLock(db, catalogIdemKey);
+          return res.status(400).json({
+            error:
+              "Não foi possível gerar o PIX por inconsistência no valor do pedido. Atualize o carrinho e tente novamente.",
+            code: pixAmountNorm.code || "PIX_AMOUNT_INVALID",
+          });
+        }
+        const transactionAmount = pixAmountNorm.transactionAmount;
         const pixPayer = resolveCatalogPixPayerForMp({
           body: { email, cpf },
           order: resolvedOrder.order,
@@ -1873,7 +1896,7 @@ export const mpCatalogPayment = onRequest(
         const notifUrl = WEBHOOK_URL || (PROJECT_ID ? `https://southamerica-east1-${PROJECT_ID}.cloudfunctions.net/mpWebhook` : "");
         // P1.5 trava local (Firestore) + chave determinística no MP: sucesso remoto com falha no commit local não deve gerar nova cobrança no retry.
         const mpBody = {
-          transaction_amount: numValor,
+          transaction_amount: transactionAmount,
           description: String(descricao),
           payment_method_id: "pix",
           external_reference: String(orderId),
@@ -1917,18 +1940,48 @@ export const mpCatalogPayment = onRequest(
             providerErrorSnippet: truncateProviderErrorText(txt),
           });
           let errMsg = "Erro ao gerar PIX. Verifique e-mail e CPF e tente novamente.";
+          const providerSnippet = truncateProviderErrorText(txt);
+          let amountRelated = mpCatalogPixProviderErrorIsAmountRelated(providerSnippet);
           try {
             const errJson = JSON.parse(txt);
-            const msg = errJson?.message || errJson?.error || errJson?.cause?.[0]?.description;
+            const msg =
+              errJson?.message ||
+              errJson?.error ||
+              errJson?.cause?.[0]?.description ||
+              errJson?.cause?.[0]?.code;
             if (msg) {
-              const s = String(msg).toLowerCase();
-              if (s.includes("bad_request") || s.includes("invalid")) {
-                errMsg = "Dados inválidos para PIX. Verifique e-mail e CPF e tente novamente.";
+              const msgStr = String(msg);
+              if (mpCatalogPixProviderErrorIsAmountRelated(msgStr)) {
+                amountRelated = true;
+                errMsg =
+                  "Não foi possível gerar o PIX por inconsistência no valor do pedido. Atualize o carrinho e tente novamente.";
               } else {
-                errMsg = String(msg);
+                const s = msgStr.toLowerCase();
+                if (s.includes("bad_request") || s.includes("invalid")) {
+                  errMsg = "Dados inválidos para PIX. Verifique e-mail e CPF e tente novamente.";
+                } else {
+                  errMsg = msgStr;
+                }
               }
             }
-          } catch (_) {}
+          } catch (_) {
+            if (amountRelated) {
+              errMsg =
+                "Não foi possível gerar o PIX por inconsistência no valor do pedido. Atualize o carrinho e tente novamente.";
+            }
+          }
+          if (amountRelated) {
+            console.warn("[PIX-AMOUNT-DIAG]", {
+              orderId: String(orderId),
+              lojaId: String(lojaId),
+              totalRawType: typeof resolvedOrder.order.total,
+              expectedTotal,
+              expectedTotalFinite: Number.isFinite(expectedTotal),
+              normalized: transactionAmount,
+              normalizedType: typeof transactionAmount,
+              cents: pixAmountNorm.cents,
+            });
+          }
           if (lockHeld && catalogIdemKey) await releaseMpCatalogPaymentLock(db, catalogIdemKey);
           return res.status(r.status).json({ error: errMsg });
         }

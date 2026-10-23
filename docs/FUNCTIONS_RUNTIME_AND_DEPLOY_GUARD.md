@@ -43,7 +43,7 @@ As Functions abaixo foram migradas para Node 22 por troca de runtime via API (se
 
 | Function | Situação |
 |---|---|
-| `mpCatalogPayment` | **Protegida.** O live tem normalização de valor PIX e tratamento de erro de valor do provedor (`normalizeBrlTransactionAmountForMpPix`, `mpCatalogPixProviderErrorIsAmountRelated`) que o `mpCatalogPayment` do repositório não usa. Deploy a partir do repositório regride o PIX. |
+| `mpCatalogPayment` | **Protegida.** Handler do repositório reconciliado com a revisão live `mpcatalogpayment-00100-red` (normalização de valor PIX e tratamento de erro de valor do provedor; paridade por fixtures em `test/mpCatalogPaymentPix.emulator.test.mjs`). Deploy só com decisão explícita. |
 | `planWebhook` | Live publicado a partir de um commit diferente do repositório. |
 | `createPreference`, `planCreatePreference`, `planCreatePreferenceCall` | Handlers live diferentes do repositório. |
 | `calcularSuperFrete`, `superFreteQuote` | Frete: código live diferente. |
