@@ -3,10 +3,30 @@
 <head>
   <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
   <link rel="dns-prefetch" href="https://www.gstatic.com">
+  <!-- /mp-oauth-callback: code/state do Mercado Pago saem da URL antes de qualquer script de diagnóstico ou log;
+       o Flutter lê-os só da memória (window.__mpOAuthReturn). Recarregar a página não reenvia o retorno. -->
+  <script>
+    (function () {
+      if (location.pathname !== '/mp-oauth-callback') return;
+      var out = {};
+      try {
+        var u = new URL(location.href);
+        ['code', 'state', 'error', 'error_description'].forEach(function (k) {
+          var v = u.searchParams.get(k);
+          if (v !== null) out[k] = v;
+        });
+        if (location.search) {
+          history.replaceState(history.state, '', location.pathname + location.hash);
+        }
+      } catch (_) {}
+      window.__mpOAuthReturn = out;
+    })();
+  </script>
   <!-- ?diag=1&cacheReset=1 : limpa SW, Cache API e chaves de diagnóstico antes do Flutter; redireciona com cacheResetDone=1 -->
   <script>
     (function () {
       function shouldRun() {
+        if (location.pathname === '/mp-oauth-callback') return false;
         try {
           var u = new URL(location.href);
           return u.searchParams.get('diag') === '1' && u.searchParams.get('cacheReset') === '1';
@@ -302,6 +322,7 @@
   <script>
     (function () {
       if (location.search.indexOf('cacheReset=1') >= 0) return;
+      if (location.pathname === '/mp-oauth-callback') return;
       var ua = (navigator.userAgent || '').toLowerCase();
       var isIosWebKit =
         (ua.indexOf('iphone') >= 0 || ua.indexOf('ipad') >= 0 || ua.indexOf('ipod') >= 0) &&

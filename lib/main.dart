@@ -126,6 +126,7 @@ import 'screens/master_login_screen.dart';
 import 'screens/mestre/master_plan_access_screen.dart';
 import 'screens/mp_oauth_callback_screen.dart';
 import 'screens/mp_oauth_start_screen.dart';
+import 'web/mp_oauth_return_params.dart';
 import 'screens/master_config_screen.dart';
 import 'screens/catalog_payment_support_screen.dart';
 import 'screens/site_config_screen.dart';
@@ -2704,64 +2705,6 @@ class CatalogWebRoot extends StatelessWidget {
 }
 
 // ===========================================================================
-// ✅ Página de resultado OAuth Mercado Pago (redirect após autorizar)
-// ===========================================================================
-class MpOAuthResultPage extends StatelessWidget {
-  final bool success;
-  final String? lojaId;
-  final String? errorMsg;
-
-  const MpOAuthResultPage({
-    super.key,
-    required this.success,
-    this.lojaId,
-    this.errorMsg,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: Scaffold(
-        body: SafeArea(
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    success ? Icons.check_circle : Icons.error,
-                    size: 72,
-                    color: success ? Colors.green : Colors.red,
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    success ? 'Mercado Pago conectado!' : 'Falha na conexão',
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    success
-                        ? 'Você pode fechar esta janela e voltar ao app.'
-                        : (errorMsg ?? 'Tente novamente mais tarde.'),
-                    style: Theme.of(context).textTheme.bodyLarge,
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ===========================================================================
 // ⏳ Boot UI
 // ===========================================================================
 class _BootApp extends StatelessWidget {
@@ -3476,23 +3419,14 @@ Future<void> main() async {
         if (uri.path == '/mp-oauth-callback') {
           logD('🌐 [MAIN] Callback OAuth MP detectado em /mp-oauth-callback');
           CatalogStartupTrace.mark('CAT_START.runApp.mp_oauth_callback');
-          runApp(MpOAuthCallbackScreen(uri: uri));
+          runApp(MpOAuthCallbackScreen(
+            params: takeMpOAuthReturnParams() ?? uri.queryParameters,
+          ));
           return;
         }
         if (uri.path == '/mp-oauth-start') {
           CatalogStartupTrace.mark('CAT_START.runApp.mp_oauth_start');
           runApp(MpOAuthStartScreen(uri: uri));
-          return;
-        }
-        final mpOAuth = uri.queryParameters['mp_oauth'];
-        if (mpOAuth == 'ok' || mpOAuth == 'error') {
-          logD('🌐 [MAIN] Redirect OAuth MP detectado: $mpOAuth');
-          CatalogStartupTrace.mark('CAT_START.runApp.mp_oauth_result');
-          runApp(MpOAuthResultPage(
-            success: mpOAuth == 'ok',
-            lojaId: uri.queryParameters['loja'],
-            errorMsg: uri.queryParameters['msg'],
-          ));
           return;
         }
 

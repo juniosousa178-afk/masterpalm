@@ -992,11 +992,15 @@ class _ConfigPagamentosScreenState extends State<ConfigPagamentosScreen>
                                               errorColor,
                                             );
                                           } finally {
-                                            if (mounted) {
-                                              setState(() {
-                                                _mpOAuthConnecting = false;
-                                              });
-                                            }
+                                            Future.delayed(
+                                                PagamentosService
+                                                    .oauthAberturaCooldown, () {
+                                              if (mounted) {
+                                                setState(() {
+                                                  _mpOAuthConnecting = false;
+                                                });
+                                              }
+                                            });
                                           }
                                         },
                                   icon: _mpOAuthConnecting

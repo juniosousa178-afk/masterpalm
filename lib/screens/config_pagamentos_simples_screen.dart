@@ -31,6 +31,7 @@ class _ConfigPagamentosSimplesScreenState
   bool _carregando = true;
   String? _erro;
   bool _salvando = false;
+  bool _abrindoOAuth = false;
   bool _sincronizando = false;
   bool _publicando = false;
   bool _offline = false;
@@ -161,11 +162,15 @@ class _ConfigPagamentosSimplesScreenState
   }
 
   Future<void> _conectarMercadoPagoOAuth() async {
-    if (_lojaId == null) return;
+    if (_lojaId == null || _abrindoOAuth) return;
+    setState(() => _abrindoOAuth = true);
+    Future.delayed(PagamentosService.oauthAberturaCooldown, () {
+      if (mounted) setState(() => _abrindoOAuth = false);
+    });
     final messenger = ScaffoldMessenger.of(context);
     try {
-      await PagamentosService.abrirConexaoOAuth(_lojaId!);
-      if (!mounted) return;
+      final abriu = await PagamentosService.abrirConexaoOAuth(_lojaId!);
+      if (!abriu || !mounted) return;
       messenger.showSnackBar(
         const SnackBar(
           content: Row(
@@ -905,14 +910,16 @@ class _ConfigPagamentosSimplesScreenState
                       icon: const Icon(kIsWeb ? Icons.refresh : Icons.vpn_key,
                           size: 18),
                       label: const Text('Reconectar'),
-                      onPressed: () {
-                        HapticFeedback.mediumImpact();
-                        if (kIsWeb) {
-                          _conectarMercadoPagoOAuth();
-                        } else {
-                          _mostrarConectarComToken();
-                        }
-                      },
+                      onPressed: _abrindoOAuth
+                          ? null
+                          : () {
+                              HapticFeedback.mediumImpact();
+                              if (kIsWeb) {
+                                _conectarMercadoPagoOAuth();
+                              } else {
+                                _mostrarConectarComToken();
+                              }
+                            },
                     ),
                   ),
                 ],
@@ -937,14 +944,16 @@ class _ConfigPagamentosSimplesScreenState
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 12),
                       ),
-                      onPressed: () {
-                        HapticFeedback.mediumImpact();
-                        if (kIsWeb) {
-                          _conectarMercadoPagoOAuth();
-                        } else {
-                          _mostrarConectarComToken();
-                        }
-                      },
+                      onPressed: _abrindoOAuth
+                          ? null
+                          : () {
+                              HapticFeedback.mediumImpact();
+                              if (kIsWeb) {
+                                _conectarMercadoPagoOAuth();
+                              } else {
+                                _mostrarConectarComToken();
+                              }
+                            },
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -952,7 +961,7 @@ class _ConfigPagamentosSimplesScreenState
                     child: TextButton(
                       onPressed: kIsWeb
                           ? () => _mostrarConectarComToken()
-                          : _conectarMercadoPagoOAuth,
+                          : (_abrindoOAuth ? null : _conectarMercadoPagoOAuth),
                       child: Text(
                         kIsWeb
                             ? 'Ou conectar com token manual'

@@ -126,11 +126,32 @@ class _MpOAuthSignInPanelState extends State<MpOAuthSignInPanel> {
   }
 }
 
+Future<bool> _defaultHasRealSession() async =>
+    mpOAuthIsRealUser(await mpOAuthRestoredUser());
+
+Future<bool> _defaultLaunchAuthUrl(Uri url) =>
+    launchUrl(url, webOnlyWindowName: '_self');
+
+Future<void> _defaultSignOut() => FirebaseAuth.instance.signOut();
+
 /// `/mp-oauth-start?lojaId=…` — exige login e pede ao servidor a URL de autorização do MP.
+/// O lojaId da URL é só o pedido: o servidor valida se o utilizador administra a loja
+/// e devolve uma URL com state opaco, que o cliente não lê nem altera.
 class MpOAuthStartScreen extends StatefulWidget {
-  const MpOAuthStartScreen({super.key, required this.uri});
+  const MpOAuthStartScreen({
+    super.key,
+    required this.uri,
+    this.hasRealSession = _defaultHasRealSession,
+    this.createAuthUrl = PagamentosService.criarAutorizacaoOAuth,
+    this.launchAuthUrl = _defaultLaunchAuthUrl,
+    this.signOut = _defaultSignOut,
+  });
 
   final Uri uri;
+  final Future<bool> Function() hasRealSession;
+  final Future<String> Function(String lojaId) createAuthUrl;
+  final Future<bool> Function(Uri url) launchAuthUrl;
+  final Future<void> Function() signOut;
 
   @override
   State<MpOAuthStartScreen> createState() => _MpOAuthStartScreenState();
@@ -139,6 +160,8 @@ class MpOAuthStartScreen extends StatefulWidget {
 class _MpOAuthStartScreenState extends State<MpOAuthStartScreen> {
   bool _loading = true;
   bool _needsLogin = false;
+  bool _starting = false;
+  bool _redirected = false;
   String? _erro;
 
   String get _lojaId => (widget.uri.queryParameters['lojaId'] ?? '').trim();
@@ -158,9 +181,9 @@ class _MpOAuthStartScreenState extends State<MpOAuthStartScreen> {
       });
       return;
     }
-    final user = await mpOAuthRestoredUser();
+    final hasSession = await widget.hasRealSession();
     if (!mounted) return;
-    if (!mpOAuthIsRealUser(user)) {
+    if (!hasSession) {
       setState(() {
         _loading = false;
         _needsLogin = true;
@@ -171,33 +194,76 @@ class _MpOAuthStartScreenState extends State<MpOAuthStartScreen> {
   }
 
   Future<void> _start() async {
+    if (_starting) return;
+    _starting = true;
     setState(() {
       _loading = true;
       _needsLogin = false;
+      _redirected = false;
       _erro = null;
     });
     try {
-      final authUrl = await PagamentosService.criarAutorizacaoOAuth(_lojaId);
-      await launchUrl(Uri.parse(authUrl), webOnlyWindowName: '_self');
+      final authUrl = await widget.createAuthUrl(_lojaId);
+      final launched = await widget.launchAuthUrl(Uri.parse(authUrl));
+      if (!launched) {
+        _falhar('Não foi possível abrir o Mercado Pago. Tente novamente.');
+        return;
+      }
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _redirected = true;
+      });
     } on FirebaseFunctionsException catch (e) {
       if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _erro = e.code == 'permission-denied'
-            ? 'Esta conta não administra a loja "$_lojaId". Entre com a conta do dono ou de um administrador.'
-            : (e.message ?? 'Não foi possível iniciar a conexão.');
-      });
+      if (e.code == 'unauthenticated') {
+        _starting = false;
+        setState(() {
+          _loading = false;
+          _needsLogin = true;
+        });
+        return;
+      }
+      _falhar(_mensagemErroInicio(e.code, e.message));
     } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _erro = 'Não foi possível iniciar a conexão. Tente novamente.';
-      });
+      _falhar('Não foi possível iniciar a conexão. Tente novamente.');
     }
   }
 
+  String _mensagemErroInicio(String code, String? serverMessage) {
+    switch (code) {
+      case 'permission-denied':
+        return 'Esta conta não administra a loja "$_lojaId". Entre com a conta do dono ou de um administrador. Nenhuma alteração foi feita.';
+      case 'invalid-argument':
+        return serverMessage ?? 'Pedido de conexão inválido.';
+      case 'resource-exhausted':
+        return 'Muitas tentativas seguidas. Aguarde um minuto e tente novamente.';
+      case 'unavailable':
+      case 'deadline-exceeded':
+        return 'Sem resposta do servidor. Verifique a internet e tente novamente.';
+      default:
+        return 'Não foi possível iniciar a conexão. Tente novamente.';
+    }
+  }
+
+  void _tentarNovamente() {
+    if (!_redirected) return;
+    _redirected = false;
+    _starting = false;
+    _start();
+  }
+
+  void _falhar(String mensagem) {
+    _starting = false;
+    if (!mounted) return;
+    setState(() {
+      _loading = false;
+      _erro = mensagem;
+    });
+  }
+
   Future<void> _trocarConta() async {
-    await FirebaseAuth.instance.signOut();
+    await widget.signOut();
     if (!mounted) return;
     setState(() {
       _erro = null;
@@ -219,6 +285,23 @@ class _MpOAuthStartScreenState extends State<MpOAuthStartScreen> {
       );
     } else if (_needsLogin) {
       body = MpOAuthSignInPanel(onSignedIn: _start);
+    } else if (_redirected) {
+      body = Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.open_in_new, size: 56, color: Color(0xFF009EE3)),
+          const SizedBox(height: 12),
+          const Text(
+            'Abrindo o Mercado Pago... Se a página não abrir, tente novamente.',
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
+          OutlinedButton(
+            onPressed: _tentarNovamente,
+            child: const Text('Tentar novamente'),
+          ),
+        ],
+      );
     } else {
       body = Column(
         mainAxisSize: MainAxisSize.min,
@@ -239,7 +322,8 @@ class _MpOAuthStartScreenState extends State<MpOAuthStartScreen> {
       home: Scaffold(
         body: SafeArea(
           child: Center(
-            child: Padding(padding: const EdgeInsets.all(24), child: body),
+            child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24), child: body),
           ),
         ),
       ),

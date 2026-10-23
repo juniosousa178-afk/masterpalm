@@ -4,21 +4,40 @@ import '../services/pagamentos_service.dart';
 import '../web/oauth_callback_guard.dart';
 import 'mp_oauth_start_screen.dart';
 
-class MpOAuthCallbackScreen extends StatefulWidget {
-  const MpOAuthCallbackScreen({super.key, required this.uri});
+Future<bool> _defaultHasRealSession() async =>
+    mpOAuthIsRealUser(await mpOAuthRestoredUser());
 
-  final Uri uri;
+enum _MpOAuthCallbackOutcome { loading, success, cancelled, info, failure }
+
+/// Retorno do Mercado Pago em `/mp-oauth-callback`.
+/// [params] vem da memória (o `index.html` já tirou code/state da URL); o state é opaco
+/// e só é reenviado ao servidor, que decide a loja. Nada daqui grava credenciais no browser.
+class MpOAuthCallbackScreen extends StatefulWidget {
+  const MpOAuthCallbackScreen({
+    super.key,
+    required this.params,
+    this.hasRealSession = _defaultHasRealSession,
+    this.exchange = PagamentosService.finalizarOAuthNoBackend,
+    this.markAttemptOnce = markOauthCallbackAttemptOnce,
+  });
+
+  final Map<String, String> params;
+  final Future<bool> Function() hasRealSession;
+  final Future<void> Function({required String code, required String state})
+      exchange;
+  final bool Function(String state) markAttemptOnce;
 
   @override
   State<MpOAuthCallbackScreen> createState() => _MpOAuthCallbackScreenState();
 }
 
 class _MpOAuthCallbackScreenState extends State<MpOAuthCallbackScreen> {
-  bool _loading = true;
-  bool _success = false;
+  _MpOAuthCallbackOutcome _outcome = _MpOAuthCallbackOutcome.loading;
   String _message = 'Conectando Mercado Pago...';
-  bool _processed = false;
   bool _needsLogin = false;
+  bool _exchanging = false;
+  String _loginTitle =
+      'Entre com a mesma conta que iniciou a conexão para concluir.';
   String _code = '';
   String _state = '';
 
@@ -28,126 +47,153 @@ class _MpOAuthCallbackScreenState extends State<MpOAuthCallbackScreen> {
     _finalizarOAuth();
   }
 
+  void _show(_MpOAuthCallbackOutcome outcome, String message) {
+    if (!mounted) return;
+    setState(() {
+      _outcome = outcome;
+      _message = message;
+      _needsLogin = false;
+    });
+  }
+
   Future<void> _finalizarOAuth() async {
-    if (_processed) return;
-    _processed = true;
+    final p = widget.params;
+    final error = (p['error'] ?? '').trim();
+    final code = (p['code'] ?? '').trim();
+    final state = (p['state'] ?? '').trim();
 
-    final error = (widget.uri.queryParameters['error'] ?? '').trim();
-    final errorDescription =
-        (widget.uri.queryParameters['error_description'] ?? '').trim();
-    final code = (widget.uri.queryParameters['code'] ?? '').trim();
-    final state = (widget.uri.queryParameters['state'] ?? '').trim();
-
-    final guardKey = state.isNotEmpty ? state : widget.uri.toString();
-    final canProcess = markOauthCallbackAttemptOnce(guardKey);
-    if (!canProcess) {
-      setState(() {
-        _loading = false;
-        _success = false;
-        _message =
-            'Este retorno OAuth já foi processado. Volte para a tela de pagamentos para conferir o status.';
-      });
+    if (error.isEmpty && code.isEmpty && state.isEmpty) {
+      _show(
+        _MpOAuthCallbackOutcome.info,
+        'Não há conexão pendente nesta página. Confira o status em Configurações > Pagamentos.',
+      );
       return;
     }
 
     if (error.isNotEmpty) {
-      final isCancelled = error == 'access_denied' ||
-          error == 'user_cancelled' ||
-          errorDescription.toLowerCase().contains('cancel');
-      setState(() {
-        _loading = false;
-        _success = false;
-        _message = isCancelled
-            ? 'Conexão cancelada pelo usuário no Mercado Pago.'
-            : (errorDescription.isNotEmpty
-                ? 'Não foi possível conectar: $errorDescription'
-                : 'Não foi possível conectar: $error');
-      });
+      final cancelled = error == 'access_denied' || error == 'user_cancelled';
+      _show(
+        cancelled
+            ? _MpOAuthCallbackOutcome.cancelled
+            : _MpOAuthCallbackOutcome.failure,
+        cancelled
+            ? 'A autorização foi cancelada no Mercado Pago. Nenhuma alteração foi feita na loja.'
+            : 'O Mercado Pago não concluiu a autorização. Nenhuma alteração foi feita na loja. Tente novamente pela tela de pagamentos.',
+      );
       return;
     }
 
     if (code.isEmpty || state.isEmpty) {
-      setState(() {
-        _loading = false;
-        _success = false;
-        _message = code.isEmpty
-            ? 'Código de autorização não recebido.'
-            : 'State inválido ou expirado.';
-      });
+      _show(
+        _MpOAuthCallbackOutcome.failure,
+        'Retorno incompleto do Mercado Pago. Refaça a conexão pela tela de pagamentos.',
+      );
+      return;
+    }
+
+    if (!widget.markAttemptOnce(state)) {
+      _show(
+        _MpOAuthCallbackOutcome.info,
+        'Este retorno já foi processado. Confira o status em Configurações > Pagamentos.',
+      );
       return;
     }
 
     _code = code;
     _state = state;
-    final user = await mpOAuthRestoredUser();
+    final hasSession = await widget.hasRealSession();
     if (!mounted) return;
-    if (!mpOAuthIsRealUser(user)) {
-      setState(() {
-        _loading = false;
-        _needsLogin = true;
-      });
+    if (!hasSession) {
+      setState(() => _needsLogin = true);
       return;
     }
     await _trocarCodigo();
   }
 
   Future<void> _trocarCodigo() async {
+    if (_exchanging) return;
+    _exchanging = true;
     setState(() {
       _needsLogin = false;
-      _loading = true;
+      _outcome = _MpOAuthCallbackOutcome.loading;
     });
     try {
-      await PagamentosService.finalizarOAuthNoBackend(
-          code: _code, state: _state);
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _success = true;
-        _message = 'Mercado Pago conectado com sucesso.';
-      });
-    } catch (e) {
-      final msg = e.toString().toLowerCase();
-      final isState = msg.contains('state inválido') ||
-          msg.contains('state invalido') ||
-          msg.contains('state');
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _success = false;
-        _message = isState
-            ? 'State inválido ou expirado. Refaça a conexão pelo botão de pagamentos, com a mesma conta.'
-            : msg.contains('permiss')
-                ? 'Esta conta não administra a loja desta conexão.'
-                : 'Falha de comunicação com o backend/Mercado Pago. Tente novamente.';
-      });
+      await widget.exchange(code: _code, state: _state);
+      _show(
+        _MpOAuthCallbackOutcome.success,
+        'Mercado Pago conectado com sucesso. A tela de pagamentos atualiza sozinha.',
+      );
+    } on MpOAuthExchangeException catch (e) {
+      final status = e.statusCode;
+      if (status == 401) {
+        _exchanging = false;
+        if (!mounted) return;
+        setState(() {
+          _needsLogin = true;
+          _loginTitle =
+              'Sua sessão expirou. Entre com a mesma conta que iniciou a conexão para concluir.';
+        });
+        return;
+      }
+      if (status != null && status >= 400 && status < 500) {
+        _show(_MpOAuthCallbackOutcome.failure, e.message);
+      } else if (status == null) {
+        _show(
+          _MpOAuthCallbackOutcome.failure,
+          'Sem resposta do servidor. Confira o status em Configurações > Pagamentos antes de tentar de novo.',
+        );
+      } else {
+        _show(
+          _MpOAuthCallbackOutcome.failure,
+          'Falha de comunicação com o Mercado Pago. Confira o status em Configurações > Pagamentos e tente novamente.',
+        );
+      }
+    } catch (_) {
+      _show(
+        _MpOAuthCallbackOutcome.failure,
+        'Não foi possível concluir a conexão. Confira o status em Configurações > Pagamentos.',
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final icon = _loading
-        ? const SizedBox(
-            width: 64,
-            height: 64,
-            child: CircularProgressIndicator(strokeWidth: 4),
-          )
-        : Icon(
-            _success ? Icons.check_circle : Icons.error_outline,
-            size: 72,
-            color: _success ? Colors.green : Colors.red,
-          );
+    final loading = _outcome == _MpOAuthCallbackOutcome.loading;
+    final Widget icon;
+    final String title;
+    switch (_outcome) {
+      case _MpOAuthCallbackOutcome.loading:
+        icon = const SizedBox(
+          width: 64,
+          height: 64,
+          child: CircularProgressIndicator(strokeWidth: 4),
+        );
+        title = 'Conectando Mercado Pago...';
+      case _MpOAuthCallbackOutcome.success:
+        icon = const Icon(Icons.check_circle, size: 72, color: Colors.green);
+        title = 'Conexão concluída';
+      case _MpOAuthCallbackOutcome.cancelled:
+        icon =
+            const Icon(Icons.cancel_outlined, size: 72, color: Colors.orange);
+        title = 'Conexão cancelada';
+      case _MpOAuthCallbackOutcome.info:
+        icon = const Icon(Icons.info_outline, size: 72, color: Colors.blueGrey);
+        title = 'Nada a concluir';
+      case _MpOAuthCallbackOutcome.failure:
+        icon = const Icon(Icons.error_outline, size: 72, color: Colors.red);
+        title = 'Falha na conexão';
+    }
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       home: Scaffold(
         body: SafeArea(
           child: Center(
-            child: Padding(
+            child: SingleChildScrollView(
               padding: const EdgeInsets.all(24),
               child: _needsLogin
                   ? MpOAuthSignInPanel(
-                      title:
-                          'Entre com a mesma conta que iniciou a conexão para concluir.',
+                      title: _loginTitle,
                       onSignedIn: _trocarCodigo,
                     )
                   : Column(
@@ -156,26 +202,20 @@ class _MpOAuthCallbackScreenState extends State<MpOAuthCallbackScreen> {
                         icon,
                         const SizedBox(height: 20),
                         Text(
-                          _loading
-                              ? 'Conectando Mercado Pago...'
-                              : (_success
-                                  ? 'Conexão concluída'
-                                  : 'Falha na conexão'),
+                          title,
                           style: Theme.of(context)
                               .textTheme
                               .headlineSmall
-                              ?.copyWith(
-                                fontWeight: FontWeight.w700,
-                              ),
+                              ?.copyWith(fontWeight: FontWeight.w700),
                           textAlign: TextAlign.center,
                         ),
-                        const SizedBox(height: 12),
-                        Text(
-                          _message,
-                          style: Theme.of(context).textTheme.bodyLarge,
-                          textAlign: TextAlign.center,
-                        ),
-                        if (!_loading) ...[
+                        if (!loading) ...[
+                          const SizedBox(height: 12),
+                          Text(
+                            _message,
+                            style: Theme.of(context).textTheme.bodyLarge,
+                            textAlign: TextAlign.center,
+                          ),
                           const SizedBox(height: 18),
                           const Text(
                             'Você já pode fechar esta aba e voltar ao MasterPalm.',

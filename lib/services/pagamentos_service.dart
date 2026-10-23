@@ -4,12 +4,27 @@ import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:hive/hive.dart';
+import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 
+import '../config/app_urls.dart';
 import 'loja_id_service.dart';
 import 'pagamentos_mp_firestore_writes.dart';
 import '../utils/http_client_helper.dart';
+
+/// Falha na troca OAuth. [statusCode] null = sem resposta (rede/timeout).
+/// [message] vem do servidor (texto público fixo) ou é genérica; nunca contém code/state/tokens.
+class MpOAuthExchangeException implements Exception {
+  const MpOAuthExchangeException(this.statusCode, this.message);
+
+  final int? statusCode;
+  final String message;
+
+  @override
+  String toString() => message;
+}
 
 /// Serviço de Pagamentos (Mercado Pago + outros gateways)
 /// usado pela tela de Configuração de Pagamentos.
@@ -193,18 +208,42 @@ class PagamentosService {
     await syncPaymentsPublic(lojaId);
   }
 
-  /// Inicia o fluxo de conexão OAuth com o Mercado Pago.
-  /// Abre a Cloud Function que redireciona para o MP → usuário autoriza → volta conectado.
-  static Future<void> abrirConexaoOAuth(String lojaId) async {
-    // URL curta via hosting para evitar truncamento em navegadores mobile
-    final oauthUrl =
-        'https://app.mastepalm.com.br/mp-oauth?lojaId=${Uri.encodeComponent(lojaId)}';
-    final uri = Uri.parse(oauthUrl);
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+  /// Janela em que novos cliques em "Conectar" são ignorados (evita abas/states paralelos).
+  static const Duration oauthAberturaCooldown = Duration(seconds: 5);
+  static DateTime? _ultimaAberturaOAuth;
+
+  @visibleForTesting
+  static Future<bool> Function(Uri url) oauthPageLauncher =
+      (url) => launchUrl(url, mode: LaunchMode.externalApplication);
+
+  @visibleForTesting
+  static void resetOAuthAberturaCooldown() => _ultimaAberturaOAuth = null;
+
+  /// Abre `/mp-oauth-start` (página web que exige sessão e pede o state ao servidor).
+  /// O lojaId é só o pedido; quem decide se o utilizador administra a loja é o backend.
+  /// Devolve false quando o clique é ignorado por repetição.
+  static Future<bool> abrirConexaoOAuth(String lojaId) async {
+    final agora = DateTime.now();
+    final ultima = _ultimaAberturaOAuth;
+    if (ultima != null && agora.difference(ultima) < oauthAberturaCooldown) {
+      return false;
+    }
+    _ultimaAberturaOAuth = agora;
+    final uri = Uri.parse(
+      '${AppUrls.appWebBase}/mp-oauth-start?lojaId=${Uri.encodeComponent(lojaId)}',
+    );
+    var aberto = false;
+    try {
+      aberto = await oauthPageLauncher(uri);
+    } finally {
+      if (!aberto) _ultimaAberturaOAuth = null;
+    }
+    if (!aberto) {
       throw Exception(
         'Não foi possível abrir a página de conexão do Mercado Pago.',
       );
     }
+    return true;
   }
 
   /// Desconecta a conta MP da loja (limpa os campos no Firestore)
@@ -223,7 +262,8 @@ class PagamentosService {
   /// Pede ao servidor um state OAuth vinculado ao utilizador autenticado e à loja.
   /// Devolve a URL de autorização do Mercado Pago.
   static Future<String> criarAutorizacaoOAuth(String lojaId) async {
-    final functions = FirebaseFunctions.instanceFor(region: 'southamerica-east1');
+    final functions =
+        FirebaseFunctions.instanceFor(region: 'southamerica-east1');
     final result = await functions
         .httpsCallable('mpOAuthStart')
         .call(<String, dynamic>{'lojaId': lojaId});
@@ -236,36 +276,45 @@ class PagamentosService {
   }
 
   /// Troca `code`/`state` no backend. Exige sessão Firebase do mesmo utilizador que iniciou a conexão.
+  /// O state é opaco: só é reenviado tal como veio do Mercado Pago.
   static Future<void> finalizarOAuthNoBackend({
     required String code,
     required String state,
   }) async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      throw Exception('Faça login para concluir a conexão.');
+    if (user == null || user.isAnonymous) {
+      throw const MpOAuthExchangeException(
+          401, 'Faça login para concluir a conexão.');
     }
     final idToken = await user.getIdToken();
-    final uri = Uri.parse('https://app.mastepalm.com.br/api/mp/oauth/callback');
+    final uri = kIsWeb
+        ? Uri.base.resolve('/api/mp/oauth/callback')
+        : Uri.parse('${AppUrls.appWebBase}/api/mp/oauth/callback');
 
-    final resp = await HttpClientHelper.post(
-      uri,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $idToken',
-      },
-      body: jsonEncode({'code': code, 'state': state}),
-      timeout: HttpTimeouts.cloudFunction,
-    );
+    final http.Response resp;
+    try {
+      resp = await HttpClientHelper.post(
+        uri,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $idToken',
+        },
+        body: jsonEncode({'code': code, 'state': state}),
+        timeout: HttpTimeouts.cloudFunction,
+      );
+    } catch (_) {
+      throw const MpOAuthExchangeException(null, 'Sem resposta do servidor.');
+    }
 
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      String msg = 'Falha ao finalizar OAuth no backend (${resp.statusCode}).';
+      String msg = 'Falha ao concluir a conexão (${resp.statusCode}).';
       try {
         final data = jsonDecode(resp.body);
         if (data is Map && data['error'] != null) {
           msg = data['error'].toString();
         }
       } catch (_) {}
-      throw Exception(msg);
+      throw MpOAuthExchangeException(resp.statusCode, msg);
     }
   }
 
@@ -274,7 +323,8 @@ class PagamentosService {
   static Future<Map<String, dynamic>> validarConexaoMercadoPago({
     required String lojaId,
   }) async {
-    final functions = FirebaseFunctions.instanceFor(region: 'southamerica-east1');
+    final functions =
+        FirebaseFunctions.instanceFor(region: 'southamerica-east1');
     final callable = functions.httpsCallable('mpOAuthHealthcheck');
     final result = await callable.call(<String, dynamic>{
       'lojaId': lojaId,
