@@ -30,15 +30,20 @@ const O = "loja_sem_dono";
 const U = {
   ownerA: "owner_a", ownerB: "owner_b", sellerA: "seller_a", sellerB: "seller_b", memberAdminA: "member_admin_a",
   evil: "evil_user", evilProg: "evil_programador", fakeRoot: "fake_root", root: "real_root", legacyO: "legacy_o",
-  unverifiedRoot: "unverified_root",
+  unverifiedRoot: "unverified_root", formerRootGmail: "former_root_gmail",
+  formerRootGmailUnverified: "former_root_gmail_unverified", fakeRootVerified: "fake_root_verified",
   newUser: "new_user", newSeller: "new_seller_a",
 };
 const EMAIL = {
   [U.fakeRoot]: "admin@masterpalm.com",
+  [U.fakeRootVerified]: "admin@masterpalm.com",
   [U.root]: "masterpalm26@gmail.com",
   [U.unverifiedRoot]: "masterpalm26@gmail.com",
+  [U.formerRootGmail]: "masterpalm@gmail.com",
+  [U.formerRootGmailUnverified]: "masterpalm@gmail.com",
 };
-const VERIFIED = new Set([U.root]);
+// Pior caso para ex-root: mesmo com e-mail verificado não há autoridade de plataforma.
+const VERIFIED = new Set([U.root, U.formerRootGmail, U.fakeRootVerified]);
 const emailOf = (uid) => EMAIL[uid] ?? `${uid}@example.test`;
 
 const results = [];
@@ -198,7 +203,10 @@ async function main() {
     }
 
     // §5/§7 — matriz cross-tenant: nenhum destes atores acede à loja B.
-    for (const actor of [U.ownerA, U.sellerA, U.memberAdminA, U.evil, U.evilProg, U.fakeRoot, U.legacyO]) {
+    for (const actor of [
+      U.ownerA, U.sellerA, U.memberAdminA, U.evil, U.evilProg, U.fakeRoot, U.legacyO,
+      U.unverifiedRoot, U.formerRootGmail, U.formerRootGmailUnverified, U.fakeRootVerified,
+    ]) {
       await matrix(`CROSS_TENANT.${actor}->B`, crossTenantCases(actor, B), "DENIED");
     }
     {
@@ -369,6 +377,20 @@ async function main() {
         readUserB: () => ur.collection("users").doc(U.ownerB).get(),
         listUsuarios: () => ur.collection("usuarios").get(),
         writeMasterConfig: () => ur.collection("app_config").doc("master_config").set({ x: 3 }),
+      }, "DENIED");
+    }
+
+    // Ex-root (masterpalm@gmail.com, admin@masterpalm.com) não têm autoridade de plataforma.
+    for (const actor of [U.formerRootGmail, U.formerRootGmailUnverified, U.fakeRoot, U.fakeRootVerified]) {
+      const fr = dbAs(actor);
+      await matrix(`PLATFORM.former_root.${actor}`, {
+        readSalesB: () => loja(fr, B).collection("estoque_vendas").get(),
+        updateLojaB: () => loja(fr, B).update({ suporte: true }),
+        readUserB: () => fr.collection("users").doc(U.ownerB).get(),
+        listUsuarios: () => fr.collection("usuarios").get(),
+        readMasterConfig: () => fr.collection("app_config").doc("master_config").get(),
+        writeMasterConfig: () => fr.collection("app_config").doc("master_config").set({ x: 4 }),
+        selfRoleProgramador: () => fr.collection("users").doc(actor).set({ role: "programador", is_root: true }, { merge: true }),
       }, "DENIED");
     }
 
