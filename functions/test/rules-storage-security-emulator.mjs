@@ -123,8 +123,25 @@ async function main() {
         deleteProduto: () => s.ref(`lojas/${A}/produtos/${actor}/n.jpg`).delete(),
         uploadBanner: () => put(s, `lojas/${A}/banners/${actor}.jpg`),
         uploadLogo: () => put(s, `lojas/${A}/logos/${actor}.jpg`),
+        uploadRootLogo: () => put(s, `lojas/${A}/logo.jpg`),
+        uploadAssetsBanner: () => put(s, `lojas/${A}/_assets/banners/mobile/${actor}.jpg`),
+        uploadLegacyProducts: () => put(s, `lojas/${A}/products/${actor}.jpg`),
+        readRootLogo: () => s.ref(`lojas/${A}/logo.jpg`).getMetadata(),
       }, "ALLOWED");
     }
+
+    // Comportamento mantido: leitura autenticada fora das pastas públicas, avaliações públicas, _healthcheck.
+    const evil = st(U.evil);
+    await matrix("UNCHANGED.compat", {
+      authReadOtherStoreRootLogo: () => evil.ref(`lojas/${B}/logo.jpg`).getMetadata(),
+      healthcheckWrite: () => evil.ref("_healthcheck/ping.txt").put(IMG, { contentType: "text/plain" }),
+      topLevelFileWrite: () => evil.ref("solto.txt").put(IMG, { contentType: "text/plain" }),
+      anonymousReviewPhoto: () => put(anon, `lojas/${B}/catalog_avaliacoes_fotos/r1.jpg`),
+    }, "ALLOWED");
+    await matrix("UNCHANGED.anonymous_private_reads", {
+      rootLogo: () => anon.ref(`lojas/${A}/logo.jpg`).getMetadata(),
+      healthcheck: () => anon.ref("_healthcheck/ping.txt").getMetadata(),
+    }, "DENIED");
 
     const root = st(U.root);
     await matrix("PLATFORM.root_verified", {
@@ -142,6 +159,9 @@ async function main() {
         overwriteLogoDir: () => put(s, `lojas/${B}/logos/logo.jpg`),
         overwriteMidia: () => put(s, `lojas/${B}/midias/m1.jpg`),
         overwriteRootLogo: () => put(s, `lojas/${B}/logo.jpg`),
+        deleteRootLogo: () => s.ref(`lojas/${B}/logo.jpg`).delete(),
+        writeAssets: () => put(s, `lojas/${B}/_assets/banners/desktop/x.jpg`),
+        writeLegacyProducts: () => put(s, `lojas/${B}/products/x.jpg`),
       }, "DENIED");
     }
   } finally {
