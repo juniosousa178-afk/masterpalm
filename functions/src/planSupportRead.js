@@ -4,7 +4,7 @@
  */
 
 import { HttpsError } from "firebase-functions/v2/https";
-import { isRootAccountEmail } from "./rootAccounts.js";
+import { isRootAccountEmail, isPlatformAdminToken } from "./rootAccounts.js";
 
 /** E-mail do alvo: primeiro caractere local + *** + domínio (auditoria sem expor endereço completo). */
 export function maskEmailForAudit(email) {
@@ -150,7 +150,7 @@ export async function runGetPlanBillingSnapshotForSupport({
   const callerEmail = String(request.auth.token?.email || "")
     .trim()
     .toLowerCase();
-  if (!isRootAccountEmail(callerEmail)) {
+  if (!isPlatformAdminToken(request.auth.token)) {
     auditLog(buildAuditDeniedNotRoot({ callerUid, callerEmail }));
     throw new HttpsError(
       "permission-denied",

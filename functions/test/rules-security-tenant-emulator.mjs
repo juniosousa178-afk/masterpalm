@@ -30,12 +30,15 @@ const O = "loja_sem_dono";
 const U = {
   ownerA: "owner_a", ownerB: "owner_b", sellerA: "seller_a", sellerB: "seller_b", memberAdminA: "member_admin_a",
   evil: "evil_user", evilProg: "evil_programador", fakeRoot: "fake_root", root: "real_root", legacyO: "legacy_o",
+  unverifiedRoot: "unverified_root",
   newUser: "new_user", newSeller: "new_seller_a",
 };
 const EMAIL = {
   [U.fakeRoot]: "admin@masterpalm.com",
   [U.root]: "masterpalm26@gmail.com",
+  [U.unverifiedRoot]: "masterpalm26@gmail.com",
 };
+const VERIFIED = new Set([U.root]);
 const emailOf = (uid) => EMAIL[uid] ?? `${uid}@example.test`;
 
 const results = [];
@@ -64,7 +67,8 @@ async function matrix(name, cases, expected) {
 }
 
 let env;
-const dbAs = (uid) => env.authenticatedContext(uid, { email: emailOf(uid) }).firestore();
+const dbAs = (uid) =>
+  env.authenticatedContext(uid, { email: emailOf(uid), email_verified: VERIFIED.has(uid) }).firestore();
 const loja = (db, id) => db.collection("lojas").doc(id);
 
 async function seed() {
@@ -354,6 +358,18 @@ async function main() {
         writeMasterConfig: () => root.collection("app_config").doc("master_config").set({ x: 2 }),
         selfRoleProgramador: () => root.collection("users").doc(U.root).set({ role: "programador", is_root: true }, { merge: true }),
       }, "ALLOWED");
+    }
+
+    // E-mail root sem email_verified (registo não confirmado do endereço) não é plataforma.
+    {
+      const ur = dbAs(U.unverifiedRoot);
+      await matrix("PLATFORM.root_unverified", {
+        readSalesB: () => loja(ur, B).collection("estoque_vendas").get(),
+        updateLojaB: () => loja(ur, B).update({ suporte: true }),
+        readUserB: () => ur.collection("users").doc(U.ownerB).get(),
+        listUsuarios: () => ur.collection("usuarios").get(),
+        writeMasterConfig: () => ur.collection("app_config").doc("master_config").set({ x: 3 }),
+      }, "DENIED");
     }
 
     // §10–§13 — contrato de criação de venda por faixa de versão (loja A, dono).

@@ -4,7 +4,7 @@ import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
 import { checkRateLimit, getCallableIdentifier } from "./src/rateLimiter.js";
-import { isRootAccountEmail, ROOT_EMAIL } from "./src/rootAccounts.js";
+import { isRootAccountEmail, isPlatformAdminToken, ROOT_EMAIL } from "./src/rootAccounts.js";
 
 export { isRootAccountEmail, ROOT_EMAIL };
 
@@ -96,14 +96,14 @@ function normalizeEmail(s) {
   return String(s || "").trim().toLowerCase();
 }
 
-export async function computePlanState({ db, uid, email }) {
+export async function computePlanState({ db, uid, email, emailVerified = false }) {
   const ref = db.collection("users").doc(uid);
   const snap = await ref.get();
   const data = snap.exists ? (snap.data() || {}) : {};
   const now = new Date();
 
   // Root/programador — mesma lista que o cliente (role_utils / rootAccounts)
-  const isRoot = isRootAccountEmail(email);
+  const isRoot = emailVerified === true && isRootAccountEmail(email);
   if (isRoot) {
     await ref.set(
       {
@@ -581,8 +581,9 @@ export const ensureUserPlan = onCall(
     const db = initDb(); // ✅ sem duplicate-app
     const uid = request.auth.uid;
     const email = request.auth.token?.email || "";
+    const emailVerified = request.auth.token?.email_verified === true;
 
-    const result = await computePlanState({ db, uid, email });
+    const result = await computePlanState({ db, uid, email, emailVerified });
 
     return {
       ok: true,
@@ -699,7 +700,7 @@ export const rootGrantPlan = onCall(async (request) => {
     if (!request.auth?.uid) throw new HttpsError("unauthenticated", "Faça login.");
 
     const callerEmail = normalizeEmail(request.auth.token?.email || "");
-    if (!isRootAccountEmail(callerEmail)) {
+    if (!isPlatformAdminToken(request.auth.token)) {
       throw new HttpsError("permission-denied", "Apenas o root pode liberar planos.");
     }
 

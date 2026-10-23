@@ -115,7 +115,7 @@ describe("runGetPlanBillingSnapshotForSupport — integração de auditoria", ()
       db,
       admin: adminMod,
       request: {
-        auth: { uid: callerUid, token: { email: ROOT } },
+        auth: { uid: callerUid, token: { email: ROOT, email_verified: true } },
         data: { targetUid },
       },
       normalizePlanId: normalizePlanIdMinimal,
@@ -163,6 +163,23 @@ describe("runGetPlanBillingSnapshotForSupport — integração de auditoria", ()
     assertAuditPayloadSafe(auditPayloads[0]);
   });
 
+  it("denied: e-mail root sem email_verified", async () => {
+    const callerUid = "callerUidabcdefghijklmn12";
+    await assert.rejects(
+      () =>
+        runGetPlanBillingSnapshotForSupport({
+          db: { collection: () => ({ doc: () => ({ get: async () => ({ exists: false }) }) }) },
+          admin: { auth: () => ({}) },
+          request: {
+            auth: { uid: callerUid, token: { email: ROOT, email_verified: false } },
+            data: { targetUid: "x".repeat(28) },
+          },
+          normalizePlanId: normalizePlanIdMinimal,
+        }),
+      (e) => e instanceof HttpsError && e.code === "permission-denied",
+    );
+  });
+
   it("not_found (email): audit = buildAuditNotFoundEmail", async () => {
     const callerUid = "callerUidabcdefghijklmn12";
     const targetEmail = "fantasma@dominio.com";
@@ -179,7 +196,7 @@ describe("runGetPlanBillingSnapshotForSupport — integração de auditoria", ()
       db: { collection: () => ({ doc: () => ({ get: async () => ({ exists: false }) }) }) },
       admin: adminMod,
       request: {
-        auth: { uid: callerUid, token: { email: ROOT } },
+        auth: { uid: callerUid, token: { email: ROOT, email_verified: true } },
         data: { targetEmail },
       },
       normalizePlanId: normalizePlanIdMinimal,
@@ -210,7 +227,7 @@ describe("runGetPlanBillingSnapshotForSupport — integração de auditoria", ()
           db: { collection: () => ({ doc: () => ({ get: async () => ({ exists: false }) }) }) },
           admin: { auth: () => ({}) },
           request: {
-            auth: { uid: callerUid, token: { email: ROOT } },
+            auth: { uid: callerUid, token: { email: ROOT, email_verified: true } },
             data: {},
           },
           normalizePlanId: normalizePlanIdMinimal,
@@ -237,7 +254,7 @@ describe("runGetPlanBillingSnapshotForSupport — integração de auditoria", ()
           db: { collection: () => ({ doc: () => ({ get: async () => ({ exists: false }) }) }) },
           admin: { auth: () => ({}) },
           request: {
-            auth: { uid: callerUid, token: { email: ROOT } },
+            auth: { uid: callerUid, token: { email: ROOT, email_verified: true } },
             data: { targetUid: "uid012345678901234567890", targetEmail: "a@b.com" },
           },
           normalizePlanId: normalizePlanIdMinimal,
@@ -289,7 +306,7 @@ describe("runGetPlanBillingSnapshotForSupport — integração de auditoria", ()
           db: { collection: () => ({ doc: () => ({ get: async () => ({ exists: false }) }) }) },
           admin: adminMod,
           request: {
-            auth: { uid: callerUid, token: { email: ROOT } },
+            auth: { uid: callerUid, token: { email: ROOT, email_verified: true } },
             data: { targetEmail: "qualquer@x.com" },
           },
           normalizePlanId: normalizePlanIdMinimal,

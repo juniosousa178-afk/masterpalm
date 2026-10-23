@@ -89,6 +89,7 @@ async function main() {
     });
     const master = testEnv.authenticatedContext(MASTER_UID, {
       email: "masterpalm26@gmail.com",
+      email_verified: true,
     });
     const anon = testEnv.unauthenticatedContext();
 

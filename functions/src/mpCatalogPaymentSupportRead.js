@@ -5,7 +5,7 @@
  */
 
 import { HttpsError } from "firebase-functions/v2/https";
-import { isRootAccountEmail } from "./rootAccounts.js";
+import { isPlatformAdminToken } from "./rootAccounts.js";
 import { resolveCatalogOrderForMp } from "./catalogMpOrderHelpers.js";
 import { readOrderLojaIndex, resolveLojaIdByOrderId } from "./orderLojaIndex.js";
 import { catalogPaymentCorrelationId } from "./mpStructuredLogsMp.js";
@@ -170,7 +170,7 @@ export async function runMpCatalogPaymentSupportSnapshot({ db, request }) {
   const callerEmail = String(request.auth.token?.email || "")
     .trim()
     .toLowerCase();
-  if (!isRootAccountEmail(callerEmail)) {
+  if (!isPlatformAdminToken(request.auth.token)) {
     throw new HttpsError("permission-denied", "Apenas contas root/programador.");
   }
 

@@ -19,11 +19,11 @@ import {
 } from "../src/masterPlanAdmin.js";
 import { makeMasterPlanMockDb } from "./mockMasterPlanDb.js";
 
-function authRequest(email, uid = "caller_uid") {
+function authRequest(email, uid = "caller_uid", emailVerified = true) {
   return {
     auth: {
       uid,
-      token: { email },
+      token: { email, email_verified: emailVerified },
     },
     data: {},
   };
@@ -250,6 +250,13 @@ describe("assertMasterPlanAdmin", () => {
     const r = assertMasterPlanAdmin(authRequest(MASTER_PLAN_ADMIN_EMAIL));
     assert.equal(r.email, MASTER_PLAN_ADMIN_EMAIL);
     assert.equal(r.uid, "caller_uid");
+  });
+
+  it("5b. masterpalm26@gmail.com sem email_verified → permission-denied", () => {
+    assert.throws(
+      () => assertMasterPlanAdmin(authRequest(MASTER_PLAN_ADMIN_EMAIL, "caller_uid", false)),
+      (e) => e instanceof HttpsError && e.code === "permission-denied",
+    );
   });
 });
 

@@ -161,7 +161,7 @@ async function seedBase(testEnv) {
       store_id: LOJA_ID,
     });
     await firestore.collection("users").doc(ADMIN_UID).set({
-      email: "masterpalm@gmail.com",
+      email: "masterpalm26@gmail.com",
       role: "admin",
     });
     await estoqueProdutosRef(ctx).set(BEFORE_ESTOQUE);
@@ -336,7 +336,8 @@ async function main() {
       email: "owner-r4@demo.local",
     });
     const admin = testEnv.authenticatedContext(ADMIN_UID, {
-      email: "masterpalm@gmail.com",
+      email: "masterpalm26@gmail.com",
+      email_verified: true,
     });
     await runMatrix(owner, admin);
   } finally {

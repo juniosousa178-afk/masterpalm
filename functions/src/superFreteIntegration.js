@@ -400,6 +400,7 @@ export function createSuperFreteHandlers(deps) {
       lojaId: id,
       uid,
       email,
+      emailVerified: request.auth?.token?.email_verified === true,
     });
     if (!allowed) {
       throw new HttpsError(

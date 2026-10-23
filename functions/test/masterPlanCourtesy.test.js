@@ -34,7 +34,7 @@ function serializeTransactions(db) {
 
 function masterReq(data = {}, uid = "master_uid") {
   return {
-    auth: { uid, token: { email: MASTER_PLAN_ADMIN_EMAIL } },
+    auth: { uid, token: { email: MASTER_PLAN_ADMIN_EMAIL, email_verified: true } },
     data,
   };
 }

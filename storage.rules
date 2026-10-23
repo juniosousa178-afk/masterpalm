@@ -4,10 +4,8 @@ service firebase.storage {
     // Admin raiz (compatível com firestore.rules)
     function isRootAdmin() {
       return request.auth != null
-        && request.auth.token.email in [
-          "masterpalm26@gmail.com",
-          "masterpalm@gmail.com"
-        ];
+        && request.auth.token.email_verified == true
+        && request.auth.token.email == "masterpalm26@gmail.com";
     }
 
     // Usuário pertence à loja: store_id, owner/admin, member ou vendedor

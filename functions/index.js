@@ -579,10 +579,10 @@ async function getLojaPaymentsRaw(lojaId) {
   }
 }
 
-async function canManageStoreConfigServerSide({ lojaId, uid, email }) {
+async function canManageStoreConfigServerSide({ lojaId, uid, email, emailVerified }) {
   const emailNorm = String(email || "").trim().toLowerCase();
   if (!uid) return false;
-  if (isRootAccountEmail(emailNorm)) return true;
+  if (emailVerified === true && isRootAccountEmail(emailNorm)) return true;
 
   const lojaRef = db.collection(COLLECTION_LOJAS).doc(String(lojaId));
   const [lojaSnap, userSnap, memberSnap] = await Promise.all([
@@ -690,6 +690,7 @@ export const mpOAuthHealthcheck = onCall(
       lojaId,
       uid: request.auth.uid,
       email: request.auth.token?.email || "",
+      emailVerified: request.auth.token?.email_verified === true,
     });
     if (!allowed) {
       throw new HttpsError("permission-denied", "Sem permissão para validar esta loja.");

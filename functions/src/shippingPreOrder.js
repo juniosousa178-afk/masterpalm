@@ -1426,7 +1426,12 @@ export function createShippingPreOrderHandlers(deps) {
     if (!id) {
       throw new HttpsError("invalid-argument", "Informe a loja.");
     }
-    const allowed = await canManageStoreConfigServerSide({ lojaId: id, uid, email });
+    const allowed = await canManageStoreConfigServerSide({
+      lojaId: id,
+      uid,
+      email,
+      emailVerified: request.auth?.token?.email_verified === true,
+    });
     if (!allowed) {
       throw new HttpsError(
         "permission-denied",

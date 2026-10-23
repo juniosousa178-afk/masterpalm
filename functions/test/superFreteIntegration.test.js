@@ -25,7 +25,7 @@ import {
   SUPERFRETE_CART_PATH,
   SUPERFRETE_USER_AGENT,
 } from "../src/superFreteIntegration.js";
-import { isRootAccountEmail } from "../src/rootAccounts.js";
+import { isRootAccountEmail, isPlatformAdminToken } from "../src/rootAccounts.js";
 import { makeSuperFreteMockDb } from "./mockSuperFreteDb.js";
 
 const LOJA = "loja-sf-test";
@@ -174,9 +174,29 @@ describe("helpers SuperFrete", () => {
     assert.equal(getSuperFreteApiBase(true), SUPERFRETE_SANDBOX_BASE);
   });
 
-  it("isRootAccountEmail reconhece contas root (regressão ROOT_EMAILS)", () => {
-    assert.equal(isRootAccountEmail("masterpalm@gmail.com"), true);
+  it("isRootAccountEmail reconhece só a conta root canônica", () => {
+    assert.equal(isRootAccountEmail("masterpalm26@gmail.com"), true);
+    assert.equal(isRootAccountEmail(" MasterPalm26@Gmail.com "), true);
+    assert.equal(isRootAccountEmail("masterpalm@gmail.com"), false);
+    assert.equal(isRootAccountEmail("admin@masterpalm.com"), false);
     assert.equal(isRootAccountEmail("owner@test.com"), false);
+  });
+
+  it("isPlatformAdminToken exige email_verified === true", () => {
+    assert.equal(
+      isPlatformAdminToken({ email: "masterpalm26@gmail.com", email_verified: true }),
+      true,
+    );
+    assert.equal(
+      isPlatformAdminToken({ email: "masterpalm26@gmail.com", email_verified: false }),
+      false,
+    );
+    assert.equal(isPlatformAdminToken({ email: "masterpalm26@gmail.com" }), false);
+    assert.equal(
+      isPlatformAdminToken({ email: "masterpalm@gmail.com", email_verified: true }),
+      false,
+    );
+    assert.equal(isPlatformAdminToken(undefined), false);
   });
 
   it("buildSuperFreteHeaders inclui User-Agent do backend", () => {

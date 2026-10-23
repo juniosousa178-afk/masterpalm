@@ -10,7 +10,6 @@ import 'package:flutter/foundation.dart';
 /// Alinhar com `functions/src/rootAccounts.js` (ROOT_ACCOUNT_EMAILS).
 const Set<String> rootEmails = {
   'masterpalm26@gmail.com',
-  'masterpalm@gmail.com', // fallback para migração
 };
 
 /// Tipos de usuário válidos

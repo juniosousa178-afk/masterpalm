@@ -5,7 +5,7 @@
 import { HttpsError } from "firebase-functions/v2/https";
 import { FieldValue } from "firebase-admin/firestore";
 import { createHash } from "node:crypto";
-import { isRootAccountEmail } from "./rootAccounts.js";
+import { isPlatformAdminToken } from "./rootAccounts.js";
 import { maskUidForAudit, maskEmailForAudit } from "./planSupportRead.js";
 import {
   normalizePlanId,
@@ -46,7 +46,7 @@ function masterAuditLog(payload) {
 }
 
 /**
- * Autorização exclusiva Mestre: masterpalm26@gmail.com + isRootAccountEmail.
+ * Autorização exclusiva Mestre: masterpalm26@gmail.com + isPlatformAdminToken (e-mail verificado).
  * @param {import("firebase-functions/v2/https").CallableRequest} request
  * @returns {{ uid: string, email: string }}
  */
@@ -66,7 +66,7 @@ export function assertMasterPlanAdmin(request) {
     });
     throw new HttpsError("permission-denied", "Acesso restrito à administração Mestre.");
   }
-  if (!isRootAccountEmail(email)) {
+  if (!isPlatformAdminToken(request.auth.token)) {
     masterAuditLog({
       evt: "denied",
       reason: "not_root_layer",

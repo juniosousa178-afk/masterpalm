@@ -9,14 +9,12 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Admin raiz por e-mail (programador com acesso total). Só contas existentes: um e-mail root
-    // sem conta Auth pode ser registado por qualquer pessoa.
+    // Admin raiz por e-mail (programador com acesso total). Só a caixa controlada pela plataforma
+    // e com e-mail verificado: sem email_verified qualquer pessoa poderia registar o endereço.
     function isRootAdmin() {
       return request.auth != null
-        && request.auth.token.email in [
-          "masterpalm26@gmail.com",
-          "masterpalm@gmail.com"
-        ];
+        && request.auth.token.email_verified == true
+        && request.auth.token.email == "masterpalm26@gmail.com";
     }
 
     // Doc de usuário "legado" (coleção usuarios/{email})
