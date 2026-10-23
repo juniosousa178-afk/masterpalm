@@ -3,6 +3,8 @@
 Baseline de referência: [BASELINE_STABLE.md](BASELINE_STABLE.md) — `diag-20260427-APPSTARTFIX-f14fe79`  
 Alvo de hosting Firebase: **masterpalm-58c46** (site `app.mastepalm.com.br`).
 
+> **Cloud Functions:** regras de runtime (Node 22) e de deploy direcionado em [FUNCTIONS_RUNTIME_AND_DEPLOY_GUARD.md](FUNCTIONS_RUNTIME_AND_DEPLOY_GUARD.md). Deploy amplo de Functions é proibido.
+
 ---
 
 ## Pré-deploy

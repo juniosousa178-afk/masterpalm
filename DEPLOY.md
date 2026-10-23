@@ -1,5 +1,7 @@
 # Guia de Deploy - MasterPalm
 
+> **Cloud Functions:** antes de qualquer deploy de Functions, seguir [docs/FUNCTIONS_RUNTIME_AND_DEPLOY_GUARD.md](docs/FUNCTIONS_RUNTIME_AND_DEPLOY_GUARD.md). Runtime Node 22; deploy amplo (`firebase deploy` ou `--only functions`) é proibido; Functions com source live diferente do repositório (incluindo `mpCatalogPayment`) não podem ser publicadas pelo CLI sem reconciliação. Os comandos amplos abaixo estão obsoletos.
+
 ## Pré-requisitos
 
 - Flutter SDK 3.x
