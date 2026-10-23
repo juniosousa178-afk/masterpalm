@@ -76,7 +76,7 @@ import {
   createShippingPreOrderHandlers,
   onPrePedidoShippingPreOrderTrigger,
 } from "./src/shippingPreOrder.js";
-import { isRootAccountEmail } from "./src/rootAccounts.js";
+import { isRootAccountEmail, isPlatformAdminToken } from "./src/rootAccounts.js";
 import {
   MpOAuthError,
   runMpOAuthStart,
@@ -3306,6 +3306,269 @@ export const syncPlanSubscription = onCall(
       throw new HttpsError("internal", String(e?.message || e));
     }
   }
+);
+
+async function resolveRecurringPreapprovalId({ uid, explicitPreapprovalId, canonicalPlanId }) {
+  const fromPayment = String(explicitPreapprovalId || "").trim();
+  if (fromPayment) return fromPayment;
+
+  if (!uid) return "";
+  const userSnap = await db.collection("users").doc(uid).get();
+  const ud = userSnap.exists ? userSnap.data() || {} : {};
+  const candidateFromUser = String(
+    ud.providerSubscriptionId || ud.pendingSubscriptionId || ud.mercadoPagoPreapprovalId || "",
+  ).trim();
+  if (candidateFromUser) return candidateFromUser;
+
+  const intents = await db.collection("plan_recurring_intents").where("uid", "==", uid).limit(5).get();
+  if (!intents.empty) {
+    const wanted = normalizePlanId(canonicalPlanId || "");
+    const hit = intents.docs.find((doc) => {
+      const d = doc.data() || {};
+      const intentPlan = normalizePlanId(d.canonicalPlanId || "");
+      if (!wanted) return true;
+      return intentPlan === wanted;
+    });
+    if (hit) return String(hit.id || "").trim();
+    return String(intents.docs[0].id || "").trim();
+  }
+
+  return "";
+}
+
+async function activateRecurringPlanPayment({
+  uid,
+  planId,
+  paymentId,
+  preapprovalId,
+}) {
+  const now = new Date();
+  const canonicalPlanId = normalizePlanId(planId);
+  const isAnnual = canonicalPlanId === "pro_yearly";
+  const periodEnd = isAnnual ? addYears(now, 1) : addMonths(now, 1);
+  const periodStartTs = Timestamp.fromDate(now);
+  const periodEndTs = Timestamp.fromDate(periodEnd);
+  const subId = String(preapprovalId || "").trim();
+  const payId = String(paymentId || "");
+  const userRef = db.collection("users").doc(uid);
+  const subRef = userRef.collection("subscriptions").doc(subId);
+  const intentRef = db.collection("plan_recurring_intents").doc(subId);
+
+  const subSnap = await subRef.get();
+  const sd = subSnap.exists ? subSnap.data() || {} : {};
+  if (String(sd.status || "").toLowerCase() === "active" && String(sd.lastPaymentId || "") === payId) {
+    console.info("[PLAN_RECURRING_ALREADY_ACTIVE]", { uid, planId: canonicalPlanId, paymentId: payId, preapprovalId: subId });
+    return { alreadyActive: true };
+  }
+
+  console.info("[PLAN_RECURRING_ACTIVATE_START]", {
+    uid,
+    planId: canonicalPlanId,
+    paymentId: payId,
+    preapprovalId: subId,
+  });
+
+  const batch = db.batch();
+  batch.set(
+    userRef,
+    {
+      status: "active",
+      planStatus: "active",
+      billingMode: "recurring",
+      billingVersion: 2,
+      billingSource: "mp_recurring_payment_approved",
+      currentPlanId: canonicalPlanId,
+      currentPeriodStart: periodStartTs,
+      currentPeriodEnd: periodEndTs,
+      provider: "mercado_pago",
+      providerSubscriptionId: subId,
+      mercadoPagoPreapprovalId: subId,
+      subscriptionId: subId,
+      planLastPaymentId: payId,
+      planLastSyncedAt: nowTs,
+      updatedAt: nowTs,
+    },
+    { merge: true },
+  );
+  batch.set(
+    subRef,
+    {
+      status: "active",
+      paymentStatus: "approved",
+      planId: canonicalPlanId,
+      canonicalPlanId,
+      provider: "mercado_pago",
+      billingMode: "recurring",
+      providerSubscriptionId: subId,
+      mercadoPagoPreapprovalId: subId,
+      subscriptionId: subId,
+      lastPaymentId: payId,
+      activatedAt: nowTs,
+      currentPeriodStart: periodStartTs,
+      currentPeriodEnd: periodEndTs,
+      updatedAt: nowTs,
+    },
+    { merge: true },
+  );
+  batch.set(
+    intentRef,
+    {
+      status: "active",
+      paymentStatus: "approved",
+      lastPaymentId: payId,
+      activatedAt: nowTs,
+      updatedAt: nowTs,
+      canonicalPlanId,
+      uid,
+    },
+    { merge: true },
+  );
+  await batch.commit();
+  console.info("[PLAN_USER_ACTIVATED]", {
+    uid,
+    planId: canonicalPlanId,
+    paymentId: payId,
+    preapprovalId: subId,
+  });
+  return { alreadyActive: false };
+}
+
+export const reprocessPlanRecurringPayment = onCall(
+  { secrets: [S_MP_ACCESS_TOKEN], timeoutSeconds: 45, memory: "256MiB" },
+  async (request) => {
+    try {
+      await checkRateLimit(
+        "reprocessPlanRecurringPayment",
+        getCallableIdentifier(request),
+      );
+      if (!request.auth?.uid) {
+        throw new HttpsError("unauthenticated", "Faça login.");
+      }
+      const callerUid = request.auth.uid;
+      const callerEmail = String(request.auth.token?.email || "").trim().toLowerCase();
+      if (!isPlatformAdminToken(request.auth.token)) {
+        throw new HttpsError("permission-denied", "Apenas contas root/programador.");
+      }
+
+      const paymentId = String(request.data?.paymentId || "").trim();
+      if (!paymentId) {
+        throw new HttpsError("invalid-argument", "paymentId é obrigatório.");
+      }
+      console.info("[PLAN_RECURRING_REPROCESS_START]", {
+        callerUid,
+        paymentId,
+      });
+
+      const platformToken = await getPlatformMpAccessTokenStrict({
+        flow: "reprocessPlanRecurringPayment",
+      });
+      if (!platformToken.ok) {
+        throw new HttpsError("failed-precondition", "MP platform token não configurado");
+      }
+
+      const r = await fetchWithTimeout(
+        `https://api.mercadopago.com/v1/payments/${paymentId}`,
+        { headers: { Authorization: `Bearer ${platformToken.token}` } },
+        15000,
+      );
+      if (!r.ok) {
+        const txt = await r.text();
+        throw new HttpsError(
+          "failed-precondition",
+          `Não foi possível ler pagamento no MP (HTTP ${r.status}). ${String(txt).slice(0, 200)}`,
+        );
+      }
+      const payment = await r.json();
+      const status = String(payment?.status || "").toLowerCase();
+      if (status !== "approved") {
+        throw new HttpsError(
+          "failed-precondition",
+          `Pagamento ${paymentId} não está approved (status=${status || "unknown"}).`,
+        );
+      }
+
+      const externalRef = String(payment?.external_reference || "").trim();
+      const recurringExternalRef = parseExternalReferenceMpRecurring(externalRef);
+      let uid = recurringExternalRef?.uid || null;
+      let planId = recurringExternalRef?.canonicalPlanId || null;
+      if ((!uid || !planId) && externalRef.startsWith("plan:")) {
+        const parts = externalRef.split(":");
+        if (parts.length >= 3) {
+          uid = uid || String(parts[1] || "").trim();
+          planId = planId || String(parts[2] || "").trim();
+        }
+      }
+
+      const md = payment?.metadata || {};
+      uid = uid || md.uid || md.user_id || md.userId || null;
+      planId = planId || md.normalized_plan_id || md.plan || md.plano_id || null;
+
+      const userEmail = String(md.user_email || md.email || payment?.payer?.email || "")
+        .trim()
+        .toLowerCase();
+      if (!uid && userEmail) {
+        try {
+          const userRecord = await admin.auth().getUserByEmail(userEmail);
+          uid = userRecord.uid;
+        } catch (_) {
+          // Sem uid não há como ativar; erro tratado abaixo.
+        }
+      }
+      if (!uid) {
+        throw new HttpsError("failed-precondition", "Não foi possível resolver uid para o pagamento.");
+      }
+      planId = normalizePlanId(
+        planId ||
+          (String(payment?.description || "").toLowerCase().includes("anual")
+            ? "pro_yearly"
+            : "pro_monthly"),
+      );
+
+      const explicitPreapprovalId = String(
+        payment?.preapproval_id || payment?.preapproval?.id || "",
+      ).trim();
+      const preapprovalId = await resolveRecurringPreapprovalId({
+        uid,
+        explicitPreapprovalId,
+        canonicalPlanId: planId,
+      });
+      if (!preapprovalId) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Não foi possível resolver preapprovalId para reprocessamento recorrente.",
+        );
+      }
+
+      console.info("[PLAN_RECURRING_PAYMENT_CONFIRMED]", {
+        uid,
+        planId,
+        paymentId,
+        preapprovalId,
+      });
+      const activation = await activateRecurringPlanPayment({
+        uid,
+        planId,
+        paymentId,
+        preapprovalId,
+      });
+      return {
+        ok: true,
+        paymentId,
+        uid,
+        planId,
+        preapprovalId,
+        alreadyActive: activation?.alreadyActive === true,
+      };
+    } catch (e) {
+      if (!(e instanceof HttpsError)) {
+        console.error("[PLAN_RECURRING_REPROCESS_ERROR]", {
+          err: String(e?.message || e),
+        });
+      }
+      if (e instanceof HttpsError) throw e;
+      throw new HttpsError("internal", String(e?.message || e));
+    }
+  },
 );
 
 /** Somente root (e-mail em ROOT_ACCOUNT_EMAILS): leitura de billing/plano de outra conta por UID ou e-mail. Sem escrita. */
