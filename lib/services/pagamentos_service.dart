@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hive/hive.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -219,17 +220,39 @@ class PagamentosService {
     await syncPaymentsPublic(lojaId);
   }
 
-  /// (Opcional) Exemplo de chamada ao backend para trocar código por tokens.
-  /// Use quando seu fluxo OAuth retornar `code`/`state` para o seu backend.
+  /// Pede ao servidor um state OAuth vinculado ao utilizador autenticado e à loja.
+  /// Devolve a URL de autorização do Mercado Pago.
+  static Future<String> criarAutorizacaoOAuth(String lojaId) async {
+    final functions = FirebaseFunctions.instanceFor(region: 'southamerica-east1');
+    final result = await functions
+        .httpsCallable('mpOAuthStart')
+        .call(<String, dynamic>{'lojaId': lojaId});
+    final data = result.data;
+    final authUrl = data is Map ? (data['authUrl'] ?? '').toString() : '';
+    if (!authUrl.startsWith('https://auth.mercadopago.com/')) {
+      throw Exception('Resposta inválida do servidor.');
+    }
+    return authUrl;
+  }
+
+  /// Troca `code`/`state` no backend. Exige sessão Firebase do mesmo utilizador que iniciou a conexão.
   static Future<void> finalizarOAuthNoBackend({
     required String code,
     required String state,
   }) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      throw Exception('Faça login para concluir a conexão.');
+    }
+    final idToken = await user.getIdToken();
     final uri = Uri.parse('https://app.mastepalm.com.br/api/mp/oauth/callback');
 
     final resp = await HttpClientHelper.post(
       uri,
-      headers: {'Content-Type': 'application/json'},
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $idToken',
+      },
       body: jsonEncode({'code': code, 'state': state}),
       timeout: HttpTimeouts.cloudFunction,
     );

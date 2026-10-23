@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/pagamentos_service.dart';
 import '../web/oauth_callback_guard.dart';
+import 'mp_oauth_start_screen.dart';
 
 class MpOAuthCallbackScreen extends StatefulWidget {
   const MpOAuthCallbackScreen({super.key, required this.uri});
@@ -17,6 +18,9 @@ class _MpOAuthCallbackScreenState extends State<MpOAuthCallbackScreen> {
   bool _success = false;
   String _message = 'Conectando Mercado Pago...';
   bool _processed = false;
+  bool _needsLogin = false;
+  String _code = '';
+  String _state = '';
 
   @override
   void initState() {
@@ -73,8 +77,28 @@ class _MpOAuthCallbackScreenState extends State<MpOAuthCallbackScreen> {
       return;
     }
 
+    _code = code;
+    _state = state;
+    final user = await mpOAuthRestoredUser();
+    if (!mounted) return;
+    if (!mpOAuthIsRealUser(user)) {
+      setState(() {
+        _loading = false;
+        _needsLogin = true;
+      });
+      return;
+    }
+    await _trocarCodigo();
+  }
+
+  Future<void> _trocarCodigo() async {
+    setState(() {
+      _needsLogin = false;
+      _loading = true;
+    });
     try {
-      await PagamentosService.finalizarOAuthNoBackend(code: code, state: state);
+      await PagamentosService.finalizarOAuthNoBackend(
+          code: _code, state: _state);
       if (!mounted) return;
       setState(() {
         _loading = false;
@@ -91,8 +115,10 @@ class _MpOAuthCallbackScreenState extends State<MpOAuthCallbackScreen> {
         _loading = false;
         _success = false;
         _message = isState
-            ? 'State inválido ou expirado. Refaça a conexão pelo botão de pagamentos.'
-            : 'Falha de comunicação com o backend/Mercado Pago. Tente novamente.';
+            ? 'State inválido ou expirado. Refaça a conexão pelo botão de pagamentos, com a mesma conta.'
+            : msg.contains('permiss')
+                ? 'Esta conta não administra a loja desta conexão.'
+                : 'Falha de comunicação com o backend/Mercado Pago. Tente novamente.';
       });
     }
   }
@@ -118,35 +144,46 @@ class _MpOAuthCallbackScreenState extends State<MpOAuthCallbackScreen> {
           child: Center(
             child: Padding(
               padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  icon,
-                  const SizedBox(height: 20),
-                  Text(
-                    _loading
-                        ? 'Conectando Mercado Pago...'
-                        : (_success ? 'Conexão concluída' : 'Falha na conexão'),
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
+              child: _needsLogin
+                  ? MpOAuthSignInPanel(
+                      title:
+                          'Entre com a mesma conta que iniciou a conexão para concluir.',
+                      onSignedIn: _trocarCodigo,
+                    )
+                  : Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        icon,
+                        const SizedBox(height: 20),
+                        Text(
+                          _loading
+                              ? 'Conectando Mercado Pago...'
+                              : (_success
+                                  ? 'Conexão concluída'
+                                  : 'Falha na conexão'),
+                          style: Theme.of(context)
+                              .textTheme
+                              .headlineSmall
+                              ?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                          textAlign: TextAlign.center,
                         ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    _message,
-                    style: Theme.of(context).textTheme.bodyLarge,
-                    textAlign: TextAlign.center,
-                  ),
-                  if (!_loading) ...[
-                    const SizedBox(height: 18),
-                    const Text(
-                      'Você já pode fechar esta aba e voltar ao MasterPalm.',
-                      textAlign: TextAlign.center,
+                        const SizedBox(height: 12),
+                        Text(
+                          _message,
+                          style: Theme.of(context).textTheme.bodyLarge,
+                          textAlign: TextAlign.center,
+                        ),
+                        if (!_loading) ...[
+                          const SizedBox(height: 18),
+                          const Text(
+                            'Você já pode fechar esta aba e voltar ao MasterPalm.',
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ],
                     ),
-                  ],
-                ],
-              ),
             ),
           ),
         ),

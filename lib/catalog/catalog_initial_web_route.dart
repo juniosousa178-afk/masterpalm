@@ -68,6 +68,7 @@ const Set<String> kAdminWebAppPathRoots = {
   'modelos_importacao',
   'historico_cliente',
   'mp-oauth-callback',
+  'mp-oauth-start',
   'health',
   'test_checkout',
   'produtos',

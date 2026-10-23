@@ -125,6 +125,7 @@ import 'screens/admin_usuarios_screen.dart';
 import 'screens/master_login_screen.dart';
 import 'screens/mestre/master_plan_access_screen.dart';
 import 'screens/mp_oauth_callback_screen.dart';
+import 'screens/mp_oauth_start_screen.dart';
 import 'screens/master_config_screen.dart';
 import 'screens/catalog_payment_support_screen.dart';
 import 'screens/site_config_screen.dart';
@@ -3476,6 +3477,11 @@ Future<void> main() async {
           logD('🌐 [MAIN] Callback OAuth MP detectado em /mp-oauth-callback');
           CatalogStartupTrace.mark('CAT_START.runApp.mp_oauth_callback');
           runApp(MpOAuthCallbackScreen(uri: uri));
+          return;
+        }
+        if (uri.path == '/mp-oauth-start') {
+          CatalogStartupTrace.mark('CAT_START.runApp.mp_oauth_start');
+          runApp(MpOAuthStartScreen(uri: uri));
           return;
         }
         final mpOAuth = uri.queryParameters['mp_oauth'];

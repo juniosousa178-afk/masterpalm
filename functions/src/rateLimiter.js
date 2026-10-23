@@ -53,6 +53,7 @@ export const RATE_LIMITS = {
   // OAuth: fluxo humano, poucas tentativas
   mpOAuthInit: { maxPerMin: 15, windowMs: 60_000 },
   mpOAuthCallback: { maxPerMin: 15, windowMs: 60_000 },
+  mpOAuthStart: { maxPerMin: 10, windowMs: 60_000 },
 
   // Provisionamento: operação administrativa
   provisionSubdomain: { maxPerMin: 5, windowMs: 60_000 },

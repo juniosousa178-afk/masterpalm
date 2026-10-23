@@ -77,6 +77,13 @@ import {
   onPrePedidoShippingPreOrderTrigger,
 } from "./src/shippingPreOrder.js";
 import { isRootAccountEmail } from "./src/rootAccounts.js";
+import {
+  MpOAuthError,
+  runMpOAuthStart,
+  handleMpOAuthExchangeHttp,
+  buildInitForward,
+  buildLegacyCallbackForward,
+} from "./src/mpOAuthSecure.js";
 import { resolveStrictLojaMpAccessToken } from "./src/mpLojaTokenPolicy.js";
 import {
   tryBeginMpCatalogPaymentOrReuse,
@@ -609,305 +616,57 @@ async function canManageStoreConfigServerSide({ lojaId, uid, email }) {
 // MERCADO PAGO – OAuth (Conectar com 1 clique)
 // ============================================================================
 
-const MP_AUTH_URL = "https://auth.mercadopago.com/authorization";
-const MP_TOKEN_URL = "https://api.mercadopago.com/oauth/token";
-const MP_OAUTH_STATE_COL = "_mp_oauth_states";
-const MP_OAUTH_STATE_TTL_MS = 15 * 60 * 1000;
-
-/** RFC 7636 PKCE — obrigatório quando a aplicação MP está com PKCE ativado. */
-function generateMpPkcePair() {
-  const codeVerifier = crypto.randomBytes(32).toString("base64url");
-  const codeChallenge = crypto.createHash("sha256").update(codeVerifier).digest("base64url");
-  return { codeVerifier, codeChallenge };
-}
-
-function mapMpOAuthExchangeError(msgRaw) {
-  const msg = String(msgRaw || "").toLowerCase();
-  if (msg.includes("state inválido") || msg.includes("state invalido") || msg.includes("state")) {
-    return "State inválido ou expirado.";
-  }
-  if (msg.includes("código") || msg.includes("code")) {
-    return "Código de autorização ausente ou inválido.";
-  }
-  if (msg.includes("token") || msg.includes("mercado pago")) {
-    return "Falha de comunicação com o Mercado Pago.";
-  }
-  return "Falha de comunicação com o servidor.";
-}
-
 /**
- * Inicia o fluxo OAuth do Mercado Pago.
- * GET ?lojaId=xxx → redireciona para o Mercado Pago para autorização.
+ * Entrada antiga (APK/web): GET /mp-oauth?lojaId=… Não cria state nem fala com o MP;
+ * reencaminha para a página web que exige login e chama mpOAuthStart.
  */
 export const mpOAuthInit = onRequest(
-  { secrets: [S_MP_APP_ID], cors: true },
+  { cors: true, secrets: [] },
   async (req, res) => {
-    const lojaId = (req.query.lojaId || "").toString().trim();
-    if (!lojaId) {
-      res.status(400).send(
-        "<html><body><h1>Erro</h1><p>Parâmetro lojaId obrigatório.</p></body></html>"
-      );
-      return;
+    res.redirect(302, buildInitForward(req.query, PUBLIC_SITE_ORIGIN));
+  }
+);
+
+/** Callable autenticado: valida admin da loja e cria o state OAuth server-side. */
+export const mpOAuthStart = onCall(
+  { secrets: [S_MP_APP_ID], timeoutSeconds: 20, memory: "256MiB" },
+  async (request) => {
+    if (request.auth?.uid) {
+      await checkRateLimit("mpOAuthStart", getCallableIdentifier(request));
     }
-
-    const secretAppIdRaw = await S_MP_APP_ID.value();
-    const envAppIdRaw = process.env.MP_APP_ID;
-    const appId = secretAppIdRaw || envAppIdRaw;
-    const appIdStr = String(appId || "").trim();
-    const appIdMasked = appIdStr
-      ? (appIdStr.length <= 8
-          ? `${appIdStr.slice(0, 1)}***${appIdStr.slice(-1)}`
-          : `${appIdStr.slice(0, 4)}***${appIdStr.slice(-4)}`)
-      : "empty";
-    const appIdSource = secretAppIdRaw ? "S_MP_APP_ID.value()" : (envAppIdRaw ? "process.env.MP_APP_ID" : "fallback");
-    if (!appId) {
-      console.error("[mpOAuthInit] MP_APP_ID não configurado");
-      res.status(500).send(
-        "<html><body><h1>Erro de configuração</h1><p>OAuth não configurado. Configure MP_APP_ID.</p></body></html>"
-      );
-      return;
-    }
-
-    // URL no domínio próprio (preferida pelo MP) ou fallback Cloud Functions
-    const callbackUrl = `${PUBLIC_SITE_ORIGIN}/mp-oauth-callback`;
-    const nonce = crypto.randomBytes(24).toString("base64url");
-    const issuedAt = Date.now();
-    const expiresAt = issuedAt + MP_OAUTH_STATE_TTL_MS;
-    const { codeVerifier, codeChallenge } = generateMpPkcePair();
-    await db.collection(MP_OAUTH_STATE_COL).doc(nonce).set({
-      lojaId: String(lojaId),
-      createdAt: Timestamp.now(),
-      expiresAt: Timestamp.fromMillis(expiresAt),
-      used: false,
-      code_verifier: codeVerifier,
-    });
-    const state = Buffer.from(
-      JSON.stringify({ l: String(lojaId), n: nonce, t: issuedAt })
-    ).toString("base64url");
-
-    const params = new URLSearchParams({
-      client_id: appId,
-      response_type: "code",
-      platform_id: "mp",
-      state,
-      redirect_uri: callbackUrl,
-      code_challenge: codeChallenge,
-      code_challenge_method: "S256",
-    });
-
-    const authUrl = `${MP_AUTH_URL}?${params.toString()}`;
-    const authUrlDiag = authUrl.replace(
-      `client_id=${encodeURIComponent(appIdStr)}`,
-      `client_id=${encodeURIComponent(appIdMasked)}`
-    );
-    const authorizeHost = (() => {
-      try {
-        return new URL(authUrl).host;
-      } catch (_) {
-        return "invalid_url";
+    const appId = String((await S_MP_APP_ID.value()) || process.env.MP_APP_ID || "").trim();
+    try {
+      return await runMpOAuthStart({
+        db,
+        auth: request.auth || null,
+        lojaId: request.data?.lojaId,
+        appId,
+        publicSiteOrigin: PUBLIC_SITE_ORIGIN,
+      });
+    } catch (e) {
+      if (e instanceof MpOAuthError) {
+        const map = { 401: "unauthenticated", 403: "permission-denied", 400: "invalid-argument" };
+        throw new HttpsError(map[e.httpStatus] || "internal", e.publicMessage);
       }
-    })();
-    console.log(`[MP_OAUTH_DIAG] public_site_origin=${PUBLIC_SITE_ORIGIN}`);
-    console.log(`[MP_OAUTH_DIAG] redirect_uri=${callbackUrl}`);
-    console.log(`[MP_OAUTH_DIAG] client_id_masked=${appIdMasked}`);
-    console.log(`[MP_OAUTH_DIAG] app_id_source=${appIdSource}`);
-    console.log(`[MP_OAUTH_DIAG] authorize_host=${authorizeHost}`);
-    console.log(`[MP_OAUTH_DIAG] code_challenge_generated=${codeChallenge ? "true" : "false"}`);
-    console.log(`[MP_OAUTH_DIAG] authorization_url_masked=${authUrlDiag}`);
-    res.redirect(302, authUrl);
+      throw e;
+    }
   }
 );
 
 /**
- * Troca code OAuth por token de forma segura.
- * Espera POST JSON com { code, state }.
+ * Troca code OAuth por token (rewrite /api/mp/oauth/callback).
+ * POST { code, state } + Authorization: Bearer <ID token>; uid tem de ser o dono do state.
  */
 export const mpOAuthExchangeCode = onRequest(
   { secrets: [S_MP_APP_ID, S_MP_CLIENT_SECRET], cors: true },
   async (req, res) => {
-    if (req.method !== "POST") {
-      res.status(405).json({ error: "Método não permitido." });
-      return;
-    }
-
-    const body = req.body && typeof req.body === "object" ? req.body : {};
-    const code = (body.code || "").toString().trim();
-    const state = (body.state || "").toString().trim();
-    if (!code || !state) {
-      res.status(400).json({ error: "Parâmetros code/state obrigatórios." });
-      return;
-    }
-
-    let parsedState;
-    try {
-      parsedState = JSON.parse(Buffer.from(state, "base64url").toString("utf8"));
-    } catch (e) {
-      console.error("[mpOAuthExchangeCode] state inválido");
-      res.status(400).json({ error: "State inválido." });
-      return;
-    }
-
-    const lojaId = String(parsedState?.l || "").trim();
-    const nonce = String(parsedState?.n || "").trim();
-    const stateIssuedAt = Number(parsedState?.t || 0);
-    if (!lojaId || !nonce || !Number.isFinite(stateIssuedAt)) {
-      res.status(400).json({ error: "State malformado." });
-      return;
-    }
-
-    const stateRef = db.collection(MP_OAUTH_STATE_COL).doc(nonce);
-    const now = Date.now();
-    const expiredByPayload = now - stateIssuedAt > MP_OAUTH_STATE_TTL_MS + 30_000;
-    if (expiredByPayload) {
-      res.status(400).json({ error: "State inválido ou expirado." });
-      return;
-    }
-    // Consumo atômico e de uso único real (anti replay/race).
-    await db.runTransaction(async (tx) => {
-      const stateSnap = await tx.get(stateRef);
-      if (!stateSnap.exists) {
-        throw new Error("state_not_found");
-      }
-      const stateData = stateSnap.data() || {};
-      const expMs =
-        stateData.expiresAt && typeof stateData.expiresAt.toMillis === "function"
-          ? stateData.expiresAt.toMillis()
-          : null;
-      const stateLoja = String(stateData.lojaId || "").trim();
-      const stateUsed = stateData.used === true;
-      const expiredByDoc = expMs != null && now > expMs;
-      if (stateUsed || expiredByDoc || stateLoja !== lojaId) {
-        throw new Error("state_invalid");
-      }
-      tx.set(
-        stateRef,
-        {
-          used: true,
-          usedAt: Timestamp.now(),
-          consumedBy: "mpOAuthExchangeCode",
-        },
-        { merge: true }
-      );
-    }).catch((e) => {
-      const msg = String(e?.message || "");
-      if (msg === "state_not_found" || msg === "state_invalid") {
-        throw new HttpsError("invalid-argument", "State inválido ou expirado.");
-      }
-      throw e;
+    await handleMpOAuthExchangeHttp(req, res, {
+      db,
+      verifyIdToken: (t) => getAuth().verifyIdToken(t, true),
+      appId: (await S_MP_APP_ID.value()) || process.env.MP_APP_ID,
+      clientSecret: (await S_MP_CLIENT_SECRET.value()) || process.env.MP_CLIENT_SECRET,
+      publicSiteOrigin: PUBLIC_SITE_ORIGIN,
     });
-
-    const stateSnapAfter = await stateRef.get();
-    const codeVerifierForToken = String(
-      (stateSnapAfter.exists ? stateSnapAfter.data() || {} : {}).code_verifier || ""
-    ).trim();
-
-    const appId = (await S_MP_APP_ID.value()) || process.env.MP_APP_ID;
-    const clientSecret = (await S_MP_CLIENT_SECRET.value()) || process.env.MP_CLIENT_SECRET;
-    if (!appId || !clientSecret) {
-      console.error("[mpOAuthExchangeCode] Credenciais OAuth não configuradas");
-      res.status(500).json({ error: "OAuth não configurado no servidor." });
-      return;
-    }
-
-    try {
-      const callbackUrl = `${PUBLIC_SITE_ORIGIN}/mp-oauth-callback`;
-      const tokenPayload = {
-        client_id: appId,
-        client_secret: clientSecret,
-        code,
-        grant_type: "authorization_code",
-        redirect_uri: callbackUrl,
-      };
-      if (codeVerifierForToken) {
-        tokenPayload.code_verifier = codeVerifierForToken;
-      }
-      const tokenResp = await fetch(MP_TOKEN_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(tokenPayload),
-        signal: AbortSignal.timeout(12000),
-      });
-      const tokenData = await tokenResp.json();
-      if (!tokenResp.ok) {
-        const msg = tokenData?.message || tokenData?.error_description || "Falha ao obter token.";
-        console.error("[mpOAuthExchangeCode] Falha troca code:", tokenResp.status);
-        res.status(400).json({ error: mapMpOAuthExchangeError(msg) });
-        return;
-      }
-
-      const accessToken = tokenData?.access_token;
-      const refreshToken = tokenData?.refresh_token || null;
-      const publicKey = tokenData?.public_key || null;
-      const userId = tokenData?.user_id != null ? String(tokenData.user_id) : null;
-      if (!accessToken) {
-        res.status(400).json({ error: "Mercado Pago não retornou access_token." });
-        return;
-      }
-
-      let email = null;
-      try {
-        const userResp = await fetch("https://api.mercadopago.com/users/me", {
-          headers: { Authorization: `Bearer ${accessToken}` },
-          signal: AbortSignal.timeout(8000),
-        });
-        if (userResp.ok) {
-          const userData = await userResp.json();
-          email = userData?.email ?? null;
-        }
-      } catch (e) {
-        console.warn("[mpOAuthExchangeCode] users/me indisponível");
-      }
-
-      const nowTs = FieldValue.serverTimestamp();
-      await db
-        .collection(COLLECTION_LOJAS)
-        .doc(String(lojaId))
-        .collection("config")
-        .doc("payments")
-        .set(
-          {
-            mp: {
-              access_token: accessToken,
-              token: accessToken,
-              refresh_token: refreshToken,
-              public_key: publicKey,
-              user_id: userId,
-              email,
-              connected: true,
-            },
-            updatedAt: nowTs,
-          },
-          { merge: true }
-        );
-
-      await db
-        .collection(COLLECTION_LOJAS)
-        .doc(String(lojaId))
-        .collection("config")
-        .doc("payments_public")
-        .set(
-          {
-            mp: {
-              public_key: publicKey,
-              user_id: userId,
-              email,
-              connected: true,
-            },
-            updatedAt: nowTs,
-          },
-          { merge: true }
-        );
-
-      console.log("[mpOAuthExchangeCode] MP conectado para loja:", lojaId);
-      res.status(200).json({ ok: true, lojaId, connected: true });
-    } catch (e) {
-      if (e instanceof HttpsError && e.code === "invalid-argument") {
-        res.status(400).json({ error: "State inválido ou expirado." });
-        return;
-      }
-      console.error("[mpOAuthExchangeCode] erro interno:", e?.message || e);
-      res.status(500).json({ error: "Erro interno ao conectar Mercado Pago." });
-    }
   }
 );
 
@@ -994,162 +753,13 @@ export const mpOAuthHealthcheck = onCall(
 );
 
 /**
- * Callback OAuth do Mercado Pago.
- * Recebe ?code=xxx&state=xxx, troca por access_token, salva no Firestore e redireciona.
+ * Callback legado (URL direta da Function). Nunca troca code nem grava tokens:
+ * reencaminha para /mp-oauth-callback, que exige sessão do mesmo uid e state v2.
  */
 export const mpOAuthCallback = onRequest(
-  { secrets: [S_MP_APP_ID, S_MP_CLIENT_SECRET], cors: true },
+  { cors: true, secrets: [] },
   async (req, res) => {
-    const code = (req.query.code || "").toString().trim();
-    const state = (req.query.state || "").toString().trim();
-    const errorParam = req.query.error;
-
-    if (errorParam) {
-      console.error("[mpOAuthCallback] MP retornou erro:", errorParam, req.query.error_description);
-      res.redirect(
-        302,
-        `${PUBLIC_SITE_ORIGIN}/loja?mp_oauth=error&msg=${encodeURIComponent(String(req.query.error_description || errorParam))}`
-      );
-      return;
-    }
-
-    if (!code || !state) {
-      res.status(400).send(
-        "<html><body><h1>Erro</h1><p>Código de autorização não recebido.</p></body></html>"
-      );
-      return;
-    }
-
-    let lojaId;
-    try {
-      const decoded = JSON.parse(Buffer.from(state, "base64url").toString("utf8"));
-      lojaId = decoded.lojaId;
-    } catch (e) {
-      console.error("[mpOAuthCallback] state inválido:", e);
-      res.status(400).send(
-        "<html><body><h1>Erro</h1><p>Estado inválido.</p></body></html>"
-      );
-      return;
-    }
-
-    const appId = (await S_MP_APP_ID.value()) || process.env.MP_APP_ID;
-    const clientSecret = (await S_MP_CLIENT_SECRET.value()) || process.env.MP_CLIENT_SECRET;
-
-    if (!appId || !clientSecret) {
-      console.error("[mpOAuthCallback] Credenciais OAuth não configuradas");
-      res.status(500).send(
-        "<html><body><h1>Erro</h1><p>OAuth não configurado. Configure MP_APP_ID e MP_CLIENT_SECRET.</p></body></html>"
-      );
-      return;
-    }
-
-    // URL no domínio próprio (preferida pelo MP) ou fallback Cloud Functions
-    const callbackUrl = `${PUBLIC_SITE_ORIGIN}/mp-oauth-callback`;
-
-    try {
-      const tokenResp = await fetch(MP_TOKEN_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          client_id: appId,
-          client_secret: clientSecret,
-          code,
-          grant_type: "authorization_code",
-          redirect_uri: callbackUrl,
-          test_token: "false",
-        }),
-      });
-
-      const tokenData = await tokenResp.json();
-
-      if (!tokenResp.ok) {
-        console.error("[mpOAuthCallback] Erro ao trocar código:", tokenResp.status, tokenData);
-        const msg = tokenData.message || tokenData.error_description || "Falha ao obter token";
-        res.redirect(
-          302,
-          `${PUBLIC_SITE_ORIGIN}/loja?mp_oauth=error&msg=${encodeURIComponent(String(msg))}`
-        );
-        return;
-      }
-
-      const accessToken = tokenData.access_token;
-      const refreshToken = tokenData.refresh_token;
-      const publicKey = tokenData.public_key;
-      const userId = tokenData.user_id;
-
-      if (!accessToken) {
-        console.error("[mpOAuthCallback] access_token não retornado");
-        res.redirect(302, `${PUBLIC_SITE_ORIGIN}/loja?mp_oauth=error&msg=Token+nao+retornado`);
-        return;
-      }
-
-      // Buscar email do usuário MP
-      let email = null;
-      try {
-        const userResp = await fetch("https://api.mercadopago.com/users/me", {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        if (userResp.ok) {
-          const userData = await userResp.json();
-          email = userData?.email ?? null;
-        }
-      } catch (e) {
-        console.warn("[mpOAuthCallback] Não foi possível obter email:", e.message);
-      }
-
-      const paymentsRef = db
-        .collection(COLLECTION_LOJAS)
-        .doc(String(lojaId))
-        .collection("config")
-        .doc("payments");
-
-      await paymentsRef.set(
-        {
-          mp: {
-            access_token: accessToken,
-            token: accessToken,
-            refresh_token: refreshToken || null,
-            public_key: publicKey || accessToken,
-            user_id: userId ? String(userId) : null,
-            email: email || null,
-            connected: true,
-          },
-          updatedAt: nowTs,
-        },
-        { merge: true }
-      );
-
-      const paymentsPublicRef = db
-        .collection(COLLECTION_LOJAS)
-        .doc(String(lojaId))
-        .collection("config")
-        .doc("payments_public");
-      await paymentsPublicRef.set(
-        {
-          mp: {
-            public_key: publicKey || null,
-            user_id: userId ? String(userId) : null,
-            email: email || null,
-            connected: true,
-          },
-          updatedAt: nowTs,
-        },
-        { merge: true }
-      );
-
-      console.log("[mpOAuthCallback] MP conectado para loja:", lojaId);
-
-      res.redirect(
-        302,
-        `${PUBLIC_SITE_ORIGIN}/loja?mp_oauth=ok&loja=${encodeURIComponent(lojaId)}`
-      );
-    } catch (e) {
-      console.error("[mpOAuthCallback] Erro:", e);
-      res.redirect(
-        302,
-        `${PUBLIC_SITE_ORIGIN}/loja?mp_oauth=error&msg=${encodeURIComponent(e.message || "Erro")}`
-      );
-    }
+    res.redirect(302, buildLegacyCallbackForward(req.query, PUBLIC_SITE_ORIGIN));
   }
 );
 
