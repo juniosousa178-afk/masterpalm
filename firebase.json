@@ -3,7 +3,7 @@
     {
       "codebase": "default",
       "source": "functions",
-      "runtime": "nodejs20",
+      "runtime": "nodejs22",
       "ignore": [
         "node_modules",
         ".git",
@@ -19,7 +19,7 @@
     {
       "codebase": "main",
       "source": "main",
-      "runtime": "nodejs20"
+      "runtime": "nodejs22"
     }
   ],
   "hosting": [
