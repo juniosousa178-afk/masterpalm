@@ -4,44 +4,56 @@ import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
-import 'package:http/http.dart' as http;
 import '../models/master_config.dart';
 
 /// Serviço para gerenciar configurações globais do aplicativo (apenas root)
 class MasterConfigService {
-  static final _firestore = FirebaseFirestore.instance;
+  static FirebaseFirestore? _firestoreOverride;
+  static FirebaseFirestore get _firestore =>
+      _firestoreOverride ?? FirebaseFirestore.instance;
+
+  @visibleForTesting
+  static set firestoreForTesting(FirebaseFirestore? value) =>
+      _firestoreOverride = value;
+
   static const String _masterConfigDoc = 'master_config';
   static const String _masterConfigCollection = 'app_config';
 
-  /// Carrega configuração mestre (local primeiro, depois Firestore)
-  static Future<MasterConfig> loadMasterConfig() async {
+  /// Box Hive de versões antigas: guardava o documento inteiro (incluindo senha e credenciais
+  /// legadas) e era relido sem consultar o Firestore, o que permitia regravar campos removidos.
+  static const String _legacyHiveBox = 'master_config';
+  static bool _legacyCachePurged = false;
+
+  static Future<void> _purgeLegacyCache() async {
+    if (_legacyCachePurged) return;
+    _legacyCachePurged = true;
     try {
-      // Tenta carregar do Hive primeiro (offline-first)
-      final box = await Hive.openBox<MasterConfig>('master_config');
-      MasterConfig? config = box.get('config');
+      await Hive.deleteBoxFromDisk(_legacyHiveBox);
+    } catch (e) {
+      debugPrint('⚠️ [MasterConfig] cache legado não removido (type=${e.runtimeType})');
+    }
+  }
 
-      // Se não existe localmente, busca do Firestore
-      if (config == null) {
-        debugPrint('📥 Buscando master config do Firestore...');
-        final doc = await _firestore
-            .collection(_masterConfigCollection)
-            .doc(_masterConfigDoc)
-            .get();
+  /// Payload gravado no Firestore: só os campos de [MasterConfig.allowedFields].
+  @visibleForTesting
+  static Map<String, dynamic> buildWritePayload(MasterConfig config) {
+    final map = config.toMap();
+    return {
+      for (final key in MasterConfig.allowedFields)
+        if (map.containsKey(key)) key: map[key],
+    };
+  }
 
-        if (doc.exists) {
-          config = MasterConfig.fromMap(doc.data()!);
-          // Salva localmente
-          await box.put('config', config);
-          debugPrint('✅ Master config carregado do Firestore');
-        } else {
-          // Cria configuração padrão
-          config = MasterConfig();
-          await saveMasterConfig(config, updatedBy: 'system');
-          debugPrint('✅ Master config criado (padrão)');
-        }
-      }
-
-      return config;
+  /// Carrega configuração mestre sempre do Firestore (fonte autoritativa).
+  static Future<MasterConfig> loadMasterConfig() async {
+    await _purgeLegacyCache();
+    try {
+      final doc = await _firestore
+          .collection(_masterConfigCollection)
+          .doc(_masterConfigDoc)
+          .get();
+      final data = doc.data();
+      return data == null ? MasterConfig() : MasterConfig.fromMap(data);
     } catch (e) {
       final msg = e.toString().toLowerCase();
       final isPermissionDenied = msg.contains('permission') && msg.contains('denied');
@@ -79,7 +91,7 @@ class MasterConfigService {
     return config.copyWith(globalSettings: settings);
   }
 
-  /// Salva configuração mestre (local + Firestore)
+  /// Salva configuração mestre no Firestore (somente campos da allowlist)
   static Future<void> saveMasterConfig(
     MasterConfig config, {
     required String updatedBy,
@@ -95,51 +107,15 @@ class MasterConfigService {
         updatedBy: updatedBy,
       );
 
-      final box = await Hive.openBox<MasterConfig>('master_config');
-      await box.put('config', config);
-      debugPrint('✅ Master config salvo localmente');
-
       await _firestore
           .collection(_masterConfigCollection)
           .doc(_masterConfigDoc)
-          .set(config.toMap(), SetOptions(merge: true));
+          .set(buildWritePayload(config), SetOptions(merge: true));
       debugPrint('✅ Master config sincronizado com Firestore');
     } catch (e) {
       debugPrint('❌ Erro ao salvar master config (type=${e.runtimeType})');
       rethrow;
     }
-  }
-
-  /// Valida senha master
-  static Future<bool> validateMasterPassword(String password) async {
-    try {
-      final config = await loadMasterConfig();
-      return config.masterPassword == password;
-    } catch (e) {
-      debugPrint('❌ Erro ao validar senha (type=${e.runtimeType})');
-      return false;
-    }
-  }
-
-  /// Atualiza senha master
-  static Future<void> updateMasterPassword({
-    required String oldPassword,
-    required String newPassword,
-    required String updatedBy,
-  }) async {
-    final config = await loadMasterConfig();
-
-    if (config.masterPassword != oldPassword) {
-      throw Exception('Senha atual incorreta');
-    }
-
-    final updatedConfig = config.copyWith(masterPassword: newPassword);
-    await saveMasterConfig(
-      updatedConfig,
-      updatedBy: updatedBy,
-      auditAction: 'Senha master alterada',
-      auditDetails: 'Alteração por $updatedBy',
-    );
   }
 
   /// Adiciona usuário com acesso ilimitado
@@ -206,61 +182,6 @@ class MasterConfigService {
     } catch (e) {
       debugPrint('❌ Erro ao verificar acesso ilimitado (type=${e.runtimeType})');
       return false;
-    }
-  }
-
-  /// Testa conexão com Mercado Pago (valida Access Token)
-  static Future<bool> testMercadoPagoConnection(String accessToken) async {
-    try {
-      final response = await http.get(
-        Uri.parse('https://api.mercadopago.com/users/me'),
-        headers: {'Authorization': 'Bearer $accessToken'},
-      );
-      return response.statusCode == 200;
-    } catch (e) {
-      debugPrint('❌ Erro ao testar MP (type=${e.runtimeType})');
-      return false;
-    }
-  }
-
-  /// Atualiza chaves do Mercado Pago
-  static Future<void> updateMercadoPagoKeys({
-    required String accessToken,
-    required String publicKey,
-    required String updatedBy,
-  }) async {
-    final config = await loadMasterConfig();
-    final updatedConfig = config.copyWith(
-      mercadoPagoAccessToken: accessToken,
-      mercadoPagoPublicKey: publicKey,
-    );
-    await saveMasterConfig(
-      updatedConfig,
-      updatedBy: updatedBy,
-      auditAction: 'Chaves Mercado Pago atualizadas',
-      auditDetails: 'Public Key configurada',
-    );
-  }
-
-  /// Obtém Access Token do Mercado Pago
-  static Future<String?> getMercadoPagoAccessToken() async {
-    try {
-      final config = await loadMasterConfig();
-      return config.mercadoPagoAccessToken;
-    } catch (e) {
-      debugPrint('❌ Erro ao obter access token (type=${e.runtimeType})');
-      return null;
-    }
-  }
-
-  /// Obtém Public Key do Mercado Pago
-  static Future<String?> getMercadoPagoPublicKey() async {
-    try {
-      final config = await loadMasterConfig();
-      return config.mercadoPagoPublicKey;
-    } catch (e) {
-      debugPrint('❌ Erro ao obter public key (type=${e.runtimeType})');
-      return null;
     }
   }
 
@@ -408,13 +329,10 @@ class MasterConfigService {
     return added;
   }
 
-  /// Exporta config (sem dados sensíveis)
+  /// Exporta config (o model não carrega dados sensíveis)
   static Future<String> exportConfigJson() async {
     final config = await loadMasterConfig();
-    final map = config.toMap();
-    map.remove('masterPassword');
-    map['mercadoPagoAccessToken'] = config.mercadoPagoAccessToken != null ? '***' : null;
-    return const JsonEncoder.withIndent('  ').convert(map);
+    return const JsonEncoder.withIndent('  ').convert(buildWritePayload(config));
   }
 
   /// Importa config de JSON (merge globalSettings apenas)

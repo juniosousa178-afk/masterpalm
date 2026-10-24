@@ -2306,7 +2306,7 @@ class _HomeScreenState extends State<HomeScreen>
         _buildMenuTile(
           'Configurações Master',
           Icons.admin_panel_settings,
-          '/master_login',
+          '/master_config',
           color: _errorColor,
           iconBgColor: _errorColor.withOpacity(0.1),
           sidebarMode: sidebarMode,

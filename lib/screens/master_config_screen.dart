@@ -17,7 +17,18 @@ import '../utils/text_utils.dart';
 
 /// Tela de configurações master do aplicativo (apenas root)
 class MasterConfigScreen extends StatefulWidget {
-  const MasterConfigScreen({super.key});
+  const MasterConfigScreen({super.key, @visibleForTesting this.accessCheck});
+
+  /// Substitui a verificação de root canônico (Firebase Auth) em testes de widget.
+  final bool Function()? accessCheck;
+
+  static bool currentUserIsVerifiedRoot() {
+    final user = FirebaseAuth.instance.currentUser;
+    return RoleUtils.isVerifiedRootAccount(
+      email: user?.email,
+      emailVerified: user?.emailVerified ?? false,
+    );
+  }
 
   @override
   State<MasterConfigScreen> createState() => _MasterConfigScreenState();
@@ -31,12 +42,9 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
   MasterConfig? _config;
   bool _loading = true;
   String? _loadError;
-  bool _savingMercadoPago = false;
   bool _savingAccess = false;
   String? _savingRevokeEmail;
   bool _savingSwitch = false;
-  bool _showAccessToken = false;
-  bool _testingMp = false;
   bool _maintenanceMode = false;
   bool _savingMaintenance = false;
   final Map<String, bool> _featureFlags = {};
@@ -47,8 +55,6 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
   String _appVersion = '1.0.0';
   Timer? _sessionTimer;
 
-  final _mpAccessTokenController = TextEditingController();
-  final _mpPublicKeyController = TextEditingController();
   final _newUserEmailController = TextEditingController();
   final _maintenanceMessageController = TextEditingController();
   final _supportPhoneController = TextEditingController();
@@ -57,7 +63,8 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
   @override
   void initState() {
     super.initState();
-    if (!RoleUtils.isRootEmail(FirebaseAuth.instance.currentUser?.email)) {
+    final allowed = (widget.accessCheck ?? MasterConfigScreen.currentUserIsVerifiedRoot)();
+    if (!allowed) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         Navigator.of(context).pop();
@@ -75,8 +82,6 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
   @override
   void dispose() {
     _sessionTimer?.cancel();
-    _mpAccessTokenController.dispose();
-    _mpPublicKeyController.dispose();
     _newUserEmailController.dispose();
     _bulkEmailsController.dispose();
     _maintenanceMessageController.dispose();
@@ -114,8 +119,6 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
       setState(() {
         _config = config;
         _loadError = null;
-        _mpAccessTokenController.text = config.mercadoPagoAccessToken ?? '';
-        _mpPublicKeyController.text = config.mercadoPagoPublicKey ?? '';
         _maintenanceMode = maintenance;
         _maintenanceMessageController.text = message;
         _featureFlags['catalogoWeb'] = catalogo;
@@ -130,169 +133,6 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
       _showError(_loadError!);
     } finally {
       if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  Future<void> _testMercadoPagoConnection() async {
-    final token = _mpAccessTokenController.text.trim();
-    if (token.isEmpty) {
-      _showError('Digite o Access Token para testar');
-      return;
-    }
-    setState(() => _testingMp = true);
-    try {
-      final ok = await MasterConfigService.testMercadoPagoConnection(token);
-      if (!mounted) return;
-      if (ok) {
-        _showSuccess('Conexão com Mercado Pago OK!');
-      } else {
-        _showError('Falha na conexão. Verifique o Access Token.');
-      }
-    } finally {
-      if (mounted) setState(() => _testingMp = false);
-    }
-  }
-
-  Future<void> _saveMercadoPagoKeys() async {
-    final accessToken = _mpAccessTokenController.text.trim();
-    final publicKey = _mpPublicKeyController.text.trim();
-
-    if (accessToken.isEmpty || publicKey.isEmpty) {
-      _showError('Preencha ambas as chaves do Mercado Pago');
-      return;
-    }
-
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Confirmar alteração'),
-        content: const Text(
-          'As chaves do Mercado Pago serão substituídas. '
-          'Isso pode afetar pagamentos em andamento. Deseja continuar?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancelar'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
-            child: const Text('Confirmar'),
-          ),
-        ],
-      ),
-    );
-    if (confirm != true) return;
-
-    setState(() => _savingMercadoPago = true);
-    try {
-      await MasterConfigService.updateMercadoPagoKeys(
-        accessToken: accessToken,
-        publicKey: publicKey,
-        updatedBy: _updatedBy,
-      );
-      _showSuccess('Chaves do Mercado Pago salvas com sucesso!');
-      await _loadConfig();
-    } catch (e) {
-      _showError('Erro ao salvar chaves: $e');
-    } finally {
-      if (mounted) setState(() => _savingMercadoPago = false);
-    }
-  }
-
-  Future<void> _changePassword() async {
-    final oldPasswordController = TextEditingController();
-    final newPasswordController = TextEditingController();
-    final confirmPasswordController = TextEditingController();
-
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Alterar Senha Master'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: oldPasswordController,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'Senha Atual',
-                  prefixIcon: Icon(Icons.lock_outline),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: newPasswordController,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'Nova Senha',
-                  prefixIcon: Icon(Icons.lock),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: confirmPasswordController,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'Confirmar Nova Senha',
-                  prefixIcon: Icon(Icons.lock),
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final oldPassword = oldPasswordController.text.trim();
-              final newPassword = newPasswordController.text.trim();
-              final confirmPassword = confirmPasswordController.text.trim();
-
-              if (oldPassword.isEmpty ||
-                  newPassword.isEmpty ||
-                  confirmPassword.isEmpty) {
-                _showError('Preencha todos os campos');
-                return;
-              }
-
-              if (newPassword != confirmPassword) {
-                _showError('As senhas não coincidem');
-                return;
-              }
-
-              if (newPassword.length < 8) {
-                _showError('A senha deve ter no mínimo 8 caracteres');
-                return;
-              }
-
-              try {
-                await MasterConfigService.updateMasterPassword(
-                  oldPassword: oldPassword,
-                  newPassword: newPassword,
-                  updatedBy: _updatedBy,
-                );
-                if (!mounted) return;
-                // ignore: use_build_context_synchronously
-                Navigator.pop(context, true);
-              } catch (e) {
-                _showError('Erro: $e');
-              }
-            },
-            child: const Text('Alterar'),
-          ),
-        ],
-      ),
-    );
-
-    if (result == true) {
-      _showSuccess('Senha alterada com sucesso!');
-      await _loadConfig();
     }
   }
 
@@ -541,8 +381,6 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
             const SizedBox(height: 16),
             _buildDashboardStats(),
             const SizedBox(height: 24),
-            _buildMercadoPagoSection(),
-            const SizedBox(height: 24),
             _buildCatalogMpSupportShortcut(),
             const SizedBox(height: 24),
             _buildMaintenanceSection(),
@@ -552,8 +390,6 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
             _buildGlobalSettingsSection(),
             const SizedBox(height: 24),
             _buildFeatureFlagsSection(),
-            const SizedBox(height: 24),
-            _buildSecuritySection(),
             const SizedBox(height: 24),
             _buildAuditLogSection(),
             const SizedBox(height: 24),
@@ -608,14 +444,6 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
                   'MP no servidor',
                   Icons.cloud_done,
                   const Color(0xFF22C55E),
-                ),
-                _buildStatChip(
-                  'MP Firestore (legado)',
-                  _config!.mercadoPagoAccessToken != null ? 'Campos preenchidos' : 'Vazio',
-                  Icons.storage,
-                  _config!.mercadoPagoAccessToken != null
-                      ? const Color(0xFF6366F1)
-                      : Colors.grey,
                 ),
                 _buildStatChip(
                   'Versão',
@@ -710,117 +538,6 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
                   ],
                 ],
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMercadoPagoSection() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.payment, color: Theme.of(context).colorScheme.primary),
-                const SizedBox(width: 8),
-                Text(
-                  'Mercado Pago — uso técnico / legado',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'O checkout de planos do app usa a conta Mercado Pago configurada no backend '
-              '(Secret Manager / variável de ambiente), não estes campos. '
-              'Mantenha-os apenas para diagnóstico, teste manual ou integrações legadas — '
-              'não são necessários para o fluxo normal de assinatura.',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Colors.grey[700],
-                    height: 1.35,
-                  ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _mpAccessTokenController,
-              obscureText: !_showAccessToken,
-              decoration: InputDecoration(
-                labelText: 'Access Token (opcional / admin)',
-                prefixIcon: const Icon(Icons.vpn_key),
-                border: const OutlineInputBorder(),
-                helperText: 'Só para testar conexão ou salvar cópia no Firestore; checkout de planos não lê daqui',
-                suffixIcon: IconButton(
-                  icon: Icon(
-                    _showAccessToken ? Icons.visibility_off : Icons.visibility,
-                    size: 22,
-                  ),
-                  onPressed: () => setState(() => _showAccessToken = !_showAccessToken),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _mpPublicKeyController,
-              decoration: const InputDecoration(
-                labelText: 'Public Key (opcional / admin)',
-                prefixIcon: Icon(Icons.public),
-                border: OutlineInputBorder(),
-                helperText: 'Legado; planos no app não dependem desta chave',
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _testingMp ? null : _testMercadoPagoConnection,
-                    icon: _testingMp
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.wifi_tethering),
-                    label: Text(_testingMp ? 'Testando...' : 'Testar conexão'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.primary,
-                      side: const BorderSide(color: AppColors.primary),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  flex: 2,
-                  child: SizedBox(
-                    height: 48,
-                    child: ElevatedButton.icon(
-                      onPressed: _savingMercadoPago ? null : _saveMercadoPagoKeys,
-                icon: _savingMercadoPago
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                        ),
-                      )
-                    : const Icon(Icons.save),
-                      label: Text(_savingMercadoPago ? 'Salvando...' : 'Salvar'),
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        backgroundColor: AppColors.primary,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
             ),
           ],
         ),
@@ -1284,42 +1001,6 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
     }
   }
 
-  Widget _buildSecuritySection() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.security, color: Theme.of(context).colorScheme.primary),
-                const SizedBox(width: 8),
-                Text(
-                  'Segurança',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            ListTile(
-              leading: const Icon(Icons.lock),
-              title: const Text('Alterar Senha Master'),
-              subtitle: const Text('Modificar senha de acesso master'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () {
-              _resetSessionTimer();
-              _changePassword();
-            },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildAuditLogSection() {
     return Card(
       child: Padding(
@@ -1442,10 +1123,6 @@ class _MasterConfigScreenState extends State<MasterConfigScreen> {
             _buildInfoRow('Atualizado por', _config!.updatedBy ?? 'Sistema'),
             _buildInfoRow('Usuários com acesso ilimitado',
                 _config!.usersWithUnlimitedAccess.length.toString()),
-            _buildInfoRow(
-              'MP no Firestore (legado)',
-              _config!.mercadoPagoAccessToken != null ? 'Campos preenchidos' : 'Vazio',
-            ),
             _buildInfoRow(
               'Checkout planos (produção)',
               'Backend / Secret Manager',

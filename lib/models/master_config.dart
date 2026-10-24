@@ -1,39 +1,31 @@
 // lib/models/master_config.dart
-import 'package:hive/hive.dart';
 
-part 'master_config.g.dart';
-
-/// Configurações globais do aplicativo (apenas para programador root)
-@HiveType(typeId: 15)
+/// Configurações globais do aplicativo (apenas root).
+///
+/// A autoridade sobre este documento é o root canônico verificado (Firebase Auth + Firestore Rules);
+/// nenhum segredo vive aqui. Campos legados (senha master, credenciais Mercado Pago) não são
+/// lidos nem regravados: só os campos de [allowedFields] fazem round-trip.
 class MasterConfig {
-  @HiveField(0)
-  String masterPassword;
+  /// Únicos campos que o cliente pode gravar em `app_config/master_config`.
+  static const List<String> allowedFields = [
+    'requirePlanForNewUsers',
+    'usersWithUnlimitedAccess',
+    'globalSettings',
+    'lastUpdated',
+    'updatedBy',
+  ];
 
-  @HiveField(1)
-  String? mercadoPagoAccessToken;
-
-  @HiveField(2)
-  String? mercadoPagoPublicKey;
-
-  @HiveField(3)
   bool requirePlanForNewUsers;
 
-  @HiveField(4)
   List<String> usersWithUnlimitedAccess;
 
-  @HiveField(5)
   Map<String, dynamic> globalSettings;
 
-  @HiveField(6)
   DateTime? lastUpdated;
 
-  @HiveField(7)
   String? updatedBy;
 
   MasterConfig({
-    this.masterPassword = '030419922009jj',
-    this.mercadoPagoAccessToken,
-    this.mercadoPagoPublicKey,
     this.requirePlanForNewUsers = true,
     List<String>? usersWithUnlimitedAccess,
     Map<String, dynamic>? globalSettings,
@@ -43,38 +35,37 @@ class MasterConfig {
         globalSettings = globalSettings ?? {};
 
   Map<String, dynamic> toMap() {
-    return {
-      'masterPassword': masterPassword,
-      'mercadoPagoAccessToken': mercadoPagoAccessToken,
-      'mercadoPagoPublicKey': mercadoPagoPublicKey,
+    final map = <String, dynamic>{
       'requirePlanForNewUsers': requirePlanForNewUsers,
       'usersWithUnlimitedAccess': usersWithUnlimitedAccess,
       'globalSettings': globalSettings,
       'lastUpdated': lastUpdated?.toIso8601String(),
       'updatedBy': updatedBy,
     };
+    assert(map.keys.every(allowedFields.contains));
+    return map;
   }
 
   factory MasterConfig.fromMap(Map<String, dynamic> map) {
+    final lastUpdatedRaw = map['lastUpdated'];
     return MasterConfig(
-      masterPassword: map['masterPassword'] ?? '030419922009jj',
-      mercadoPagoAccessToken: map['mercadoPagoAccessToken'],
-      mercadoPagoPublicKey: map['mercadoPagoPublicKey'],
-      requirePlanForNewUsers: map['requirePlanForNewUsers'] ?? true,
-      usersWithUnlimitedAccess:
-          List<String>.from(map['usersWithUnlimitedAccess'] ?? []),
-      globalSettings: Map<String, dynamic>.from(map['globalSettings'] ?? {}),
-      lastUpdated: map['lastUpdated'] != null
-          ? DateTime.parse(map['lastUpdated'])
-          : null,
-      updatedBy: map['updatedBy'],
+      requirePlanForNewUsers: map['requirePlanForNewUsers'] is bool
+          ? map['requirePlanForNewUsers'] as bool
+          : true,
+      usersWithUnlimitedAccess: map['usersWithUnlimitedAccess'] is List
+          ? List<String>.from(
+              (map['usersWithUnlimitedAccess'] as List).whereType<String>())
+          : [],
+      globalSettings: map['globalSettings'] is Map
+          ? Map<String, dynamic>.from(map['globalSettings'] as Map)
+          : {},
+      lastUpdated:
+          lastUpdatedRaw is String ? DateTime.tryParse(lastUpdatedRaw) : null,
+      updatedBy: map['updatedBy'] is String ? map['updatedBy'] as String : null,
     );
   }
 
   MasterConfig copyWith({
-    String? masterPassword,
-    String? mercadoPagoAccessToken,
-    String? mercadoPagoPublicKey,
     bool? requirePlanForNewUsers,
     List<String>? usersWithUnlimitedAccess,
     Map<String, dynamic>? globalSettings,
@@ -82,10 +73,6 @@ class MasterConfig {
     String? updatedBy,
   }) {
     return MasterConfig(
-      masterPassword: masterPassword ?? this.masterPassword,
-      mercadoPagoAccessToken:
-          mercadoPagoAccessToken ?? this.mercadoPagoAccessToken,
-      mercadoPagoPublicKey: mercadoPagoPublicKey ?? this.mercadoPagoPublicKey,
       requirePlanForNewUsers:
           requirePlanForNewUsers ?? this.requirePlanForNewUsers,
       usersWithUnlimitedAccess:

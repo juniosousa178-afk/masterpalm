@@ -123,7 +123,6 @@ import 'screens/fretes_cupons_screen.dart';
 // pedido_publico_screen e pagamento_resultado_screen usados em app_routes.dart
 import 'screens/admin_sync_screen.dart';
 import 'screens/admin_usuarios_screen.dart';
-import 'screens/master_login_screen.dart';
 import 'screens/mestre/master_plan_access_screen.dart';
 import 'screens/mp_oauth_callback_screen.dart';
 import 'screens/mp_oauth_start_screen.dart';
@@ -215,7 +214,6 @@ import 'models/fechamento_mensal.dart';
 import 'models/venda_item.dart';
 import 'models/cupom_premio.dart';
 import 'models/subcategoria.dart';
-import 'models/master_config.dart';
 import 'models/meta.dart';
 import 'models/comissao_config.dart';
 import 'models/venda_tracking.dart';
@@ -3650,8 +3648,6 @@ void _registerAllHiveAdaptersBootstrap() {
   if (!Hive.isAdapterRegistered(13))
     Hive.registerAdapter(SubcategoriaAdapter());
   if (!Hive.isAdapterRegistered(14)) Hive.registerAdapter(CupomPremioAdapter());
-  if (!Hive.isAdapterRegistered(15))
-    Hive.registerAdapter(MasterConfigAdapter());
   if (!Hive.isAdapterRegistered(16)) Hive.registerAdapter(MetaAdapter());
   if (!Hive.isAdapterRegistered(17)) Hive.registerAdapter(CategoriaAdapter());
   if (!Hive.isAdapterRegistered(18)) Hive.registerAdapter(EstoqueItemAdapter());
@@ -4326,7 +4322,7 @@ class MyApp extends StatelessWidget {
               '/planos': (_) => _authRoute(const PlanosScreen()),
               '/admin_usuarios': (_) => const AdminUsuariosScreen(),
               '/mestre/assinaturas': (_) => const MasterPlanAccessScreen(),
-              '/master_login': (_) => const MasterLoginScreen(),
+              '/master_login': (_) => const MasterConfigScreen(),
               '/master_config': (_) => const MasterConfigScreen(),
               '/catalog_payment_support': (ctx) => CatalogPaymentSupportScreen(
                     routeArguments: ModalRoute.of(ctx)?.settings.arguments,

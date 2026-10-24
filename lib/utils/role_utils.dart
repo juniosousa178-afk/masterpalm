@@ -77,6 +77,15 @@ class RoleUtils {
     return rootEmails.contains(email.trim().toLowerCase());
   }
 
+  /// Root canônico: e-mail root com verificação concluída, a mesma exigência de `isRootAdmin()`
+  /// nas Firestore Rules e de `functions/src/rootAccounts.js`.
+  static bool isVerifiedRootAccount({
+    required String? email,
+    required bool emailVerified,
+  }) {
+    return emailVerified && isRootEmail(email);
+  }
+
   /// Único e-mail da administração Mestre de planos (P1).
   static const String masterPlanAdminEmail = 'masterpalm26@gmail.com';
 

@@ -62,7 +62,7 @@ Status: ✅ ATIVO
 #### `/app_config/master_config` (Configuração Master)
 - ✅ Mercado Pago configurado (Access Token + Public Key)
 - ✅ Usuários com acesso ilimitado: `masterpalm@gmail.com`
-- ✅ Senha master: `030419922009jj`
+- ✅ Senha master: `[REDACTED]`
 - ✅ Última atualização: 28/12/2025
 
 #### `/planos` (Planos de Assinatura)
@@ -211,7 +211,7 @@ Quando o sistema estiver estável:
 
 ### Dados que NUNCA devem ser compartilhados:
 - ❌ `scripts/serviceAccountKey.json` (chave privada Firebase)
-- ❌ Senha master: `030419922009jj`
+- ❌ Senha master: `[REDACTED]`
 - ❌ Chaves do Mercado Pago (Access Token, Public Key)
 
 ### Backup Recomendado:

@@ -52,7 +52,7 @@
    - O sistema está pronto para produção
 
 3. **Verificar Configurações**
-   - Entre nas "Configurações Master" (senha: 030419922009jj)
+   - Entre nas "Configurações Master" (senha: [REDACTED])
    - Verifique se o Mercado Pago está configurado corretamente
    - Adicione outros usuários com acesso ilimitado se necessário
 

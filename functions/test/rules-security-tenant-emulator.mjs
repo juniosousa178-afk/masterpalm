@@ -363,6 +363,7 @@ async function main() {
         readUserB: () => root.collection("users").doc(U.ownerB).get(),
         listUsuarios: () => root.collection("usuarios").get(),
         readMasterConfig: () => root.collection("app_config").doc("master_config").get(),
+        listAppConfig: () => root.collection("app_config").get(),
         writeMasterConfig: () => root.collection("app_config").doc("master_config").set({ x: 2 }),
         selfRoleProgramador: () => root.collection("users").doc(U.root).set({ role: "programador", is_root: true }, { merge: true }),
       }, "ALLOWED");
@@ -377,6 +378,26 @@ async function main() {
         readUserB: () => ur.collection("users").doc(U.ownerB).get(),
         listUsuarios: () => ur.collection("usuarios").get(),
         writeMasterConfig: () => ur.collection("app_config").doc("master_config").set({ x: 3 }),
+      }, "DENIED");
+    }
+
+    // app_config/master_config: só o root canônico verificado lê/escreve; não há senha de cliente na autoridade.
+    {
+      const evil = dbAs(U.evil);
+      const ownerA = dbAs(U.ownerA);
+      const ur = dbAs(U.unverifiedRoot);
+      await matrix("MASTER_CONFIG.non_root", {
+        evilGet: () => evil.collection("app_config").doc("master_config").get(),
+        evilList: () => evil.collection("app_config").get(),
+        evilSet: () => evil.collection("app_config").doc("master_config").set({ requirePlanForNewUsers: false }),
+        evilUpdate: () => evil.collection("app_config").doc("master_config").update({ requirePlanForNewUsers: false }),
+        evilDelete: () => evil.collection("app_config").doc("master_config").delete(),
+        evilCreateOther: () => evil.collection("app_config").doc("nova_config").set({ x: 1 }),
+        ownerAGet: () => ownerA.collection("app_config").doc("master_config").get(),
+        ownerAUpdate: () => ownerA.collection("app_config").doc("master_config").update({ updatedBy: "owner_a" }),
+        unverifiedRootGet: () => ur.collection("app_config").doc("master_config").get(),
+        unverifiedRootList: () => ur.collection("app_config").get(),
+        unverifiedRootDelete: () => ur.collection("app_config").doc("master_config").delete(),
       }, "DENIED");
     }
 
