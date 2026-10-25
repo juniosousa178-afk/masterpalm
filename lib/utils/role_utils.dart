@@ -4,6 +4,7 @@
 
 import 'package:hive/hive.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 /// Emails que SEMPRE são programadores (root) - NUNCA sobrescrever.
@@ -86,6 +87,39 @@ class RoleUtils {
     return emailVerified && isRootEmail(email);
   }
 
+  /// Substitui o usuário do Firebase Auth nos testes.
+  @visibleForTesting
+  static User? Function()? currentUserOverride;
+
+  static bool isVerifiedRootUser(User? user) {
+    if (user == null) return false;
+    return isVerifiedRootAccount(email: user.email, emailVerified: user.emailVerified);
+  }
+
+  /// Root de plataforma no cliente. Papéis no Firestore/Hive (`programador`, `is_root`), UIDs e
+  /// listas remotas de e-mail não concedem root: só o usuário autenticado com e-mail root verificado.
+  static bool isCurrentUserVerifiedRoot() {
+    try {
+      final override = currentUserOverride;
+      return isVerifiedRootUser(override != null ? override() : FirebaseAuth.instance.currentUser);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// `programador` é exclusivo do root verificado; para qualquer outra conta vale como `admin`.
+  static UserRole platformSafeRole(UserRole role, {required bool isVerifiedRoot}) {
+    if (isVerifiedRoot) return UserRole.programador;
+    return role == UserRole.programador ? UserRole.admin : role;
+  }
+
+  /// Mesmo contrato de [platformSafeRole] para o tipo guardado como texto na sessão.
+  static String platformSafeTipo(String? tipo, {required bool isVerifiedRoot}) {
+    if (isVerifiedRoot) return UserRole.programador.name;
+    final raw = (tipo ?? '').trim();
+    return raw.toUserRole() == UserRole.programador ? UserRole.admin.name : raw;
+  }
+
   /// Único e-mail da administração Mestre de planos (P1).
   static const String masterPlanAdminEmail = 'masterpalm26@gmail.com';
 
@@ -94,28 +128,25 @@ class RoleUtils {
     return email.trim().toLowerCase() == masterPlanAdminEmail;
   }
 
-  /// Resolve o role correto para um usuário
-  /// ROOT emails SEMPRE retornam programador
+  /// Resolve o role correto para um usuário.
+  /// Root verificado é sempre programador; `programador` vindo do Firestore/Hive de outra conta vale admin.
   static UserRole resolveRole({
-    required String? email,
+    required bool isVerifiedRoot,
     String? firestoreRole,
     String? localRole,
   }) {
-    // ROOT override - NUNCA sobrescrever
-    if (isRootEmail(email)) {
+    if (isVerifiedRoot) {
       return UserRole.programador;
     }
 
     // Prioridade: Firestore > Local > Default (vendedor)
+    var role = UserRole.vendedor;
     if (firestoreRole != null && firestoreRole.isNotEmpty) {
-      return firestoreRole.toUserRole();
+      role = firestoreRole.toUserRole();
+    } else if (localRole != null && localRole.isNotEmpty) {
+      role = localRole.toUserRole();
     }
-
-    if (localRole != null && localRole.isNotEmpty) {
-      return localRole.toUserRole();
-    }
-
-    return UserRole.vendedor;
+    return platformSafeRole(role, isVerifiedRoot: false);
   }
 
   /// Carrega o role da sessão Hive
@@ -125,16 +156,11 @@ class RoleUtils {
           ? Hive.box('sessao')
           : await Hive.openBox('sessao');
 
-      final email = (sessao.get('usuario_logado') ?? '').toString().trim().toLowerCase();
       final storedRole = (sessao.get('tipo_usuario') ?? '').toString();
-      final isRoot = sessao.get('is_root') == true;
-
-      // ROOT override
-      if (isRoot || isRootEmail(email)) {
-        return UserRole.programador;
-      }
-
-      return storedRole.toUserRole();
+      return platformSafeRole(
+        storedRole.toUserRole(),
+        isVerifiedRoot: isCurrentUserVerifiedRoot(),
+      );
     } catch (e) {
       debugPrint('❌ [ROLE] Erro ao carregar role (type=${e.runtimeType})');
       return UserRole.vendedor;
@@ -151,8 +177,8 @@ class RoleUtils {
           ? Hive.box('sessao')
           : await Hive.openBox('sessao');
 
-      final isRoot = isRootEmail(email);
-      final finalRole = isRoot ? UserRole.programador : role;
+      final isRoot = isRootEmail(email) && isCurrentUserVerifiedRoot();
+      final finalRole = platformSafeRole(role, isVerifiedRoot: isRoot);
 
       await sessao.put('tipo_usuario', finalRole.name);
       await sessao.put('role', finalRole.name);
@@ -170,7 +196,7 @@ class RoleUtils {
     required String uid,
     required String email,
   }) async {
-    if (!isRootEmail(email)) return;
+    if (!isRootEmail(email) || !isCurrentUserVerifiedRoot()) return;
 
     try {
       final db = FirebaseFirestore.instance;

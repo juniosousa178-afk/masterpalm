@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 
+import '../utils/role_utils.dart';
+
 class AdminLoginScreen extends StatefulWidget {
   const AdminLoginScreen({super.key});
 
@@ -14,6 +16,14 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
   bool _loading = false;
 
   Future<void> _verificarPin() async {
+    if (!RoleUtils.isCurrentUserVerifiedRoot()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Acesso restrito ao administrador da plataforma')),
+      );
+      return;
+    }
+
     final pin = _pinController.text.trim();
 
     final configBox = await Hive.openBox('config');

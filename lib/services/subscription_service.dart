@@ -183,19 +183,10 @@ class SubscriptionService {
     'vendasMes': 10,
   };
 
-  /// UID root legado (atalho) — e-mail root: [RoleUtils.isRootEmail].
-  static const String rootUid = 'vd0X6xXlq4be0cKhmIOiDtXTvKb2';
-
-  /// Preferir [RoleUtils.isRootEmail] — lista canônica em `lib/utils/role_utils.dart`.
-  static const String rootEmail = 'masterpalm26@gmail.com';
-
   static bool get isSignedIn => _auth.currentUser != null;
 
-  static bool get isRoot {
-    final u = _auth.currentUser;
-    if (u == null) return false;
-    return (u.uid == rootUid) || RoleUtils.isRootEmail(u.email);
-  }
+  /// Root canônico verificado ([RoleUtils.isCurrentUserVerifiedRoot]).
+  static bool get isRoot => RoleUtils.isCurrentUserVerifiedRoot();
 
   /// Lê users/{uid} (sem query). Caso não exista ou negado -> retorna FREE.
   static Future<SubscriptionStatus> getStatus() async {

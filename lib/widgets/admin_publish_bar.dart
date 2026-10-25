@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hive/hive.dart';
 
 import '../services/cloud_sync_service.dart'; // pushAll()
@@ -28,9 +27,8 @@ class _AdminPublishBarState extends State<AdminPublishBar> {
       if (tipo == 'programador' || tipo == 'admin') return true;
     } catch (_) {}
 
-    // 2) Root (fallback — mesma lista que RoleUtils)
-    final email = FirebaseAuth.instance.currentUser?.email;
-    if (RoleUtils.isRootEmail(email)) return true;
+    // 2) Root verificado (fallback)
+    if (RoleUtils.isCurrentUserVerifiedRoot()) return true;
 
     // 3) Web: ?admin=1 (útil p/ testes)
     if (kIsWeb) {

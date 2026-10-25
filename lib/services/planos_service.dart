@@ -437,7 +437,7 @@ class PlanosService {
     required String email,
     bool forceRefresh = false,
   }) async {
-    if (RoleUtils.isRootEmail(email)) {
+    if (RoleUtils.isRootEmail(email) && RoleUtils.isCurrentUserVerifiedRoot()) {
       return EffectivePlanAccess(
         contractedPlanId: PlanId.lifetime,
         effectivePlanId: PlanId.lifetime,
@@ -467,7 +467,9 @@ class PlanosService {
     required String uid,
     required String email,
   }) async {
-    if (RoleUtils.isRootEmail(email)) return PlanId.lifetime;
+    if (RoleUtils.isRootEmail(email) && RoleUtils.isCurrentUserVerifiedRoot()) {
+      return PlanId.lifetime;
+    }
     final effective = await fetchMyEffectivePlanAccess();
     final contracted = await fetchCurrentPlan(uid: uid, email: email);
     return resolveEffectivePlanIdForGates(
@@ -603,8 +605,8 @@ class PlanosService {
     required String uid,
     required String email,
   }) async {
-    // 1) Root/programador — mesma lista que backend (rootAccounts / RoleUtils)
-    if (RoleUtils.isRootEmail(email)) {
+    // 1) Root verificado — mesmo contrato do backend (rootAccounts / RoleUtils)
+    if (RoleUtils.isRootEmail(email) && RoleUtils.isCurrentUserVerifiedRoot()) {
       return const PlanInfo(
         planId: 'lifetime',
         status: 'active',

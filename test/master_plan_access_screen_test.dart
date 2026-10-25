@@ -12,7 +12,7 @@ void main() {
     test('2. outros roots não veem entrada Mestre de planos', () {
       expect(RoleUtils.isMasterPlanAdminEmail('masterpalm@gmail.com'), isFalse);
       expect(RoleUtils.isMasterPlanAdminEmail('admin@masterpalm.com'), isFalse);
-      expect(RoleUtils.isRootEmail('masterpalm@gmail.com'), isTrue);
+      expect(RoleUtils.isRootEmail('masterpalm@gmail.com'), isFalse);
     });
 
     test('3. rota direta bloqueia usuário não autorizado', () {

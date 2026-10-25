@@ -201,13 +201,10 @@ class _HomeScreenState extends State<HomeScreen>
       final sessao = await Hive.openBox('sessao');
 
       // Recalcula tipo (com ROOT override) aqui também, por segurança
-      final user = FirebaseAuth.instance.currentUser;
-      final email = (user?.email ?? '').trim().toLowerCase();
-      final isRoot =
-          (sessao.get('is_root') == true) || RoleUtils.isRootEmail(email);
-
-      final tipoHive = (sessao.get('tipo_usuario') as String?) ?? 'vendedor';
-      final tipoEfetivo = isRoot ? 'programador' : tipoHive;
+      final tipoEfetivo = RoleUtils.platformSafeTipo(
+        (sessao.get('tipo_usuario') as String?) ?? 'vendedor',
+        isVerifiedRoot: RoleUtils.isCurrentUserVerifiedRoot(),
+      );
 
       if (tipoEfetivo == 'admin') {
         final ok = await LicenseManager.hasValidAccessFallbackLegacy();
@@ -276,16 +273,14 @@ class _HomeScreenState extends State<HomeScreen>
     }
     await _carregarNomeLoja(sessao);
 
-    // ✅ ROOT override (impede "root virar vendedor")
-    final isRoot = (sessao.get('is_root') == true) ||
-        RoleUtils.isRootEmail(emailAuth) ||
-        RoleUtils.isRootEmail(_usuario);
-    if (isRoot) {
-      // força apenas no app (e grava no hive pra não ficar voltando)
-      _tipo = 'programador';
-      sessao.put('is_root', true);
-      sessao.put('tipo_usuario',
-          'programador'); // <- pode trocar pra 'admin' se quiser
+    // ✅ ROOT override (impede "root virar vendedor"); `programador` em cache de outra conta vale admin
+    final isRoot = RoleUtils.isCurrentUserVerifiedRoot();
+    final tipoSeguro = RoleUtils.platformSafeTipo(_tipo, isVerifiedRoot: isRoot);
+    if (tipoSeguro != _tipo || (sessao.get('is_root') == true) != isRoot) {
+      _tipo = tipoSeguro;
+      sessao.put('is_root', isRoot);
+      sessao.put('tipo_usuario', tipoSeguro);
+      sessao.put('role', tipoSeguro);
     }
 
     // ✅ VENDEDOR: Verificar se tem alguma permissão liberada
@@ -2288,7 +2283,7 @@ class _HomeScreenState extends State<HomeScreen>
     }
 
     // Master Config - apenas root (lista canônica RoleUtils; admin de loja não)
-    if (RoleUtils.isRootEmail(_usuario)) {
+    if (RoleUtils.isCurrentUserVerifiedRoot()) {
       startSection('Master', color: _errorColor);
       if (RoleUtils.isMasterPlanAdminEmail(_usuario)) {
         currentChildren.add(

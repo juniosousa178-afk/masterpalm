@@ -79,8 +79,7 @@ class _SiteConfigScreenState extends State<SiteConfigScreen> {
   }
 
   Future<void> _save() async {
-    final email = FirebaseAuth.instance.currentUser?.email ?? '';
-    if (!RoleUtils.isRootEmail(email)) {
+    if (!RoleUtils.isCurrentUserVerifiedRoot()) {
       _showSnack('Acesso negado. Apenas conta root.', isError: true);
       return;
     }
@@ -100,7 +99,10 @@ class _SiteConfigScreenState extends State<SiteConfigScreen> {
         apkReleaseDate: _apkReleaseDate.text.trim(),
         apkChangelog: _apkChangelog.text.trim(),
       );
-      await SiteConfigService.save(config, updatedBy: email);
+      await SiteConfigService.save(
+        config,
+        updatedBy: FirebaseAuth.instance.currentUser?.email ?? '',
+      );
       _showSnack('Configurações salvas com sucesso!');
     } catch (e) {
       _showSnack('Erro ao salvar: $e', isError: true);
@@ -121,8 +123,7 @@ class _SiteConfigScreenState extends State<SiteConfigScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final email = FirebaseAuth.instance.currentUser?.email ?? '';
-    if (!RoleUtils.isRootEmail(email)) {
+    if (!RoleUtils.isCurrentUserVerifiedRoot()) {
       return Scaffold(
         appBar: AppBar(title: const Text('Config. do Site')),
         body: const Center(

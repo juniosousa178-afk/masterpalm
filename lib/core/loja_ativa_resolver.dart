@@ -31,9 +31,7 @@ class LojaAtivaResolver {
     }
     final user = FirebaseAuth.instance.currentUser;
     final email = (user?.email ?? '').trim().toLowerCase();
-    final perfil = RoleUtils.isRootEmail(email)
-        ? UserRole.programador.name
-        : (await RoleUtils.loadFromSession()).name;
+    final perfil = (await RoleUtils.loadFromSession()).name;
 
     final fromSession = await _readSessionStoreId();
     if (fromSession != null && fromSession.isNotEmpty) {

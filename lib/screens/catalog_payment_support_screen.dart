@@ -2,7 +2,6 @@
 // Forense leve: leitura do snapshot de pagamento catálogo MP (root; backend reforça).
 
 import 'package:cloud_functions/cloud_functions.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -120,7 +119,7 @@ class _CatalogPaymentSupportScreenState extends State<CatalogPaymentSupportScree
   void initState() {
     super.initState();
     if (!widget.bypassRootCheck &&
-        !RoleUtils.isRootEmail(FirebaseAuth.instance.currentUser?.email)) {
+        !RoleUtils.isCurrentUserVerifiedRoot()) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         Navigator.of(context).pop();

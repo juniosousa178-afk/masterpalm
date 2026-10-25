@@ -2,8 +2,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:hive/hive.dart';
-
 import '../themes/app_colors.dart';
 import '../services/planos_service.dart';
 import '../utils/role_utils.dart';
@@ -30,16 +28,7 @@ class _AdminUsuariosScreenState extends State<AdminUsuariosScreen> {
   String get _currentUserEmail =>
       FirebaseAuth.instance.currentUser?.email ?? 'masterpalm26@gmail.com';
 
-  bool get _isRoot {
-    try {
-      final email = FirebaseAuth.instance.currentUser?.email;
-      if (RoleUtils.isRootEmail(email)) return true;
-
-      final tipo = Hive.box('sessao').get('tipo_usuario')?.toString();
-      if (tipo == 'programador') return true;
-    } catch (_) {}
-    return false;
-  }
+  bool get _isRoot => RoleUtils.isCurrentUserVerifiedRoot();
 
   String _toCanonicalPlanId(String raw) => PlanosService.normalizePlanId(raw);
 

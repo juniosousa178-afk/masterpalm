@@ -355,12 +355,12 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       });
     }
 
-    // ✅ ROOT override: forçar tipo programador (lista canônica: RoleUtils / rootAccounts)
+    // ✅ ROOT override: programador só para o root verificado (RoleUtils / rootAccounts)
     // ✅ Conta criada no login (Google ou criar conta) tem tipo explícito 'admin'. Vendedor é criado dentro da loja pelo admin.
-    final emailLower = email.toLowerCase().trim();
-    final tipo = RoleUtils.isRootEmail(emailLower)
-        ? 'programador'
-        : (d['tipo'] ?? 'vendedor').toString();
+    final tipo = RoleUtils.platformSafeTipo(
+      (d['tipo'] ?? 'vendedor').toString(),
+      isVerifiedRoot: RoleUtils.isCurrentUserVerifiedRoot(),
+    );
 
     return Usuario(
       nome: (d['nome'] ?? '').toString(),
@@ -697,14 +697,15 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     }
 
     // ✅ ROOT override ANTES da lógica de vendedor
-    final isRoot = RoleUtils.isRootEmail(usuario.email);
-    if (isRoot) {
+    final isRoot = RoleUtils.isCurrentUserVerifiedRoot();
+    final tipoSeguro = RoleUtils.platformSafeTipo(usuario.tipo, isVerifiedRoot: isRoot);
+    if (tipoSeguro != usuario.tipo) {
       usuario = Usuario(
         nome: usuario.nome,
         email: usuario.email,
         telefone: usuario.telefone,
         senha: usuario.senha,
-        tipo: 'programador',
+        tipo: tipoSeguro,
         permissoes: usuario.permissoes,
       );
     }
@@ -932,15 +933,16 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       final sessao = await _openBoxSafe<dynamic>('sessao');
       await usuariosBox.put(usuario.email, usuario);
 
-      final isRoot = RoleUtils.isRootEmail(usuario.email);
+      final isRoot = RoleUtils.isCurrentUserVerifiedRoot();
+      final tipoSeguro = RoleUtils.platformSafeTipo(usuario.tipo, isVerifiedRoot: isRoot);
       Usuario usuarioFinal = usuario;
-      if (isRoot) {
+      if (tipoSeguro != usuario.tipo) {
         usuarioFinal = Usuario(
           nome: usuario.nome,
           email: usuario.email,
           telefone: usuario.telefone,
           senha: usuario.senha,
-          tipo: 'programador',
+          tipo: tipoSeguro,
           permissoes: usuario.permissoes,
         );
       }

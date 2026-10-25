@@ -174,8 +174,7 @@ class StoreResolverService {
 
       if (userDoc.exists) {
         final data = userDoc.data();
-        final email = FirebaseAuth.instance.currentUser?.email;
-        if (RoleUtils.isRootEmail(email) && data != null) {
+        if (RoleUtils.isCurrentUserVerifiedRoot() && data != null) {
           for (final field in [
             'active_store_id',
             'admin_store_id',

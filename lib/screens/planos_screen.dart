@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart'
     show kIsWeb, defaultTargetPlatform, TargetPlatform, debugPrint;
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:hive/hive.dart';
 import 'package:intl/intl.dart';
 import '../core/plan_renewal_messages.dart';
 import '../core/master_plan_access_models.dart';
@@ -59,17 +58,7 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
   /// Checkout de planos usa Cloud Function + Secret Manager (token MP não fica no app).
   bool _checkoutPlanoServidor = true;
 
-  bool get _isRoot {
-    try {
-      if (!Hive.isBoxOpen('sessao')) return false;
-      final email = FirebaseAuth.instance.currentUser?.email;
-      if (RoleUtils.isRootEmail(email)) return true;
-      final tipo = Hive.box('sessao').get('tipo_usuario')?.toString();
-      return tipo == 'programador';
-    } catch (_) {
-      return false;
-    }
-  }
+  bool get _isRoot => RoleUtils.isCurrentUserVerifiedRoot();
 
   bool get _isMobile {
     if (kIsWeb) return false;
@@ -546,9 +535,7 @@ class _PlanosScreenState extends State<PlanosScreen> with WidgetsBindingObserver
                   style: TextStyle(color: Colors.white38, fontSize: 10),
                 ),
               ),
-            if (RoleUtils.isRootEmail(
-                FirebaseAuth.instance.currentUser?.email,
-              )) ...[
+            if (RoleUtils.isCurrentUserVerifiedRoot()) ...[
               const Divider(height: 28, color: Colors.white24),
               const Text(
                 'Consulta outra conta (e-mail root na lista interna, leitura)',

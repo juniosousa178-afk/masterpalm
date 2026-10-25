@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
+import '../utils/role_utils.dart';
 import 'store_resolver_unified.dart';
 
 /// Serviço de autenticação + sessão local (Hive)
@@ -89,7 +90,13 @@ class AuthService extends ChangeNotifier {
 
     await box.put('usuario_logado', email);
     await box.put('usuario_logado_email', email);
-    await box.put('tipo_usuario', tipo);
+    await box.put(
+      'tipo_usuario',
+      RoleUtils.platformSafeTipo(
+        tipo,
+        isVerifiedRoot: RoleUtils.isCurrentUserVerifiedRoot(),
+      ),
+    );
     await box.put('store_id', storeId);
 
     // 🔹 Prepara config da loja atual (multi-loja no mesmo aparelho)

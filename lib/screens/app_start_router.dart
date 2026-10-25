@@ -12,16 +12,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../core/feature_flags.dart';
 import '../core/logger.dart';
 import '../core/web_store_context_policy.dart';
-import '../core/remote_config_keys.dart';
 import '../models/user_profile.dart';
 import '../services/license_manager.dart' show LicenseManager;
 import '../services/planos_service.dart';
 import '../services/user_profile_resolver.dart';
-import '../services/remote_config_safe_service.dart';
 import '../services/store_resolver_facade.dart';
 import '../services/public_store_link_helper.dart';
 import '../services/store_resolver_service.dart';
-import '../utils/role_utils.dart'; // rootEmails + RoleUtils
+import '../utils/role_utils.dart';
 import '../utils/last_route_observer.dart'; // ✅ Restaurar tela ao voltar do segundo plano
 
 class AppStartRouter extends StatefulWidget {
@@ -43,17 +41,6 @@ class _AppStartRouterState extends State<AppStartRouter> {
   static const String _routePlanos = '/planos';
   static const String _routeHome = '/home';
 
-  Set<String> _getRootAdminEmails() {
-    if (!RemoteConfigSafeService.isFlagOn(rcEnableDynamicRootAdmins, fallback: false)) {
-      return Set<String>.from(rootEmails);
-    }
-    final list = RemoteConfigSafeService.getStringListFromJson(
-      rcRootAdminEmailsJson,
-      fallback: rootEmails.toList(),
-    );
-    return list.isEmpty ? Set<String>.from(rootEmails) : list.toSet();
-  }
-
   bool _isPaidSubscriptionPlanId(String raw) {
     final n = PlanosService.normalizePlanId(raw);
     return n == PlanId.proMonthly ||
@@ -63,8 +50,8 @@ class _AppStartRouterState extends State<AppStartRouter> {
   }
 
   /// Resolve perfil do usuário atual via UserProfileResolver (só usado quando flag ON).
-  Future<UserProfile?> _resolveUserProfile({required bool isRootEmail}) async {
-    return UserProfileResolver.resolveCurrentUserProfile(isRoot: isRootEmail);
+  Future<UserProfile?> _resolveUserProfile({required bool isVerifiedRoot}) async {
+    return UserProfileResolver.resolveCurrentUserProfile(isRoot: isVerifiedRoot);
   }
 
   @override
@@ -183,10 +170,9 @@ class _AppStartRouterState extends State<AppStartRouter> {
       sessao.put('usuario_logado', email);
       sessao.put('usuario_logado_email', email);
 
-      final rootEmails = _getRootAdminEmails();
-      final isRootEmail = rootEmails.contains(email);
+      final isVerifiedRoot = RoleUtils.isVerifiedRootUser(user);
 
-      if (isRootEmail) {
+      if (isVerifiedRoot) {
         sessao.put('tipo_usuario', 'programador');
         sessao.put('is_root', true);
         sessao.put('role', 'programador');
@@ -195,7 +181,7 @@ class _AppStartRouterState extends State<AppStartRouter> {
       }
 
       // ✅ ROOT: Web exige contexto de loja seguro (mesma política que admin); mobile mantém home + bind em background
-      if (isRootEmail) {
+      if (isVerifiedRoot) {
         logD('🔑 [ROUTER] ROOT USER');
         if (kIsWeb) {
           await _bindActiveStore(sessao: sessao, config: config, isRoot: true);
@@ -274,7 +260,7 @@ class _AppStartRouterState extends State<AppStartRouter> {
       String? vendedorStoreId;
       bool gotProfileFromResolver = false;
       if (kEnableUnifiedUserProfileResolver) {
-        final profile = await _resolveUserProfile(isRootEmail: isRootEmail);
+        final profile = await _resolveUserProfile(isVerifiedRoot: isVerifiedRoot);
         if (profile == null) {
           // fallback já feito por gotProfileFromResolver false
         } else if (!profile.isComplete) {
@@ -692,14 +678,14 @@ class _AppStartRouterState extends State<AppStartRouter> {
       await _syncPerfilFirestore(
         uid: uid,
         sessao: sessao,
-        isRootEmail: isRootEmail,
+        isVerifiedRoot: isVerifiedRoot,
         email: email,
       );
 
       await _bindActiveStore(
         sessao: sessao,
         config: config,
-        isRoot: isRootEmail,
+        isRoot: isVerifiedRoot,
       );
 
       await _routeByRoleAndLoja(sessao);
@@ -720,13 +706,13 @@ class _AppStartRouterState extends State<AppStartRouter> {
   Future<void> _syncPerfilFirestore({
     required String uid,
     required Box sessao,
-    required bool isRootEmail,
+    required bool isVerifiedRoot,
     required String email,
   }) async {
     _setBusy('Carregando perfil...');
 
     // ✅ ROOT: Migrar role no Firestore e NÃO deixar sobrescrever
-    if (isRootEmail) {
+    if (isVerifiedRoot) {
       await RoleUtils.migrateIfNeeded(uid: uid, email: email);
       sessao.put('tipo_usuario', 'programador');
       sessao.put('role', 'programador');
@@ -761,7 +747,7 @@ class _AppStartRouterState extends State<AppStartRouter> {
 
       // ✅ Usar RoleUtils para resolver o role corretamente
       final resolvedRole = RoleUtils.resolveRole(
-        email: email,
+        isVerifiedRoot: false,
         firestoreRole: firestoreRole,
         localRole: localRole,
       );
@@ -1006,7 +992,7 @@ class _AppStartRouterState extends State<AppStartRouter> {
             .trim()
             .toLowerCase();
 
-    final isRoot = (sessao.get('is_root') ?? false) == true;
+    final isRoot = RoleUtils.isCurrentUserVerifiedRoot();
 
     logD('🎯 [ROUTER] Role: $role, isRoot: $isRoot');
 
@@ -1024,8 +1010,8 @@ class _AppStartRouterState extends State<AppStartRouter> {
       return;
     }
 
-    // Mobile: programador/root seguem sem gate de loja (comportamento legado)
-    if (isRoot || role == 'programador' || role == 'root') {
+    // Mobile: só o root verificado segue sem gate de loja
+    if (isRoot) {
       logD('✅ [ROUTER] Root/Programador → /home');
       _goHomeOrRestore();
       return;

@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hive/hive.dart';
 
 import '../services/cloud_sync_service.dart'; // pushAll()
@@ -24,8 +23,7 @@ class _AdminPublishFABState extends State<AdminPublishFAB> {
       final tipo = Hive.box('sessao').get('tipo_usuario')?.toString();
       if (tipo == 'programador' || tipo == 'admin') return true;
     } catch (_) {}
-    final email = FirebaseAuth.instance.currentUser?.email;
-    if (RoleUtils.isRootEmail(email)) return true;
+    if (RoleUtils.isCurrentUserVerifiedRoot()) return true;
     if (kIsWeb) {
       final adminFlag = Uri.base.queryParameters['admin'];
       if (adminFlag == '1' || adminFlag == 'true') return true;

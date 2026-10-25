@@ -1,5 +1,4 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 
@@ -32,7 +31,6 @@ class _SystemHealthAdminScreenState extends State<SystemHealthAdminScreen> {
       _error = null;
     });
     try {
-      final email = FirebaseAuth.instance.currentUser?.email;
       String tipo = '';
       try {
         final sessao = Hive.isBoxOpen('sessao')
@@ -40,8 +38,11 @@ class _SystemHealthAdminScreenState extends State<SystemHealthAdminScreen> {
             : await Hive.openBox('sessao');
         tipo = (sessao.get('tipo_usuario') as String?) ?? '';
       } catch (_) {}
-      final role = RoleUtils.resolveRole(email: email, localRole: tipo);
-      if (!role.isRoot && !RoleUtils.isMasterPlanAdminEmail(email)) {
+      final role = RoleUtils.resolveRole(
+        isVerifiedRoot: RoleUtils.isCurrentUserVerifiedRoot(),
+        localRole: tipo,
+      );
+      if (!role.isRoot) {
         if (!mounted) return;
         setState(() {
           _loading = false;

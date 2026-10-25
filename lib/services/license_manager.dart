@@ -210,7 +210,7 @@ class LicenseManager {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return false;
 
-    if (RoleUtils.isRootEmail(user.email)) {
+    if (RoleUtils.isVerifiedRootUser(user)) {
       return true;
     }
 
