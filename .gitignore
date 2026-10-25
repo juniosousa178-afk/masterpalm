@@ -42,3 +42,12 @@ GoogleService-Info.plist
 firebase-adminsdk*.json
 serviceAccountKey.json
 tools/sa.json
+
+# Exports do Firebase Auth e senhas de contas de teste (nunca commitar)
+**/users_export*.json
+**/*auth_export*.json
+**/*auth-export*.json
+**/*auth_users*.json
+**/*auth-users*.json
+**/review_account_password*
+**/*.password.txt
