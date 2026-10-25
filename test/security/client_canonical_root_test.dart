@@ -3,8 +3,10 @@ import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
+import 'package:master_palm/screens/admin_login.dart';
 import 'package:master_palm/services/subscription_service.dart';
 import 'package:master_palm/utils/role_utils.dart';
 
@@ -184,6 +186,46 @@ void main() {
     test('sem usuário autenticado não há root', () {
       _signIn(null);
       expect(RoleUtils.isCurrentUserVerifiedRoot(), isFalse);
+    });
+  });
+
+  group('Tela de PIN do programador', () {
+    Future<void> submitPin(WidgetTester tester) async {
+      await tester.pumpWidget(const MaterialApp(home: AdminLoginScreen()));
+      await tester.enterText(find.byType(TextFormField), '000000');
+      await tester.tap(find.byType(ElevatedButton));
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 200)));
+      await tester.pump();
+    }
+
+    testWidgets('não-root não recebe sessão programador', (tester) async {
+      _signIn(_exRoot);
+      await tester.runAsync(() async {
+        final sessao = await Hive.openBox('sessao');
+        await sessao.put('tipo_usuario', 'admin');
+      });
+      await submitPin(tester);
+      expect(find.text('Acesso restrito ao administrador da plataforma'), findsOneWidget);
+      expect(Hive.box('sessao').get('tipo_usuario'), 'admin');
+    });
+
+    testWidgets('sem PIN configurado não há PIN padrão', (tester) async {
+      _signIn(_verifiedRoot);
+      await tester.runAsync(() async {
+        final config = await Hive.openBox('config');
+        await config.delete('pin_programador');
+        final sessao = await Hive.openBox('sessao');
+        await sessao.put('tipo_usuario', 'admin');
+      });
+      await submitPin(tester);
+      expect(find.text('PIN do programador não configurado'), findsOneWidget);
+      expect(Hive.box('sessao').get('tipo_usuario'), 'admin');
+    });
+
+    test('código sem valor padrão para pin_programador', () {
+      final src = File('lib/screens/admin_login.dart').readAsStringSync();
+      expect(src.contains('defaultValue'), isFalse);
+      expect(src.contains('isCurrentUserVerifiedRoot'), isTrue);
     });
   });
 

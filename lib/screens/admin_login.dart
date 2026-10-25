@@ -27,9 +27,14 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
     final pin = _pinController.text.trim();
 
     final configBox = await Hive.openBox('config');
-    // Fallback apenas para primeira configuração; defina pin_programador em config (ex.: tela config_pin) em produção.
-    final pinSalvo =
-        configBox.get('pin_programador', defaultValue: '030419922009');
+    final pinSalvo = (configBox.get('pin_programador') as String?)?.trim() ?? '';
+    if (pinSalvo.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('PIN do programador não configurado')),
+      );
+      return;
+    }
 
     if (pin != pinSalvo) {
       if (!mounted) return;
