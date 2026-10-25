@@ -21,7 +21,7 @@ Write-Host "Gerando release.keystore para assinatura consistente..." -Foreground
 Push-Location (Join-Path $root "android\app")
 try {
     keytool -genkey -v -keystore release.keystore -keyalg RSA -keysize 2048 -validity 10000 `
-        -alias masterpalm -storepass masterpalm2024 -keypass masterpalm2024 `
+        -alias masterpalm `
         -dname "CN=MasterPalm, OU=App, O=MasterPalm, L=SaoPaulo, ST=SP, C=BR"
     Write-Host "OK: release.keystore criado!" -ForegroundColor Green
     Write-Host ""

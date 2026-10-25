@@ -73,7 +73,7 @@ O projeto está **funcional e bem estruturado**: Firestore com regras restritiva
 
 ### 4.2 Senha do keystore no código (Android)
 
-- **android/app/build.gradle.kts**: Se usar o keystore embutido (`release.keystore`), a senha `masterpalm2024` está no código.
+- **android/app/build.gradle.kts**: Se usar o keystore embutido (`release.keystore`), a senha fica fixa no código (valor removido deste documento; tratar como exposto).
 - **Risco**: Qualquer pessoa com acesso ao repositório (ou build) pode usar a chave se tiver o arquivo `.keystore`.
 - **Recomendação**: Usar sempre `key.properties` (já no .gitignore) em CI e para desenvolvedores; não commitar keystore nem senhas. Remover senha fixa do script quando o keystore for 100% externo.
 
