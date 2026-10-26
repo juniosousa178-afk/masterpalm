@@ -66,6 +66,8 @@ import 'nova_venda/variacao_selection_sheet.dart';
 import 'public_catalog_screen.dart';
 import '../services/catalog_publish_service.dart';
 import '../services/bulk_pix_discount_service.dart';
+import '../services/bulk_promocao_service.dart';
+import '../services/produto_promocao.dart';
 import '../services/marketplace_service.dart';
 import '../services/movimentacao_estoque_service.dart';
 import '../services/estoque_service.dart';
@@ -83,6 +85,7 @@ import '../services/ia_uso_limite_service.dart';
 import '../services/produto_exclusao_remota_service.dart';
 import '../widgets/app_help_icon_button.dart';
 import '../widgets/bulk_pix_discount_dialogs.dart';
+import '../widgets/bulk_promocao_dialogs.dart';
 import '../widgets/estoque_acoes_lote_sheet.dart';
 import '../services/produto_sync_recovery_access.dart';
 import 'produto_sync_recovery_screen.dart';
@@ -161,6 +164,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
   bool? _filtroPublicado; // null = todos, true = só publicados, false = só não publicados
   bool _filtroSemFotos = false; // true = só produtos sem imagens
   bool _filtroRecentementeAlterados = false; // true = só produtos alterados nas últimas 24 horas
+  bool _filtroEmPromocao = false; // true = só produtos com promoção ligada
 
   final Set<String> _produtosSelecionados = {};
 
@@ -622,6 +626,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
       return false;
     }
     if (_filtroSemFotos && p.imagens.isNotEmpty) return false;
+    if (_filtroEmPromocao && !ProdutoPromocao.temPromocao(p)) return false;
     if (_filtroRecentementeAlterados) {
       if (p.updatedAt == null) return false;
       final limite =
@@ -1289,6 +1294,140 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
       await _executarRemocaoDescontoPix(
         lojaId: lojaId,
         docIds: r.idsParaNovaTentativa,
+        bulkId: bulkId,
+        hiveKeysPorDocId: hiveKeysPorDocId,
+        nomes: nomes,
+      );
+    }
+  }
+
+  /// Ação em lote: mesmo efeito de desligar "Promoção" no cadastro; preço normal e estoque ficam iguais.
+  Future<void> _desativarPromocoesLote() async {
+    if (_publicando) return;
+    if (_produtosSelecionados.isEmpty) {
+      _showSnackBar('Nenhum produto selecionado', isError: true);
+      return;
+    }
+    final lojaTela = _lojaId?.trim() ?? '';
+    final candidatos = <BulkPromoCandidato>[];
+    for (final key in _hiveKeysSelecionados()) {
+      final p = _box.get(key);
+      if (p != null) candidatos.add(BulkPromoCandidato.fromProduto(key, p));
+    }
+    final visiveis = _produtosListagemEstoque(_box.values)
+        .map((p) => p.key?.toString())
+        .whereType<String>()
+        .toSet();
+    final preview = BulkPromoPreview.calcular(
+      candidatos,
+      foraDoFiltro: _produtosSelecionados.where((k) => !visiveis.contains(k)).length,
+    );
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (_) => BulkPromoPreviewDialog(preview: preview),
+    );
+    if (confirmar != true || !mounted || _publicando) return;
+    final lojaAtual = (await LojaIdService.getWithTimeoutThenSessionFallback(
+                timeout: kIsWeb ? const Duration(seconds: 25) : const Duration(seconds: 10)))
+            ?.trim() ??
+        '';
+    if (!mounted) return;
+    final bloqueio = BulkPromocaoService.validarLoja(
+      lojaIdAtual: lojaAtual,
+      lojaIdTela: lojaTela,
+      nomeBox: _box.name,
+      candidatos: candidatos,
+    );
+    if (bloqueio != null) {
+      _showSnackBar(bloqueio, isError: true);
+      return;
+    }
+    final hiveKeysPorDocId = <String, List<int>>{};
+    final nomes = <String, String>{};
+    for (final c in candidatos) {
+      if (c.docId.isEmpty) continue;
+      hiveKeysPorDocId.putIfAbsent(c.docId, () => []).add(c.hiveKey);
+      nomes[c.docId] = c.nome;
+    }
+    await _executarDesativacaoPromocoes(
+      lojaId: lojaTela,
+      docIds: preview.docIds,
+      jaSemPromocao: preview.semPromocao,
+      bulkId: BulkPromocaoService.novoBulkId(),
+      hiveKeysPorDocId: hiveKeysPorDocId,
+      nomes: nomes,
+    );
+  }
+
+  Future<void> _executarDesativacaoPromocoes({
+    required String lojaId,
+    required List<String> docIds,
+    required int jaSemPromocao,
+    required String bulkId,
+    required Map<String, List<int>> hiveKeysPorDocId,
+    required Map<String, String> nomes,
+  }) async {
+    setState(() => _publicando = true);
+    final progresso = ValueNotifier<String>('Desativando promoções…');
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => BulkPixProgressDialog(progresso: progresso),
+    );
+    BulkPromoResultado? resultado;
+    try {
+      resultado = await BulkPromocaoService.executar(
+        lojaId: lojaId,
+        docIds: docIds,
+        bulkId: bulkId,
+        jaSemPromocao: jaSemPromocao,
+        nomes: nomes,
+        onProgresso: (feitos, total) =>
+            progresso.value = 'Desativando promoções… $feitos de $total',
+      );
+      try {
+        await BulkPromocaoService.aplicarNoHive(
+          box: _box,
+          hiveKeysPorDocId: hiveKeysPorDocId,
+          docIds: resultado.desativados,
+        );
+      } catch (e, st) {
+        logE('[ESTOQUE_LOTE] desativar promoções: falha ao refletir no Hive (type=${e.runtimeType})',
+            error: e, st: st);
+      }
+    } catch (e, st) {
+      logE('[ESTOQUE_LOTE] desativar promoções falhou (type=${e.runtimeType})', error: e, st: st);
+    } finally {
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        setState(() => _publicando = false);
+      }
+    }
+    if (!mounted) return;
+    final r = resultado;
+    if (r == null) {
+      _showSnackBar('Não foi possível desativar as promoções. Nenhuma alteração confirmada.', isError: true);
+      return;
+    }
+    if (r.sucessoTotal) {
+      setState(() {
+        _produtosSelecionados.clear();
+        _modoSelecao = false;
+      });
+      _showSnackBar(r.mensagemSucesso);
+      return;
+    }
+    final tentarDeNovo = await showDialog<bool>(
+      context: context,
+      builder: (_) => BulkPromoResultadoDialog(resultado: r),
+    );
+    if (!mounted) return;
+    setState(() {});
+    if (tentarDeNovo == true) {
+      await _executarDesativacaoPromocoes(
+        lojaId: lojaId,
+        docIds: r.idsParaNovaTentativa,
+        jaSemPromocao: 0,
         bulkId: bulkId,
         hiveKeysPorDocId: hiveKeysPorDocId,
         nomes: nomes,
@@ -1965,7 +2104,15 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
       _showSnackBar('Consulta apenas: vendedor não pode editar estoque', isError: true);
       return;
     }
-    final acao = await EstoqueAcoesLoteSheet.mostrar(context, rotuloSelecionados: _rotuloSelecionados);
+    final algumEmPromocao = _hiveKeysSelecionados().any((k) {
+      final p = _box.get(k);
+      return p != null && ProdutoPromocao.temPromocao(p);
+    });
+    final acao = await EstoqueAcoesLoteSheet.mostrar(
+      context,
+      rotuloSelecionados: _rotuloSelecionados,
+      ocultar: algumEmPromocao ? const {} : const {EstoqueAcaoLote.desativarPromocao},
+    );
     if (acao == null || !mounted) return;
     switch (acao) {
       case EstoqueAcaoLote.adicionarCatalogo:
@@ -1990,6 +2137,8 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
         _removerDescontoPixLote();
       case EstoqueAcaoLote.promocao:
         _promocaoEmLote();
+      case EstoqueAcaoLote.desativarPromocao:
+        _desativarPromocoesLote();
       case EstoqueAcaoLote.excluir:
         _excluirSelecionados();
     }
@@ -5676,6 +5825,8 @@ String _formatGradeTexto(Produto p) {
                               ),
                             ),
                           ],
+                          if (ProdutoPromocao.temPromocao(p))
+                            const Flexible(child: ProdutoPromocaoBadge(emPromocao: true)),
                         ],
                       ),
                       const SizedBox(height: 4),
@@ -5945,6 +6096,7 @@ String _formatGradeTexto(Produto p) {
     if (_filtroCategoriaNoId != null) n++;
     if (_filtroPublicado != null) n++;
     if (_filtroSemFotos) n++;
+    if (_filtroEmPromocao) n++;
     if (_filtroRecentementeAlterados) n++;
     return n;
   }
@@ -6111,6 +6263,17 @@ String _formatGradeTexto(Produto p) {
                             s.contains(MaterialState.selected) ? _warningColor : null),
                       ),
                       SwitchListTile(
+                        title: const Text('Promoção ativa'),
+                        subtitle: Text(
+                          'Só produtos com a promoção ligada',
+                          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                        ),
+                        value: _filtroEmPromocao,
+                        onChanged: (v) => setState(() => _filtroEmPromocao = v),
+                        thumbColor: MaterialStateProperty.resolveWith((s) =>
+                            s.contains(MaterialState.selected) ? _warningColor : null),
+                      ),
+                      SwitchListTile(
                         title: const Text('Alterados nas últimas 24 horas'),
                         subtitle: Text(
                           'Com base em data de atualização do produto',
@@ -6135,6 +6298,7 @@ String _formatGradeTexto(Produto p) {
                                 _filtroCategoriaNoPath = const [];
                                 _filtroPublicado = null;
                                 _filtroSemFotos = false;
+                                _filtroEmPromocao = false;
                                 _filtroRecentementeAlterados = false;
                               });
                             },
