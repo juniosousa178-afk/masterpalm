@@ -27,6 +27,7 @@ import '../utils/moeda_input_formatter.dart';
 import '../utils/text_utils.dart';
 import '../services/limits_guard.dart';
 import '../services/produto_estoque_doc_id_service.dart';
+import '../services/produto_promocao.dart';
 import '../services/produto_exclusao_tombstone_service.dart';
 import '../services/produto_cadastro_pos_save_service.dart';
 import '../services/catalogo_sync_attempt_context.dart';
@@ -928,6 +929,14 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     super.dispose();
   }
 
+  ({double? percentual, double? valor}) _descontoPromoParaSalvar() =>
+      ProdutoPromocao.descontoParaSalvar(
+        emPromocao: _emPromocao,
+        tipoDesconto: _tipoDesconto,
+        lerPercentual: () => MoedaInputFormatter.parse(_percentualPromo.text),
+        lerValor: () => MoedaInputFormatter.parse(_valorPromo.text),
+      );
+
   bool _fotoPendenteCancelada(String localId) =>
       _uploadCancelPending.contains(localId);
 
@@ -1403,15 +1412,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
               .clamp(0.0, 100.0);
       final maxParcelasSemJuros =
           (int.tryParse(_maxParcelasSemJuros.text.trim()) ?? 12).clamp(1, 24);
-      double? percentualPromo;
-      double? valorPromo;
-      if (_emPromocao) {
-        if (_tipoDesconto == 'percentual') {
-          percentualPromo = MoedaInputFormatter.parse(_percentualPromo.text);
-        } else {
-          valorPromo = MoedaInputFormatter.parse(_valorPromo.text);
-        }
-      }
+      final (percentual: percentualPromo, valor: valorPromo) = _descontoPromoParaSalvar();
       p
         ..nome = capitalizeWords(_nome.text.trim())
         ..descricao = _descricao.text.trim()
@@ -1926,15 +1927,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
           produtoFormBuildPrecoPorTamanhoFromControllers(_precoPorTamanhoCtrl);
 
       // 🔹 Calcula valores de promoção
-      double? percentualPromo;
-      double? valorPromo;
-      if (_emPromocao) {
-        if (_tipoDesconto == 'percentual') {
-          percentualPromo = MoedaInputFormatter.parse(_percentualPromo.text);
-        } else {
-          valorPromo = MoedaInputFormatter.parse(_valorPromo.text);
-        }
-      }
+      final (percentual: percentualPromo, valor: valorPromo) = _descontoPromoParaSalvar();
 
       if (widget.produto == null) {
         // NOVO PRODUTO — duplicata nome+categoria exige confirmação (não mescla sozinha)

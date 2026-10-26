@@ -17,6 +17,7 @@ const titulos = {
   EstoqueAcaoLote.definirDescontoPix: 'Definir desconto no Pix em lote',
   EstoqueAcaoLote.removerDescontoPix: 'Remover desconto no Pix',
   EstoqueAcaoLote.promocao: 'Promoção em lote',
+  EstoqueAcaoLote.desativarPromocao: 'Desativar promoções',
   EstoqueAcaoLote.dividirSemJuros: 'Dividir sem juros em lote',
   EstoqueAcaoLote.alterarCategoria: 'Alterar Categoria em Lote',
   EstoqueAcaoLote.alterarSubcategoria: 'Alterar Subcategoria em Lote',
@@ -71,7 +72,7 @@ void main() {
     });
   }
 
-  testWidgets('todas as 12 ações continuam alcançáveis (rolando) e devolvem o próprio id', (tester) async {
+  testWidgets('todas as 13 ações continuam alcançáveis (rolando) e devolvem o próprio id', (tester) async {
     for (final entry in titulos.entries) {
       final escolhas = await abrir(tester, viewports['mobile 360x740']!);
       final tile = find.widgetWithText(ListTile, entry.value);
@@ -81,6 +82,22 @@ void main() {
       expect(escolhas, [entry.key], reason: entry.value);
     }
     expect(titulos.keys.toSet(), EstoqueAcaoLote.values.toSet());
+  });
+
+  testWidgets('"Desativar promoções" some quando nenhum selecionado tem promoção', (tester) async {
+    tester.view.physicalSize = viewports['mobile 390x844']!;
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(
+        body: EstoqueAcoesLoteSheet(
+          rotuloSelecionados: '2 produtos selecionados',
+          ocultar: {EstoqueAcaoLote.desativarPromocao},
+        ),
+      ),
+    ));
+    expect(find.widgetWithText(ListTile, 'Desativar promoções'), findsNothing);
+    expect(find.widgetWithText(ListTile, 'Promoção em lote'), findsOneWidget);
   });
 
   testWidgets('fechar não escolhe nada', (tester) async {

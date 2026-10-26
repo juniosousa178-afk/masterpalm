@@ -12,6 +12,7 @@ enum EstoqueAcaoLote {
   definirDescontoPix,
   removerDescontoPix,
   promocao,
+  desativarPromocao,
   excluir,
 }
 
@@ -39,6 +40,8 @@ const List<_Tile> _tiles = [
       'Tira só o desconto no Pix; preço normal, estoque e promoções não mudam', _warning),
   _Tile(EstoqueAcaoLote.promocao, Icons.local_offer_outlined, 'Promoção em lote',
       'Ativar promoção (% ou R\$ fixo) nos selecionados', Color(0xFFFF6D00)),
+  _Tile(EstoqueAcaoLote.desativarPromocao, Icons.local_offer, 'Desativar promoções',
+      'Encerra só a promoção; preço normal e estoque não mudam', _warning),
   _Tile(EstoqueAcaoLote.dividirSemJuros, Icons.credit_card, 'Dividir sem juros em lote',
       'Ativar parcelamento sem juros nos selecionados', _success),
   _Tile(EstoqueAcaoLote.adicionarCatalogo, Icons.add_shopping_cart, 'Adicionar ao Catálogo',
@@ -62,16 +65,23 @@ const List<_Tile> _tiles = [
 
 /// "Ações em Lote" sheet of the stock screen; resolves with the chosen action (null when closed).
 class EstoqueAcoesLoteSheet extends StatefulWidget {
-  const EstoqueAcoesLoteSheet({super.key, required this.rotuloSelecionados});
+  const EstoqueAcoesLoteSheet({super.key, required this.rotuloSelecionados, this.ocultar = const {}});
 
   final String rotuloSelecionados;
 
-  static Future<EstoqueAcaoLote?> mostrar(BuildContext context, {required String rotuloSelecionados}) {
+  /// Actions that do not apply to the current selection.
+  final Set<EstoqueAcaoLote> ocultar;
+
+  static Future<EstoqueAcaoLote?> mostrar(
+    BuildContext context, {
+    required String rotuloSelecionados,
+    Set<EstoqueAcaoLote> ocultar = const {},
+  }) {
     return showModalBottomSheet<EstoqueAcaoLote>(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (_) => EstoqueAcoesLoteSheet(rotuloSelecionados: rotuloSelecionados),
+      builder: (_) => EstoqueAcoesLoteSheet(rotuloSelecionados: rotuloSelecionados, ocultar: ocultar),
     );
   }
 
@@ -145,7 +155,7 @@ class _EstoqueAcoesLoteSheetState extends State<EstoqueAcoesLoteSheet> {
                   controller: _scroll,
                   child: Column(
                     children: [
-                      for (final t in _tiles) ...[
+                      for (final t in _tiles.where((t) => !widget.ocultar.contains(t.acao))) ...[
                         if (t.divisorAntes) const Divider(height: 1),
                         ListTile(
                           leading: Container(
