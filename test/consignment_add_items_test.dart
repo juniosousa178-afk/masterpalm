@@ -111,11 +111,20 @@ void main() {
         ],
       );
 
-      final consolidated = {
+      // B was sent 2 × 100 and later 3 × 110: lots with different unit prices stay separate.
+      final consolidated = [
         for (final l in doc.consolidatedLines)
-          '${l['productId']}': (l['qtySent'] as num).toInt(),
-      };
-      expect(consolidated, {'A': 1, 'B': 5, 'C': 1, 'F': 1, 'G': 2});
+          ['${l['productId']}', (l['qtySent'] as num).toInt(), l['unitSalePriceSnapshot']],
+      ];
+      expect(consolidated, [
+        ['A', 1, 100],
+        ['B', 2, 100],
+        ['C', 1, 100],
+        ['B', 3, 110],
+        ['F', 1, 50],
+        ['G', 2, 60],
+      ]);
+      expect(consolidated.fold<int>(0, (s, l) => s + (l[1] as int)), 10);
       expect(doc.totalItemsSent, 10);
       expect(doc.additions.length, 2);
       expect(doc.additions[0]['kind'], 'INITIAL');

@@ -8,6 +8,7 @@ import '../consignment_models.dart';
 import '../consignment_service.dart';
 import '../consignment_ui.dart';
 import '../consignment_validation.dart';
+import '../consignment_variation_price.dart';
 import '../reports/consignment_report_actions.dart';
 import '../reports/screens/consignment_reports_hub_screen.dart';
 import 'consignment_add_items_screen.dart';
@@ -70,9 +71,9 @@ class _ConsignmentDetailsScreenState extends State<ConsignmentDetailsScreen> {
 
   String _lineTitle(Map<String, dynamic> line) {
     final name = '${line['productNameSnapshot'] ?? line['productId']}';
-    final vk = ConsignmentVariationKey.fromMap(line['variationKey']);
-    if (vk.isEmpty) return name;
-    return '$name · ${vk.size}/${vk.color}';
+    final variation =
+        consignmentVariationShortLabel(ConsignmentVariationKey.fromMap(line['variationKey']));
+    return variation.isEmpty ? name : '$name — $variation';
   }
 
   String _additionLabel(Map<String, dynamic> a) {
@@ -291,8 +292,9 @@ class _ConsignmentDetailsScreenState extends State<ConsignmentDetailsScreen> {
                             child: ListTile(
                               title: Text(_lineTitle(line)),
                               subtitle: Text(
-                                'Enviado ${line['qtySent']} · '
-                                '${consignmentMoney.format((line['unitSalePriceSnapshot'] as num?)?.toDouble() ?? 0)}'
+                                'Enviado ${line['qtySent']} × '
+                                '${consignmentMoney.format(consignmentLineUnitPrice(line))} = '
+                                '${consignmentMoney.format(consignmentLineSentAmount(line))}'
                                 '${consignmentLineWithdrawn(line) > 0 ? ' · Retirado ${consignmentLineWithdrawn(line)}'
                                     '${c.isIssued ? ' · Com ${c.resellerName}: ${consignmentLineOutstanding(line)}' : ''}' : ''}',
                               ),

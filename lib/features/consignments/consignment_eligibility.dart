@@ -1,4 +1,5 @@
 import '../../utils/text_utils.dart';
+import 'consignment_variation_price.dart';
 
 /// Product eligibility for Consignados picker. Hive is never authority.
 const consignmentProductUnavailableReason =
@@ -19,12 +20,15 @@ class ConsignmentPickerItem {
     this.productCode = '',
     this.unavailableReason = consignmentProductUnavailableReason,
     this.stockRevision,
+    this.sizePrices,
+    this.sizePricesLoaded = true,
   });
 
   final String productId;
   final String name;
   /// Store product code (authoritative: [consignmentAuthoritativeProductCodeField]).
   final String productCode;
+  /// Product-level price (`preco`); a variation only inherits it when its size has no own price.
   final double price;
   final int availableQty;
   final String stockKind;
@@ -32,6 +36,12 @@ class ConsignmentPickerItem {
   final bool eligible;
   final String unavailableReason;
   final int? stockRevision;
+  /// `precoPorTamanho` of this store's product; null = product has no per-size prices.
+  final Map<String, double?>? sizePrices;
+  /// False when the per-size price table could not be read: variation lines must fail closed.
+  final bool sizePricesLoaded;
+
+  bool get isVariationKind => stockKind == 'variation' || stockKind == 'grade';
 
   ConsignmentPickerItem copyWith({
     String? productCode,
@@ -43,6 +53,8 @@ class ConsignmentPickerItem {
     bool? eligible,
     String? unavailableReason,
     int? stockRevision,
+    Map<String, double?>? sizePrices,
+    bool? sizePricesLoaded,
   }) {
     return ConsignmentPickerItem(
       productId: productId,
@@ -55,8 +67,25 @@ class ConsignmentPickerItem {
       eligible: eligible ?? this.eligible,
       unavailableReason: unavailableReason ?? this.unavailableReason,
       stockRevision: stockRevision ?? this.stockRevision,
+      sizePrices: sizePrices ?? this.sizePrices,
+      sizePricesLoaded: sizePricesLoaded ?? this.sizePricesLoaded,
     );
   }
+}
+
+/// `precoPorTamanho` source with the same precedence as the product price:
+/// editorial draft first, legacy stock document otherwise.
+Map<String, double?>? consignmentSizePricesFromMaps(
+  Map<String, dynamic>? draft,
+  Map<String, dynamic>? stock,
+) {
+  if (draft != null && draft.containsKey('precoPorTamanho')) {
+    return consignmentParseSizePrices(draft['precoPorTamanho']);
+  }
+  if (stock != null && stock.containsKey('precoPorTamanho')) {
+    return consignmentParseSizePrices(stock['precoPorTamanho']);
+  }
+  return null;
 }
 
 /// Resolve product code without numeric coercion (preserves leading zeros).
@@ -255,6 +284,7 @@ ConsignmentPickerItem evaluateConsignmentPickerItem({
     eligible: true,
     unavailableReason: '',
     stockRevision: revision,
+    sizePrices: consignmentSizePricesFromMaps(draft, stock),
   );
 }
 

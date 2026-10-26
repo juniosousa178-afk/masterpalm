@@ -322,12 +322,12 @@ class _ConsignmentFormScreenState extends State<ConsignmentFormScreen> {
     return Card(
       key: ValueKey('consignment_draft_line_$identity'),
       child: ListTile(
-        title: Text(line.productName),
+        title: Text(consignmentDraftLineTitle(line)),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (!line.variationKey.isEmpty)
-              Text('${line.variationKey.size} ${line.variationKey.color}'.trim()),
+            if (line.hasManualPrice)
+              Text('Preço da variação: ${consignmentMoney.format(line.listUnitPrice)}'),
             Row(
               children: [
                 SizedBox(
@@ -354,6 +354,13 @@ class _ConsignmentFormScreenState extends State<ConsignmentFormScreen> {
                     onChanged: (v) {
                       setState(() => line.unitSalePrice = double.tryParse(v.replaceAll(',', '.')) ?? line.unitSalePrice);
                     },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    consignmentDraftLineSummary(line),
+                    key: ValueKey('consignment_draft_summary_$identity'),
                   ),
                 ),
               ],

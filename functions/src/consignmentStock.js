@@ -352,6 +352,22 @@ function moneyValue(raw) {
   return Math.round(n * 100) / 100;
 }
 
+/** Per-size price table (draft first, like `price`). Invalid prices stay null so the
+ * client fails closed for that size instead of inheriting the product price. */
+export function consignmentSizePrices(draft, stock) {
+  const src = draft && Object.prototype.hasOwnProperty.call(draft, 'precoPorTamanho')
+    ? draft.precoPorTamanho
+    : stock?.precoPorTamanho;
+  if (!isMap(src)) return null;
+  const out = {};
+  for (const [key, raw] of Object.entries(src)) {
+    if (!String(key).trim()) continue;
+    const n = typeof raw === 'number' ? raw : Number(raw);
+    out[key] = Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : null;
+  }
+  return out;
+}
+
 /** Same issue eligibility contract, plus picker UX qty > 0. Catalog publish is ignored.
  * Editorial draft is optional — authoritative stock is estoque_produtos.
  */
@@ -394,6 +410,7 @@ export function evaluateConsignmentPickerEligibility({
       availableQty: sellableConsignmentQty(classified.stock, classified.kind, variacoes),
       stockKind: classified.kind,
       variacoes,
+      precoPorTamanho: consignmentSizePrices(draft, stock),
       reason: '',
     };
   } catch (error) {

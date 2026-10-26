@@ -66,17 +66,28 @@ class ConsignmentDraftLine {
     this.commissionType = 'SEM_COMISSAO',
     this.commissionValue = 0,
     this.expectedStockRevision,
-  });
+    double? listUnitPrice,
+  }) : listUnitPrice = listUnitPrice ?? unitSalePrice;
 
   final String productId;
   final String productName;
   final String productType;
   int qtySent;
+  /// Consigned unit price; becomes `unitSalePriceSnapshot` on the server.
   double unitSalePrice;
+  /// Price of the selected variation when the line was picked. Client-only (the server
+  /// rejects unknown line keys); lets the UI tell a manual price edit from the original.
+  final double listUnitPrice;
   ConsignmentVariationKey variationKey;
   String commissionType;
   double commissionValue;
   int? expectedStockRevision;
+
+  int get _unitCents => (unitSalePrice * 100).round();
+
+  bool get hasManualPrice => _unitCents != (listUnitPrice * 100).round();
+
+  double get lineSubtotal => qtySent * _unitCents / 100;
 
   Map<String, dynamic> toPayload() => {
         'productId': productId,
@@ -116,6 +127,10 @@ double consignmentLineUnitPrice(Map<String, dynamic> line) {
   if (v is num) return v.toDouble();
   return double.tryParse('${v ?? ''}') ?? 0;
 }
+
+/// qtySent × the line's own snapshot price, in cents.
+double consignmentLineSentAmount(Map<String, dynamic> line) =>
+    _lineInt(line, 'qtySent') * (consignmentLineUnitPrice(line) * 100).round() / 100;
 
 class ConsignmentReturnLine {
   const ConsignmentReturnLine({
@@ -256,13 +271,15 @@ class ConsignmentDoc {
     return cents / 100;
   }
 
-  /// Consolidated qty by productId + variation identity (ignores addition lot suffix).
+  /// Consolidated qty by productId + variation identity + unit price snapshot (ignores
+  /// addition lot suffix). Lots priced differently stay separate so qty × price stays exact.
   List<Map<String, dynamic>> get consolidatedLines {
     final map = <String, Map<String, dynamic>>{};
     for (final line in lines) {
       final productId = '${line['productId'] ?? ''}';
       final vk = ConsignmentVariationKey.fromMap(line['variationKey']);
-      final key = '$productId::${vk.size}\u001e${vk.color}\u001e${vk.extra}';
+      final cents = (consignmentLineUnitPrice(line) * 100).round();
+      final key = '$productId::${vk.size}\u001e${vk.color}\u001e${vk.extra}\u001e$cents';
       final existing = map[key];
       final qty = (line['qtySent'] is num) ? (line['qtySent'] as num).toInt() : 0;
       final withdrawn = consignmentLineWithdrawn(line);

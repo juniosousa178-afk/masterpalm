@@ -6,6 +6,7 @@ import 'consignment_eligibility.dart';
 import 'consignment_models.dart';
 import 'consignment_service.dart';
 import 'consignment_ui.dart';
+import 'consignment_variation_price.dart';
 
 /// Runtime marker embedded in web bundle for deploy verification.
 @visibleForTesting
@@ -71,28 +72,71 @@ Future<ConsignmentDraftLine?> pickConsignmentProductLine({
     selected: selected,
   );
   if (!canonical.eligible) return null;
-  var type = canonical.stockKind == 'variation' || canonical.stockKind == 'grade'
-      ? canonical.stockKind
-      : 'simple';
   var variation = const ConsignmentVariationKey();
-  if (type == 'variation' || type == 'grade') {
+  if (canonical.isVariationKind) {
     final picked = await pickConsignmentVariation(
       context: context,
       variacoes: canonical.variacoes,
-      title: type == 'grade' ? 'Grade' : 'Variação',
+      title: canonical.stockKind == 'grade' ? 'Grade' : 'Variação',
     );
     if (picked == null) return null;
     variation = picked;
   }
+  final line = consignmentDraftLineFor(item: canonical, variation: variation);
+  if (line == null && context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text(consignmentVariationPriceUnavailableMessage)),
+    );
+  }
+  return line;
+}
+
+/// New draft line with the selected variation's own price snapshot.
+/// Null when that price cannot be identified — never falls back to min/first/base.
+ConsignmentDraftLine? consignmentDraftLineFor({
+  required ConsignmentPickerItem item,
+  required ConsignmentVariationKey variation,
+}) {
+  final type = item.isVariationKind ? item.stockKind : 'simple';
+  final resolved = resolveConsignmentUnitPrice(
+    productType: type,
+    productPrice: item.price,
+    variation: variation,
+    sizePricesLoaded: item.sizePricesLoaded,
+    sizePrices: item.sizePrices,
+  );
+  final price = resolved.price;
+  if (price == null) return null;
   return ConsignmentDraftLine(
-    productId: canonical.productId,
-    productName: canonical.name,
+    productId: item.productId,
+    productName: item.name,
     productType: type,
     qtySent: 1,
-    unitSalePrice: canonical.price,
-    variationKey: variation,
-    expectedStockRevision: canonical.stockRevision,
+    unitSalePrice: price,
+    variationKey: type == 'simple' ? const ConsignmentVariationKey() : variation,
+    expectedStockRevision: item.stockRevision,
   );
+}
+
+/// Picker row price: range of the store's own size prices, never a single min value.
+String consignmentPickerPriceLabel(ConsignmentPickerItem item) {
+  if (!item.isVariationKind || item.sizePrices == null) {
+    return consignmentMoney.format(item.price);
+  }
+  final cents = <int>{};
+  for (final size in item.variacoes.keys) {
+    final p = resolveConsignmentUnitPrice(
+      productType: item.stockKind,
+      productPrice: item.price,
+      variation: ConsignmentVariationKey(size: size.toString()),
+      sizePricesLoaded: item.sizePricesLoaded,
+      sizePrices: item.sizePrices,
+    ).price;
+    if (p != null) cents.add((p * 100).round());
+  }
+  if (cents.length < 2) return consignmentMoney.format(item.price);
+  final sorted = cents.toList()..sort();
+  return '${consignmentMoney.format(sorted.first / 100)} a ${consignmentMoney.format(sorted.last / 100)}';
 }
 
 /// Fresh TextEditingController / query per open; parent draft is unaffected.
@@ -163,7 +207,7 @@ class _ConsignmentProductPickerSheetState
                       final p = filtered[i];
                       final codeLabel = p.productCode.trim();
                       final availability = p.eligible
-                          ? '${p.availableQty} disponíveis · ${consignmentMoney.format(p.price)}'
+                          ? '${p.availableQty} disponíveis · ${consignmentPickerPriceLabel(p)}'
                           : p.unavailableReason;
                       return ListTile(
                         key: ValueKey('picker_${p.productId}'),

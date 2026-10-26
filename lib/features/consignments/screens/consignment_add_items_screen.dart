@@ -144,10 +144,10 @@ class _ConsignmentAddItemsScreenState extends State<ConsignmentAddItemsScreen> {
                 return Card(
                   key: ValueKey('consignment_add_draft_line_$identity'),
                   child: ListTile(
-                    title: Text(line.productName),
+                    title: Text(consignmentDraftLineTitle(line)),
                     subtitle: Text(
-                      '${line.variationKey.isEmpty ? 'Simples' : '${line.variationKey.size} / ${line.variationKey.color}'}'
-                      ' · ${consignmentMoney.format(line.unitSalePrice)}',
+                      consignmentDraftLineSummary(line),
+                      key: ValueKey('consignment_add_draft_summary_$identity'),
                     ),
                     trailing: SizedBox(
                       width: 110,
@@ -181,6 +181,14 @@ class _ConsignmentAddItemsScreenState extends State<ConsignmentAddItemsScreen> {
             icon: const Icon(Icons.add),
             label: const Text('Adicionar produto'),
           ),
+          if (_lines.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              'TOTAL: ${consignmentMoney.format(consignmentDraftPotential(_lines).gross)}',
+              key: const Key('consignment_add_draft_total'),
+              style: MpType.body.copyWith(fontWeight: FontWeight.w600),
+            ),
+          ],
           const SizedBox(height: 24),
           FilledButton(
             onPressed: _busy ? null : _submit,

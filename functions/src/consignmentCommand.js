@@ -116,6 +116,7 @@ async function listEligibleProducts(db, command, auth) {
       availableQty: item.availableQty,
       stockKind: item.stockKind,
       variacoes: item.variacoes,
+      precoPorTamanho: item.precoPorTamanho ?? null,
       eligible: item.eligible === true,
       reason: item.reason || '',
       unavailableReason: item.eligible
@@ -516,6 +517,11 @@ async function updateReseller(tx, base, command, uid) {
   return {resellerId: parsed.resellerId};
 }
 
+/** Sum of per-line money in cents (float sums drift: 25.9 + 27.9 + 30.9 !== 84.7). */
+function sumLineMoney(lines, key) {
+  return fromCentsSafe(lines.reduce((sum, l) => sum + Math.round(Number(l[key] || 0) * 100), 0));
+}
+
 function draftTotals(lines) {
   return {
     totalItemsSent: lines.reduce((sum, l) => sum + l.qtySent, 0),
@@ -524,9 +530,9 @@ function draftTotals(lines) {
     grossSoldAmount: 0,
     commissionAmount: 0,
     netAmount: 0,
-    potentialGrossAmount: lines.reduce((sum, l) => sum + l.potentialGrossAmount, 0),
-    potentialCommissionAmount: lines.reduce((sum, l) => sum + l.potentialCommissionAmount, 0),
-    potentialNetAmount: lines.reduce((sum, l) => sum + l.potentialNetAmount, 0),
+    potentialGrossAmount: sumLineMoney(lines, 'potentialGrossAmount'),
+    potentialCommissionAmount: sumLineMoney(lines, 'potentialCommissionAmount'),
+    potentialNetAmount: sumLineMoney(lines, 'potentialNetAmount'),
   };
 }
 
@@ -756,9 +762,9 @@ async function issueConsignment(tx, base, command, uid) {
     issueOperationId: command.operationId,
     revision: (data.revision || 1) + 1,
     totalItemsSent: frozen.reduce((sum, l) => sum + l.qtySent, 0),
-    potentialGrossAmount: frozen.reduce((sum, l) => sum + l.potentialGrossAmount, 0),
-    potentialCommissionAmount: frozen.reduce((sum, l) => sum + l.potentialCommissionAmount, 0),
-    potentialNetAmount: frozen.reduce((sum, l) => sum + l.potentialNetAmount, 0),
+    potentialGrossAmount: sumLineMoney(frozen, 'potentialGrossAmount'),
+    potentialCommissionAmount: sumLineMoney(frozen, 'potentialCommissionAmount'),
+    potentialNetAmount: sumLineMoney(frozen, 'potentialNetAmount'),
   };
   assertConsignmentCapacity(ref, command.lojaId, command.consignmentId, issued);
   for (const write of persisted.writes) write();

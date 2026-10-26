@@ -10,6 +10,7 @@ import 'consignment_eligibility.dart';
 import 'consignment_errors.dart';
 import 'consignment_models.dart';
 import 'consignment_validation.dart';
+import 'consignment_variation_price.dart';
 
 class ConsignmentService {
   ConsignmentService._();
@@ -382,9 +383,67 @@ class ConsignmentService {
         unavailableReason: eligible
             ? ''
             : (data['unavailableReason'] ?? '0 disponíveis para consignação').toString(),
+        sizePrices: consignmentParseSizePrices(data['precoPorTamanho']),
+        sizePricesLoaded: data.containsKey('precoPorTamanho'),
       );
     }).where((e) => e.productId.isNotEmpty).toList();
-    return _enrichPickerProductCodes(lojaId, items);
+    final priced = await enrichPickerSizePrices(lojaId, items);
+    return _enrichPickerProductCodes(lojaId, priced);
+  }
+
+  /// Older `listEligibleProducts` responses omit `precoPorTamanho`: read it from this
+  /// store's own product docs. Any read failure leaves the item unresolved (fail closed).
+  @visibleForTesting
+  static Future<List<ConsignmentPickerItem>> enrichPickerSizePrices(
+    String lojaId,
+    List<ConsignmentPickerItem> items,
+  ) async {
+    final pending = items
+        .where((e) => e.eligible && e.isVariationKind && !e.sizePricesLoaded)
+        .map((e) => e.productId)
+        .toSet()
+        .toList();
+    if (pending.isEmpty) return items;
+    final store = _db.collection('lojas').doc(lojaId);
+    final resolved = <String, Map<String, double?>?>{};
+    try {
+      final drafts = await Future.wait(
+          pending.map((id) => store.collection('draft_produtos').doc(id).get()));
+      final stocks = await Future.wait(
+          pending.map((id) => store.collection('estoque_produtos').doc(id).get()));
+      for (var i = 0; i < pending.length; i++) {
+        final draft = drafts[i].data();
+        final stock = stocks[i].data();
+        if (!_docBelongsToStore(draft, lojaId) || !_docBelongsToStore(stock, lojaId)) continue;
+        resolved[pending[i]] = consignmentSizePricesFromMaps(draft, stock);
+      }
+    } catch (_) {
+      return items;
+    }
+    return items.map((e) {
+      if (!resolved.containsKey(e.productId)) return e;
+      final prices = resolved[e.productId];
+      return ConsignmentPickerItem(
+        productId: e.productId,
+        name: e.name,
+        productCode: e.productCode,
+        price: e.price,
+        availableQty: e.availableQty,
+        stockKind: e.stockKind,
+        variacoes: e.variacoes,
+        eligible: e.eligible,
+        unavailableReason: e.unavailableReason,
+        stockRevision: e.stockRevision,
+        sizePrices: prices,
+        sizePricesLoaded: true,
+      );
+    }).toList();
+  }
+
+  static bool _docBelongsToStore(Map<String, dynamic>? data, String lojaId) {
+    if (data == null) return true;
+    final claimed = '${data['lojaId'] ?? data['storeId'] ?? ''}'.trim();
+    return claimed.isEmpty || claimed == lojaId;
   }
 
   /// Fills missing codes from authoritative stock `codigoBarras` (search UX).
