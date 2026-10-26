@@ -34,7 +34,7 @@ android {
         applicationId = "com.masterpalm.app"
         // firebase-auth 23.x exige API 23+; flutter.minSdkVersion ainda pode ser 21.
         minSdk = maxOf(flutter.minSdkVersion, 23)
-        targetSdk = 35
+        targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         multiDexEnabled = true
