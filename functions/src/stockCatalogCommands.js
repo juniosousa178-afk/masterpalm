@@ -30,6 +30,12 @@ import {
   PHYSICAL_RECONCILIATION_PENDING,
   PHYSICAL_RECONCILIATION_COMBO,
 } from './stockPhysicalReconciliation.js';
+import {
+  VARIATION_COST_REMOVALS,
+  parseVariationCostRemovals,
+  assertRemovalsMatchPayload,
+  preserveVariationCosts,
+} from './variationCostGuard.js';
 
 const MAX_PRODUCTS = 25;
 const ordered = value => Array.isArray(value) ? value.map(ordered) : isMap(value)
@@ -88,9 +94,18 @@ function parseCommand(raw) {
   } else if ('editorial' in raw) throw stockError('invalid-argument', 'Editorial fields not allowed');
   if (['create','replace'].includes(raw.kind)) {
     keysOnly(raw.definition, ['quantidade','variacoes','estoquePorTamanho','estoquePorCor','tamanhos','cores',
-      'variacoesExtraTipo','tipoProduto','itensCombo','comboConfig','custoReal','custo','precoCusto']);
+      'variacoesExtraTipo','tipoProduto','itensCombo','comboConfig','custoReal','custo','precoCusto', VARIATION_COST_REMOVALS]);
     if (raw.items.length !== 1) throw stockError('invalid-argument', 'Single product definition required');
   } else if ('definition' in raw) throw stockError('invalid-argument', 'Definition only allowed for create or CAS replacement');
+  // Present only when sent, so commands without it keep their original requestHash.
+  let definition = raw.definition, variationCostRemovals = null;
+  if (isMap(raw.definition) && VARIATION_COST_REMOVALS in raw.definition) {
+    if (raw.kind !== 'replace') throw stockError('invalid-argument', 'variationCostRemovals only for replace');
+    const {[VARIATION_COST_REMOVALS]: removals, ...rest} = raw.definition;
+    variationCostRemovals = parseVariationCostRemovals(removals);
+    assertRemovalsMatchPayload(rest.variacoes, variationCostRemovals);
+    definition = rest;
+  }
   let reconciliation = null;
   if (raw.kind === 'physicalReconciliation') {
     if (items.length !== 1) throw stockError('invalid-argument', 'Physical reconciliation requires one product');
@@ -129,6 +144,10 @@ function parseCommand(raw) {
   }
   if (Buffer.byteLength(JSON.stringify(raw)) > 100000) throw stockError('resource-exhausted', 'Command too large');
   const parsed = {...raw, items, tombstoneKeys, atomicPdvSale, atomicSale, reconciliation};
+  if (variationCostRemovals) {
+    parsed.definition = definition;
+    parsed.variationCostRemovals = variationCostRemovals;
+  }
   if (clientBuild) parsed.clientBuild = clientBuild;
   return parsed;
 }
@@ -487,6 +506,7 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
     }
     const appliedItems = [];
     let physicalAudit = null;
+    const variationCostPreserved = [];
     const signedDelta = item => command.kind === 'sale' || (isSaleEdit && item.direction === 'debit')
       ? -item.quantity
       : item.quantity;
@@ -518,12 +538,19 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
       if (command.kind === 'physicalReconciliation') {
         if (r.data.pendingSoftDelete) throw stockError('failed-precondition', PHYSICAL_RECONCILIATION_PENDING);
         physicalAudit = applyPhysicalReconciliation(r, command.reconciliation, {legacyCompat});
+        variationCostPreserved.push(...physicalAudit.variationCostPreserved);
         return;
       }
       if (command.kind === 'replace') {
         // No missing field inherits an old grade during explicit schema/count replacement.
         if (r.data.pendingSoftDelete) throw stockError('failed-precondition', 'Restore deleted product before editing');
         const candidate = {...r.data, ...newDefinition, stockRevision: r.originalRevision};
+        // Private cost is metadata, not grade: an omitted cost is kept unless explicitly removed.
+        const costs = preserveVariationCosts({
+          before: r.data.variacoes, incoming: candidate.variacoes, removals: command.variationCostRemovals ?? [],
+        });
+        candidate.variacoes = costs.variacoes;
+        variationCostPreserved.push(...costs.preserved);
         const {editorial: raw, identity} = splitEditorialPayload(command.editorial);
         const patch = withCategories(raw, {...r.data, ...r.editorial});
         r.data = {...normalizeStock(candidate), ...patch, ...identity}; r.editorial = {...r.editorial, ...patch}; return;
@@ -725,6 +752,8 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
       } : {}),
       ...(command.clientBuild ? {clientBuild: command.clientBuild} : {}),
       ...(command.atomicPdvSale ? {atomicPdvSale: true} : {}),
+      ...(command.variationCostRemovals ? {[VARIATION_COST_REMOVALS]: command.variationCostRemovals} : {}),
+      ...(variationCostPreserved.length ? {variationCostPreserved} : {}),
       ...(physicalAudit ? {
         type: physicalAudit.type,
         source: physicalAudit.source,

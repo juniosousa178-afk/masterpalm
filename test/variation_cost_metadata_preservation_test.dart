@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
@@ -11,6 +12,7 @@ import 'package:master_palm/models/produto.dart';
 import 'package:master_palm/services/firestore_paths.dart';
 import 'package:master_palm/services/produto_stock_catalog_cadastro_sync.dart';
 import 'package:master_palm/services/produtos_firestore_service.dart';
+import 'package:master_palm/services/stock_catalog_backend_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const _loja = 'loja-variation-cost';
@@ -658,6 +660,273 @@ void main() {
         },
       );
       expect(out['P']['sem-cor'], {'A': 1, 'B': 2, '__custoUnitario': 5.0});
+    });
+  });
+
+  group('servidor guard: remoção de custo só com sinal explícito', () {
+    const removalsKey =
+        ProdutoStockCatalogCadastroSync.variationCostRemovalsKey;
+    final remoteVars = {
+      '1': {
+        'sem-cor': {'_sem_extra': 4, '__custoUnitario': 2.99},
+      },
+      '2': {
+        'sem-cor': {'_sem_extra': 5, '__custoUnitario': 3.99},
+      },
+    };
+
+    Future<ProdutoStockCatalogCadastroIntent> salvar(
+      Produto p,
+      ProdutoFormGradeBaseline baseline, {
+      bool forcePush = true,
+    }) =>
+        ProdutoStockCatalogCadastroSync.buildOrReuseIntent(
+          produto: p,
+          produtoId: 'teste-1',
+          documentExists: true,
+          forcePushFromCadastro: forcePush,
+          gradeBaseline: baseline,
+          remoteRevisionAtSaveTime: 0,
+          remoteVariacoesAtSaveTime: Map<String, dynamic>.from(remoteVars),
+        );
+
+    test('limpar custo com mudança de qty envia a remoção da célula', () async {
+      final p = _teste1AposFullSync();
+      final baseline = ProdutoFormGradeBaseline.capture(p);
+      p
+        ..variacoes = {
+          '1': {'sem-cor': 3},
+          '2': {
+            'sem-cor': {'_sem_extra': 5, '__custoUnitario': 3.99},
+          },
+        }
+        ..estoquePorTamanho = {'1': 3, '2': 5}
+        ..quantidade = 8;
+
+      final intent = await salvar(p, baseline);
+
+      expect(intent.kind, 'replace');
+      expect(intent.definition![removalsKey], ['1|sem-cor']);
+      expect((intent.definition!['variacoes'] as Map)['1']['sem-cor'], 3);
+    });
+
+    test('limpar só o custo (qty igual) vira replace com remoção', () async {
+      final p = _teste1AposFullSync();
+      final baseline = ProdutoFormGradeBaseline.capture(p);
+      p.variacoes = {
+        '1': {'sem-cor': 4},
+        '2': {
+          'sem-cor': {'_sem_extra': 5, '__custoUnitario': 3.99},
+        },
+      };
+
+      final intent = await salvar(p, baseline);
+
+      expect(intent.kind, 'replace');
+      expect(intent.expectedRevision, 0);
+      expect(intent.definition![removalsKey], ['1|sem-cor']);
+    });
+
+    test('trocar só o custo vira replace sem remoção', () async {
+      final p = _teste1AposFullSync();
+      final baseline = ProdutoFormGradeBaseline.capture(p);
+      p.variacoes = {
+        '1': {
+          'sem-cor': {'_sem_extra': 4, '__custoUnitario': 3.25},
+        },
+        '2': {
+          'sem-cor': {'_sem_extra': 5, '__custoUnitario': 3.99},
+        },
+      };
+
+      final intent = await salvar(p, baseline);
+
+      expect(intent.kind, 'replace');
+      expect(intent.definition!.containsKey(removalsKey), isFalse);
+      expect(
+        (intent.definition!['variacoes'] as Map)['1']['sem-cor']
+            ['__custoUnitario'],
+        3.25,
+      );
+    });
+
+    test('Hive sem meta: nada mudou, segue editorial e sem remoção', () async {
+      final p = _teste1HiveSemMeta();
+      final baseline = ProdutoFormGradeBaseline.capture(p);
+
+      final intent = await salvar(p, baseline);
+
+      expect(intent.kind, 'editorial');
+      expect(intent.definition, isNull);
+    });
+
+    test('Hive sem meta + qty mudou: custo remoto preservado, sem remoção',
+        () async {
+      final p = _teste1HiveSemMeta();
+      final baseline = ProdutoFormGradeBaseline.capture(p);
+      p
+        ..variacoes = {
+          '1': {'sem-cor': 3},
+          '2': {'sem-cor': 5},
+        }
+        ..estoquePorTamanho = {'1': 3, '2': 5}
+        ..quantidade = 8;
+
+      final intent = await salvar(p, baseline);
+
+      expect(intent.kind, 'replace');
+      expect(intent.definition!.containsKey(removalsKey), isFalse);
+    });
+
+    test('arredondamento do campo (centavos) não conta como mudança', () async {
+      final p = _teste1AposFullSync();
+      p.variacoes = {
+        '1': {
+          'sem-cor': {'_sem_extra': 4, '__custoUnitario': 2.994},
+        },
+        '2': {
+          'sem-cor': {'_sem_extra': 5, '__custoUnitario': 3.99},
+        },
+      };
+      final baseline = ProdutoFormGradeBaseline.capture(p);
+      p.variacoes = {
+        '1': {
+          'sem-cor': {'_sem_extra': 4, '__custoUnitario': 2.99},
+        },
+        '2': {
+          'sem-cor': {'_sem_extra': 5, '__custoUnitario': 3.99},
+        },
+      };
+
+      expect((await salvar(p, baseline)).kind, 'editorial');
+    });
+
+    test('auto-sync (sem save explícito) nunca vira replace por custo', () async {
+      final p = _teste1AposFullSync();
+      final baseline = ProdutoFormGradeBaseline.capture(p);
+      p.variacoes = {
+        '1': {'sem-cor': 4},
+        '2': {'sem-cor': 5},
+      };
+
+      expect((await salvar(p, baseline, forcePush: false)).kind, 'editorial');
+    });
+
+    test('remoção nunca cita célula nova, diferente ou ambígua', () {
+      expect(
+        variationCostRemovalsForPush(
+          push: {
+            '3': {'sem-cor': 2},
+            '1': {'Azul': 1},
+          },
+          baselineVariacoes: remoteVars,
+        ),
+        isEmpty,
+      );
+      expect(
+        variationCostRemovalsForPush(
+          push: {
+            'sem-tamanho': {'Azul': 1},
+          },
+          baselineVariacoes: {
+            '': {
+              'Azul': {'_sem_extra': 1, '__custoUnitario': 5.0},
+            },
+            'sem-tamanho': {
+              'Azul': {'_sem_extra': 1, '__custoUnitario': 8.0},
+            },
+          },
+        ),
+        isEmpty,
+      );
+      expect(
+        variationCostRemovalsForPush(push: {'1': {'sem-cor': 4}}),
+        isEmpty,
+      );
+    });
+
+    group('envio', () {
+      tearDown(() => StockCatalogBackendService.debugTransport = null);
+
+      ProdutoStockCatalogCadastroIntent intentComRemocao() =>
+          ProdutoStockCatalogCadastroIntent(
+            operationId: 'op-remove-cost',
+            kind: 'replace',
+            items: const [
+              {'productId': 'teste-1', 'expectedRevision': 0},
+            ],
+            editorial: const {'nome': 'Teste 1'},
+            definition: {
+              'quantidade': 9,
+              'variacoes': {
+                '1': {'sem-cor': 4},
+              },
+              removalsKey: ['1|sem-cor'],
+            },
+            expectedRevision: 0,
+          );
+
+      test('servidor com guard recebe a remoção numa única chamada', () async {
+        final sent = <Map<String, dynamic>>[];
+        StockCatalogBackendService.debugTransport = (_, data) async {
+          sent.add(data);
+          return {'alreadyApplied': false, 'products': const []};
+        };
+
+        await ProdutoStockCatalogCadastroSync.sendIntent(
+          lojaId: _loja,
+          intent: intentComRemocao(),
+        );
+
+        expect(sent, hasLength(1));
+        expect((sent.single['definition'] as Map)[removalsKey], ['1|sem-cor']);
+      });
+
+      test('servidor antigo: reenvia sem o campo, mesmo operationId', () async {
+        final sent = <Map<String, dynamic>>[];
+        StockCatalogBackendService.debugTransport = (_, data) async {
+          sent.add(data);
+          if ((data['definition'] as Map).containsKey(removalsKey)) {
+            throw FirebaseFunctionsException(
+              code: 'invalid-argument',
+              message: 'Unknown or protected command field',
+            );
+          }
+          return {'alreadyApplied': false, 'products': const []};
+        };
+
+        await ProdutoStockCatalogCadastroSync.sendIntent(
+          lojaId: _loja,
+          intent: intentComRemocao(),
+        );
+
+        expect(sent, hasLength(2));
+        expect(sent.last['operationId'], sent.first['operationId']);
+        expect((sent.last['definition'] as Map).containsKey(removalsKey),
+            isFalse);
+        expect((sent.last['definition'] as Map)['variacoes'],
+            (sent.first['definition'] as Map)['variacoes']);
+      });
+
+      test('outro erro não é mascarado', () async {
+        var calls = 0;
+        StockCatalogBackendService.debugTransport = (_, data) async {
+          calls++;
+          throw FirebaseFunctionsException(
+            code: 'aborted',
+            message: 'Stock revision conflict',
+          );
+        };
+
+        await expectLater(
+          ProdutoStockCatalogCadastroSync.sendIntent(
+            lojaId: _loja,
+            intent: intentComRemocao(),
+          ),
+          throwsA(isA<FirebaseFunctionsException>()),
+        );
+        expect(calls, 1);
+      });
     });
   });
 

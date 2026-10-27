@@ -2,7 +2,8 @@
  * Safe manual physical stock reconciliation helpers.
  * Absolute counts only — never infer structure from legacy metadata alone.
  */
-import {isMap, stockError, normalizeStock, quantity, cellTotal} from './catalogStockProjection.js';
+import {isMap, stockError, normalizeStock, quantity, cellTotal, META_COST} from './catalogStockProjection.js';
+import {preserveVariationCosts} from './variationCostGuard.js';
 
 export const PHYSICAL_RECONCILIATION_TYPE = 'PHYSICAL_RECONCILIATION';
 export const PHYSICAL_RECONCILIATION_SOURCE = 'MANUAL_PHYSICAL_COUNT';
@@ -29,6 +30,7 @@ export function snapshotStockCells(stock) {
       for (const [color, value] of Object.entries(colors)) {
         if (isMapLike(value)) {
           for (const [extra, q] of Object.entries(value)) {
+            if (extra.trim() === META_COST) continue;
             cells.push({
               size: String(size),
               color: String(color),
@@ -271,6 +273,9 @@ export function applyPhysicalReconciliation(r, recon, {legacyCompat}) {
   // Strip combo leftovers when converting into controlled simple/variation.
   candidate.itensCombo = [];
   candidate.comboConfig = null;
+  // A physical count carries quantities only; it never removes a cell's private cost.
+  const costs = preserveVariationCosts({before: r.data.variacoes, incoming: candidate.variacoes});
+  candidate.variacoes = costs.variacoes;
   r.data = normalizeStock(candidate);
 
   const afterQty = quantity(r.data.quantidade ?? 0);
@@ -295,5 +300,6 @@ export function applyPhysicalReconciliation(r, recon, {legacyCompat}) {
     operatorNote: recon.operatorNote,
     NO_CONTROL_TO_CONTROLLED: noControlToControlled || undefined,
     productStructure: recon.productStructure || declaredKind,
+    variationCostPreserved: costs.preserved,
   };
 }

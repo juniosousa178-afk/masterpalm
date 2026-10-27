@@ -383,6 +383,61 @@ Map<String, dynamic> preserveRemoteVariationCostOnPush({
   return out;
 }
 
+/// Remoção explícita para o servidor: células do [push] sem custo válido cuja
+/// [baselineVariacoes] (abertura do formulário) tinha custo. Sem baseline com
+/// custo, a omissão nunca é remoção. Ids no formato `tamanho|cor`.
+List<String> variationCostRemovalsForPush({
+  required Map<String, dynamic> push,
+  Map<dynamic, dynamic>? baselineVariacoes,
+}) {
+  if (baselineVariacoes == null || baselineVariacoes.isEmpty) return const [];
+  final out = <String>{};
+  push.forEach((tam, byCor) {
+    if (byCor is! Map) return;
+    byCor.forEach((cor, cell) {
+      if (ProdutoVariacaoExtra.custoUnitarioNaCelula(cell) != null) return;
+      final id = ProdutoEstoqueGradeSnapshot.variacaoId(tam, cor.toString());
+      if (custoUnitarioDaCelulaCanonica(baselineVariacoes, id) != null) {
+        out.add(id);
+      }
+    });
+  });
+  return out.toList()..sort();
+}
+
+/// Algum custo por variação difere da baseline (comparação em centavos, como
+/// o campo do formulário).
+bool variationCostChangedVsBaseline({
+  required dynamic variacoes,
+  required dynamic baselineVariacoes,
+}) {
+  final atual = _custoCentavosPorCelula(variacoes);
+  final base = _custoCentavosPorCelula(baselineVariacoes);
+  if (atual.length != base.length) return true;
+  for (final e in atual.entries) {
+    if (base[e.key] != e.value) return true;
+  }
+  return false;
+}
+
+Map<String, int> _custoCentavosPorCelula(dynamic variacoes) {
+  final out = <String, int>{};
+  if (variacoes is! Map) return out;
+  variacoes.forEach((tam, byCor) {
+    if (byCor is! Map) return;
+    byCor.forEach((cor, cell) {
+      final custo = ProdutoVariacaoExtra.custoUnitarioNaCelula(cell);
+      if (custo == null) return;
+      final id = ProdutoEstoqueGradeSnapshot.variacaoId(
+        tam.toString(),
+        cor.toString(),
+      );
+      out[id] = (custo * 100).round();
+    });
+  });
+  return out;
+}
+
 Map<String, dynamic>? _remoteExtraCellMatchingSum(
   Map<String, dynamic>? remote,
   String tam,

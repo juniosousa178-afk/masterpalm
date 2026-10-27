@@ -435,6 +435,12 @@ class StockCatalogBackendService {
       error.code == 'invalid-argument' &&
       (error.message ?? '').contains('Protected or unknown editorial field');
 
+  /// Servidor anterior a um campo de comando (recusado antes de qualquer escrita).
+  static bool isUnknownCommandField(Object error) =>
+      error is FirebaseFunctionsException &&
+      error.code == 'invalid-argument' &&
+      (error.message ?? '').contains('Unknown or protected command field');
+
   static Future<Map<String, dynamic>> saveEditorial(
     String lojaId,
     String productId,

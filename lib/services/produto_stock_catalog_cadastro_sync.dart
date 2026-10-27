@@ -228,11 +228,20 @@ class ProdutoStockCatalogCadastroSync {
     // Auto-sync sem pendência: apenas editorial — nunca repor saldo local.
     if (!forcePushFromCadastro) return false;
     // Save explícito do cadastro: replace CAS só se a grade/qty mudou vs baseline.
+    // Custo por variação vive em `variacoes`: editorial não o envia.
     return stockChangedVsBaseline(
-      produto: produto,
-      gradeBaseline: gradeBaseline,
-    );
+          produto: produto,
+          gradeBaseline: gradeBaseline,
+        ) ||
+        (gradeBaseline != null &&
+            variationCostChangedVsBaseline(
+              variacoes: produto.variacoes,
+              baselineVariacoes: gradeBaseline.variacoes,
+            ));
   }
+
+  /// Ids `tamanho|cor` cujo custo o operador removeu (servidor ≥ guard).
+  static const variationCostRemovalsKey = 'variationCostRemovals';
 
   static Future<ProdutoStockCatalogCadastroIntent> buildOrReuseIntent({
     required Produto produto,
@@ -303,6 +312,17 @@ class ProdutoStockCatalogCadastroSync {
           ),
         };
       }
+      // O servidor preserva custo omitido; remoção só com sinal explícito.
+      final outgoing = def['variacoes'];
+      if (outgoing is Map<String, dynamic>) {
+        final removals = variationCostRemovalsForPush(
+          push: outgoing,
+          baselineVariacoes: gradeBaseline?.variacoes,
+        );
+        if (removals.isNotEmpty) {
+          def = {...def, variationCostRemovalsKey: removals};
+        }
+      }
     } else {
       kind = 'editorial';
     }
@@ -351,15 +371,37 @@ class ProdutoStockCatalogCadastroSync {
     required String lojaId,
     required ProdutoStockCatalogCadastroIntent intent,
   }) async {
-    Future<Map<String, dynamic>> send(Map<String, dynamic> editorial) =>
+    Future<Map<String, dynamic>> sendWith(
+      Map<String, dynamic> editorial,
+      Map<String, dynamic>? definition,
+    ) =>
         StockCatalogBackendService.command(
           lojaId: lojaId,
           operationId: intent.operationId,
           kind: intent.kind,
           items: intent.items,
           editorial: editorial,
-          definition: intent.definition,
+          definition: definition,
         );
+    Future<Map<String, dynamic>> send(Map<String, dynamic> editorial) async {
+      final definition = intent.definition;
+      try {
+        return await sendWith(editorial, definition);
+      } catch (error) {
+        if (definition == null ||
+            !definition.containsKey(variationCostRemovalsKey) ||
+            !StockCatalogBackendService.isUnknownCommandField(error)) {
+          rethrow;
+        }
+        // Servidor sem o guard apaga o custo omitido: o pedido segue igual.
+        logW('[VARIACAO_CUSTO] servidor sem variationCostRemovals: reenvio sem o campo');
+        return sendWith(
+          editorial,
+          Map<String, dynamic>.fromEntries(definition.entries
+              .where((e) => e.key != variationCostRemovalsKey)),
+        );
+      }
+    }
     Map<String, dynamic> without(Map<String, dynamic> ed, Set<String> keys) =>
         Map<String, dynamic>.fromEntries(
             ed.entries.where((e) => !keys.contains(e.key)));

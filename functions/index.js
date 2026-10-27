@@ -5526,6 +5526,22 @@ export const consignmentProjectionRetry = onDocumentCreated(
   },
 );
 
+// Direct estoque_produtos writes bypass stockCatalogCommand; an omitted variation cost is restored.
+export const estoqueProdutoVariationCostGuard = onDocumentWritten(
+  {
+    document: `${COLLECTION_LOJAS}/{lojaId}/estoque_produtos/{productId}`,
+    retry: true,
+    timeoutSeconds: 60,
+    memory: "256MiB",
+    // Overrides the global Mercado Pago secrets: the guard only needs Firestore.
+    secrets: [],
+  },
+  async (event) => {
+    const { handleVariationCostGuardEvent } = await import("./src/variationCostGuard.js");
+    await handleVariationCostGuardEvent(db, event, { collection: COLLECTION_LOJAS });
+  },
+);
+
 function stockCatalogCallableError(error) {
   if (error?.stockCode === "PRODUCT_VALIDATION_FAILED" || error?.consignmentCode === "PRODUCT_VALIDATION_FAILED") {
     return new HttpsError("failed-precondition", "PRODUCT_VALIDATION_FAILED", {
