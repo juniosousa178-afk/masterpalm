@@ -22,7 +22,7 @@ class ConsignmentReportActions {
       lojaId: lojaId,
       productIds: doc.lines.map((e) => (e['productId'] ?? '').toString()),
     );
-    final lines = ConsignmentReportAggregator.linesOf(doc, meta: meta);
+    final lines = ConsignmentReportAggregator.consignedLinesOf(doc, meta: meta);
     return ConsignmentReportPdfBuilder.buildOrderPdf(
       store: store,
       doc: doc,
@@ -41,7 +41,7 @@ class ConsignmentReportActions {
       lojaId: lojaId,
       productIds: doc.lines.map((e) => (e['productId'] ?? '').toString()),
     );
-    final lines = ConsignmentReportAggregator.linesOf(doc, meta: meta);
+    final lines = ConsignmentReportAggregator.consignedLinesOf(doc, meta: meta);
     return ConsignmentReportPdfBuilder.buildSettlementPdf(
       store: store,
       doc: doc,
@@ -68,7 +68,7 @@ class ConsignmentReportActions {
     );
     final sections = [
       for (final d in ordered)
-        ConsignmentCombinedSection(doc: d, lines: ConsignmentReportAggregator.linesOf(d, meta: meta)),
+        ConsignmentCombinedSection(doc: d, lines: ConsignmentReportAggregator.consignedLinesOf(d, meta: meta)),
     ];
     return ConsignmentReportPdfBuilder.buildCombinedPdf(
       store: store,

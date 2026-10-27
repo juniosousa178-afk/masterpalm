@@ -126,7 +126,14 @@ class ConsignmentReportLineView {
     return p < 0 ? 0 : p;
   }
 
-  double get lineConsignedValue => _money(qtySent * unitPrice);
+  /// Pieces that stayed in the consignment (issued minus withdrawn): what the order and
+  /// settlement sections list. Withdrawn pieces only appear in the withdrawals section.
+  int get qtyConsigned {
+    final c = qtySent - qtyWithdrawn;
+    return c < 0 ? 0 : c;
+  }
+
+  double get lineConsignedValue => _money(qtyConsigned * unitPrice);
 }
 
 double _money(num v) => (v * 100).round() / 100;
@@ -274,6 +281,14 @@ class ConsignmentReportAggregator {
     ];
   }
 
+  /// Item rows of the order, settlement and combined reports: one per server line (never merged
+  /// across variation or price), without lines whose pieces were all withdrawn.
+  static List<ConsignmentReportLineView> consignedLinesOf(
+    ConsignmentDoc doc, {
+    Map<String, ConsignmentProductReportMeta> meta = const {},
+  }) =>
+      linesOf(doc, meta: meta).where((l) => l.qtyConsigned > 0).toList();
+
   /// Rows of the append-only "retiradas antes do acerto" history, oldest first.
   static List<ConsignmentWithdrawalRow> withdrawalsOf(ConsignmentDoc doc) {
     final rows = <ConsignmentWithdrawalRow>[];
@@ -347,7 +362,8 @@ class ConsignmentReportAggregator {
   static Map<String, dynamic> resellerRollup(List<ConsignmentDoc> docs) {
     var consignments = 0;
     var sent = 0, sold = 0, returned = 0, withdrawn = 0;
-    var consigned = 0.0, gross = 0.0, commission = 0.0, net = 0.0;
+    var consignedCents = 0;
+    var gross = 0.0, commission = 0.0, net = 0.0;
     DateTime? lastSettle;
     var hasIssued = false;
     var hasSettled = false;
@@ -358,7 +374,7 @@ class ConsignmentReportAggregator {
       sold += d.totalItemsSold;
       returned += d.totalItemsReturned;
       withdrawn += d.totalItemsWithdrawn;
-      consigned += d.potentialGrossAmount;
+      consignedCents += (d.potentialGrossAmount * 100).round() - (d.withdrawnGrossAmount * 100).round();
       gross += d.grossSoldAmount;
       commission += d.commissionAmount;
       net += d.netAmount;
@@ -387,8 +403,9 @@ class ConsignmentReportAggregator {
       'sent': sent,
       'sold': sold,
       'returned': returned,
+      'withdrawn': withdrawn,
       'pending': pending < 0 ? 0 : pending,
-      'consigned': _money(consigned),
+      'consigned': consignedCents / 100,
       'gross': _money(gross),
       'commission': _money(commission),
       'net': _money(net),
@@ -400,13 +417,14 @@ class ConsignmentReportAggregator {
   }
 
   static Map<String, dynamic> generalTotals(List<Map<String, dynamic>> rows) {
-    var sent = 0, sold = 0, returned = 0, pending = 0, consignments = 0;
+    var sent = 0, sold = 0, returned = 0, withdrawn = 0, pending = 0, consignments = 0;
     var consigned = 0.0, gross = 0.0, commission = 0.0, net = 0.0, received = 0.0;
     for (final r in rows) {
       consignments += (r['consignments'] as int?) ?? 0;
       sent += (r['sent'] as int?) ?? 0;
       sold += (r['sold'] as int?) ?? 0;
       returned += (r['returned'] as int?) ?? 0;
+      withdrawn += (r['withdrawn'] as int?) ?? 0;
       pending += (r['pending'] as int?) ?? 0;
       consigned += (r['consigned'] as num?)?.toDouble() ?? 0;
       gross += (r['gross'] as num?)?.toDouble() ?? 0;
@@ -419,6 +437,7 @@ class ConsignmentReportAggregator {
       'sent': sent,
       'sold': sold,
       'returned': returned,
+      'withdrawn': withdrawn,
       'pending': pending,
       'consigned': _money(consigned),
       'gross': _money(gross),
@@ -452,9 +471,11 @@ class ConsignmentCombinedSection {
   final ConsignmentDoc doc;
   final List<ConsignmentReportLineView> lines;
 
-  int get pieces => lines.fold<int>(0, (s, l) => s + l.qtySent);
+  int get pieces => lines.fold<int>(0, (s, l) => s + l.qtyConsigned);
   int get pending => lines.fold<int>(0, (s, l) => s + l.qtyPending);
   double get consignedValue => _money(lines.fold<double>(0, (s, l) => s + l.lineConsignedValue));
+  int get piecesSent => doc.lines.fold<int>(0, (s, l) => s + consignmentLineSent(l));
+  int get piecesWithdrawn => doc.totalItemsWithdrawn;
 }
 
 class ConsignmentCombinedSummary {
@@ -471,11 +492,16 @@ class ConsignmentCombinedSummary {
     required this.commission,
     required this.net,
     required this.byStatus,
+    required this.piecesConsigned,
+    required this.piecesWithdrawn,
   });
 
   final int consignments;
   final int models;
+  /// Pieces originally issued (history); [piecesConsigned] excludes the ones withdrawn.
   final int piecesSent;
+  final int piecesConsigned;
+  final int piecesWithdrawn;
   final int piecesSold;
   final int piecesReturned;
   final int piecesPending;
@@ -532,12 +558,15 @@ class ConsignmentCombinedReportPlanner {
   /// Sums each section with the same contracts as the single reports: order totals from the
   /// report lines, settlement amounts from the persisted consignment totals.
   static ConsignmentCombinedSummary summarize(List<ConsignmentCombinedSection> sections) {
-    var models = 0, sent = 0, sold = 0, returned = 0, pending = 0, settled = 0;
+    var models = 0, sent = 0, piecesConsigned = 0, withdrawn = 0;
+    var sold = 0, returned = 0, pending = 0, settled = 0;
     var consigned = 0.0, gross = 0.0, commission = 0.0, net = 0.0;
     final byStatus = <String, int>{};
     for (final s in sections) {
       models += s.lines.length;
-      sent += s.pieces;
+      sent += s.piecesSent;
+      piecesConsigned += s.pieces;
+      withdrawn += s.piecesWithdrawn;
       pending += s.pending;
       consigned += s.consignedValue;
       sold += s.doc.totalItemsSold;
@@ -563,6 +592,8 @@ class ConsignmentCombinedReportPlanner {
       commission: _money(commission),
       net: _money(net),
       byStatus: byStatus,
+      piecesConsigned: piecesConsigned,
+      piecesWithdrawn: withdrawn,
     );
   }
 }

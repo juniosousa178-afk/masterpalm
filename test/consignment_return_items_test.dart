@@ -259,7 +259,8 @@ void main() {
       expect(order.count('RETIRADAS ANTES DO ACERTO'), 1);
       expect(order.text, contains('TOTAL RETIRADO: 1 peça'));
       expect(order.text, contains('COM A REVENDEDORA: 2 peças'));
-      expect(order.text, contains('TOTAL DE PEÇAS: 3'), reason: 'original issue lines preserved');
+      expect(order.text, contains('TOTAL DE PEÇAS: 2'), reason: 'withdrawn pieces leave the consigned total');
+      expect(order.text, contains('Peças enviadas: 3 · retiradas antes do acerto: 1'));
       expect(order.text, contains('Tamanho: 20'));
 
       final settledB = _line('B', 2, withdrawn: 1, returned: 1);

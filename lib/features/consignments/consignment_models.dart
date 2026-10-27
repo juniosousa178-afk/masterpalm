@@ -106,6 +106,12 @@ int _lineInt(Map<String, dynamic> line, String key) {
   return int.tryParse('${v ?? ''}') ?? 0;
 }
 
+/// Pieces originally issued on the line; withdrawals never rewrite it.
+int consignmentLineSent(Map<String, dynamic> line) {
+  final s = _lineInt(line, 'qtySent');
+  return s < 0 ? 0 : s;
+}
+
 /// Pieces taken back by the store before settlement (append-only server field).
 int consignmentLineWithdrawn(Map<String, dynamic> line) {
   final w = _lineInt(line, 'qtyWithdrawn');
@@ -114,7 +120,7 @@ int consignmentLineWithdrawn(Map<String, dynamic> line) {
 
 /// Pieces of the line still in the settlement universe (sent minus withdrawn).
 int consignmentLineOutstanding(Map<String, dynamic> line) {
-  final o = _lineInt(line, 'qtySent') - consignmentLineWithdrawn(line);
+  final o = consignmentLineSent(line) - consignmentLineWithdrawn(line);
   return o < 0 ? 0 : o;
 }
 
