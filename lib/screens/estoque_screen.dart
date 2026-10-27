@@ -5200,7 +5200,11 @@ String _formatGradeTexto(Produto p) {
                   ],
                 ),
               // Statistics Header
-              _buildStatisticsHeader(currencyFormat),
+              ValueListenableBuilder(
+                valueListenable: _box.listenable(),
+                builder: (_, Box<Produto> __, ___) =>
+                    _buildStatisticsHeader(currencyFormat),
+              ),
 
               // Products List
               Expanded(

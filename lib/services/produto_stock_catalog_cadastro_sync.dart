@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
 import '../core/logger.dart';
+import '../core/produto_effective_stock.dart';
 import '../core/produto_estoque_grade_snapshot.dart';
 import '../core/produto_form_grade_hydration.dart';
 import '../core/produto_stock_revision.dart';
@@ -291,6 +292,17 @@ class ProdutoStockCatalogCadastroSync {
       kind = 'replace';
       expectedRevision = observed;
       def = definition;
+      final defVar = definition['variacoes'];
+      if (remoteVariacoesAtSaveTime != null && defVar is Map<String, dynamic>) {
+        def = {
+          ...definition,
+          'variacoes': preserveRemoteVariationCostOnPush(
+            push: defVar,
+            remoteVariacoes: remoteVariacoesAtSaveTime,
+            baselineVariacoes: gradeBaseline?.variacoes,
+          ),
+        };
+      }
     } else {
       kind = 'editorial';
     }

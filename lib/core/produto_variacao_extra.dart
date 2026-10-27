@@ -110,11 +110,17 @@ abstract final class ProdutoVariacaoExtra {
   }
 
   /// Custo unitário da célula (quando definido no mapa da variação).
+  /// Só valores finitos > 0 contam; 0, negativo, NaN ou texto inválido = sem custo
+  /// próprio (o chamador cai no custo do produto).
   static double? custoUnitarioNaCelula(dynamic cell) {
     if (cell is! Map) return null;
-    final raw = cell[kMetaCustoUnitarioKey];
-    if (raw is num) return raw.toDouble();
-    return double.tryParse(raw?.toString() ?? '');
+    return custoUnitarioValido(cell[kMetaCustoUnitarioKey]);
+  }
+
+  static double? custoUnitarioValido(dynamic raw) {
+    final v = raw is num ? raw.toDouble() : double.tryParse(raw?.toString() ?? '');
+    if (v == null || !v.isFinite || v <= 0) return null;
+    return v;
   }
 
   /// Estoque para combinação tamanho/cor/extraValor ([extraValor] vazio = legado ou chave '' no mapa).

@@ -651,10 +651,16 @@ class Produto extends HiveObject {
     return 0;
   }
 
+  /// Custo do produto para fallback: finito e >= 0, senão 0.
+  double get custoRealValido =>
+      custoReal.isFinite && custoReal >= 0 ? custoReal : 0.0;
+
   /// Custo unitário para a combinação informada (variação -> custoReal fallback).
+  /// Regra única com [custoTotalEstoque]: custo próprio válido da célula (> 0);
+  /// senão [custoRealValido].
   double custoUnitarioVariacao(String tamanho, String cor,
       [String variacaoExtra = '']) {
-    if (!usaVariacoes) return custoReal;
+    if (!usaVariacoes) return custoRealValido;
 
     final tam = tamanho.trim();
     final corTrim = cor.trim();
@@ -675,9 +681,7 @@ class Produto extends HiveObject {
       }
     }
 
-    final custoDaCelula = ProdutoVariacaoExtra.custoUnitarioNaCelula(cell);
-    if (custoDaCelula != null && custoDaCelula > 0) return custoDaCelula;
-    return custoReal;
+    return ProdutoVariacaoExtra.custoUnitarioNaCelula(cell) ?? custoRealValido;
   }
 
   /// Custo total do estoque (sem combo): soma por variação quando disponível.
@@ -690,13 +694,13 @@ class Produto extends HiveObject {
           final qtd = ProdutoVariacaoExtra.somarCelula(cell);
           if (qtd <= 0) continue;
           final custo =
-              ProdutoVariacaoExtra.custoUnitarioNaCelula(cell) ?? custoReal;
+              ProdutoVariacaoExtra.custoUnitarioNaCelula(cell) ?? custoRealValido;
           total += qtd * custo;
         }
       }
       return total;
     }
-    return custoReal * quantidade;
+    return custoRealValido * quantidade;
   }
 
   /// Obtém todas as cores disponíveis para um tamanho específico

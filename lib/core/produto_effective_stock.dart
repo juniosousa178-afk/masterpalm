@@ -254,6 +254,7 @@ void _applyNormalizedCellsToProdutoGrade(
   final vars = <String, dynamic>{};
   final ept = <String, int>{};
   var usedExtraCells = false;
+  final metaSource = _variationMetadataSource(local, remote);
   for (final e in cells.entries) {
     if (e.value < 0) continue;
     final parts = e.key.split('|');
@@ -268,7 +269,15 @@ void _applyNormalizedCellsToProdutoGrade(
       inner[cor] = extraCell;
       usedExtraCells = true;
     } else {
-      inner[cor] = e.value;
+      final custo = metaSource == null
+          ? null
+          : custoUnitarioDaCelulaCanonica(metaSource, e.key);
+      inner[cor] = custo == null
+          ? e.value
+          : <String, dynamic>{
+              ProdutoVariacaoExtra.kSemExtraKey: e.value,
+              ProdutoVariacaoExtra.kMetaCustoUnitarioKey: custo,
+            };
     }
     ept[tam] = (ept[tam] ?? 0) + e.value;
   }
@@ -284,6 +293,94 @@ void _applyNormalizedCellsToProdutoGrade(
       }
     }
   }
+}
+
+/// Mapa `variacoes` de onde vem a metadata não-estoque (só `__custoUnitario`).
+/// Remoto com `variacoes` é a autoridade (célula sem custo = sem custo). Sem
+/// `variacoes` remoto, usa o Hive do mesmo produto e da mesma loja.
+Map<dynamic, dynamic>? _variationMetadataSource(
+  Produto local,
+  Map<String, dynamic>? remote,
+) {
+  final remoteVars = remote?['variacoes'];
+  if (remoteVars is Map && remoteVars.isNotEmpty) return remoteVars;
+  final remoteLoja = (remote?['lojaId'] ?? '').toString().trim();
+  final localLoja = local.lojaId.trim();
+  if (remoteLoja.isNotEmpty && remoteLoja != localLoja) return null;
+  final localVars = local.variacoes;
+  if (localVars == null || localVars.isEmpty) return null;
+  return localVars;
+}
+
+/// Custo válido da célula cuja identidade canônica (`tamanho|cor`) é [variationKey].
+/// Mais de uma célula com a mesma identidade (ex.: `''` e `sem-tamanho`) = ambíguo → null.
+double? custoUnitarioDaCelulaCanonica(
+  Map<dynamic, dynamic> source,
+  String variationKey,
+) {
+  dynamic match;
+  var matches = 0;
+  source.forEach((tam, byCor) {
+    if (byCor is! Map) return;
+    byCor.forEach((cor, cell) {
+      final id = ProdutoEstoqueGradeSnapshot.variacaoId(
+        tam.toString(),
+        cor.toString(),
+      );
+      if (id != variationKey) return;
+      matches++;
+      match = cell;
+    });
+  });
+  if (matches != 1) return null;
+  return ProdutoVariacaoExtra.custoUnitarioNaCelula(match);
+}
+
+/// Push Hive→Firestore: célula sem `__custoUnitario` válido herda o custo da
+/// mesma célula canônica remota. Hive que perdeu a metadata não apaga o custo
+/// remoto. Remoção explícita (a [baselineVariacoes] do formulário tinha custo
+/// nessa célula) é respeitada. Quantidades nunca são alteradas.
+Map<String, dynamic> preserveRemoteVariationCostOnPush({
+  required Map<String, dynamic> push,
+  required dynamic remoteVariacoes,
+  Map<dynamic, dynamic>? baselineVariacoes,
+}) {
+  if (push.isEmpty || remoteVariacoes is! Map || remoteVariacoes.isEmpty) {
+    return push;
+  }
+  final out = <String, dynamic>{};
+  push.forEach((tam, byCor) {
+    if (byCor is! Map) {
+      out[tam] = byCor;
+      return;
+    }
+    final inner = <String, dynamic>{};
+    byCor.forEach((cor, cell) {
+      final corKey = cor.toString();
+      inner[corKey] = cell;
+      if (ProdutoVariacaoExtra.custoUnitarioNaCelula(cell) != null) return;
+      final id = ProdutoEstoqueGradeSnapshot.variacaoId(tam, corKey);
+      final remoteCusto = custoUnitarioDaCelulaCanonica(remoteVariacoes, id);
+      if (remoteCusto == null) return;
+      if (baselineVariacoes != null &&
+          custoUnitarioDaCelulaCanonica(baselineVariacoes, id) != null) {
+        return;
+      }
+      if (cell is num) {
+        inner[corKey] = <String, dynamic>{
+          ProdutoVariacaoExtra.kSemExtraKey: cell.toInt(),
+          ProdutoVariacaoExtra.kMetaCustoUnitarioKey: remoteCusto,
+        };
+      } else if (cell is Map) {
+        inner[corKey] = <String, dynamic>{
+          ...Map<String, dynamic>.from(cell),
+          ProdutoVariacaoExtra.kMetaCustoUnitarioKey: remoteCusto,
+        };
+      }
+    });
+    out[tam] = inner;
+  });
+  return out;
 }
 
 Map<String, dynamic>? _remoteExtraCellMatchingSum(

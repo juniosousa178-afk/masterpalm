@@ -1762,7 +1762,13 @@ class ProdutosFirestoreService {
           existingData != null) {
         await _rehydrateLocalGradeFromRemoteOnStalePush(produto, existingData);
       }
-      final variacoesPushEfetivo = resolvedVariationPush.variacoes;
+      final variacoesPushEfetivo = docSnap.exists
+          ? preserveRemoteVariationCostOnPush(
+              push: resolvedVariationPush.variacoes,
+              remoteVariacoes: existingData?['variacoes'],
+              baselineVariacoes: gradeBaseline?.variacoes,
+            )
+          : resolvedVariationPush.variacoes;
       final variacoesExtraPushEfetivo =
           resolvedVariationPush.variacoesExtraTipo;
       final estoquePorTamPushEfetivo = resolvedVariationPush.estoquePorTamanho;
