@@ -66,7 +66,9 @@ import 'nova_venda/variacao_selection_sheet.dart';
 import 'public_catalog_screen.dart';
 import '../services/catalog_publish_service.dart';
 import '../services/bulk_pix_discount_service.dart';
+import '../services/bulk_editorial_service.dart';
 import '../services/bulk_promocao_service.dart';
+import '../services/produto_desconto_pix.dart';
 import '../services/produto_promocao.dart';
 import '../services/marketplace_service.dart';
 import '../services/movimentacao_estoque_service.dart';
@@ -84,6 +86,7 @@ import '../services/ai_loja_service.dart';
 import '../services/ia_uso_limite_service.dart';
 import '../services/produto_exclusao_remota_service.dart';
 import '../widgets/app_help_icon_button.dart';
+import '../widgets/bulk_editorial_dialogs.dart';
 import '../widgets/bulk_pix_discount_dialogs.dart';
 import '../widgets/bulk_promocao_dialogs.dart';
 import '../widgets/estoque_acoes_lote_sheet.dart';
@@ -1061,46 +1064,7 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
     );
     if (ok != true || !mounted) return;
     final maxParcelas = (int.tryParse(maxParcelasCtrl.text.trim()) ?? 12).clamp(1, 24);
-    setState(() => _publicando = true);
-    try {
-      int n = 0;
-      final lojaId = await _lojaIdParaLote();
-      for (final keyStr in _produtosSelecionados) {
-        final key = int.tryParse(keyStr);
-        if (key == null) continue;
-        final p = _box.get(key);
-        if (p == null) continue;
-        p.divideSemJuros = true;
-        p.maxParcelasSemJuros = maxParcelas;
-        await p.save();
-        n++;
-      }
-      if (lojaId != null && lojaId.isNotEmpty && n > 0) {
-        await ProdutosFirestoreService.syncProdutosPorChavesHive(
-          box: _box,
-          lojaId: lojaId,
-          hiveKeys: _hiveKeysSelecionados(),
-        );
-        if (kDebugMode) {
-          logD('[ESTOQUE_LOTE] dividir sem juros: sync $n item(ns) loja=$lojaId');
-        }
-      } else if (n > 0) {
-        logD('[ESTOQUE] Sync omitido: lojaId vazio após dividir sem juros em lote');
-        if (mounted) {
-          _showSnackBar('Alterações salvas localmente. Sincronize com a nuvem depois.');
-        }
-      }
-      if (!mounted) return;
-      _showSnackBar('Dividir sem juros aplicado em $n produto(s)');
-      setState(() {
-        _produtosSelecionados.clear();
-        _modoSelecao = false;
-      });
-    } catch (e) {
-      if (mounted) _showSnackBar('Erro: $e', isError: true);
-    } finally {
-      if (mounted) setState(() => _publicando = false);
-    }
+    await _executarEditorialLote(BulkEditorialPlano.dividirSemJuros(maxParcelas));
   }
 
   /// Ação em lote: definir % desconto PIX nos produtos selecionados.
@@ -1138,45 +1102,111 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
       ),
     );
     if (ok != true || !mounted) return;
-    final percentual = (double.tryParse(percentualCtrl.text.trim()) ?? 0.0).clamp(0.0, 100.0);
+    final percentual = ProdutoDescontoPix.parse(percentualCtrl.text);
+    if (percentual == null) {
+      _showSnackBar(
+        'Informe um desconto no Pix entre 0 e 100%. Nenhuma alteração foi feita.',
+        isError: true,
+      );
+      return;
+    }
+    await _executarEditorialLote(BulkEditorialPlano.descontoPix(percentual));
+  }
+
+  /// Bulk editorial change confirmed by the server per product; Hive changes only after confirmation.
+  Future<void> _executarEditorialLote(
+    BulkEditorialPlano plano, {
+    String? bulkId,
+    List<String>? somenteDocIds,
+  }) async {
+    if (_publicando) return;
+    final lojaTela = _lojaId?.trim() ?? '';
+    final candidatos = <BulkEditorialCandidato>[];
+    for (final key in _hiveKeysSelecionados()) {
+      final p = _box.get(key);
+      if (p != null) candidatos.add(BulkEditorialCandidato.fromProduto(key, p));
+    }
+    final lojaAtual = (await LojaIdService.getWithTimeoutThenSessionFallback(
+                timeout: kIsWeb ? const Duration(seconds: 25) : const Duration(seconds: 10)))
+            ?.trim() ??
+        '';
+    if (!mounted) return;
+    final bloqueio = BulkEditorialService.validarLoja(
+      lojaIdAtual: lojaAtual,
+      lojaIdTela: lojaTela,
+      nomeBox: _box.name,
+      candidatos: candidatos,
+    );
+    if (bloqueio != null) {
+      _showSnackBar(bloqueio, isError: true);
+      return;
+    }
+    final id = bulkId ?? BulkEditorialService.novoBulkId();
     setState(() => _publicando = true);
+    final progresso = ValueNotifier<String>(plano.progresso);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => BulkPixProgressDialog(progresso: progresso),
+    );
+    BulkEditorialResultado? resultado;
     try {
-      int n = 0;
-      final lojaId = await _lojaIdParaLote();
-      for (final keyStr in _produtosSelecionados) {
-        final key = int.tryParse(keyStr);
-        if (key == null) continue;
-        final p = _box.get(key);
-        if (p == null) continue;
-        p.percentualDescontoPix = percentual;
-        await p.save();
-        n++;
-      }
-      if (lojaId != null && lojaId.isNotEmpty && n > 0) {
-        await ProdutosFirestoreService.syncProdutosPorChavesHive(
+      resultado = await BulkEditorialService.executar(
+        plano: plano,
+        lojaId: lojaTela,
+        bulkId: id,
+        candidatos: candidatos,
+        somenteDocIds: somenteDocIds,
+        onProgresso: (feitos, total) => progresso.value = '${plano.progresso} $feitos de $total',
+      );
+      try {
+        await BulkEditorialService.aplicarNoHive(
           box: _box,
-          lojaId: lojaId,
-          hiveKeys: _hiveKeysSelecionados(),
+          plano: plano,
+          candidatos: candidatos,
+          docIdsConfirmados: resultado.confirmados,
         );
-        if (kDebugMode) {
-          logD('[ESTOQUE_LOTE] desconto PIX: sync $n item(ns) loja=$lojaId');
-        }
-      } else if (n > 0) {
-        logD('[ESTOQUE] Sync omitido: lojaId vazio após desconto PIX em lote');
-        if (mounted) {
-          _showSnackBar('Alterações salvas localmente. Sincronize com a nuvem depois.');
-        }
+      } catch (e, st) {
+        logE('[ESTOQUE_LOTE] ${plano.prefixoOperacao}: falha ao refletir no Hive (type=${e.runtimeType})',
+            error: e, st: st);
       }
-      if (!mounted) return;
-      _showSnackBar('Desconto PIX de ${percentual.toStringAsFixed(1)}% aplicado em $n produto(s)');
+    } catch (e, st) {
+      logE('[ESTOQUE_LOTE] ${plano.prefixoOperacao} falhou (type=${e.runtimeType})', error: e, st: st);
+    } finally {
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        setState(() => _publicando = false);
+      }
+    }
+    if (!mounted) return;
+    final r = resultado;
+    if (r == null) {
+      _showSnackBar('${plano.tituloFalha}: não foi possível concluir. Nenhuma alteração confirmada.',
+          isError: true);
+      return;
+    }
+    if (r.sucessoTotal && r.ignorados == 0) {
       setState(() {
         _produtosSelecionados.clear();
         _modoSelecao = false;
       });
-    } catch (e) {
-      if (mounted) _showSnackBar('Erro: $e', isError: true);
-    } finally {
-      if (mounted) setState(() => _publicando = false);
+      _showSnackBar(r.mensagemSucesso);
+      return;
+    }
+    final tentarDeNovo = await showDialog<bool>(
+      context: context,
+      builder: (_) => BulkEditorialResultadoDialog(resultado: r),
+    );
+    if (!mounted) return;
+    if (tentarDeNovo == true) {
+      await _executarEditorialLote(plano, bulkId: id, somenteDocIds: r.idsParaNovaTentativa);
+    } else if (r.falhas.isEmpty) {
+      setState(() {
+        _produtosSelecionados.clear();
+        _modoSelecao = false;
+      });
+    } else {
+      setState(() {});
     }
   }
 
@@ -1616,51 +1646,12 @@ class _EstoqueScreenState extends State<EstoqueScreen> {
         }
       }
 
-      setState(() => _publicando = true);
-      int n = 0;
-      final lojaId = await _lojaIdParaLote();
-      for (final keyStr in _produtosSelecionados) {
-        final key = int.tryParse(keyStr);
-        if (key == null) continue;
-        final p = _box.get(key);
-        if (p == null) continue;
-        p.emPromocao = true;
-        if (tipoDesconto == 'percentual') {
-          p.percentualPromo = pct;
-          p.valorPromo = null;
-        } else {
-          p.percentualPromo = null;
-          p.valorPromo = valFixo;
-        }
-        p.dataInicioPromo = dataInicio;
-        p.dataFimPromo = dataFim;
-        await p.save();
-        n++;
-      }
-      if (lojaId != null && lojaId.isNotEmpty && n > 0) {
-        await ProdutosFirestoreService.syncProdutosPorChavesHive(
-          box: _box,
-          lojaId: lojaId,
-          hiveKeys: _hiveKeysSelecionados(),
-        );
-        if (kDebugMode) {
-          logD('[ESTOQUE_LOTE] promoção: sync $n item(ns) loja=$lojaId');
-        }
-      } else if (n > 0) {
-        logD('[ESTOQUE] Sync omitido: lojaId vazio após promoção em lote');
-        if (mounted) {
-          _showSnackBar('Alterações salvas localmente. Sincronize com a nuvem depois.');
-        }
-      }
-      if (!mounted) return;
-      final msg = tipoDesconto == 'percentual'
-          ? 'Promoção de ${pct!.toStringAsFixed(1)}% aplicada em $n produto(s)'
-          : 'Promoção de R\$ ${valFixo!.toStringAsFixed(2)} aplicada em $n produto(s)';
-      _showSnackBar(msg);
-      setState(() {
-        _produtosSelecionados.clear();
-        _modoSelecao = false;
-      });
+      await _executarEditorialLote(BulkEditorialPlano.ativarPromocao(
+        percentual: tipoDesconto == 'percentual' ? pct : null,
+        valor: tipoDesconto == 'percentual' ? null : valFixo,
+        inicio: dataInicio,
+        fim: dataFim,
+      ));
     } catch (e) {
       if (mounted) _showSnackBar('Erro: $e', isError: true);
     } finally {

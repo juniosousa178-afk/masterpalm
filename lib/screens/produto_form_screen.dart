@@ -27,6 +27,7 @@ import '../utils/moeda_input_formatter.dart';
 import '../utils/text_utils.dart';
 import '../services/limits_guard.dart';
 import '../services/produto_estoque_doc_id_service.dart';
+import '../services/produto_desconto_pix.dart';
 import '../services/produto_promocao.dart';
 import '../services/produto_exclusao_tombstone_service.dart';
 import '../services/produto_cadastro_pos_save_service.dart';
@@ -1408,8 +1409,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
     try {
       final preco = MoedaInputFormatter.parse(_preco.text);
       final percentualDescontoPix =
-          (double.tryParse(_percentualDescontoPix.text.trim()) ?? 0.0)
-              .clamp(0.0, 100.0);
+          ProdutoDescontoPix.normalizarFormulario(_percentualDescontoPix.text);
       final maxParcelasSemJuros =
           (int.tryParse(_maxParcelasSemJuros.text.trim()) ?? 12).clamp(1, 24);
       final (percentual: percentualPromo, valor: valorPromo) = _descontoPromoParaSalvar();
@@ -1901,7 +1901,7 @@ class _ProdutoFormScreenState extends State<ProdutoFormScreen> {
         }
       }
 
-      final percentualDescontoPix = (double.tryParse(_percentualDescontoPix.text.trim()) ?? 0.0).clamp(0.0, 100.0);
+      final percentualDescontoPix = ProdutoDescontoPix.normalizarFormulario(_percentualDescontoPix.text);
       final maxParcelasSemJuros =
           (int.tryParse(_maxParcelasSemJuros.text.trim()) ?? 12).clamp(1, 24);
       final categoriaPrincipal = canonicalizeCategoria(_categoria.text.trim());
