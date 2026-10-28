@@ -4,6 +4,7 @@
       "codebase": "default",
       "source": "functions",
       "runtime": "nodejs22",
+      "predeploy": ["node \"$PROJECT_DIR/tools/security/check_functions_deploy_env.mjs\" \"$RESOURCE_DIR\""],
       "ignore": [
         "node_modules",
         ".git",
