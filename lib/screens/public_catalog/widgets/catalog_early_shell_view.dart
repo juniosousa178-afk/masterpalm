@@ -5,29 +5,17 @@ import 'package:flutter/material.dart';
 import 'catalog_skeleton_grid.dart';
 import 'catalog_unified_loading.dart';
 
-/// Nome legível a partir do slug da URL (sem hardcode de loja).
-String catalogStoreLabelFromSlug(String slug) {
-  final parts = slug
-      .trim()
-      .split('-')
-      .where((w) => w.trim().isNotEmpty)
-      .toList();
-  if (parts.isEmpty) return 'Catálogo';
-  return parts
-      .map((w) => w.length == 1 ? w.toUpperCase() : '${w[0].toUpperCase()}${w.substring(1)}')
-      .join(' ');
-}
-
 /// Cabeçalho + skeleton — conteúdo útil por trás do loader HTML antes da config.
+///
+/// Sem nome da loja: o nome comercial só existe na config (ainda a carregar) e o slug
+/// da URL não é nome de exibição.
 class CatalogEarlyShellView extends StatefulWidget {
   const CatalogEarlyShellView({
     super.key,
-    required this.storeSlug,
     this.themeData,
     this.onFirstFrame,
   });
 
-  final String storeSlug;
   final ThemeData? themeData;
   final VoidCallback? onFirstFrame;
 
@@ -51,7 +39,6 @@ class _CatalogEarlyShellViewState extends State<CatalogEarlyShellView> {
   @override
   Widget build(BuildContext context) {
     final theme = widget.themeData ?? Theme.of(context);
-    final label = catalogStoreLabelFromSlug(widget.storeSlug);
     final bg = theme.scaffoldBackgroundColor;
     final onSurface = theme.colorScheme.onSurface;
 
@@ -65,25 +52,6 @@ class _CatalogEarlyShellViewState extends State<CatalogEarlyShellView> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF9A4E6B),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      label,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
                   Text(
                     CatalogUnifiedLoadingCopy.title,
                     style: theme.textTheme.titleMedium?.copyWith(

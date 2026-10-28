@@ -5043,7 +5043,6 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                 }
                 if (kIsWeb) {
                   return CatalogEarlyShellView(
-                    storeSlug: widget.lojaId,
                     themeData: themeForStates,
                     onFirstFrame: _onCatalogEarlyShellFirstFrame,
                   );

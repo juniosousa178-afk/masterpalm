@@ -684,8 +684,9 @@
           if (isCatalogFirstPaint()) {
             window.__mpCatalogHandoffActive = true;
             window.__mpCatalogHandoffStartMs = Math.round(performance.now());
-            var slug = getSlugFromLocation();
-            logoEl.textContent = slug ? slugToStoreName(slug) : 'Catálogo';
+            // The URL slug is not the store's commercial name: no name until the catalog config loads.
+            logoEl.textContent = '';
+            logoEl.style.display = 'none';
             if (titleEl) {
               titleEl.style.display = '';
               titleEl.style.marginBottom = '';
