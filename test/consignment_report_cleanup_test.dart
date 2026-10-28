@@ -123,7 +123,7 @@ Future<ConsignmentPdfText> _order(ConsignmentDoc d) async => ConsignmentPdfText.
       await ConsignmentReportPdfBuilder.buildOrderPdf(
         store: _store,
         doc: d,
-        lines: ConsignmentReportAggregator.linesOf(d),
+        lines: ConsignmentReportAggregator.consignedLinesOf(d),
       ),
     );
 
@@ -131,7 +131,7 @@ Future<ConsignmentPdfText> _settlement(ConsignmentDoc d) async => ConsignmentPdf
       await ConsignmentReportPdfBuilder.buildSettlementPdf(
         store: _store,
         doc: d,
-        lines: ConsignmentReportAggregator.linesOf(d),
+        lines: ConsignmentReportAggregator.consignedLinesOf(d),
       ),
     );
 
@@ -140,7 +140,7 @@ Future<ConsignmentPdfText> _combined(List<ConsignmentDoc> docs) async => Consign
         store: _store,
         sections: [
           for (final d in ConsignmentCombinedReportPlanner.order(docs))
-            ConsignmentCombinedSection(doc: d, lines: ConsignmentReportAggregator.linesOf(d)),
+            ConsignmentCombinedSection(doc: d, lines: ConsignmentReportAggregator.consignedLinesOf(d)),
         ],
         generatedAt: DateTime(2026, 10, 15, 10),
       ),
@@ -224,13 +224,16 @@ void main() {
     expect(receipt.text, contains(_name(31)));
   });
 
-  test('E. withdrawals section kept', () async {
+  test('E. partial withdrawals: no withdrawals section, rows and totals net of withdrawn', () async {
     final pdf = await _order(_fixtureE());
     _report('E', pdf);
     expect(_verboseCount(pdf), 0);
-    expect(pdf.text, contains('RETIRADAS ANTES DO ACERTO'));
-    expect(pdf.text, contains('TOTAL RETIRADO: 5 peças'));
+    expect(pdf.text.toLowerCase(), isNot(contains('retirad')));
+    expect(pdf.text, contains('TOTAL DE PEÇAS: 35'));
     _expectProducts(pdf, [for (var i = 1; i <= 20; i++) i]);
+    for (var i = 1; i <= 20; i++) {
+      expect(pdf.count(_name(i)), 1, reason: 'product only in the item table');
+    }
   });
 
   test('F. combined 3 consignations: sections keep item tables, no delivery dump', () async {

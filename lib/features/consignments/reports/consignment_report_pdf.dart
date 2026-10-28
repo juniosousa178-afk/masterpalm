@@ -175,8 +175,6 @@ class ConsignmentReportPdfBuilder {
     final models = lines.length;
     final pieces = lines.fold<int>(0, (s, l) => s + l.qtyConsigned);
     final total = lines.fold<double>(0, (s, l) => s + l.lineConsignedValue);
-    final withdrawn = doc.totalItemsWithdrawn;
-    final sent = doc.lines.fold<int>(0, (s, l) => s + consignmentLineSent(l));
     final commissionHints = lines
         .map((l) => consignmentReportCommissionLabel(l.commissionType, l.commissionValue))
         .where((e) => e.isNotEmpty)
@@ -249,61 +247,10 @@ class ConsignmentReportPdfBuilder {
                 pw.Text('TOTAL DE PEÇAS: $pieces', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10)),
                 pw.Text('VALOR TOTAL CONSIGNADO: ${_money.format(total)}',
                     style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11)),
-                if (withdrawn > 0)
-                  pw.Text('Peças enviadas: $sent · retiradas antes do acerto: $withdrawn',
-                      style: const pw.TextStyle(fontSize: 9)),
                 for (final h in commissionHints) pw.Text(h, style: const pw.TextStyle(fontSize: 9)),
               ],
             ),
           ),
-          ..._withdrawalsSection(doc),
-    ];
-  }
-
-  /// Only rendered when the store took pieces back before settlement; original lines stay above.
-  static List<pw.Widget> _withdrawalsSection(ConsignmentDoc doc) {
-    final rows = ConsignmentReportAggregator.withdrawalsOf(doc);
-    if (rows.isEmpty) return const [];
-    final pieces = rows.fold<int>(0, (s, r) => s + r.qty);
-    final total = rows.fold<double>(0, (s, r) => s + r.total);
-    return [
-      pw.SizedBox(height: 14),
-      pw.Text('RETIRADAS ANTES DO ACERTO',
-          style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
-      pw.SizedBox(height: 6),
-      pw.TableHelper.fromTextArray(
-        headers: ['Data', 'Código', 'Produto', 'Variação', 'Qtd', 'Unit.', 'Total'],
-        headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
-        cellStyle: const pw.TextStyle(fontSize: 8),
-        headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
-        cellAlignments: {
-          4: pw.Alignment.center,
-          5: pw.Alignment.centerRight,
-          6: pw.Alignment.centerRight,
-        },
-        data: [
-          for (final r in rows)
-            [
-              r.date == null ? '-' : _date.format(r.date!.toLocal()),
-              r.productCode.isEmpty ? '-' : r.productCode,
-              r.productName,
-              r.variationLabel.isEmpty ? '-' : r.variationLabel,
-              '${r.qty}',
-              _money.format(r.unitPrice),
-              _money.format(r.total),
-            ],
-        ],
-      ),
-      pw.SizedBox(height: 6),
-      pw.Text('TOTAL RETIRADO: $pieces ${pieces == 1 ? 'peça' : 'peças'} · ${_money.format(total)}',
-          style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10)),
-      if (doc.isIssued)
-        pw.Text(
-          'COM A REVENDEDORA: ${doc.totalItemsOutstanding} peças · ${_money.format(doc.outstandingGrossAmount)}',
-          style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10),
-        ),
-      pw.Text('Peças retiradas voltaram ao estoque da loja e não entram no acerto da revendedora.',
-          style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
     ];
   }
 
@@ -391,7 +338,6 @@ class ConsignmentReportPdfBuilder {
     final logo = await _logo(store.logoUrl);
     final photos = await _photos(lines);
     final pending = lines.fold<int>(0, (s, l) => s + l.qtyPending);
-    final hasWithdrawn = doc.totalItemsWithdrawn > 0;
     final pdf = pw.Document(title: 'Acerto consignação ${doc.id}');
     pdf.addPage(
       pw.MultiPage(
@@ -421,7 +367,7 @@ class ConsignmentReportPdfBuilder {
               'Código',
               'Produto',
               'Var.',
-              hasWithdrawn ? 'Cons.' : 'Env',
+              'Env',
               'Vend',
               'Dev',
               'Pend',
@@ -462,10 +408,6 @@ class ConsignmentReportPdfBuilder {
                 ],
             ],
           ),
-          if (hasWithdrawn)
-            pw.Text('Cons. = peças enviadas menos as retiradas antes do acerto.',
-                style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey700)),
-          ..._withdrawalsSection(doc),
           pw.SizedBox(height: 12),
           _settlementSummary(doc, pending),
           _signatures(
@@ -490,9 +432,7 @@ class ConsignmentReportPdfBuilder {
               children: [
                 pw.Text('RESUMO DO ACERTO', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11)),
                 pw.SizedBox(height: 4),
-                pw.Text('Peças enviadas: ${doc.totalItemsSent}'),
-                if (doc.totalItemsWithdrawn > 0)
-                  pw.Text('Peças retiradas antes do acerto: ${doc.totalItemsWithdrawn}'),
+                pw.Text('Peças enviadas: ${doc.totalItemsSent - doc.totalItemsWithdrawn}'),
                 pw.Text('Peças vendidas: ${doc.totalItemsSold}'),
                 pw.Text('Peças devolvidas: ${doc.totalItemsReturned}'),
                 pw.Text('Peças pendentes: $pending'),
@@ -560,7 +500,7 @@ class ConsignmentReportPdfBuilder {
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
                 bold('CONSIGNAÇÕES SELECIONADAS: $n'),
-                bold('TOTAL DE PEÇAS: ${summary.piecesConsigned}'),
+                bold('TOTAL DE PEÇAS: ${summary.piecesSent}'),
                 bold('VALOR TOTAL CONSIGNADO: ${_money.format(summary.consignedValue)}', size: 11),
                 if (summary.settledCount > 0)
                   pw.Text('Comissão (consignações acertadas): ${_money.format(summary.commission)}', style: small),
@@ -639,10 +579,6 @@ class ConsignmentReportPdfBuilder {
                 pw.SizedBox(height: 4),
                 pw.Text('Total de modelos (linhas): ${summary.models}', style: small),
                 bold('Total de peças enviadas: ${summary.piecesSent}'),
-                if (summary.piecesWithdrawn > 0) ...[
-                  pw.Text('Peças retiradas antes do acerto: ${summary.piecesWithdrawn}', style: small),
-                  bold('Total de peças consignadas: ${summary.piecesConsigned}'),
-                ],
                 bold('Valor total consignado: ${_money.format(summary.consignedValue)}', size: 11),
                 if (summary.settledCount > 0) ...[
                   pw.SizedBox(height: 6),
@@ -717,7 +653,6 @@ class ConsignmentReportPdfBuilder {
               'Env.',
               'Vend.',
               'Dev.',
-              'Ret.',
               'Pend.',
               'Consignado',
               'Bruto',
@@ -736,12 +671,11 @@ class ConsignmentReportPdfBuilder {
               3: pw.Alignment.center,
               4: pw.Alignment.center,
               5: pw.Alignment.center,
-              6: pw.Alignment.center,
+              6: pw.Alignment.centerRight,
               7: pw.Alignment.centerRight,
               8: pw.Alignment.centerRight,
               9: pw.Alignment.centerRight,
               10: pw.Alignment.centerRight,
-              11: pw.Alignment.centerRight,
             },
             data: [
               for (final r in resellerRows)
@@ -751,7 +685,6 @@ class ConsignmentReportPdfBuilder {
                   '${r['sent']}',
                   '${r['sold']}',
                   '${r['returned']}',
-                  '${r['withdrawn'] ?? 0}',
                   '${r['pending']}',
                   _money.format(r['consigned']),
                   _money.format(r['gross']),
@@ -769,7 +702,6 @@ class ConsignmentReportPdfBuilder {
                 '${totals['sent']}',
                 '${totals['sold']}',
                 '${totals['returned']}',
-                '${totals['withdrawn'] ?? 0}',
                 '${totals['pending']}',
                 _money.format(totals['consigned']),
                 _money.format(totals['gross']),

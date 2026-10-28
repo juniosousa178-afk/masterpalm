@@ -229,7 +229,7 @@ void main() {
   });
 
   group('reports', () {
-    test('pending excludes withdrawn; withdrawal rows come from append-only history', () {
+    test('pending excludes withdrawn; withdrawal history stays on the consignment only', () {
       final b = _line('B', 1, withdrawn: 1);
       final doc = ConsignmentDoc.fromMap('c1', _docMap('SETTLED', [
         _line('A', 1, sold: 1),
@@ -239,45 +239,34 @@ void main() {
       final lines = ConsignmentReportAggregator.linesOf(doc);
       expect(lines.map((l) => l.qtyPending), [0, 0, 0]);
       expect(lines[1].qtyWithdrawn, 1);
-      expect(lines[1].qtySent, 1, reason: 'original issued qty stays visible');
-      final rows = ConsignmentReportAggregator.withdrawalsOf(doc);
-      expect(rows.single.productName, 'B');
-      expect(rows.single.productCode, 'C-B');
-      expect(rows.single.qty, 1);
-      expect(rows.single.total, 100);
+      expect(ConsignmentReportAggregator.consignedLinesOf(doc).map((l) => l.productId), ['A', 'C']);
+      expect(doc.withdrawals.single['withdrawalId'], 'consignment_return_c1_x');
       final rollup = ConsignmentReportAggregator.resellerRollup([doc]);
       expect(rollup['pending'], 0);
-      expect(rollup['sent'], 3);
+      expect(rollup['sent'], 2, reason: 'withdrawn pieces never counted in reports');
     });
 
-    test('order and settlement PDFs show RETIRADAS ANTES DO ACERTO only when present', () async {
+    test('order and settlement PDFs never show withdrawn pieces', () async {
       final b = _line('B', 2, withdrawn: 1, variation: {'size': '20', 'color': 'Rubelita', 'extra': ''});
       final issued = ConsignmentDoc.fromMap('c1', _docMap('ISSUED', [_line('A', 1), b], withdrawals: [_withdrawal(b, 1)]));
       final order = ConsignmentPdfText.parse(await ConsignmentReportPdfBuilder.buildOrderPdf(
-        store: _store, doc: issued, lines: ConsignmentReportAggregator.linesOf(issued),
+        store: _store, doc: issued, lines: ConsignmentReportAggregator.consignedLinesOf(issued),
       ));
-      expect(order.count('RETIRADAS ANTES DO ACERTO'), 1);
-      expect(order.text, contains('TOTAL RETIRADO: 1 peça'));
-      expect(order.text, contains('COM A REVENDEDORA: 2 peças'));
-      expect(order.text, contains('TOTAL DE PEÇAS: 2'), reason: 'withdrawn pieces leave the consigned total');
-      expect(order.text, contains('Peças enviadas: 3 · retiradas antes do acerto: 1'));
-      expect(order.text, contains('Tamanho: 20'));
+      expect(order.text, isNot(contains('RETIRAD')));
+      expect(order.text, isNot(contains('COM A REVENDEDORA')));
+      expect(order.text, contains('TOTAL DE PEÇAS: 2'));
+      expect(order.text, contains('VALOR TOTAL CONSIGNADO: R\$ 200,00'));
+      expect(order.count('Tamanho: 20'), 1);
 
       final settledB = _line('B', 2, withdrawn: 1, returned: 1);
       final settled = ConsignmentDoc.fromMap('c1', _docMap('SETTLED', [_line('A', 1, sold: 1), settledB],
           withdrawals: [_withdrawal(settledB, 1)]));
       final settlement = ConsignmentPdfText.parse(await ConsignmentReportPdfBuilder.buildSettlementPdf(
-        store: _store, doc: settled, lines: ConsignmentReportAggregator.linesOf(settled),
+        store: _store, doc: settled, lines: ConsignmentReportAggregator.consignedLinesOf(settled),
       ));
-      expect(settlement.count('RETIRADAS ANTES DO ACERTO'), 1);
-      expect(settlement.text, contains('retiradas antes do acerto: 1'));
+      expect(settlement.text, isNot(contains('RETIRAD')));
+      expect(settlement.text, contains('Peças enviadas: 2'));
       expect(settlement.text, contains('Peças pendentes: 0'));
-
-      final plain = ConsignmentDoc.fromMap('c2', _docMap('ISSUED', [_line('A', 1)]));
-      final plainPdf = ConsignmentPdfText.parse(await ConsignmentReportPdfBuilder.buildOrderPdf(
-        store: _store, doc: plain, lines: ConsignmentReportAggregator.linesOf(plain),
-      ));
-      expect(plainPdf.text, isNot(contains('RETIRADAS')));
     });
   });
 

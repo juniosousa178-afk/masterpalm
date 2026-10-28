@@ -122,10 +122,11 @@ void main() {
       ];
       final doc = ConsignmentDoc.fromMap('c150', _docMap('c150', 'SETTLED', lines, withdrawals: withdrawals));
       final pdf = ConsignmentPdfText.parse(await ConsignmentReportPdfBuilder.buildSettlementPdf(
-        store: _store, doc: doc, lines: ConsignmentReportAggregator.linesOf(doc),
+        store: _store, doc: doc, lines: ConsignmentReportAggregator.consignedLinesOf(doc),
       ));
       _expectAllProducts(pdf.text);
-      expect(pdf.text, contains('retiradas antes do acerto: 50'));
+      expect(pdf.text.toLowerCase(), isNot(contains('retirad')));
+      expect(pdf.text, contains('Peças enviadas: 250'));
       expect(pdf.text, contains('Peças pendentes: 0'));
       expect(pdf.pageCount, greaterThan(1));
     });

@@ -160,7 +160,7 @@ void _expectCombinedPdf(ConsignmentPdfText pdf, List<ConsignmentDoc> docs, {requ
   }
   expect(pdf.count('Anel Compartilhado'), n, reason: 'same product kept in each consignment');
   expect(pdf.count('CONSIGNAÇÕES SELECIONADAS: $n'), 1);
-  expect(pdf.count('TOTAL DE PEÇAS: ${summary.piecesConsigned}'), greaterThanOrEqualTo(1));
+  expect(pdf.count('TOTAL DE PEÇAS: ${summary.piecesSent}'), greaterThanOrEqualTo(1));
   expect(pdf.text, contains('VALOR TOTAL CONSIGNADO: ${_brl(summary.consignedValue)}'));
   expect(pdf.text, contains('Total de peças enviadas: ${summary.piecesSent}'));
   expect(pdf.text, contains('Valor total consignado: ${_brl(summary.consignedValue)}'));
