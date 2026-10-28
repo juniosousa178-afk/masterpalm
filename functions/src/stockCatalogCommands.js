@@ -36,6 +36,7 @@ import {
   assertRemovalsMatchPayload,
   preserveVariationCosts,
 } from './variationCostGuard.js';
+import {SHADOW_KIND, buildSaleCostShadowReport, emitSaleCostShadow} from './saleCostShadow.js';
 
 const MAX_PRODUCTS = 25;
 const ordered = value => Array.isArray(value) ? value.map(ordered) : isMap(value)
@@ -209,11 +210,18 @@ export async function executeStockCommand(db, raw, auth) {
   if (isMap(raw) && raw.kind === BULK_PIX_KIND) {
     return runStockTransaction(db, tx => executeBulkRemovePixDiscountInTransaction(tx, db, raw, auth));
   }
-  return runStockTransaction(db, tx => executeStockCommandInTransaction(tx, db, raw, auth));
+  // Only the attempt that commits leaves its report; it is logged after the commit.
+  let shadow = null;
+  const result = await runStockTransaction(db, tx => {
+    shadow = null;
+    return executeStockCommandInTransaction(tx, db, raw, auth, 0, {onSaleCostShadow: report => { shadow = report; }});
+  });
+  if (shadow) emitSaleCostShadow(shadow);
+  return result;
 }
 
 /** Trusted callers may join order/marker writes after this method; all their reads must precede it. */
-export async function executeStockCommandInTransaction(tx, db, raw, auth, reservedWrites = 0) {
+export async function executeStockCommandInTransaction(tx, db, raw, auth, reservedWrites = 0, {onSaleCostShadow = null} = {}) {
   if (!Number.isInteger(reservedWrites) || reservedWrites < 0 || reservedWrites > 100) throw stockError('internal', 'Invalid transaction reservation');
   requireAuthenticated(auth);
   const command = parseCommand(raw), base = storeRef(db, command.lojaId);
@@ -334,6 +342,9 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
     }
     const records = new Map(), targetIds = new Set(items.map(i => i.productId));
     const softSale = command.kind === 'sale' || command.kind === 'restock' || isSaleEdit;
+    // Sale cost shadow: raw product documents already read below; never an extra read.
+    const shadowProducts = typeof onSaleCostShadow === 'function' && (command.atomicPdvSale || isSaleEdit)
+      ? new Map() : null;
     const newDefinition = ['create','replace'].includes(command.kind) ? normalizeStock({
       variacoes: null, estoquePorTamanho: {}, estoquePorCor: {}, tamanhos: [], cores: [],
       itensCombo: [], comboConfig: null, ...command.definition,
@@ -348,6 +359,7 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
         stockRef, draftRef, base.collection('stock_catalog_dependencies').doc(id),
         base.collection('exclusao_produto').doc(id),
       );
+      if (shadowProducts) shadowProducts.set(id, stock.exists ? stock.data() : null);
       const creating = command.kind === 'create' && targetIds.has(id);
       if (legacyCompat) {
         // NO_CONTROL: estoque_produtos required; draft/dependency optional.
@@ -802,6 +814,24 @@ export async function executeStockCommandInTransaction(tx, db, raw, auth, reserv
       throw stockError('resource-exhausted', 'Stock transaction write budget exceeded');
     }
     for (const write of writes) write();
+    if (shadowProducts) {
+      try {
+        const stored = isSaleEdit ? saleEditPlan.stored : null;
+        onSaleCostShadow(buildSaleCostShadowReport({
+          shadowKind: isSaleEdit ? SHADOW_KIND.SALE_EDIT : SHADOW_KIND.PDV_SALE,
+          commandKind: command.kind,
+          lojaId: command.lojaId,
+          operationId: command.operationId,
+          saleId: isSaleEdit ? command.saleEdit.saleId : command.operationId,
+          clientBuild: command.clientBuild ?? null,
+          lines: isSaleEdit ? command.saleEdit.sale.itens : command.atomicSale.itens,
+          products: shadowProducts,
+          consignmentOrigin: stored?.origemVenda === 'consignment' || stored?.saleOrigin === 'consignment',
+        }));
+      } catch (_) {
+        // Shadow audit must never change the sale or the transaction.
+      }
+    }
     const result = {alreadyApplied: false, operationId: command.operationId, products};
     if (isSaleEdit) {
       result.saleId = command.saleEdit.saleId;
