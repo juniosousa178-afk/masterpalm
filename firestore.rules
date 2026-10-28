@@ -1655,7 +1655,27 @@ service cloud.firestore {
     // app_config: site_config (publico); master_config e writes apenas programador/root (admin sem acesso)
     match /app_config/{doc} {
       allow read: if doc == 'site_config' || isProgramadorOrRoot();
-      allow write: if isProgramadorOrRoot();
+      allow create, update: if isProgramadorOrRoot()
+        && (doc != 'master_config' || isValidMasterConfigData(request.resource.data));
+      allow delete: if isProgramadorOrRoot();
+    }
+
+    // Campos de lib/models/master_config.dart (MasterConfig.allowedFields). Recusa masterPassword,
+    // credenciais Mercado Pago legadas e qualquer campo novo não declarado.
+    function isValidMasterConfigData(data) {
+      return data.keys().hasOnly([
+          'requirePlanForNewUsers',
+          'usersWithUnlimitedAccess',
+          'globalSettings',
+          'lastUpdated',
+          'updatedBy'
+        ])
+        && data.get('globalSettings', {}) is map
+        && !data.get('globalSettings', {}).keys().hasAny([
+          'masterPassword',
+          'mercadoPagoAccessToken',
+          'mercadoPagoPublicKey'
+        ]);
     }
 
     // checkout_planos: update/delete apenas programador/root (config geral)

@@ -46,6 +46,23 @@ const EMAIL = {
 const VERIFIED = new Set([U.root, U.formerRootGmail, U.fakeRootVerified]);
 const emailOf = (uid) => EMAIL[uid] ?? `${uid}@example.test`;
 
+// Payload de MasterConfigService.saveMasterConfig no cliente 1.0.157 (buildWritePayload, set merge).
+const masterConfigSave = (extra = {}) => ({
+  requirePlanForNewUsers: true,
+  usersWithUnlimitedAccess: ["cliente@example.test"],
+  globalSettings: {
+    maintenanceMode: false,
+    maintenanceMessage: "Em manutenção. Volte em breve.",
+    supportPhone: "",
+    feature_cupons: true,
+    auditLog: [{ timestamp: "2026-10-28T10:00:00.000", action: "Configuração alterada", user: "masterpalm26@gmail.com", details: "x" }],
+  },
+  lastUpdated: "2026-10-28T10:00:00.000",
+  updatedBy: "masterpalm26@gmail.com",
+  ...extra,
+});
+const LEGACY_MASTER_CONFIG_FIELDS = ["masterPassword", "mercadoPagoAccessToken", "mercadoPagoPublicKey"];
+
 const results = [];
 let failed = 0;
 function record(name, actual, expected) {
@@ -113,7 +130,7 @@ async function seed() {
     await db.collection("lojas").doc(O).set({ nome: "Loja sem dono" });
     await db.collection("users").doc(U.legacyO).set({ uid: U.legacyO, role: "admin", store_id: O });
     await db.collection("lojas").doc(O).collection("estoque_vendas").doc("venda_o").set({ total: 1, stockOperationId: "venda_o" });
-    await db.collection("app_config").doc("master_config").set({ x: 1 });
+    await db.collection("app_config").doc("master_config").set(masterConfigSave());
     // Evidências de baixa canónica por faixa de versão.
     await db.collection("lojas").doc(A).collection("stock_catalog_operations").doc("venda_op_server").set({ state: "APPLIED" });
     await db.collection("lojas").doc(A).collection("estoque_baixa_pagamento").doc("venda_marker_tx").set({ baixaAplicada: true });
@@ -364,7 +381,7 @@ async function main() {
         listUsuarios: () => root.collection("usuarios").get(),
         readMasterConfig: () => root.collection("app_config").doc("master_config").get(),
         listAppConfig: () => root.collection("app_config").get(),
-        writeMasterConfig: () => root.collection("app_config").doc("master_config").set({ x: 2 }),
+        writeMasterConfig: () => root.collection("app_config").doc("master_config").set(masterConfigSave(), { merge: true }),
         selfRoleProgramador: () => root.collection("users").doc(U.root).set({ role: "programador", is_root: true }, { merge: true }),
       }, "ALLOWED");
     }
@@ -377,7 +394,7 @@ async function main() {
         updateLojaB: () => loja(ur, B).update({ suporte: true }),
         readUserB: () => ur.collection("users").doc(U.ownerB).get(),
         listUsuarios: () => ur.collection("usuarios").get(),
-        writeMasterConfig: () => ur.collection("app_config").doc("master_config").set({ x: 3 }),
+        writeMasterConfig: () => ur.collection("app_config").doc("master_config").set(masterConfigSave(), { merge: true }),
       }, "DENIED");
     }
 
@@ -399,6 +416,83 @@ async function main() {
         unverifiedRootList: () => ur.collection("app_config").get(),
         unverifiedRootDelete: () => ur.collection("app_config").doc("master_config").delete(),
       }, "DENIED");
+
+      // Payload legítimo do cliente atual: a recusa vem da falta de autoridade, não da allowlist.
+      const evilProg = dbAs(U.evilProg);
+      const memberAdminA = dbAs(U.memberAdminA);
+      const sellerA = dbAs(U.sellerA);
+      const mc = (db) => db.collection("app_config").doc("master_config");
+      await matrix("MASTER_CONFIG.non_root_current_payload", {
+        normalUserSave: () => mc(evil).set(masterConfigSave(), { merge: true }),
+        storeOwnerSave: () => mc(ownerA).set(masterConfigSave(), { merge: true }),
+        storeMemberAdminSave: () => mc(memberAdminA).set(masterConfigSave(), { merge: true }),
+        sellerSave: () => mc(sellerA).set(masterConfigSave(), { merge: true }),
+        programadorFlagSave: () => mc(evilProg).set(masterConfigSave(), { merge: true }),
+        programadorFlagUpdate: () => mc(evilProg).update({ "globalSettings.maintenanceMode": true }),
+        unverifiedCanonicalEmailSave: () => mc(ur).set(masterConfigSave(), { merge: true }),
+        unverifiedCanonicalEmailUpdate: () => mc(ur).update({ updatedBy: "masterpalm26@gmail.com" }),
+      }, "DENIED");
+    }
+
+    // app_config/master_config: allowlist explícita (hasOnly) para o root canônico verificado.
+    {
+      const root = dbAs(U.root);
+      const mc = root.collection("app_config").doc("master_config");
+      const reset = (data) => env.withSecurityRulesDisabled((ctx) => {
+        const ref = ctx.firestore().collection("app_config").doc("master_config");
+        return data ? ref.set(data) : ref.delete();
+      });
+
+      await reset(masterConfigSave());
+      await matrix("MASTER_CONFIG.root_current_client_writes", {
+        saveMasterConfigMerge: () => mc.set(masterConfigSave({ lastUpdated: "2026-10-28T11:00:00.000" }), { merge: true }),
+        setMaintenanceMode: () => mc.set(masterConfigSave({ globalSettings: { ...masterConfigSave().globalSettings, maintenanceMode: true } }), { merge: true }),
+        grantUnlimitedAccess: () => mc.set(masterConfigSave({ usersWithUnlimitedAccess: ["cliente@example.test", "nova@example.test"] }), { merge: true }),
+        partialMergeUpdatedByOnly: () => mc.set({ updatedBy: "masterpalm26@gmail.com" }, { merge: true }),
+        partialUpdateNestedSetting: () => mc.update({ "globalSettings.supportPhone": "11999990000" }),
+        partialUpdateTopLevel: () => mc.update({ requirePlanForNewUsers: false }),
+        readBack: () => mc.get(),
+      }, "ALLOWED");
+
+      await reset(null);
+      await matrix("MASTER_CONFIG.root_create", {
+        createWithMasterPassword: () => mc.set(masterConfigSave({ masterPassword: "x" })),
+        createWithMercadoPagoAccessToken: () => mc.set(masterConfigSave({ mercadoPagoAccessToken: "x" })),
+        createWithMercadoPagoPublicKey: () => mc.set(masterConfigSave({ mercadoPagoPublicKey: "x" })),
+        createWithUnknownField: () => mc.set(masterConfigSave({ totallyUnknownFutureField: 1 })),
+      }, "DENIED");
+      await matrix("MASTER_CONFIG.root_create_current_payload", {
+        createCurrentPayload: () => mc.set(masterConfigSave()),
+      }, "ALLOWED");
+
+      const denied = {};
+      for (const f of LEGACY_MASTER_CONFIG_FIELDS) {
+        denied[`update_add_${f}`] = () => mc.update({ [f]: "x" });
+        denied[`merge_add_${f}`] = () => mc.set({ [f]: "x" }, { merge: true });
+        denied[`save_legit_plus_${f}`] = () => mc.set(masterConfigSave({ [f]: "x" }), { merge: true });
+        denied[`set_replace_with_${f}`] = () => mc.set(masterConfigSave({ [f]: "x" }));
+        denied[`nested_globalSettings_${f}`] = () => mc.update({ [`globalSettings.${f}`]: "x" });
+      }
+      denied.update_unknown_field = () => mc.update({ totallyUnknownFutureField: 1 });
+      denied.merge_unknown_field = () => mc.set({ totallyUnknownFutureField: 1 }, { merge: true });
+      denied.save_legit_plus_unknown = () => mc.set(masterConfigSave({ totallyUnknownFutureField: 1 }), { merge: true });
+      denied.globalSettings_not_map = () => mc.update({ globalSettings: "x" });
+      await matrix("MASTER_CONFIG.root_deprecated_and_unknown_fields", denied, "DENIED");
+
+      // Documento legado ainda com masterPassword: o save do cliente atual (merge) é recusado até à limpeza.
+      await reset({ ...masterConfigSave(), masterPassword: "legacy" });
+      await matrix("MASTER_CONFIG.root_legacy_doc_blocks_merge", {
+        saveMergeOnLegacyDoc: () => mc.set(masterConfigSave(), { merge: true }),
+      }, "DENIED");
+      await reset(masterConfigSave());
+
+      // Outros documentos de app_config mantêm a regra anterior (sem allowlist).
+      await matrix("APP_CONFIG.other_docs_unchanged", {
+        rootWriteSiteConfig: () => root.collection("app_config").doc("site_config").set({ anyField: 1 }, { merge: true }),
+        rootWriteOtherDoc: () => root.collection("app_config").doc("outra_config").set({ x: 1 }),
+        rootDeleteOtherDoc: () => root.collection("app_config").doc("outra_config").delete(),
+        anonReadSiteConfig: () => env.unauthenticatedContext().firestore().collection("app_config").doc("site_config").get(),
+      }, "ALLOWED");
     }
 
     // Ex-root (masterpalm@gmail.com, admin@masterpalm.com) não têm autoridade de plataforma.
@@ -410,7 +504,7 @@ async function main() {
         readUserB: () => fr.collection("users").doc(U.ownerB).get(),
         listUsuarios: () => fr.collection("usuarios").get(),
         readMasterConfig: () => fr.collection("app_config").doc("master_config").get(),
-        writeMasterConfig: () => fr.collection("app_config").doc("master_config").set({ x: 4 }),
+        writeMasterConfig: () => fr.collection("app_config").doc("master_config").set(masterConfigSave(), { merge: true }),
         selfRoleProgramador: () => fr.collection("users").doc(actor).set({ role: "programador", is_root: true }, { merge: true }),
       }, "DENIED");
     }
