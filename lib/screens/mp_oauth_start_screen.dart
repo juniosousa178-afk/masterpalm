@@ -1,9 +1,24 @@
+import 'dart:async';
+
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../config/app_urls.dart';
 import '../services/pagamentos_service.dart';
+import '../web/browser_url_history.dart';
+import '../web/platform_stub.dart'
+    if (dart.library.html) '../web/platform_web.dart' as plat;
+
+const String kMpOAuthStartPath = '/mp-oauth-start';
+
+const String kMpOAuthStartUnavailableMessage =
+    'Não foi possível iniciar a conexão com o Mercado Pago.\n'
+    'Volte e tente novamente.';
+
+/// `main` encaminha esta URL antes do bootstrap do app administrativo.
+bool isMpOAuthStartWebPath(Uri uri) => uri.path == kMpOAuthStartPath;
 
 /// Espera a sessão Firebase restaurada no browser (web) antes de decidir se pede login.
 Future<User?> mpOAuthRestoredUser() async {
@@ -134,6 +149,11 @@ Future<bool> _defaultLaunchAuthUrl(Uri url) =>
 
 Future<void> _defaultSignOut() => FirebaseAuth.instance.signOut();
 
+void _defaultBack() {
+  unawaited(launchUrl(Uri.parse('${AppUrls.appWebBase}/'),
+      webOnlyWindowName: '_self'));
+}
+
 /// `/mp-oauth-start?lojaId=…` — exige login e pede ao servidor a URL de autorização do MP.
 /// O lojaId da URL é só o pedido: o servidor valida se o utilizador administra a loja
 /// e devolve uma URL com state opaco, que o cliente não lê nem altera.
@@ -141,17 +161,28 @@ class MpOAuthStartScreen extends StatefulWidget {
   const MpOAuthStartScreen({
     super.key,
     required this.uri,
+    this.initFirebase,
     this.hasRealSession = _defaultHasRealSession,
     this.createAuthUrl = PagamentosService.criarAutorizacaoOAuth,
     this.launchAuthUrl = _defaultLaunchAuthUrl,
     this.signOut = _defaultSignOut,
+    this.onBack = _defaultBack,
+    this.stepTimeout = const Duration(seconds: 20),
   });
 
+  /// URL aberta no browser: o Navigator anuncia-a como rota para o refresh não cair em `/`.
   final Uri uri;
+
+  /// Inicialização mínima do Firebase quando a página abre sem o bootstrap do app.
+  final Future<bool> Function()? initFirebase;
   final Future<bool> Function() hasRealSession;
   final Future<String> Function(String lojaId) createAuthUrl;
   final Future<bool> Function(Uri url) launchAuthUrl;
   final Future<void> Function() signOut;
+  final VoidCallback onBack;
+
+  /// Limite de cada etapa (Firebase, sessão, pedido do state) antes de mostrar o erro.
+  final Duration stepTimeout;
 
   @override
   State<MpOAuthStartScreen> createState() => _MpOAuthStartScreenState();
@@ -169,6 +200,9 @@ class _MpOAuthStartScreenState extends State<MpOAuthStartScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      plat.Web.notifyCatalogHtmlLoaderReady('mp_oauth_start');
+    });
     _boot();
   }
 
@@ -181,7 +215,18 @@ class _MpOAuthStartScreenState extends State<MpOAuthStartScreen> {
       });
       return;
     }
-    final hasSession = await widget.hasRealSession();
+    final bool hasSession;
+    try {
+      final init = widget.initFirebase;
+      if (init != null && !await init().timeout(widget.stepTimeout)) {
+        _falhar(kMpOAuthStartUnavailableMessage);
+        return;
+      }
+      hasSession = await widget.hasRealSession().timeout(widget.stepTimeout);
+    } catch (_) {
+      _falhar(kMpOAuthStartUnavailableMessage);
+      return;
+    }
     if (!mounted) return;
     if (!hasSession) {
       setState(() {
@@ -203,7 +248,8 @@ class _MpOAuthStartScreenState extends State<MpOAuthStartScreen> {
       _erro = null;
     });
     try {
-      final authUrl = await widget.createAuthUrl(_lojaId);
+      final authUrl =
+          await widget.createAuthUrl(_lojaId).timeout(widget.stepTimeout);
       final launched = await widget.launchAuthUrl(Uri.parse(authUrl));
       if (!launched) {
         _falhar('Não foi possível abrir o Mercado Pago. Tente novamente.');
@@ -225,6 +271,8 @@ class _MpOAuthStartScreenState extends State<MpOAuthStartScreen> {
         return;
       }
       _falhar(_mensagemErroInicio(e.code, e.message));
+    } on TimeoutException {
+      _falhar(kMpOAuthStartUnavailableMessage);
     } catch (_) {
       _falhar('Não foi possível iniciar a conexão. Tente novamente.');
     }
@@ -314,11 +362,13 @@ class _MpOAuthStartScreenState extends State<MpOAuthStartScreen> {
             OutlinedButton(
                 onPressed: _trocarConta,
                 child: const Text('Entrar com outra conta')),
+          const SizedBox(height: 8),
+          TextButton(onPressed: widget.onBack, child: const Text('Voltar')),
         ],
       );
     }
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
+    final routeName = browserRouteNameFor(widget.uri);
+    return BrowserUrlHome(
       home: Scaffold(
         body: SafeArea(
           child: Center(
@@ -326,6 +376,12 @@ class _MpOAuthStartScreenState extends State<MpOAuthStartScreen> {
                 padding: const EdgeInsets.all(24), child: body),
           ),
         ),
+      ),
+      child: MaterialApp(
+        debugShowCheckedModeBanner: false,
+        initialRoute: routeName,
+        onGenerateInitialRoutes: (name) => [browserUrlHomeRoute(name)],
+        onGenerateRoute: (s) => browserUrlHomeRoute(s.name ?? routeName),
       ),
     );
   }

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
@@ -19,20 +20,29 @@ Uri _startUri([String? lojaId = _lojaA]) => Uri.parse(
 class _StartHarness {
   _StartHarness({
     this.session = true,
+    Future<bool> Function()? hasRealSession,
     Future<String> Function(String lojaId)? createAuthUrl,
     this.launchResult = true,
-  }) : createAuthUrlImpl = createAuthUrl ?? ((_) async => _authUrl);
+    this.initFirebase,
+    this.stepTimeout = const Duration(seconds: 20),
+  })  : createAuthUrlImpl = createAuthUrl ?? ((_) async => _authUrl),
+        hasRealSessionImpl = hasRealSession;
 
   final bool session;
+  final Future<bool> Function()? hasRealSessionImpl;
   final Future<String> Function(String lojaId) createAuthUrlImpl;
   final bool launchResult;
+  final Future<bool> Function()? initFirebase;
+  final Duration stepTimeout;
   final createCalls = <String>[];
   final launched = <Uri>[];
   int signOuts = 0;
+  int backs = 0;
 
   MpOAuthStartScreen screen(Uri uri) => MpOAuthStartScreen(
         uri: uri,
-        hasRealSession: () async => session,
+        initFirebase: initFirebase,
+        hasRealSession: hasRealSessionImpl ?? () async => session,
         createAuthUrl: (lojaId) {
           createCalls.add(lojaId);
           return createAuthUrlImpl(lojaId);
@@ -42,6 +52,8 @@ class _StartHarness {
           return launchResult;
         },
         signOut: () async => signOuts++,
+        onBack: () => backs++,
+        stepTimeout: stepTimeout,
       );
 }
 
@@ -457,6 +469,213 @@ void main() {
           PagamentosService.abrirConexaoOAuth(_lojaA), throwsStateError);
       expect(await PagamentosService.abrirConexaoOAuth(_lojaA), isTrue);
       expect(calls, 2);
+    });
+  });
+
+  group('reconexão: URL preservada e sem splash infinito', () {
+    const nathy = 'nathy-pratas-e-folheados';
+    final nathyUri = _startUri(nathy);
+    const nathyRoute = '/mp-oauth-start?lojaId=$nathy';
+
+    String? routeNameOf(WidgetTester tester) =>
+        ModalRoute.of(tester.element(find.byType(Scaffold).first))
+            ?.settings
+            .name;
+
+    testWidgets('A. já logado: rota OAuth preservada e handler executado',
+        (tester) async {
+      final h = _StartHarness();
+      await tester.pumpWidget(h.screen(nathyUri));
+      await tester.pumpAndSettle();
+
+      expect(routeNameOf(tester), nathyRoute);
+      expect(h.createCalls, [nathy]);
+      expect(h.launched, [Uri.parse(_authUrl)]);
+    });
+
+    testWidgets('B. auth ainda a inicializar: URL preservada até resolver',
+        (tester) async {
+      final auth = Completer<bool>();
+      final h = _StartHarness(hasRealSession: () => auth.future);
+      await tester.pumpWidget(h.screen(nathyUri));
+      await tester.pump();
+
+      expect(routeNameOf(tester), nathyRoute);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(h.createCalls, isEmpty);
+
+      auth.complete(true);
+      await tester.pumpAndSettle();
+      expect(routeNameOf(tester), nathyRoute);
+      expect(h.createCalls, [nathy]);
+      expect(h.launched, hasLength(1));
+    });
+
+    testWidgets('C. sem login: pede login e mantém o destino OAuth',
+        (tester) async {
+      final h = _StartHarness(session: false);
+      await tester.pumpWidget(h.screen(nathyUri));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(MpOAuthSignInPanel), findsOneWidget);
+      expect(routeNameOf(tester), nathyRoute);
+      expect(h.createCalls, isEmpty);
+    });
+
+    testWidgets('D. após login: inicia OAuth uma vez com o mesmo lojaId',
+        (tester) async {
+      final h = _StartHarness(session: false);
+      await tester.pumpWidget(h.screen(nathyUri));
+      await tester.pumpAndSettle();
+
+      final panel =
+          tester.widget<MpOAuthSignInPanel>(find.byType(MpOAuthSignInPanel));
+      panel.onSignedIn();
+      panel.onSignedIn();
+      await tester.pumpAndSettle();
+
+      expect(h.createCalls, [nathy]);
+      expect(h.launched, [Uri.parse(_authUrl)]);
+      expect(routeNameOf(tester), nathyRoute);
+    });
+
+    testWidgets('E. loja não autorizada: DENY sem redirect', (tester) async {
+      final h = _StartHarness(
+          createAuthUrl: (_) async => throw _fnError('permission-denied'));
+      await tester.pumpWidget(h.screen(nathyUri));
+      await tester.pumpAndSettle();
+
+      expect(h.createCalls, [nathy]);
+      expect(h.launched, isEmpty);
+      expect(find.textContaining('não administra a loja "$nathy"'),
+          findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+    });
+
+    testWidgets('F. sem lojaId: erro claro com Voltar, sem loop',
+        (tester) async {
+      final h = _StartHarness();
+      await tester.pumpWidget(h.screen(_startUri(null)));
+      await tester.pumpAndSettle();
+
+      expect(h.createCalls, isEmpty);
+      expect(find.textContaining('Loja não informada'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      await tester.tap(find.text('Voltar'));
+      expect(h.backs, 1);
+    });
+
+    test('G. só o path exato /mp-oauth-start desvia o boot', () {
+      expect(isMpOAuthStartWebPath(Uri.parse('https://app.mastepalm.com.br/')),
+          isFalse);
+      expect(isMpOAuthStartWebPath(Uri.parse('https://app.mastepalm.com.br')),
+          isFalse);
+      expect(isMpOAuthStartWebPath(nathyUri), isTrue);
+      expect(
+          isMpOAuthStartWebPath(
+              Uri.parse('https://app.mastepalm.com.br/mp-oauth-start')),
+          isTrue);
+      for (final other in [
+        '/mp-oauth-callback?code=x&state=y',
+        '/mp-oauth',
+        '/mp-oauth-start/extra',
+        '/loja/$nathy',
+        '/estoque',
+      ]) {
+        expect(
+            isMpOAuthStartWebPath(
+                Uri.parse('https://app.mastepalm.com.br$other')),
+            isFalse,
+            reason: other);
+      }
+    });
+
+    testWidgets('servidor sem resposta: erro amigável com Voltar',
+        (tester) async {
+      final h = _StartHarness(
+        createAuthUrl: (_) => Completer<String>().future,
+        stepTimeout: const Duration(seconds: 3),
+      );
+      await tester.pumpWidget(h.screen(nathyUri));
+      await tester.pump();
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+      expect(find.text(kMpOAuthStartUnavailableMessage), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(h.launched, isEmpty);
+      await tester.tap(find.text('Voltar'));
+      expect(h.backs, 1);
+    });
+
+    for (final c in <String, Future<bool> Function()>{
+      'Firebase falhou': () async => false,
+      'Firebase lançou': () async => throw StateError('init'),
+      'Firebase não responde': () => Completer<bool>().future,
+    }.entries) {
+      testWidgets('${c.key}: erro amigável, sem chamar o servidor',
+          (tester) async {
+        final h = _StartHarness(
+          initFirebase: c.value,
+          stepTimeout: const Duration(seconds: 3),
+        );
+        await tester.pumpWidget(h.screen(nathyUri));
+        await tester.pump(const Duration(seconds: 3));
+        await tester.pumpAndSettle();
+
+        expect(find.text(kMpOAuthStartUnavailableMessage), findsOneWidget);
+        expect(h.createCalls, isEmpty);
+        expect(find.text('Voltar'), findsOneWidget);
+      });
+    }
+
+    testWidgets('sessão não restaura: erro amigável, sem chamar o servidor',
+        (tester) async {
+      final h = _StartHarness(
+        hasRealSession: () => Completer<bool>().future,
+        stepTimeout: const Duration(seconds: 3),
+      );
+      await tester.pumpWidget(h.screen(nathyUri));
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+
+      expect(find.text(kMpOAuthStartUnavailableMessage), findsOneWidget);
+      expect(h.createCalls, isEmpty);
+    });
+
+    testWidgets('Firebase inicializa antes de verificar a sessão',
+        (tester) async {
+      final order = <String>[];
+      final h = _StartHarness(
+        initFirebase: () async {
+          order.add('firebase');
+          return true;
+        },
+        hasRealSession: () async {
+          order.add('session');
+          return true;
+        },
+      );
+      await tester.pumpWidget(h.screen(nathyUri));
+      await tester.pumpAndSettle();
+
+      expect(order, ['firebase', 'session']);
+      expect(h.createCalls, [nathy]);
+    });
+
+    test('main roteia /mp-oauth-start antes do bootstrap do admin', () {
+      final src = File('lib/main.dart').readAsStringSync();
+      final early = src.indexOf('isMpOAuthStartWebPath(initialUri)');
+      final bootApp = src.indexOf("CAT_START.runApp.boot_app'");
+      final bootstrap = src.indexOf('await _bootstrapSafe();');
+      expect(early, greaterThan(0));
+      expect(bootApp, greaterThan(early));
+      expect(bootstrap, greaterThan(early));
+      expect(src.contains("uri.path == '/mp-oauth-start'"), isFalse);
+      final branch = src.substring(early, src.indexOf('return;', early));
+      expect(branch, contains('uri: initialUri'));
+      expect(branch, contains('initFirebase: ensureFirebaseInitializedOnce'));
     });
   });
 

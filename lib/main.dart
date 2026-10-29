@@ -3139,6 +3139,17 @@ Future<void> main() async {
         return;
       }
 
+      // Reconexão Mercado Pago: precede [_BootApp]/[_bootstrapSafe]. Sem sessão, o bootstrap do
+      // admin espera a loja ativa ~15s antes de rotear e a URL caía para `/` (refresh → MyApp).
+      if (isMpOAuthStartWebPath(initialUri)) {
+        CatalogStartupTrace.mark('CAT_START.runApp.mp_oauth_start');
+        runApp(MpOAuthStartScreen(
+          uri: initialUri,
+          initFirebase: ensureFirebaseInitializedOnce,
+        ));
+        return;
+      }
+
       // bootTrace+diag: raiz do **web app** (Safari/Chrome/WebView no iPhone = mesmo Flutter Web;
       // não há APK nativo iOS neste fluxo). Não monta PublicCatalogScreen (ver [WebRootBootTraceApp]).
       if (initialUri.queryParameters['bootTrace'] == '1' &&
@@ -3429,11 +3440,6 @@ Future<void> main() async {
           runApp(MpOAuthCallbackScreen(
             params: takeMpOAuthReturnParams() ?? uri.queryParameters,
           ));
-          return;
-        }
-        if (uri.path == '/mp-oauth-start') {
-          CatalogStartupTrace.mark('CAT_START.runApp.mp_oauth_start');
-          runApp(MpOAuthStartScreen(uri: uri));
           return;
         }
 
