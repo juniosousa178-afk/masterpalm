@@ -2,6 +2,8 @@
 // Stub para plataformas NÃO-Web (e também para o analyzer).
 // NÃO importe dart:html aqui.
 
+import 'dart:async';
+
 // Tipo público para evitar "library_private_types_in_public_api"
 class LocationStub {
   String href = '';
@@ -62,6 +64,13 @@ class Web {
   static void notifyCatalogShellReady() {}
 
   static void notifyCatalogHtmlLoaderReady(String reason) {}
+
+  static Map<String, String>? catalogPreloadedStoreIdentity() => null;
+
+  static StreamSubscription<Object?>? onCatalogStoreIdentity(
+    void Function() callback,
+  ) =>
+      null;
 
   /// Só Web: origem de `main.dart.js` e estado de SW/Cache (netTest / diagnóstico).
   static String? getMainDartJsScriptSrc() => null;

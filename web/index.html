@@ -558,6 +558,52 @@
           return '';
         }
       }
+      // Mesmo id que o fast path Flutter usa para /loja/{id} (lojas/{id}/config/config).
+      function catalogStoreIdFromLojaPath() {
+        var p = location.pathname || '';
+        if (p.indexOf('/loja/') !== 0) return '';
+        var id = p.substring('/loja/'.length).split('/')[0].trim();
+        if (!/^[A-Za-z0-9_-]{3,128}$/.test(id)) return '';
+        if (id.toLowerCase() === 'minha-loja') return '';
+        return id;
+      }
+      // Mesma ordem de catalogHeaderStoreNameFromCfg; fallback do header quando vazio.
+      function storeNameFromConfigFields(fields) {
+        var keys = ['nome', 'nomeLoja', 'nome_loja', 'name'];
+        for (var i = 0; i < keys.length; i++) {
+          var f = fields ? fields[keys[i]] : null;
+          var s = f && typeof f.stringValue === 'string' ? f.stringValue.trim() : '';
+          if (!s) continue;
+          if (s.toLowerCase().replace(/\s+/g, ' ') === 'minha loja') continue;
+          return s;
+        }
+        return 'Minha Loja';
+      }
+      // "Nome da loja" (Identidade & Contato) publicado em config/config: uma leitura com máscara,
+      // em paralelo com o download do Flutter. Sem resposta, o loader continua neutro.
+      function preloadCatalogStoreName(logoEl) {
+        var storeId = catalogStoreIdFromLojaPath();
+        if (!storeId || !window.fetch) return;
+        var url = 'https://firestore.googleapis.com/v1/projects/masterpalm-58c46/databases/(default)/documents/lojas/' +
+          storeId + '/config/config' +
+          '?mask.fieldPaths=nome&mask.fieldPaths=nomeLoja&mask.fieldPaths=nome_loja&mask.fieldPaths=name';
+        var ctrl = window.AbortController ? new AbortController() : null;
+        if (ctrl) setTimeout(function () { ctrl.abort(); }, 8000);
+        fetch(url, ctrl ? { signal: ctrl.signal, credentials: 'omit' } : { credentials: 'omit' })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (doc) {
+            if (!doc || catalogStoreIdFromLojaPath() !== storeId) return;
+            var name = storeNameFromConfigFields(doc.fields);
+            window.__mpCatalogStoreIdentity = { storeId: storeId, name: name };
+            if (!window.__mpCatalogLoaderHidden) {
+              logoEl.textContent = name;
+              logoEl.style.display = '';
+              document.title = 'Catálogo | ' + name;
+            }
+            try { window.dispatchEvent(new Event('mp-catalog-store-identity')); } catch (_) {}
+          })
+          .catch(function () {});
+      }
       function slugToStoreName(slug) {
         if (!slug) return 'Catálogo';
         return slug.split('-').filter(Boolean).map(function (w) {
@@ -684,9 +730,10 @@
           if (isCatalogFirstPaint()) {
             window.__mpCatalogHandoffActive = true;
             window.__mpCatalogHandoffStartMs = Math.round(performance.now());
-            // The URL slug is not the store's commercial name: no name until the catalog config loads.
+            // The URL slug is not the store's commercial name: neutral until the published name arrives.
             logoEl.textContent = '';
             logoEl.style.display = 'none';
+            preloadCatalogStoreName(logoEl);
             if (titleEl) {
               titleEl.style.display = '';
               titleEl.style.marginBottom = '';

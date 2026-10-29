@@ -132,6 +132,25 @@ String? catalogHeaderStoreNameFromCfg(Map<String, dynamic> cfg) {
   return null;
 }
 
+/// Título da aba antes de a config chegar (o mesmo do `MaterialApp` do catálogo Web).
+const String kCatalogDefaultBrowserTitle = 'Catálogo MasterPalm';
+
+String catalogBrowserTitle(String? storeName) {
+  final s = (storeName ?? '').trim();
+  return s.isEmpty ? kCatalogDefaultBrowserTitle : 'Catálogo | $s';
+}
+
+/// Nome que o loader HTML leu de `lojas/{storeId}/config/config`, só se pertencer a [storeId].
+String? catalogPreloadedStoreNameFor(
+  String storeId,
+  Map<String, String>? identity,
+) {
+  if (identity == null || storeId.isEmpty) return null;
+  if (identity['storeId'] != storeId) return null;
+  final name = (identity['name'] ?? '').trim();
+  return name.isEmpty ? null : name;
+}
+
 // ===================================================================
 // CORES
 // ===================================================================

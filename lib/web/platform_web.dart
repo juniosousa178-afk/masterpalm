@@ -136,6 +136,31 @@ class Web {
     } catch (_) {}
   }
 
+  /// `window.__mpCatalogStoreIdentity` gravado por [web/index.html]: `{storeId, name}`.
+  static Map<String, String>? catalogPreloadedStoreIdentity() {
+    try {
+      final identity = js.context['__mpCatalogStoreIdentity'];
+      if (identity is! js.JsObject) return null;
+      final storeId = identity['storeId'];
+      final name = identity['name'];
+      if (storeId is! String || name is! String) return null;
+      return <String, String>{'storeId': storeId, 'name': name};
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static StreamSubscription<Object?>? onCatalogStoreIdentity(
+    void Function() callback,
+  ) {
+    try {
+      return html.window.on['mp-catalog-store-identity']
+          .listen((_) => callback());
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Fade-out do overlay `#initial-loader` quando o catálogo está pronto (handoff HTML→Flutter).
   static void notifyCatalogHtmlLoaderReady(String reason) {
     try {

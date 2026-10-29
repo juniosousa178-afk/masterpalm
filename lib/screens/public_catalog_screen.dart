@@ -710,6 +710,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
   bool _traceEssentialActionsEnabledLogged = false;
   bool _htmlLoaderHandoffDone = false;
   bool _traceShellFirstFrameLogged = false;
+  StreamSubscription<Object?>? _preloadedStoreIdentitySub;
   late final bool _diagCatStartOverlayEnabled =
       kIsWeb && Uri.base.queryParameters['diag'] == '1';
 
@@ -939,6 +940,11 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     });
     _initConnectivity();
     _loadModoEscuro();
+    if (kIsWeb && !widget.preview) {
+      _preloadedStoreIdentitySub = plat.Web.onCatalogStoreIdentity(() {
+        if (mounted && !_traceConfigReadyLogged) setState(() {});
+      });
+    }
   }
 
   /// Visitas, recentes e cliente/favoritos não devem atrasar a 1ª pintura útil.
@@ -1987,6 +1993,7 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
     _currentPageNotifier.dispose();
     _catalogScrollController.dispose();
     _connectivitySubscription?.cancel();
+    _preloadedStoreIdentitySub?.cancel();
     super.dispose();
   }
 
@@ -5042,7 +5049,16 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
                   );
                 }
                 if (kIsWeb) {
+                  String? preloadedStoreName;
+                  if (!widget.preview) {
+                    preloadedStoreName = catalogPreloadedStoreNameFor(
+                      lojaId,
+                      plat.Web.catalogPreloadedStoreIdentity(),
+                    );
+                    plat.Web.setTitle(catalogBrowserTitle(preloadedStoreName));
+                  }
                   return CatalogEarlyShellView(
+                    storeName: preloadedStoreName,
                     themeData: themeForStates,
                     onFirstFrame: _onCatalogEarlyShellFirstFrame,
                   );
@@ -5345,6 +5361,9 @@ class _PublicCatalogScreenState extends State<PublicCatalogScreen> {
               // =================== IDENTIDADE / LINKS ===================
               final lojaNome =
                   catalogHeaderStoreNameFromCfg(cfg) ?? 'Minha Loja';
+              if (kIsWeb && !widget.preview) {
+                plat.Web.setTitle(catalogBrowserTitle(lojaNome));
+              }
               final catalogoEmManutencao = !widget.preview &&
                   safeBool(cfg['catalogoEmManutencao'], false);
               final mensagemManutencaoCatalogo =
