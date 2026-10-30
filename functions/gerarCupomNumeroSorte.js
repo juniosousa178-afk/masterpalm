@@ -1,6 +1,10 @@
 const functions = require('firebase-functions');
+const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 const nodemailer = require('nodemailer');
+
+const SMTP_EMAIL = defineSecret('SMTP_EMAIL');
+const SMTP_PASSWORD = defineSecret('SMTP_PASSWORD');
 
 // Função para gerar código aleatório
 function gerarCodigo(prefixo = 'CUPOM', tamanho = 8) {
@@ -177,6 +181,7 @@ exports.gerarCupomNumeroSorte = functions
  * Cloud Function: Enviar cupom e número por email
  */
 exports.enviarCupomEmail = functions
+  .runWith({ secrets: [SMTP_EMAIL, SMTP_PASSWORD] })
   .region('southamerica-east1')
   .https.onRequest(async (req, res) => {
     res.set('Access-Control-Allow-Origin', '*');
@@ -203,13 +208,17 @@ exports.enviarCupomEmail = functions
         return;
       }
 
-      // Configurar transporte de email (usar Gmail ou outro provedor)
-      // IMPORTANTE: Configure as variáveis de ambiente no Firebase
+      const smtpUser = SMTP_EMAIL.value().trim();
+      const smtpPass = SMTP_PASSWORD.value().trim();
+      if (!smtpUser || !smtpPass) {
+        res.status(503).json({ error: 'Envio de e-mail não configurado' });
+        return;
+      }
       const transporter = nodemailer.createTransporter({
         service: 'gmail',
         auth: {
-          user: functions.config().email?.user || process.env.EMAIL_USER,
-          pass: functions.config().email?.pass || process.env.EMAIL_PASS,
+          user: smtpUser,
+          pass: smtpPass,
         }
       });
 
@@ -267,7 +276,7 @@ exports.enviarCupomEmail = functions
       `;
 
       await transporter.sendMail({
-        from: `"${lojaId}" <${functions.config().email?.user || 'noreply@loja.com'}>`,
+        from: `"${lojaId}" <${smtpUser}>`,
         to: email,
         subject: `🎁 Seu Cupom e Número da Sorte - Pedido Confirmado!`,
         html: htmlEmail,

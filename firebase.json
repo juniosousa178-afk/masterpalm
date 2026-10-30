@@ -4,6 +4,7 @@
       "codebase": "default",
       "source": "functions",
       "runtime": "nodejs22",
+      "disallowLegacyRuntimeConfig": true,
       "ignore": [
         "node_modules",
         ".git",
@@ -19,7 +20,8 @@
     {
       "codebase": "main",
       "source": "main",
-      "runtime": "nodejs22"
+      "runtime": "nodejs22",
+      "disallowLegacyRuntimeConfig": true
     }
   ],
   "hosting": [

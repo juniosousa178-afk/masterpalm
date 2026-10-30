@@ -11,8 +11,8 @@
  */
 
 import { onRequest } from "firebase-functions/v2/https";
+import { defineSecret } from "firebase-functions/params";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
-import * as functions from "firebase-functions";
 import axios from "axios";
 import nodemailer from "nodemailer";
 
@@ -20,6 +20,9 @@ import { resolveLojaAndPayment } from "./mpWebhookHandler.js";
 import { resolveLojaIdByOrderId } from "./orderLojaIndex.js";
 
 const db = getFirestore();
+
+const S_SMTP_EMAIL = defineSecret("SMTP_EMAIL");
+const S_SMTP_PASSWORD = defineSecret("SMTP_PASSWORD");
 
 // ============================================================================
 // WEBHOOK DO MERCADO PAGO
@@ -32,7 +35,7 @@ const db = getFirestore();
  * URL: https://southamerica-east1-YOUR_PROJECT.cloudfunctions.net/mercadopagoWebhook
  * Eventos: payment (pagamento criado/atualizado)
  */
-export const mercadopagoWebhook = onRequest(async (req, res) => {
+export const mercadopagoWebhook = onRequest({ secrets: [S_SMTP_EMAIL, S_SMTP_PASSWORD] }, async (req, res) => {
   try {
     console.log('🔔 Webhook recebido do Mercado Pago:', JSON.stringify(req.body));
 
@@ -598,13 +601,11 @@ async function enviarEmail(email, nome, lojaNome, numeros, campanhas, cupomRolet
 </html>
 `;
 
-    // Buscar credenciais do Firebase Config
-    const config = functions.config();
-    const emailUser = config.email?.user;
-    const emailPass = config.email?.pass;
+    const emailUser = S_SMTP_EMAIL.value().trim();
+    const emailPass = S_SMTP_PASSWORD.value().trim();
 
     if (!emailUser || !emailPass) {
-      console.warn('⚠️ Credenciais de email não configuradas. Use: firebase functions:config:set email.user="seu-email@gmail.com" email.pass="senha-app"');
+      console.warn('⚠️ Credenciais de email não configuradas (secrets SMTP_EMAIL / SMTP_PASSWORD).');
       console.log('📧 Email que seria enviado para:', email);
       return;
     }
