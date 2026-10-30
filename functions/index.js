@@ -101,14 +101,19 @@ import {
  * informado (fail closed); nunca derivado do relógio local.
  */
 const SHIPPING_AUTO_EXPORT_CUTOVER = defineString(SHIPPING_AUTO_EXPORT_CUTOVER_ENV, {
-  description: "Corte UTC da exportação automática de envio (ex.: 2026-11-02T03:00:00Z).",
+  description: "Corte UTC do frete com recibo do servidor e da exportação automática (AAAA-MM-DDTHH:MM:SSZ).",
   input: {
     text: {
       validationRegex: SHIPPING_CUTOVER_UTC_PATTERN,
-      validationErrorMessage: "Use UTC ISO-8601 com sufixo Z (ex.: 2026-11-02T03:00:00Z).",
+      validationErrorMessage: "Use UTC ISO-8601 com sufixo Z (AAAA-MM-DDTHH:MM:SSZ).",
     },
   },
 });
+
+/** Pedidos com `createTime` anterior são legados (pagamento antigo, sem exportação automática). */
+function shippingCutoverMs() {
+  return parseShippingCutoverUtc(SHIPPING_AUTO_EXPORT_CUTOVER.value());
+}
 import { isRootAccountEmail, isPlatformAdminToken } from "./src/rootAccounts.js";
 import {
   MpOAuthError,
@@ -1337,6 +1342,7 @@ function bindShippingPreOrderHandler(handlerName) {
         fetchWithTimeout,
         collectionLojas: COLLECTION_LOJAS,
         request,
+        cutoverMs: shippingCutoverMs(),
       });
       return await handlers[handlerName]();
     } catch (err) {
@@ -1376,6 +1382,7 @@ function bindShippingExportHandler(handlerName) {
         getCallableIdentifier,
         fetchWithTimeout,
         request,
+        cutoverMs: shippingCutoverMs(),
       });
       return await handlers[handlerName]();
     } catch (err) {
@@ -1822,6 +1829,7 @@ export const mpCatalogPayment = onRequest(
         storeId: String(lojaId),
         order: resolvedOrder.order,
         orderCreateTimeMs: resolvedOrder.createTimeMs,
+        cutoverMs: shippingCutoverMs(),
       });
       if (!shippingCheck.ok) {
         emitCatalogPaymentLog({
@@ -4222,8 +4230,12 @@ export const onPrePedidoShippingExport = onDocumentUpdatedWithAuthContext(
         before: before?.exists ? before.data() ?? {} : {},
         after: after.data() ?? {},
         createTimeMs,
-        cutoverMs: parseShippingCutoverUtc(SHIPPING_AUTO_EXPORT_CUTOVER.value()),
+        cutoverMs: shippingCutoverMs(),
         authType: event.authType ?? null,
+        authId: event.authId ?? null,
+        isStoreAdminUid: (storeId, uid) => canManageStoreConfigServerSide({
+          lojaId: storeId, uid, email: "", emailVerified: false,
+        }),
         fetchImpl: fetchWithTimeout,
       });
     } catch (err) {

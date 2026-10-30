@@ -24,11 +24,13 @@ import {
   classifyProviderHttpStatus,
   classifyProviderNetworkError,
   exportShippingOrder,
+  exportSuperFrete,
   handlePrePedidoShippingExportUpdate,
+  authorizeMerchantConfirmation,
   createShippingExportHandlers,
   sanitizeProductName,
 } from "../src/shippingExport.js";
-import { SHIPPING_QUOTE_ERROR } from "../src/shippingQuoteReceipt.js";
+import { SHIPPING_QUOTE_ERROR, SHIPPING_QUOTE_RETENTION_MS } from "../src/shippingQuoteReceipt.js";
 import { makeDb } from "./shippingMemoryDb.js";
 
 const STORE_A = "loja-a";
@@ -115,6 +117,8 @@ function receiptDocs({ storeId = STORE_A, provider = "melhor_envio" } = {}) {
       options: [{ serviceId, serviceName: "SEDEX", carrierName: "Correios", companyId: "1", price: 15, deadlineDays: 3 }],
       quotedAtMs: CREATED_AFTER - 60_000,
       expiresAtMs: CREATED_AFTER + 60 * 60_000,
+      // Relativo ao relógio real, como os leases destes testes (exportShippingOrder usa Date.now()).
+      retainUntilMs: Date.now() + SHIPPING_QUOTE_RETENTION_MS,
     },
   };
 }
@@ -182,7 +186,7 @@ const exportDoc = (db, provider = "melhor_envio", storeId = STORE_A) =>
   db.docs.get(`lojas/${storeId}/shipping_preorders/${shippingExportDocId(provider, ORDER)}`);
 const orderDoc = (db, storeId = STORE_A) => db.docs.get(`lojas/${storeId}/pre_pedidos/${ORDER}`);
 
-function handlers(db, { allowed = true, data = {}, fetchImpl = makeFetch() } = {}) {
+function handlers(db, { allowed = true, data = {}, fetchImpl = makeFetch(), cutoverMs = CUTOVER_MS } = {}) {
   return createShippingExportHandlers({
     db,
     collectionLojas: "lojas",
@@ -191,6 +195,7 @@ function handlers(db, { allowed = true, data = {}, fetchImpl = makeFetch() } = {
     getCallableIdentifier: () => "uid-1",
     fetchWithTimeout: fetchImpl,
     request: { auth: { uid: "uid-1", token: {} }, data },
+    cutoverMs,
   });
 }
 
@@ -248,8 +253,10 @@ describe("modelo e gatilho", () => {
     const block = src.slice(i, src.indexOf("});", i) + 3);
     assert.ok(!/default\s*:/.test(block), "sem default → deploy falha fechado se ausente");
     assert.match(block, /validationRegex: SHIPPING_CUTOVER_UTC_PATTERN/);
+    assert.ok(!/default\s*:|ex\.:\s*\d{4}-/.test(block), "sem data de exemplo/padrão");
     assert.ok(!src.includes("process.env[SHIPPING_AUTO_EXPORT_CUTOVER_ENV]"));
-    assert.match(src, /cutoverMs: parseShippingCutoverUtc\(SHIPPING_AUTO_EXPORT_CUTOVER\.value\(\)\)/);
+    assert.match(src, /function shippingCutoverMs\(\) \{\s*return parseShippingCutoverUtc\(SHIPPING_AUTO_EXPORT_CUTOVER\.value\(\)\);/);
+    assert.equal((src.match(/cutoverMs: shippingCutoverMs\(\)/g) ?? []).length, 4, "pagamento, trigger e dois callables");
   });
 
   it("payload Melhor Envio: contrato do carrinho (strings, volume cotado, documento/bairro, sem e-mail)", () => {
@@ -471,24 +478,64 @@ describe("Melhor Envio — exportação após pagamento aprovado", () => {
     assert.equal(fetchImpl.calls.length, 0);
   });
 
-  it("confirmação do lojista exporta; escrita não autenticada não dispara", async () => {
+  describe("confirmação do lojista: só dono/admin da mesma loja", () => {
     const o = order("melhor_envio", { pagamento: "dinheiro", statusPagamento: "aprovado" });
     const after = { ...o, status: "confirmado", vendaId: "venda-1" };
-    const run = (db, fetchImpl, authType) => handlePrePedidoShippingExportUpdate({
-      db, collectionLojas: "lojas", storeId: STORE_A, orderId: ORDER,
-      before: o, after, createTimeMs: CREATED_AFTER, cutoverMs: CUTOVER_MS, fetchImpl, authType,
-    });
-    const anon = newDb(storeDocs());
-    anon.docs.set(`lojas/${STORE_A}/pre_pedidos/${ORDER}`, after);
-    const f1 = makeFetch();
-    assert.equal((await run(anon, f1, "unauthenticated")).reason, "merchant_confirmation_unauthenticated");
-    assert.equal(f1.calls.length, 0);
+    // Admins por loja (espelha canManageStoreConfigServerSide: ownerUid / members owner|admin).
+    const admins = { [STORE_A]: new Set(["owner-a", "admin-a"]), [STORE_B]: new Set(["admin-b"]) };
+    const isStoreAdminUid = async (storeId, uid) => admins[storeId]?.has(uid) === true;
+    const run = async (authType, authId) => {
+      const db = newDb(storeDocs());
+      db.docs.set(`lojas/${STORE_A}/pre_pedidos/${ORDER}`, after);
+      const fetchImpl = makeFetch();
+      const res = await handlePrePedidoShippingExportUpdate({
+        db, collectionLojas: "lojas", storeId: STORE_A, orderId: ORDER,
+        before: o, after, createTimeMs: CREATED_AFTER, cutoverMs: CUTOVER_MS, fetchImpl,
+        authType, authId, isStoreAdminUid,
+      });
+      return { res, posts: fetchImpl.posts().length, writes: db.writes.length };
+    };
 
-    const db = newDb(storeDocs());
-    db.docs.set(`lojas/${STORE_A}/pre_pedidos/${ORDER}`, after);
-    const f2 = makeFetch();
-    assert.equal((await run(db, f2, "unknown")).status, SHIPPING_EXPORT_STATUS.EXPORTED);
-    assert.equal(f2.posts().length, 1);
+    for (const [name, authType, authId, reason] of [
+      ["anônimo", "unauthenticated", null, "merchant_confirmation_unauthenticated"],
+      ["cliente comum", "unknown", "cliente-1", "merchant_confirmation_not_store_admin"],
+      ["autenticado sem papel de admin", "api_key", "vendedor-a", "merchant_confirmation_not_store_admin"],
+      ["admin de outra loja", "unknown", "admin-b", "merchant_confirmation_not_store_admin"],
+      ["sem identificação do autor", "unknown", null, "merchant_confirmation_actor_unknown"],
+      ["evento de sistema", "system", null, "merchant_confirmation_actor_unknown"],
+    ]) {
+      it(`${name}: não exporta`, async () => {
+        const { res, posts, writes } = await run(authType, authId);
+        assert.equal(res.reason, reason);
+        assert.equal(posts, 0);
+        assert.equal(writes, 0);
+      });
+    }
+
+    for (const [name, authId] of [["dono", "owner-a"], ["admin", "admin-a"]]) {
+      it(`${name} da loja: exporta uma vez`, async () => {
+        const { res, posts } = await run("unknown", authId);
+        assert.equal(res.status, SHIPPING_EXPORT_STATUS.EXPORTED);
+        assert.equal(posts, 1);
+      });
+    }
+
+    it("backend (Admin SDK / service account) é confiável; erro na checagem nega", async () => {
+      const { res } = await run("service_account", "sa@project.iam");
+      assert.equal(res.status, SHIPPING_EXPORT_STATUS.EXPORTED);
+      const denied = await authorizeMerchantConfirmation({
+        authType: "unknown", authId: "owner-a", storeId: STORE_A, isStoreAdminUid: async () => { throw new Error("x"); },
+      });
+      assert.equal(denied.ok, false);
+    });
+
+    it("index.js passa authId e a checagem de admin por uid ao trigger", () => {
+      const src = readFileSync(new URL("../index.js", import.meta.url), "utf8");
+      const i = src.indexOf("export const onPrePedidoShippingExport = onDocumentUpdatedWithAuthContext(");
+      const block = src.slice(i, src.indexOf("export const onPrePedidoClienteEmail", i));
+      assert.match(block, /authId: event\.authId \?\? null/);
+      assert.match(block, /isStoreAdminUid: \(storeId, uid\) => canManageStoreConfigServerSide\(\{\s*lojaId: storeId, uid,/);
+    });
   });
 
   it("rules: cliente não confirma pedido nem grava estado de envio", () => {
@@ -499,7 +546,7 @@ describe("Melhor Envio — exportação após pagamento aprovado", () => {
     const gov = rules.slice(rules.indexOf("function isValidPrePedidoGovernancaSubstituicao"));
     assert.match(gov, /hasOnly\(\['governancaStatus', 'substituidoPor', 'substituidoEm', 'dataAtualizacao'\]\)/);
     const create = rules.slice(rules.indexOf("function isValidPrePedidoCreate"), rules.indexOf("function isValidPrePedidoGovernancaSubstituicao"));
-    assert.match(create, /!request\.resource\.data\.keys\(\)\.hasAny\(\['shipping', 'shippingPreOrder'\]\)/);
+    assert.match(create, /!request\.resource\.data\.keys\(\)\.hasAny\(\['shipping', 'shippingPreOrder', 'shippingModelVersion'\]\)/);
     assert.match(rules, /match \/shipping_preorders\/\{shippingPreOrderId\} \{[^}]*allow create, update, delete: if false;/);
   });
 
@@ -725,11 +772,30 @@ describe("SuperFrete", () => {
     assert.equal(fetchImpl.calls.length, 0);
   });
 
-  it("sandbox: POST /api/v0/cart com servico_id e pacote cotados", async () => {
+  it("token de sandbox também não exporta enquanto o contrato não for verificado", async () => {
     const db = newDb({ ...storeDocs({ provider: "superfrete", token: TOKEN_A, sandbox: true }), ...marker() });
     const fetchImpl = makeFetch({ post: { status: 200, body: { id: "sf-1" } } });
     const res = await runPaid({ db, fetchImpl, o: order("superfrete") });
-    assert.equal(res.status, SHIPPING_EXPORT_STATUS.EXPORTED);
+    assert.equal(res.status, SHIPPING_EXPORT_STATUS.FAILED);
+    assert.equal(res.lastErrorCode, SHIPPING_EXPORT_ERROR.PROVIDER_EXPORT_CONTRACT_NOT_VERIFIED);
+    assert.equal(fetchImpl.calls.length, 0);
+  });
+
+  const sfShippingOrder = () => buildShippingOrder({
+    order: order("superfrete"), storeId: STORE_A, orderId: ORDER, provider: "superfrete", sender: SENDER,
+    quote: {
+      provider: "superfrete", shippingQuoteId: QUOTE_ID, serviceId: "1", serviceName: "PAC",
+      quotedPrice: 15, chargedPrice: 15, insuranceValue: 150,
+      providerPackage: { height: 10, width: 20, length: 30, weight: 0.45 },
+    },
+  }).shippingOrder;
+
+  it("homologação (contrato verificado só no teste): POST /api/v0/cart com serviço e pacote cotados", async () => {
+    const fetchImpl = makeFetch({ post: { status: 200, body: { id: "sf-1" } } });
+    const res = await exportSuperFrete({
+      shippingOrder: sfShippingOrder(), credentials: { token: TOKEN_A, sandbox: true }, fetchImpl, contractVerified: true,
+    });
+    assert.equal(res.outcome, "exported");
     const posts = fetchImpl.posts();
     assert.equal(posts.length, 1);
     assert.match(posts[0].url, /^https:\/\/sandbox\.superfrete\.com\/api\/v0\/cart$/);
@@ -738,13 +804,13 @@ describe("SuperFrete", () => {
     assert.equal(posts[0].body.tag, "shipping:superfrete:loja-a:pedido-1");
   });
 
-  it("sandbox: resultado incerto exige decisão do lojista (sem POST automático)", async () => {
-    const db = newDb({ ...storeDocs({ provider: "superfrete", token: TOKEN_A, sandbox: true }), ...marker() });
-    await runPaid({ db, fetchImpl: makeFetch({ post: { status: 502, body: "<html>" } }), o: order("superfrete") });
-    assert.equal(exportDoc(db, "superfrete").status, SHIPPING_EXPORT_STATUS.UNKNOWN);
-    const fetchImpl = makeFetch();
-    await assert.rejects(retryCallable(db, fetchImpl), (e) => e.details?.code === "SHIPPING_EXPORT_RESOLUTION_REQUIRED");
-    assert.equal(fetchImpl.calls.length, 0);
+  it("homologação: resposta inválida vira incerto (sem novo POST)", async () => {
+    const fetchImpl = makeFetch({ post: { status: 502, body: "<html>" } });
+    const res = await exportSuperFrete({
+      shippingOrder: sfShippingOrder(), credentials: { token: TOKEN_A, sandbox: true }, fetchImpl, contractVerified: true,
+    });
+    assert.equal(res.outcome, "unknown");
+    assert.equal(fetchImpl.posts().length, 1);
   });
 
   it("flag SuperFrete não pode ser ligada; desligar é permitido", async () => {

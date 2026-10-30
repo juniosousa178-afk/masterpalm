@@ -26,6 +26,7 @@ import {
   MELHOR_ENVIO_USER_AGENT,
 } from "./melhorEnvioIntegration.js";
 import { Timestamp } from "firebase-admin/firestore";
+import { SHIPPING_MODEL, classifyShippingModel } from "./shippingQuoteReceipt.js";
 
 export const SHIPPING_PREORDER_COL = "shipping_preorders";
 export const SHIPPING_PREORDER_SCHEMA = 1;
@@ -1414,6 +1415,7 @@ export function createShippingPreOrderHandlers(deps) {
     getCallableIdentifier,
     fetchWithTimeout,
     request,
+    cutoverMs = null,
   } = deps;
 
   async function requireStoreAdmin(lojaId) {
@@ -1461,6 +1463,18 @@ export function createShippingPreOrderHandlers(deps) {
       .get();
     if (!orderSnap.exists) {
       throw new HttpsError("not-found", "Pedido não encontrado.");
+    }
+    // Fluxo antigo (carrinho antes do pagamento) só para pedidos criados antes do corte;
+    // pedidos novos usam apenas `retryShippingExport` (evita dois carrinhos para o mesmo pedido).
+    const createTimeMs = typeof orderSnap.createTime?.toMillis === "function"
+      ? orderSnap.createTime.toMillis()
+      : NaN;
+    if (classifyShippingModel({ createTimeMs, cutoverMs }).model !== SHIPPING_MODEL.LEGACY) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Este pedido usa o envio automático. Use \"Tentar novamente\" na seção Envio.",
+        { code: "PRE_ORDER_FLOW_RETIRED" },
+      );
     }
 
     const orderData = orderSnap.data() ?? {};

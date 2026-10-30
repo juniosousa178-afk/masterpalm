@@ -16,10 +16,22 @@ export const SHIPPING_QUOTES_COL = "shipping_quotes";
 export const SHIPPING_QUOTE_SCHEMA = 1;
 /** Pedido precisa ser criado até 1 h após a cotação. */
 export const SHIPPING_QUOTE_VALIDITY_MS = 60 * 60 * 1000;
-/** Recibo fica disponível para exportação de pedidos confirmados depois (TTL em `deleteAt`). */
+/**
+ * Recibo vale para pagamento/exportação até `retainUntilMs` (checagem lógica).
+ * A TTL em `deleteAt` só faz a limpeza física e pode atrasar sem afetar a validação.
+ */
 export const SHIPPING_QUOTE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 export const SHIPPING_QUOTE_MAX_ITEMS = 50;
 export const SHIPPING_QUOTE_MAX_QTY = 999;
+/** Um volume por pedido; acima disso o carrinho fica só com as opções manuais. */
+export const SUPPORTED_PACKAGE_COUNT = 1;
+/** Limites de um volume nos serviços dos Correios (os mais restritivos cotados). */
+export const SINGLE_VOLUME_MAX_WEIGHT_GRAMS = 30000;
+export const SINGLE_VOLUME_MAX_SIDE_CM = 100;
+export const SINGLE_VOLUME_MAX_SUM_CM = 200;
+/** Marcador do modelo com recibo do servidor (gravado só via Admin SDK). */
+export const SHIPPING_MODEL_VERSION = 2;
+export const SHIPPING_MODEL = Object.freeze({ LEGACY: "legacy", QUOTE_RECEIPT: "quote_receipt" });
 const MIN_WEIGHT_GRAMS = 300;
 const MONEY_TOLERANCE = 0.01;
 const QUOTE_ID_RE = /^([a-f0-9]{32})\.(\d{1,2})$/;
@@ -43,7 +55,27 @@ export const SHIPPING_QUOTE_ERROR = {
   TOTAL_INCONSISTENT: "SHIPPING_ORDER_TOTAL_INCONSISTENT",
   PRODUCT_SHIPPING_DATA_MISSING: "PRODUCT_SHIPPING_DATA_MISSING",
   ITEMS_INVALID: "SHIPPING_QUOTE_ITEMS_INVALID",
+  MULTI_VOLUME_REQUIRED: "SHIPPING_MULTI_VOLUME_REQUIRED",
 };
+
+/**
+ * Modelo de frete do pedido, decidido só por timestamps do servidor:
+ * `createTime` do documento (metadado do Firestore) contra o corte `SHIPPING_AUTO_EXPORT_CUTOVER`.
+ * Campos do pedido (`createdAt`, `legacy`, `shippingModelVersion`…) nunca entram aqui.
+ * `createTime < corte` → legado; `createTime >= corte` → recibo obrigatório.
+ * Sem corte ou sem `createTime` → recibo obrigatório (falha fechado).
+ */
+export function classifyShippingModel({ createTimeMs, cutoverMs }) {
+  if (!Number.isFinite(cutoverMs)) {
+    return { model: SHIPPING_MODEL.QUOTE_RECEIPT, reason: "cutover_not_configured" };
+  }
+  if (!Number.isFinite(createTimeMs)) {
+    return { model: SHIPPING_MODEL.QUOTE_RECEIPT, reason: "order_create_time_unknown" };
+  }
+  return createTimeMs < cutoverMs
+    ? { model: SHIPPING_MODEL.LEGACY, reason: "created_before_cutover" }
+    : { model: SHIPPING_MODEL.QUOTE_RECEIPT, reason: "created_at_or_after_cutover" };
+}
 
 /** Mesmo padrão do carrinho (`_embalagensPadrao`). */
 export const DEFAULT_EMBALAGENS = Object.freeze([
@@ -161,16 +193,28 @@ export async function computeCanonicalPackage({ db, collectionLojas, storeId, it
     return { ok: false, code: SHIPPING_QUOTE_ERROR.PRODUCT_SHIPPING_DATA_MISSING };
   }
   const emb = biggest ?? embalagens[0];
+  const pkg = {
+    weightGrams: Math.max(MIN_WEIGHT_GRAMS, productsGrams + emb.peso),
+    heightCm: emb.altura,
+    widthCm: emb.largura,
+    lengthCm: emb.comprimento,
+  };
+  if (!fitsSingleVolume(pkg)) {
+    return { ok: false, code: SHIPPING_QUOTE_ERROR.MULTI_VOLUME_REQUIRED };
+  }
   return {
     ok: true,
     originCep: originCep.length === 8 ? originCep : null,
-    package: {
-      weightGrams: Math.max(MIN_WEIGHT_GRAMS, productsGrams + emb.peso),
-      heightCm: emb.altura,
-      widthCm: emb.largura,
-      lengthCm: emb.comprimento,
-    },
+    package: pkg,
   };
+}
+
+/** Pedido que não cabe em um volume não é cotado (nunca soma em um pacote inválido). */
+export function fitsSingleVolume(pkg) {
+  const sides = [pkg.heightCm, pkg.widthCm, pkg.lengthCm];
+  return pkg.weightGrams <= SINGLE_VOLUME_MAX_WEIGHT_GRAMS
+    && sides.every((s) => s <= SINGLE_VOLUME_MAX_SIDE_CM)
+    && sides.reduce((a, b) => a + b, 0) <= SINGLE_VOLUME_MAX_SUM_CM;
 }
 
 /** Pacote enviado à cotação do Melhor Envio (mesmos arredondamentos do app). */
@@ -282,6 +326,7 @@ export async function issueShippingQuoteReceipt({
     options: stored,
     quotedAtMs: nowMs,
     expiresAtMs: nowMs + SHIPPING_QUOTE_VALIDITY_MS,
+    retainUntilMs: nowMs + SHIPPING_QUOTE_RETENTION_MS,
     quotedAt: Timestamp.fromMillis(nowMs),
     deleteAt: Timestamp.fromMillis(nowMs + SHIPPING_QUOTE_RETENTION_MS),
   });
@@ -306,12 +351,20 @@ function hasProductDiscountMarker(order) {
   return !!(pr && typeof pr === "object");
 }
 
+function retainUntilMsOf(receipt) {
+  const ms = Number(receipt.retainUntilMs);
+  if (Number.isFinite(ms)) return ms;
+  return typeof receipt.deleteAt?.toMillis === "function" ? receipt.deleteAt.toMillis() : NaN;
+}
+
 /**
  * Valida o frete do pedido contra o recibo do servidor.
  * `orderCreateTimeMs`: `createTime` do documento (servidor), nunca relógio do cliente.
+ * `nowMs`: relógio do servidor; recibo além de `retainUntilMs` é rejeitado mesmo que a TTL
+ * ainda não o tenha apagado.
  */
 export async function loadCanonicalShippingQuote({
-  db, collectionLojas, storeId, provider, order = {}, orderCreateTimeMs,
+  db, collectionLojas, storeId, provider, order = {}, orderCreateTimeMs, nowMs = Date.now(),
 }) {
   const frete = order.frete && typeof order.frete === "object" ? order.frete : {};
   const ref = parseShippingQuoteId(frete.shippingQuoteId);
@@ -342,8 +395,10 @@ export async function loadCanonicalShippingQuote({
   const created = Number(orderCreateTimeMs);
   const quotedAt = Number(receipt.quotedAtMs);
   const expiresAt = Number(receipt.expiresAtMs);
+  const retainUntil = retainUntilMsOf(receipt);
   if (!Number.isFinite(created) || !Number.isFinite(expiresAt) || created > expiresAt
-    || (Number.isFinite(quotedAt) && created < quotedAt)) {
+    || (Number.isFinite(quotedAt) && created < quotedAt)
+    || !Number.isFinite(retainUntil) || Number(nowMs) > retainUntil) {
     return { ok: false, code: SHIPPING_QUOTE_ERROR.EXPIRED };
   }
 
@@ -399,16 +454,23 @@ export async function loadCanonicalShippingQuote({
 /**
  * Antes de cobrar: pedido com frete de provedor integrado só segue se o frete cobrado bater
  * com o recibo do servidor. Frete manual/retirada não passa por aqui.
+ * Pedido legado (criado antes do corte) mantém a cobrança anterior, sem exigir recibo.
  */
 export async function validateOrderShippingForPayment({
-  db, collectionLojas, storeId, order, orderCreateTimeMs,
+  db, collectionLojas, storeId, order, orderCreateTimeMs, cutoverMs, nowMs = Date.now(),
 }) {
   const provider = resolveQuotedShippingProvider(order);
   if (!provider) return { ok: true, required: false };
+  const { model, reason } = classifyShippingModel({ createTimeMs: orderCreateTimeMs, cutoverMs });
+  if (model === SHIPPING_MODEL.LEGACY) {
+    return { ok: true, required: false, shippingModel: model, reason };
+  }
   const res = await loadCanonicalShippingQuote({
-    db, collectionLojas, storeId, provider, order, orderCreateTimeMs,
+    db, collectionLojas, storeId, provider, order, orderCreateTimeMs, nowMs,
   });
-  return res.ok ? { ok: true, required: true, quote: res.quote } : { ok: false, required: true, code: res.code };
+  return res.ok
+    ? { ok: true, required: true, shippingModel: model, quote: res.quote }
+    : { ok: false, required: true, shippingModel: model, reason, code: res.code };
 }
 
 /** Provedor integrado pelo frete do pedido (`plataforma` ou `tipo`, como grava o checkout). */

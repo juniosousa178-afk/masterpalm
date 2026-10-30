@@ -141,6 +141,8 @@ void main() {
       expect(card.contains('FirebaseFirestore'), isFalse);
       expect(card.contains('token'), isFalse);
       expect(card, contains('A etiqueta não é comprada automaticamente.'));
+      expect(card, contains('Pedidos pagos por Pix direto na chave da loja e pedidos feitos antes da ativação '));
+      expect(card, contains("'não são enviados automaticamente.'"));
     });
 
     test('SuperFrete em homologação: só permite desligar', () {

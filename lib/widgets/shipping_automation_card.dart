@@ -207,9 +207,11 @@ class _ShippingAutomationCardState extends State<ShippingAutomationCard> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Quando o pagamento for aprovado (ou quando você confirmar o pedido), '
+                    'Quando o pagamento pelo Mercado Pago for aprovado (ou quando você confirmar o pedido), '
                     'o frete escolhido pelo cliente é enviado ao carrinho da sua conta no provedor. '
-                    'A etiqueta não é comprada automaticamente.',
+                    'A etiqueta não é comprada automaticamente. '
+                    'Pedidos pagos por Pix direto na chave da loja e pedidos feitos antes da ativação '
+                    'não são enviados automaticamente.',
                     style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
                   ),
                   const SizedBox(height: 12),

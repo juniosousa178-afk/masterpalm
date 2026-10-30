@@ -35,7 +35,13 @@ import {
   executeSuperFreteCartPost,
   buildShippingPreOrderDocId,
 } from "./shippingPreOrder.js";
-import { SHIPPING_QUOTE_ERROR, loadCanonicalShippingQuote } from "./shippingQuoteReceipt.js";
+import {
+  SHIPPING_QUOTE_ERROR,
+  SHIPPING_MODEL,
+  SHIPPING_MODEL_VERSION,
+  classifyShippingModel,
+  loadCanonicalShippingQuote,
+} from "./shippingQuoteReceipt.js";
 
 export const SHIPPING_EXPORT_SCHEMA = 2;
 export const SHIPPING_EXPORT_LEASE_MS = 5 * 60 * 1000;
@@ -157,11 +163,14 @@ export function parseShippingCutoverUtc(raw) {
   return Number.isFinite(ms) ? ms : null;
 }
 
-/** Pedidos criados antes do corte (ou sem corte configurado) nunca exportam automaticamente. */
+/**
+ * Só pedidos do modelo com recibo (`createTime >= corte`) exportam. Legado, corte ausente ou
+ * `createTime` desconhecido nunca exportam (mesma classificação do pagamento).
+ */
 export function evaluateShippingCutover({ createTimeMs, cutoverMs }) {
-  if (!Number.isFinite(cutoverMs)) return { ok: false, reason: "cutover_not_configured" };
-  if (!Number.isFinite(createTimeMs)) return { ok: false, reason: "order_create_time_unknown" };
-  if (createTimeMs < cutoverMs) return { ok: false, reason: "historical_order" };
+  const { model, reason } = classifyShippingModel({ createTimeMs, cutoverMs });
+  if (model === SHIPPING_MODEL.LEGACY) return { ok: false, reason: "historical_order" };
+  if (reason !== "created_at_or_after_cutover") return { ok: false, reason };
   return { ok: true };
 }
 
@@ -563,8 +572,11 @@ export async function exportMelhorEnvio({ shippingOrder, credentials, fetchImpl 
  * SuperFrete: contrato de exportação ainda não homologado para o MasterPalm.
  * Produção falha fechado; sandbox permite validar o payload.
  */
-export async function exportSuperFrete({ shippingOrder, credentials, fetchImpl }) {
-  if (credentials.sandbox !== true && !SUPERFRETE_MASTERPALM_EXPORT_CONTRACT_VERIFIED) {
+/** Sem contrato verificado não há POST, nem com token de sandbox. */
+export async function exportSuperFrete({
+  shippingOrder, credentials, fetchImpl, contractVerified = SUPERFRETE_MASTERPALM_EXPORT_CONTRACT_VERIFIED,
+}) {
+  if (contractVerified !== true) {
     return { outcome: "failed", code: SHIPPING_EXPORT_ERROR.PROVIDER_EXPORT_CONTRACT_NOT_VERIFIED };
   }
   const res = await executeSuperFreteCartPost({
@@ -675,6 +687,7 @@ export async function reserveShippingExport({
     const attempts = Number(existing?.attempts ?? 0) + 1;
     tx.set(exportRef, {
       schemaVersion: SHIPPING_EXPORT_SCHEMA,
+      shippingModelVersion: SHIPPING_MODEL_VERSION,
       kind: "shipping_export",
       operationId,
       provider,
@@ -768,7 +781,7 @@ export async function exportShippingOrder({
   }
 
   const quote = await loadCanonicalShippingQuote({
-    db, collectionLojas, storeId, provider, order, orderCreateTimeMs,
+    db, collectionLojas, storeId, provider, order, orderCreateTimeMs, nowMs: now(),
   });
 
   const reserve = await reserveShippingExport({
@@ -867,12 +880,32 @@ export async function verifyPaymentApprovedMarker(db, { paymentId, storeId, orde
 }
 
 /**
+ * Quem gravou `status: confirmado` precisa ser dono/admin desta loja (ou backend via Admin SDK).
+ * Repete no servidor o que as rules já exigem (`isStoreAdmin(lojaId)`), pelo `authId` do evento.
+ */
+export async function authorizeMerchantConfirmation({ authType, authId, storeId, isStoreAdminUid }) {
+  if (authType === "service_account") return { ok: true };
+  if (authType === "unauthenticated") return { ok: false, reason: "merchant_confirmation_unauthenticated" };
+  const uid = str(authId);
+  if (!uid || typeof isStoreAdminUid !== "function") {
+    return { ok: false, reason: "merchant_confirmation_actor_unknown" };
+  }
+  let allowed = false;
+  try {
+    allowed = (await isStoreAdminUid(storeId, uid)) === true;
+  } catch {
+    allowed = false;
+  }
+  return allowed ? { ok: true } : { ok: false, reason: "merchant_confirmation_not_store_admin" };
+}
+
+/**
  * Trigger `onDocumentUpdatedWithAuthContext` de `pre_pedidos`.
- * Confirmação do lojista vinda de escrita não autenticada é ignorada (as rules já a negam).
+ * Confirmação do lojista só vale se o autor do evento for admin da mesma loja.
  */
 export async function handlePrePedidoShippingExportUpdate({
   db, collectionLojas, storeId, orderId, before, after, createTimeMs, cutoverMs, fetchImpl, now,
-  authType = null,
+  authType = null, authId = null, isStoreAdminUid = null,
 }) {
   const detected = detectShippingExportTrigger(before, after);
   if (!detected) return { skipped: true, reason: "no_confirmation_transition" };
@@ -889,8 +922,9 @@ export async function handlePrePedidoShippingExportUpdate({
   const cut = evaluateShippingCutover({ createTimeMs, cutoverMs });
   if (!cut.ok) return skip(cut.reason);
 
-  if (detected.trigger === SHIPPING_EXPORT_TRIGGER.MERCHANT_CONFIRMED && authType === "unauthenticated") {
-    return skip("merchant_confirmation_unauthenticated");
+  if (detected.trigger === SHIPPING_EXPORT_TRIGGER.MERCHANT_CONFIRMED) {
+    const auth = await authorizeMerchantConfirmation({ authType, authId, storeId, isStoreAdminUid });
+    if (!auth.ok) return skip(auth.reason);
   }
 
   if (detected.trigger === SHIPPING_EXPORT_TRIGGER.PAYMENT_APPROVED) {
@@ -935,6 +969,7 @@ export function createShippingExportHandlers(deps) {
     fetchWithTimeout,
     request,
     now = () => Date.now(),
+    cutoverMs = null,
   } = deps;
 
   async function requireStoreAdmin(lojaId) {
@@ -976,6 +1011,13 @@ export function createShippingExportHandlers(deps) {
     const snap = await storeRef.collection("pre_pedidos").doc(oid).get();
     if (!snap.exists) throw new HttpsError("not-found", "Pedido não encontrado.");
     const order = snap.data() || {};
+    const createTimeMs = typeof snap.createTime?.toMillis === "function" ? snap.createTime.toMillis() : NaN;
+    const cut = evaluateShippingCutover({ createTimeMs, cutoverMs });
+    if (!cut.ok) {
+      throw new HttpsError("failed-precondition", "Este pedido não usa o envio automático.", {
+        code: "SHIPPING_EXPORT_LEGACY_ORDER",
+      });
+    }
     const provider = resolveShippingProviderFromOrder(order);
     const ledgerSnap = provider
       ? await storeRef.collection(SHIPPING_PREORDER_COL).doc(shippingExportDocId(provider, oid)).get()
@@ -1000,14 +1042,13 @@ export function createShippingExportHandlers(deps) {
         code: "ORDER_NOT_CONFIRMED",
       });
     }
-    const createTime = snap.createTime;
     const result = await exportShippingOrder({
       db,
       collectionLojas,
       storeId,
       orderId: oid,
       order,
-      orderCreateTimeMs: typeof createTime?.toMillis === "function" ? createTime.toMillis() : NaN,
+      orderCreateTimeMs: createTimeMs,
       trigger: SHIPPING_EXPORT_TRIGGER.MERCHANT_RETRY,
       fetchImpl: fetchWithTimeout,
       now,

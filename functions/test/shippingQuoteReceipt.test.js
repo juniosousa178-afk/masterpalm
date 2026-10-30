@@ -74,8 +74,8 @@ function order(quoteId, extra = {}) {
   };
 }
 
-const validate = (db, o, { storeId = STORE_A, createdMs = NOW + 60_000 } = {}) => loadCanonicalShippingQuote({
-  db, collectionLojas: "lojas", storeId, provider: "melhor_envio", order: o, orderCreateTimeMs: createdMs,
+const validate = (db, o, { storeId = STORE_A, createdMs = NOW + 60_000, nowMs = NOW + 120_000 } = {}) => loadCanonicalShippingQuote({
+  db, collectionLojas: "lojas", storeId, provider: "melhor_envio", order: o, orderCreateTimeMs: createdMs, nowMs,
 });
 
 describe("pacote canônico", () => {
@@ -289,6 +289,6 @@ describe("integração com os callables de cotação", () => {
   it("rules: recibos fechados ao cliente; criação pública sem estado de envio", () => {
     const rules = readFileSync(new URL("../../firestore.rules", import.meta.url), "utf8");
     assert.match(rules, /match \/shipping_quotes\/\{receiptId\} \{\s*allow read, write: if false;/);
-    assert.match(rules, /!request\.resource\.data\.keys\(\)\.hasAny\(\['shipping', 'shippingPreOrder'\]\)/);
+    assert.match(rules, /!request\.resource\.data\.keys\(\)\.hasAny\(\['shipping', 'shippingPreOrder', 'shippingModelVersion'\]\)/);
   });
 });

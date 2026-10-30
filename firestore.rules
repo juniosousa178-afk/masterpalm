@@ -532,7 +532,7 @@ service cloud.firestore {
         && request.resource.data.total >= 0
         && request.resource.data.total <= 999999.99
         // Estado de exportação de envio é do servidor (Functions / ledger `shipping_preorders`).
-        && !request.resource.data.keys().hasAny(['shipping', 'shippingPreOrder']);
+        && !request.resource.data.keys().hasAny(['shipping', 'shippingPreOrder', 'shippingModelVersion']);
     }
 
     /// Atualização mínima pelo catálogo público: marcar pré-pedido anterior como substituído (governança).
