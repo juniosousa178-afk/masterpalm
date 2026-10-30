@@ -3,9 +3,11 @@
  *
  * - Gatilho: transição do pré-pedido para `paid` (webhook MP, verificado pelo marcador
  *   `_mp_webhook_processed`) ou para `confirmado` com `vendaId` (lojista; update só admin nas rules).
- * - A seleção do frete no catálogo só grava o snapshot `frete.cotacao`; nunca chama o provedor.
- * - Idempotente: operationId `shipping:{provider}:{storeId}:{orderId}`, reserva transacional com lease,
- *   reconciliação no Melhor Envio (tag no carrinho) antes de qualquer novo POST.
+ * - Serviço, preço, prazo e pacote vêm do recibo de cotação do servidor (`shipping_quotes`);
+ *   nada do navegador define o que é enviado ao provedor.
+ * - Idempotente: operationId `shipping:{provider}:{storeId}:{orderId}`, reserva transacional com lease.
+ *   O Melhor Envio não documenta chave de idempotência nem busca por referência externa: um POST
+ *   com resultado incerto vira `unknown` e só o lojista decide (verificou o carrinho) se reenvia.
  * - Sem compra de etiqueta; sem escrita de estoque, venda, pagamento ou total.
  * - Credenciais só da própria loja (`config/fretes_secrets`); nunca da plataforma.
  */
@@ -31,13 +33,19 @@ import {
   SHIPPING_PROVIDER,
   resolveShippingProviderFromOrder,
   executeSuperFreteCartPost,
+  buildShippingPreOrderDocId,
 } from "./shippingPreOrder.js";
+import { SHIPPING_QUOTE_ERROR, loadCanonicalShippingQuote } from "./shippingQuoteReceipt.js";
 
-export const SHIPPING_EXPORT_SCHEMA = 1;
+export const SHIPPING_EXPORT_SCHEMA = 2;
 export const SHIPPING_EXPORT_LEASE_MS = 5 * 60 * 1000;
 export const SHIPPING_AUTO_EXPORT_CUTOVER_ENV = "SHIPPING_AUTO_EXPORT_CUTOVER_UTC";
+/** Só UTC explícito (sufixo Z); sem fuso local implícito. */
+export const SHIPPING_CUTOVER_UTC_PATTERN = "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,3})?Z$";
+const SHIPPING_CUTOVER_UTC_RE = new RegExp(SHIPPING_CUTOVER_UTC_PATTERN);
 const WEBHOOK_PROCESSED_COL = "_mp_webhook_processed";
-const MELHOR_ENVIO_CART_MAX_PAGES = 20;
+/** Contrato de exportação SuperFrete ainda não homologado para o MasterPalm. */
+export const SUPERFRETE_MASTERPALM_EXPORT_CONTRACT_VERIFIED = false;
 
 export const SHIPPING_EXPORT_STATUS = {
   PENDING: "pending",
@@ -51,23 +59,30 @@ export const SHIPPING_EXPORT_STATUS = {
 export const SHIPPING_EXPORT_ERROR = {
   PROVIDER_ACCOUNT_NOT_CONNECTED: "PROVIDER_ACCOUNT_NOT_CONNECTED",
   LEGACY_TOKEN_NEEDS_ROTATION: "LEGACY_TOKEN_NEEDS_ROTATION",
-  UNSUPPORTED_BY_CURRENT_API: "UNSUPPORTED_BY_CURRENT_API",
+  PROVIDER_EXPORT_CONTRACT_NOT_VERIFIED: "PROVIDER_EXPORT_CONTRACT_NOT_VERIFIED",
   SHIPPING_DOCUMENT_DATA_REQUIRED: "SHIPPING_DOCUMENT_DATA_REQUIRED",
   SENDER_DATA_REQUIRED: "SENDER_DATA_REQUIRED",
   RECIPIENT_DATA_INCOMPLETE: "RECIPIENT_DATA_INCOMPLETE",
-  QUOTE_SNAPSHOT_MISSING: "QUOTE_SNAPSHOT_MISSING",
   PROVIDER_AUTH_FAILED: "PROVIDER_AUTH_FAILED",
   PROVIDER_VALIDATION_FAILED: "PROVIDER_VALIDATION_FAILED",
   PROVIDER_RATE_LIMITED: "PROVIDER_RATE_LIMITED",
   PROVIDER_UNAVAILABLE: "PROVIDER_UNAVAILABLE",
+  PROVIDER_UNREACHABLE: "PROVIDER_UNREACHABLE",
   PROVIDER_RESPONSE_INVALID: "PROVIDER_RESPONSE_INVALID",
   EXPORT_FAILED: "EXPORT_FAILED",
+  ...SHIPPING_QUOTE_ERROR,
 };
 
 export const SHIPPING_EXPORT_TRIGGER = {
   PAYMENT_APPROVED: "payment_approved",
   MERCHANT_CONFIRMED: "merchant_confirmed",
   MERCHANT_RETRY: "merchant_retry",
+};
+
+/** Decisão do lojista após conferir o carrinho do provedor (resultado incerto). */
+export const SHIPPING_EXPORT_RESOLUTION = {
+  NOT_IN_CART: "not_in_cart",
+  ALREADY_IN_CART: "already_in_cart",
 };
 
 export const SHIPPING_AUTO_EXPORT_FLAG = {
@@ -89,6 +104,8 @@ const CONFIRMED_ORDER_STATUSES = new Set([
 ]);
 const CANCELLED_ORDER_STATUSES = new Set(["cancelado", "cancelled", "canceled"]);
 const NO_SHIPMENT_TIPOS = new Set(["retirada", "local", "combinar", "manual"]);
+/** Erros de conexão em que a requisição não chegou ao provedor (nada pode ter sido criado). */
+const PRE_CONNECT_ERROR_CODES = new Set(["ENOTFOUND", "EAI_AGAIN", "ECONNREFUSED", "UND_ERR_CONNECT_TIMEOUT"]);
 
 const str = (v) => String(v ?? "").trim();
 const digits = (v) => str(v).replace(/\D/g, "");
@@ -135,7 +152,7 @@ export function emitShippingExportLog(fields) {
 
 export function parseShippingCutoverUtc(raw) {
   const s = str(raw);
-  if (!s) return null;
+  if (!s || !SHIPPING_CUTOVER_UTC_RE.test(s)) return null;
   const ms = Date.parse(s);
   return Number.isFinite(ms) ? ms : null;
 }
@@ -186,61 +203,9 @@ export function classifyShippingRequirement(order = {}) {
   return { required: true, provider };
 }
 
-function positiveNumber(v) {
-  const n = typeof v === "string" ? Number(v.replace(",", ".")) : Number(v);
-  return Number.isFinite(n) && n > 0 ? n : null;
-}
-
 function money(v) {
   const n = typeof v === "string" ? Number(v.replace(",", ".")) : Number(v);
   return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : null;
-}
-
-/** Snapshot gravado pelo checkout no momento da escolha do frete (não recalculado). */
-export function readQuoteSnapshot(order = {}, provider) {
-  const frete = order.frete && typeof order.frete === "object" ? order.frete : {};
-  const c = frete.cotacao && typeof frete.cotacao === "object" ? frete.cotacao : null;
-  if (!c) return { ok: false, code: SHIPPING_EXPORT_ERROR.QUOTE_SNAPSHOT_MISSING };
-  const snapProvider = resolveShippingProviderFromOrder({ frete: { plataforma: c.provider } });
-  if (snapProvider !== provider) {
-    return { ok: false, code: SHIPPING_EXPORT_ERROR.QUOTE_SNAPSHOT_MISSING };
-  }
-  const serviceId = str(c.serviceId);
-  const orderServiceId = str(frete.service_id ?? frete.servico_id ?? frete.serviceId);
-  if (!serviceId || (orderServiceId && orderServiceId !== serviceId)) {
-    return { ok: false, code: SHIPPING_EXPORT_ERROR.QUOTE_SNAPSHOT_MISSING };
-  }
-  const pacote = c.pacote && typeof c.pacote === "object" ? c.pacote : {};
-  const pesoGramas = positiveNumber(pacote.pesoGramas);
-  const altura = positiveNumber(pacote.alturaCm);
-  const largura = positiveNumber(pacote.larguraCm);
-  const comprimento = positiveNumber(pacote.comprimentoCm);
-  if (!pesoGramas || !altura || !largura || !comprimento) {
-    return { ok: false, code: SHIPPING_EXPORT_ERROR.QUOTE_SNAPSHOT_MISSING };
-  }
-  const quotedPrice = money(c.quotedPrice);
-  if (quotedPrice == null) return { ok: false, code: SHIPPING_EXPORT_ERROR.QUOTE_SNAPSHOT_MISSING };
-  const deadline = Number(c.quotedDeadlineDays);
-  return {
-    ok: true,
-    snapshot: {
-      provider,
-      serviceId,
-      serviceName: str(c.serviceName) || null,
-      carrierName: str(c.carrierName) || null,
-      companyId: str(c.companyId) || null,
-      quoteId: str(c.quoteId) || null,
-      quotedPrice,
-      quotedDeadlineDays: Number.isFinite(deadline) && deadline > 0 ? Math.round(deadline) : null,
-      chargedPrice: money(frete.valor),
-      package: {
-        weightGrams: pesoGramas,
-        heightCm: altura,
-        widthCm: largura,
-        lengthCm: comprimento,
-      },
-    },
-  };
 }
 
 /** Remetente cadastrado pela loja (`fretes_secrets.sender`); nenhum valor padrão inventado. */
@@ -250,6 +215,7 @@ export function validateSender(raw) {
     name: str(s.name),
     document: digits(s.document),
     companyDocument: digits(s.companyDocument),
+    stateRegister: str(s.stateRegister).toUpperCase(),
     phone: digits(s.phone),
     postalCode: normalizeCep(s.postalCode),
     address: str(s.address),
@@ -276,6 +242,7 @@ export function validateSender(raw) {
   return { ok: true, sender };
 }
 
+/** Destinatário: o carrinho do Melhor Envio exige documento e bairro. */
 export function buildRecipient(order = {}) {
   const cliente = order.cliente && typeof order.cliente === "object" ? order.cliente : {};
   const e = cliente.endereco && typeof cliente.endereco === "object" ? cliente.endereco : {};
@@ -293,9 +260,11 @@ export function buildRecipient(order = {}) {
   };
   if (
     !recipient.name
+    || (recipient.document.length !== 11 && recipient.document.length !== 14)
     || !isValidCep(recipient.postalCode)
     || !recipient.address
     || !recipient.number
+    || !recipient.district
     || !recipient.city
     || recipient.state.length !== 2
   ) {
@@ -326,26 +295,39 @@ export function buildShipmentItems(order = {}) {
     .filter((it) => it.quantity > 0);
 }
 
-/** Modelo canônico independente do provedor. */
-export function buildShippingOrder({ order, storeId, orderId, provider, sender }) {
-  const quote = readQuoteSnapshot(order, provider);
-  if (!quote.ok) return quote;
+function validProviderPackage(pp) {
+  if (!pp || typeof pp !== "object") return null;
+  const pkg = {
+    weight: Number(pp.weight),
+    height: Number(pp.height),
+    width: Number(pp.width),
+    length: Number(pp.length),
+  };
+  return Object.values(pkg).every((v) => Number.isFinite(v) && v > 0) ? pkg : null;
+}
+
+/**
+ * Modelo canônico independente do provedor. `quote` = recibo validado
+ * (`loadCanonicalShippingQuote`); pacote e seguro são exatamente os cotados.
+ */
+export function buildShippingOrder({ order, storeId, orderId, provider, sender, quote }) {
+  if (!quote || quote.provider !== provider) return { ok: false, code: SHIPPING_EXPORT_ERROR.MISSING };
+  const pkg = validProviderPackage(quote.providerPackage);
+  if (!pkg) return { ok: false, code: SHIPPING_EXPORT_ERROR.MISSING };
   const rec = buildRecipient(order);
   if (!rec.ok) return rec;
   const snd = validateSender(sender);
   if (!snd.ok) return snd;
-  if (snd.sender.shippingDocument === "nota_fiscal") {
-    const nf = order.notaFiscal && typeof order.notaFiscal === "object" ? order.notaFiscal : {};
-    if (digits(nf.chave).length !== 44) {
-      return { ok: false, code: SHIPPING_EXPORT_ERROR.SHIPPING_DOCUMENT_DATA_REQUIRED };
-    }
+  const nf = order.notaFiscal && typeof order.notaFiscal === "object" ? order.notaFiscal : {};
+  const isInvoice = snd.sender.shippingDocument === "nota_fiscal";
+  if (isInvoice && (digits(nf.chave).length !== 44 || !snd.sender.stateRegister
+    || snd.sender.stateRegister === "ISENTO")) {
+    return { ok: false, code: SHIPPING_EXPORT_ERROR.SHIPPING_DOCUMENT_DATA_REQUIRED };
   }
   const items = buildShipmentItems(order);
   if (items.length === 0) {
     return { ok: false, code: SHIPPING_EXPORT_ERROR.SHIPPING_DOCUMENT_DATA_REQUIRED };
   }
-  const itemsValue = Math.round(items.reduce((acc, it) => acc + it.unitValue * it.quantity, 0) * 100) / 100;
-  const nf = order.notaFiscal && typeof order.notaFiscal === "object" ? order.notaFiscal : {};
   return {
     ok: true,
     shippingOrder: {
@@ -353,36 +335,48 @@ export function buildShippingOrder({ order, storeId, orderId, provider, sender }
       storeId,
       orderId,
       operationId: shippingExportOperationId(provider, storeId, orderId),
-      serviceId: quote.snapshot.serviceId,
-      serviceName: quote.snapshot.serviceName,
-      carrierName: quote.snapshot.carrierName,
-      quoteId: quote.snapshot.quoteId,
-      quotedPrice: quote.snapshot.quotedPrice,
-      quotedDeadlineDays: quote.snapshot.quotedDeadlineDays,
-      chargedPrice: quote.snapshot.chargedPrice,
-      package: quote.snapshot.package,
+      shippingQuoteId: quote.shippingQuoteId,
+      serviceId: quote.serviceId,
+      serviceName: quote.serviceName,
+      carrierName: quote.carrierName,
+      quotedPrice: quote.quotedPrice,
+      quotedDeadlineDays: quote.deadlineDays,
+      chargedPrice: quote.chargedPrice,
+      package: pkg,
       recipient: rec.recipient,
       sender: snd.sender,
       items,
-      insuranceValue: itemsValue,
+      insuranceValue: quote.insuranceValue,
       shippingDocument: snd.sender.shippingDocument,
-      invoiceKey: snd.sender.shippingDocument === "nota_fiscal" ? digits(nf.chave) : null,
+      invoiceKey: isInvoice ? digits(nf.chave) : null,
     },
   };
 }
 
-/** Resumo exibido ao lojista (sem PII). */
-export function shippingSummaryFromOrder(order, provider) {
+/** Resumo exibido ao lojista (sem PII). Com recibo válido, dados vêm só do recibo. */
+export function shippingSummaryFromOrder(order, provider, quote = null) {
   const frete = order.frete && typeof order.frete === "object" ? order.frete : {};
-  const c = frete.cotacao && typeof frete.cotacao === "object" ? frete.cotacao : {};
-  const deadline = Number(c.quotedDeadlineDays);
+  if (quote) {
+    return {
+      provider,
+      serviceId: quote.serviceId,
+      serviceName: quote.serviceName ?? null,
+      carrierName: quote.carrierName ?? null,
+      price: quote.chargedPrice,
+      quotedPrice: quote.quotedPrice,
+      deadline: quote.deadlineDays ?? null,
+      shippingQuoteId: quote.shippingQuoteId,
+    };
+  }
   return {
     provider,
-    serviceId: str(c.serviceId ?? frete.service_id ?? frete.servico_id) || null,
-    serviceName: str(c.serviceName ?? frete.nome) || null,
-    carrierName: str(c.carrierName) || null,
+    serviceId: str(frete.service_id ?? frete.servico_id) || null,
+    serviceName: str(frete.nome) || null,
+    carrierName: null,
     price: money(frete.valor),
-    deadline: Number.isFinite(deadline) && deadline > 0 ? Math.round(deadline) : null,
+    quotedPrice: null,
+    deadline: null,
+    shippingQuoteId: null,
   };
 }
 
@@ -390,7 +384,13 @@ export function shippingSummaryFromOrder(order, provider) {
 // Provedores
 // ---------------------------------------------------------------------------
 
+/**
+ * `POST /api/v2/me/cart` (doc. "Inserir fretes no carrinho"): products com quantity/unitary_value
+ * em string; volumes = pacote cotado; NF exige `options.invoice.key` + `from.state_register`.
+ * `options.tags` é só identificação visível no painel (a API não busca por tag).
+ */
 export function buildMelhorEnvioCartRequest(so) {
+  const isInvoice = so.shippingDocument === "nota_fiscal";
   const from = {
     name: so.sender.name,
     phone: so.sender.phone || undefined,
@@ -402,18 +402,20 @@ export function buildMelhorEnvioCartRequest(so) {
     state_abbr: so.sender.state,
     country_id: "BR",
     postal_code: so.sender.postalCode,
+    document: so.sender.document || undefined,
+    company_document: so.sender.companyDocument || undefined,
+    state_register: isInvoice ? so.sender.stateRegister : undefined,
   };
-  if (so.sender.companyDocument) from.company_document = so.sender.companyDocument;
-  else from.document = so.sender.document;
 
   const to = {
     name: so.recipient.name,
     phone: so.recipient.phone || undefined,
-    document: so.recipient.document || undefined,
+    document: so.recipient.document.length === 11 ? so.recipient.document : undefined,
+    company_document: so.recipient.document.length === 14 ? so.recipient.document : undefined,
     address: so.recipient.address,
     complement: so.recipient.complement || undefined,
     number: so.recipient.number,
-    district: so.recipient.district || undefined,
+    district: so.recipient.district,
     city: so.recipient.city,
     state_abbr: so.recipient.state,
     country_id: "BR",
@@ -425,11 +427,11 @@ export function buildMelhorEnvioCartRequest(so) {
     receipt: false,
     own_hand: false,
     reverse: false,
-    non_commercial: so.shippingDocument !== "nota_fiscal",
+    non_commercial: !isInvoice,
     platform: "MasterPalm",
     tags: [{ tag: so.operationId }],
   };
-  if (so.invoiceKey) options.invoice = { key: so.invoiceKey };
+  if (isInvoice) options.invoice = { key: so.invoiceKey };
 
   return JSON.parse(JSON.stringify({
     service: Number(so.serviceId),
@@ -437,14 +439,14 @@ export function buildMelhorEnvioCartRequest(so) {
     to,
     products: so.items.map((it) => ({
       name: it.name,
-      quantity: it.quantity,
-      unitary_value: it.unitValue,
+      quantity: String(it.quantity),
+      unitary_value: it.unitValue.toFixed(2),
     })),
     volumes: [{
-      height: Math.max(1, Math.round(so.package.heightCm)),
-      width: Math.max(1, Math.round(so.package.widthCm)),
-      length: Math.max(1, Math.round(so.package.lengthCm)),
-      weight: Math.max(0.01, Math.round(so.package.weightGrams) / 1000),
+      height: so.package.height,
+      width: so.package.width,
+      length: so.package.length,
+      weight: so.package.weight,
     }],
     options,
   }));
@@ -469,18 +471,13 @@ export function buildSuperFreteCartRequest(so) {
       address: so.recipient.address,
       number: so.recipient.number,
       complement: so.recipient.complement || undefined,
-      district: so.recipient.district || undefined,
+      district: so.recipient.district,
       city: so.recipient.city,
       state_abbr: so.recipient.state,
       postal_code: so.recipient.postalCode,
-      document: so.recipient.document || undefined,
+      document: so.recipient.document,
     },
-    package: {
-      height: so.package.heightCm,
-      width: so.package.widthCm,
-      length: so.package.lengthCm,
-      weight: Math.round(so.package.weightGrams) / 1000,
-    },
+    package: so.package,
     products: so.items.map((it) => ({
       name: it.name,
       quantity: it.quantity,
@@ -489,48 +486,6 @@ export function buildSuperFreteCartRequest(so) {
     valorDeclarado: so.insuranceValue,
     pedidoRef: so.operationId,
   });
-}
-
-function cartItemHasTag(item, tag) {
-  const tags = Array.isArray(item?.tags) ? item.tags : [];
-  return tags.some((t) => (typeof t === "string" ? t : str(t?.tag)) === tag);
-}
-
-/**
- * Procura no carrinho Melhor Envio da loja um item com a tag da operação.
- * @returns {{found: true, providerShipmentId: string} | {found: false} | {error: string}}
- */
-export async function findMelhorEnvioCartItemByTag({ token, sandbox, tag, fetchImpl }) {
-  const base = getMelhorEnvioApiBase(sandbox);
-  let page = 1;
-  let lastPage = 1;
-  try {
-    while (page <= lastPage && page <= MELHOR_ENVIO_CART_MAX_PAGES) {
-      const resp = await fetchImpl(`${base}/me/cart?page=${page}`, {
-        method: "GET",
-        headers: buildMelhorEnvioHeaders(token),
-      });
-      const text = await resp.text();
-      if (!resp.ok) return { error: classifyProviderHttpStatus(resp.status).code };
-      let parsed;
-      try {
-        parsed = JSON.parse(text);
-      } catch {
-        return { error: SHIPPING_EXPORT_ERROR.PROVIDER_RESPONSE_INVALID };
-      }
-      const items = Array.isArray(parsed?.data) ? parsed.data : Array.isArray(parsed) ? parsed : [];
-      const hit = items.find((it) => cartItemHasTag(it, tag));
-      if (hit && str(hit.id)) return { found: true, providerShipmentId: str(hit.id) };
-      lastPage = Number(parsed?.last_page ?? 1) || 1;
-      page += 1;
-    }
-    if (lastPage > MELHOR_ENVIO_CART_MAX_PAGES) {
-      return { error: SHIPPING_EXPORT_ERROR.PROVIDER_RESPONSE_INVALID };
-    }
-    return { found: false };
-  } catch {
-    return { error: SHIPPING_EXPORT_ERROR.PROVIDER_UNAVAILABLE };
-  }
 }
 
 /** 4xx determinístico → falha (nada criado); 408/5xx/rede → resultado incerto. */
@@ -545,6 +500,15 @@ export function classifyProviderHttpStatus(status) {
   return { outcome: "unknown", code: SHIPPING_EXPORT_ERROR.PROVIDER_RESPONSE_INVALID };
 }
 
+/** Exceção de rede: só erros de conexão comprovadamente anteriores ao envio são falha definitiva. */
+export function classifyProviderNetworkError(err) {
+  const code = str(err?.cause?.code ?? err?.code);
+  if (PRE_CONNECT_ERROR_CODES.has(code)) {
+    return { outcome: "failed", code: SHIPPING_EXPORT_ERROR.PROVIDER_UNREACHABLE };
+  }
+  return { outcome: "unknown", code: SHIPPING_EXPORT_ERROR.PROVIDER_UNAVAILABLE };
+}
+
 export async function postMelhorEnvioCart({ token, sandbox, body, fetchImpl }) {
   const base = getMelhorEnvioApiBase(sandbox);
   let resp;
@@ -555,9 +519,13 @@ export async function postMelhorEnvioCart({ token, sandbox, body, fetchImpl }) {
       headers: buildMelhorEnvioHeaders(token),
       body: JSON.stringify(body),
     });
+  } catch (err) {
+    return { ...classifyProviderNetworkError(err), providerStatus: null };
+  }
+  try {
     text = await resp.text();
   } catch {
-    return { outcome: "unknown", code: SHIPPING_EXPORT_ERROR.PROVIDER_UNAVAILABLE, providerStatus: null };
+    return { outcome: "unknown", code: SHIPPING_EXPORT_ERROR.PROVIDER_UNAVAILABLE, providerStatus: resp.status };
   }
   if (!resp.ok) return { ...classifyProviderHttpStatus(resp.status), providerStatus: resp.status };
   let parsed;
@@ -581,26 +549,8 @@ function readProviderCredentials(secretsDoc, provider) {
   return { token, sandbox: node?.sandbox === true };
 }
 
-/**
- * Melhor Envio: reconcilia pela tag antes de POST; POST cria item no carrinho da loja (sem compra).
- * `priorAttempt`: houve tentativa anterior com resultado incerto → reconciliação obrigatória.
- */
-export async function exportMelhorEnvio({ shippingOrder, credentials, priorAttempt, fetchImpl }) {
-  const lookup = await findMelhorEnvioCartItemByTag({
-    token: credentials.token,
-    sandbox: credentials.sandbox,
-    tag: shippingOrder.operationId,
-    fetchImpl,
-  });
-  if (lookup.found) {
-    return { outcome: "exported", providerShipmentId: lookup.providerShipmentId, reconciled: true };
-  }
-  if (lookup.error) {
-    if (lookup.error === SHIPPING_EXPORT_ERROR.PROVIDER_AUTH_FAILED) {
-      return { outcome: "failed", code: lookup.error };
-    }
-    if (priorAttempt) return { outcome: "unknown", code: lookup.error };
-  }
+/** Melhor Envio: um único POST por tentativa autorizada (sem consulta prévia por referência). */
+export async function exportMelhorEnvio({ shippingOrder, credentials, fetchImpl }) {
   return postMelhorEnvioCart({
     token: credentials.token,
     sandbox: credentials.sandbox,
@@ -610,16 +560,16 @@ export async function exportMelhorEnvio({ shippingOrder, credentials, priorAttem
 }
 
 /**
- * SuperFrete: `POST /api/v0/cart` existe (documentado), mas não há consulta por tag/referência
- * (só `GET /api/v0/order/info/{id}`). Sem reconciliação, produção permanece bloqueada.
+ * SuperFrete: contrato de exportação ainda não homologado para o MasterPalm.
+ * Produção falha fechado; sandbox permite validar o payload.
  */
 export async function exportSuperFrete({ shippingOrder, credentials, fetchImpl }) {
-  if (credentials.sandbox !== true) {
-    return { outcome: "failed", code: SHIPPING_EXPORT_ERROR.UNSUPPORTED_BY_CURRENT_API };
+  if (credentials.sandbox !== true && !SUPERFRETE_MASTERPALM_EXPORT_CONTRACT_VERIFIED) {
+    return { outcome: "failed", code: SHIPPING_EXPORT_ERROR.PROVIDER_EXPORT_CONTRACT_NOT_VERIFIED };
   }
   const res = await executeSuperFreteCartPost({
     token: credentials.token,
-    sandbox: true,
+    sandbox: credentials.sandbox,
     body: buildSuperFreteCartRequest(shippingOrder),
     fetchImpl,
   });
@@ -650,26 +600,39 @@ function leaseActive(record, nowMs) {
   return Number.isFinite(ms) && ms > nowMs;
 }
 
+/** `unknown`, ou `exporting` com lease vencido (processo caiu após o POST): resultado incerto. */
+export function isUncertainExportRecord(record, nowMs) {
+  const status = record?.status ?? null;
+  if (status === SHIPPING_EXPORT_STATUS.UNKNOWN) return true;
+  return status === SHIPPING_EXPORT_STATUS.EXPORTING && !leaseActive(record, nowMs);
+}
+
 /**
- * Reserva at-most-once. Gatilhos automáticos só criam a primeira tentativa;
- * novas tentativas só por ação explícita do lojista.
+ * Reserva at-most-once. Gatilhos automáticos só criam a primeira tentativa.
+ * Nova tentativa: só ação do lojista; após resultado incerto exige `resolution` explícita.
  */
 export async function reserveShippingExport({
-  db, collectionLojas, storeId, orderId, provider, trigger, summary, nowMs,
+  db, collectionLojas, storeId, orderId, provider, trigger, summary, nowMs, resolution = null, actorUid = null,
 }) {
   const ref = lojaRef(db, collectionLojas, storeId);
   const exportRef = ref.collection(SHIPPING_PREORDER_COL).doc(shippingExportDocId(provider, orderId));
+  const legacyRef = ref.collection(SHIPPING_PREORDER_COL).doc(buildShippingPreOrderDocId(provider, orderId));
   const orderRef = ref.collection("pre_pedidos").doc(orderId);
   const operationId = shippingExportOperationId(provider, storeId, orderId);
   const isRetry = trigger === SHIPPING_EXPORT_TRIGGER.MERCHANT_RETRY;
 
   return db.runTransaction(async (tx) => {
     const exportSnap = await tx.get(exportRef);
+    const legacySnap = await tx.get(legacyRef);
     const orderSnap = await tx.get(orderRef);
     if (!orderSnap.exists) return { action: "skip", reason: "order_not_found" };
     const order = orderSnap.data() || {};
     if (CANCELLED_ORDER_STATUSES.has(normStatus(order.status))) {
       return { action: "skip", reason: "order_cancelled" };
+    }
+    // Pedido do fluxo antigo (carrinho criado na criação do pré-pedido): nunca exporta de novo.
+    if (legacySnap.exists || (order.shippingPreOrder && typeof order.shippingPreOrder === "object")) {
+      return { action: "skip", reason: "legacy_preorder_exists" };
     }
     const existing = exportSnap.exists ? exportSnap.data() || {} : null;
     const status = existing?.status ?? null;
@@ -683,13 +646,32 @@ export async function reserveShippingExport({
     if (existing && !isRetry) {
       return { action: "skip", reason: "already_attempted", record: existing, operationId };
     }
-    if (status === SHIPPING_EXPORT_STATUS.UNKNOWN && provider !== SHIPPING_PROVIDER.MELHOR_ENVIO) {
-      return { action: "skip", reason: "unknown_requires_manual_review", record: existing, operationId };
+    const now = FieldValue.serverTimestamp();
+    if (existing && isUncertainExportRecord(existing, nowMs)) {
+      if (resolution === SHIPPING_EXPORT_RESOLUTION.ALREADY_IN_CART) {
+        const state = {
+          status: SHIPPING_EXPORT_STATUS.EXPORTED,
+          operationId,
+          providerShipmentId: null,
+          reconciledManually: true,
+          lastErrorCode: null,
+          updatedAt: now,
+          exportedAt: now,
+        };
+        tx.set(exportRef, {
+          ...state,
+          leaseUntil: null,
+          resolution,
+          resolvedByUid: actorUid,
+        }, { merge: true });
+        tx.set(orderRef, { shipping: { export: state } }, { merge: true });
+        return { action: "resolved_manually", operationId };
+      }
+      if (resolution !== SHIPPING_EXPORT_RESOLUTION.NOT_IN_CART) {
+        return { action: "skip", reason: "uncertain_requires_merchant_resolution", record: existing, operationId };
+      }
     }
 
-    const priorAttempt = status === SHIPPING_EXPORT_STATUS.UNKNOWN
-      || status === SHIPPING_EXPORT_STATUS.EXPORTING;
-    const now = FieldValue.serverTimestamp();
     const attempts = Number(existing?.attempts ?? 0) + 1;
     tx.set(exportRef, {
       schemaVersion: SHIPPING_EXPORT_SCHEMA,
@@ -701,10 +683,12 @@ export async function reserveShippingExport({
       status: SHIPPING_EXPORT_STATUS.EXPORTING,
       trigger,
       attempts,
+      shippingQuoteId: summary?.shippingQuoteId ?? null,
       leaseUntil: Timestamp.fromMillis(nowMs + SHIPPING_EXPORT_LEASE_MS),
       lastAttemptAt: now,
       updatedAt: now,
       lastErrorCode: null,
+      ...(resolution ? { resolution, resolvedByUid: actorUid } : {}),
       ...(existing ? {} : { createdAt: now }),
     }, { merge: true });
     tx.set(orderRef, {
@@ -719,7 +703,7 @@ export async function reserveShippingExport({
         },
       },
     }, { merge: true });
-    return { action: "reserved", operationId, priorAttempt, attempts };
+    return { action: "reserved", operationId, attempts };
   });
 }
 
@@ -737,7 +721,7 @@ export async function finalizeShippingExport({
     providerShipmentId: result.providerShipmentId ?? null,
     lastErrorCode: exported ? null : result.errorCode ?? SHIPPING_EXPORT_ERROR.EXPORT_FAILED,
     updatedAt: now,
-    ...(exported ? { exportedAt: now } : {}),
+    ...(exported ? { exportedAt: now, reconciledManually: false } : {}),
   };
   await db.runTransaction(async (tx) => {
     tx.set(exportRef, { ...exportState, leaseUntil: null }, { merge: true });
@@ -765,9 +749,11 @@ export function isAutoExportEnabled(secretsDoc, provider) {
 
 /**
  * Exporta um pedido já confirmado. Nunca escreve estoque, venda, pagamento ou total.
+ * `orderCreateTimeMs`: `createTime` do documento (servidor), usado na validade do recibo.
  */
 export async function exportShippingOrder({
-  db, collectionLojas, storeId, orderId, order, trigger, fetchImpl, now = () => Date.now(),
+  db, collectionLojas, storeId, orderId, order, orderCreateTimeMs, trigger, fetchImpl,
+  now = () => Date.now(), resolution = null, actorUid = null,
 }) {
   const started = now();
   const req = classifyShippingRequirement(order);
@@ -775,10 +761,15 @@ export async function exportShippingOrder({
   const provider = req.provider;
 
   const { secrets, publicFretes } = await readStoreShippingConfig(db, collectionLojas, storeId);
-  if (!isAutoExportEnabled(secrets, provider)) {
+  const manualResolution = resolution === SHIPPING_EXPORT_RESOLUTION.ALREADY_IN_CART;
+  if (!manualResolution && !isAutoExportEnabled(secrets, provider)) {
     emitShippingExportLog({ provider, storeId, orderId, trigger, status: "skipped", reason: "feature_disabled" });
     return { skipped: true, reason: "feature_disabled" };
   }
+
+  const quote = await loadCanonicalShippingQuote({
+    db, collectionLojas, storeId, provider, order, orderCreateTimeMs,
+  });
 
   const reserve = await reserveShippingExport({
     db,
@@ -787,11 +778,20 @@ export async function exportShippingOrder({
     orderId,
     provider,
     trigger,
-    summary: shippingSummaryFromOrder(order, provider),
+    summary: shippingSummaryFromOrder(order, provider, quote.ok ? quote.quote : null),
     nowMs: now(),
+    resolution,
+    actorUid,
   });
   if (reserve.action === "noop") {
     return { ok: true, idempotent: true, status: SHIPPING_EXPORT_STATUS.EXPORTED, record: reserve.record };
+  }
+  if (reserve.action === "resolved_manually") {
+    emitShippingExportLog({
+      provider, storeId, orderId, operationId: reserve.operationId, trigger,
+      status: SHIPPING_EXPORT_STATUS.EXPORTED, reason: "merchant_confirmed_in_cart",
+    });
+    return { ok: true, status: SHIPPING_EXPORT_STATUS.EXPORTED, reconciledManually: true };
   }
   if (reserve.action !== "reserved") return { skipped: true, reason: reserve.reason };
 
@@ -824,8 +824,13 @@ export async function exportShippingOrder({
   if (!credentials) {
     return finish({ status: SHIPPING_EXPORT_STATUS.FAILED, errorCode: SHIPPING_EXPORT_ERROR.PROVIDER_ACCOUNT_NOT_CONNECTED });
   }
+  if (!quote.ok) {
+    return finish({ status: SHIPPING_EXPORT_STATUS.FAILED, errorCode: quote.code });
+  }
 
-  const built = buildShippingOrder({ order, storeId, orderId, provider, sender: secrets.sender });
+  const built = buildShippingOrder({
+    order, storeId, orderId, provider, sender: secrets.sender, quote: quote.quote,
+  });
   if (!built.ok) {
     return finish({ status: SHIPPING_EXPORT_STATUS.FAILED, errorCode: built.code });
   }
@@ -833,12 +838,7 @@ export async function exportShippingOrder({
   let res;
   try {
     res = provider === SHIPPING_PROVIDER.MELHOR_ENVIO
-      ? await exportMelhorEnvio({
-        shippingOrder: built.shippingOrder,
-        credentials,
-        priorAttempt: reserve.priorAttempt,
-        fetchImpl,
-      })
+      ? await exportMelhorEnvio({ shippingOrder: built.shippingOrder, credentials, fetchImpl })
       : await exportSuperFrete({ shippingOrder: built.shippingOrder, credentials, fetchImpl });
   } catch {
     res = { outcome: "unknown", code: SHIPPING_EXPORT_ERROR.PROVIDER_UNAVAILABLE };
@@ -866,36 +866,48 @@ export async function verifyPaymentApprovedMarker(db, { paymentId, storeId, orde
   return m.status === "applied" && str(m.lojaId) === storeId && str(m.orderId) === orderId;
 }
 
-/** Trigger `onDocumentUpdated` de `pre_pedidos`. */
+/**
+ * Trigger `onDocumentUpdatedWithAuthContext` de `pre_pedidos`.
+ * Confirmação do lojista vinda de escrita não autenticada é ignorada (as rules já a negam).
+ */
 export async function handlePrePedidoShippingExportUpdate({
   db, collectionLojas, storeId, orderId, before, after, createTimeMs, cutoverMs, fetchImpl, now,
+  authType = null,
 }) {
   const detected = detectShippingExportTrigger(before, after);
   if (!detected) return { skipped: true, reason: "no_confirmation_transition" };
   const req = classifyShippingRequirement(after);
   if (!req.required) return { skipped: true, reason: req.reason };
 
-  const cut = evaluateShippingCutover({ createTimeMs, cutoverMs });
-  if (!cut.ok) {
+  const skip = (reason) => {
     emitShippingExportLog({
-      provider: req.provider, storeId, orderId, trigger: detected.trigger, status: "skipped", reason: cut.reason,
+      provider: req.provider, storeId, orderId, trigger: detected.trigger, status: "skipped", reason,
     });
-    return { skipped: true, reason: cut.reason };
+    return { skipped: true, reason };
+  };
+
+  const cut = evaluateShippingCutover({ createTimeMs, cutoverMs });
+  if (!cut.ok) return skip(cut.reason);
+
+  if (detected.trigger === SHIPPING_EXPORT_TRIGGER.MERCHANT_CONFIRMED && authType === "unauthenticated") {
+    return skip("merchant_confirmation_unauthenticated");
   }
 
   if (detected.trigger === SHIPPING_EXPORT_TRIGGER.PAYMENT_APPROVED) {
     const verified = await verifyPaymentApprovedMarker(db, { paymentId: detected.paymentId, storeId, orderId });
-    if (!verified) {
-      emitShippingExportLog({
-        provider: req.provider, storeId, orderId, trigger: detected.trigger, status: "skipped",
-        reason: "payment_marker_not_verified",
-      });
-      return { skipped: true, reason: "payment_marker_not_verified" };
-    }
+    if (!verified) return skip("payment_marker_not_verified");
   }
 
   return exportShippingOrder({
-    db, collectionLojas, storeId, orderId, order: after, trigger: detected.trigger, fetchImpl, now,
+    db,
+    collectionLojas,
+    storeId,
+    orderId,
+    order: after,
+    orderCreateTimeMs: createTimeMs,
+    trigger: detected.trigger,
+    fetchImpl,
+    now,
   });
 }
 
@@ -904,7 +916,7 @@ export async function handlePrePedidoShippingExportUpdate({
 // ---------------------------------------------------------------------------
 
 const SENDER_FIELDS = [
-  "name", "document", "companyDocument", "phone", "postalCode", "address",
+  "name", "document", "companyDocument", "stateRegister", "phone", "postalCode", "address",
   "number", "complement", "district", "city", "state", "shippingDocument",
 ];
 
@@ -944,11 +956,20 @@ export function createShippingExportHandlers(deps) {
     return { uid, lojaId: id };
   }
 
+  /**
+   * Nova tentativa pelo lojista. Estado lido só do ledger (Admin SDK); `order.shipping` é ignorado.
+   * Resultado incerto exige `resolution`: `not_in_cart` (conferiu e não está → reenvia) ou
+   * `already_in_cart` (já está → marca exportado sem novo POST).
+   */
   async function retryShippingExport() {
-    const { lojaId, orderId } = request.data ?? {};
-    const { lojaId: storeId } = await requireStoreAdmin(lojaId);
+    const { lojaId, orderId, resolution: rawResolution } = request.data ?? {};
+    const { uid, lojaId: storeId } = await requireStoreAdmin(lojaId);
     const oid = str(orderId);
     if (!oid || oid.includes("/")) throw new HttpsError("invalid-argument", "Informe o pedido.");
+    const resolution = rawResolution == null ? null : str(rawResolution);
+    if (resolution && !Object.values(SHIPPING_EXPORT_RESOLUTION).includes(resolution)) {
+      throw new HttpsError("invalid-argument", "Ação inválida.");
+    }
     await checkRateLimit("retryShippingExport", getCallableIdentifier(request));
 
     const storeRef = lojaRef(db, collectionLojas, storeId);
@@ -956,31 +977,42 @@ export function createShippingExportHandlers(deps) {
     if (!snap.exists) throw new HttpsError("not-found", "Pedido não encontrado.");
     const order = snap.data() || {};
     const provider = resolveShippingProviderFromOrder(order);
-    // Estado lido do ledger (só Admin SDK escreve); `order.shipping` pode vir do cliente na criação.
     const ledgerSnap = provider
       ? await storeRef.collection(SHIPPING_PREORDER_COL).doc(shippingExportDocId(provider, oid)).get()
       : null;
-    const current = ledgerSnap?.exists ? (ledgerSnap.data() || {}).status : null;
-    if (current !== SHIPPING_EXPORT_STATUS.FAILED && current !== SHIPPING_EXPORT_STATUS.UNKNOWN
-      && current !== SHIPPING_EXPORT_STATUS.EXPORTING) {
+    const ledger = ledgerSnap?.exists ? ledgerSnap.data() || {} : null;
+    const nowMs = now();
+    const uncertain = ledger ? isUncertainExportRecord(ledger, nowMs) : false;
+    if (ledger?.status !== SHIPPING_EXPORT_STATUS.FAILED && !uncertain) {
       throw new HttpsError("failed-precondition", "Este frete não está aguardando nova tentativa.", {
         code: "SHIPPING_EXPORT_NOT_RETRYABLE",
       });
+    }
+    if (uncertain && !resolution) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Verifique o carrinho do provedor e informe se o envio já está lá antes de tentar novamente.",
+        { code: "SHIPPING_EXPORT_RESOLUTION_REQUIRED" },
+      );
     }
     if (!CONFIRMED_ORDER_STATUSES.has(normStatus(order.status))) {
       throw new HttpsError("failed-precondition", "O pedido ainda não está confirmado.", {
         code: "ORDER_NOT_CONFIRMED",
       });
     }
+    const createTime = snap.createTime;
     const result = await exportShippingOrder({
       db,
       collectionLojas,
       storeId,
       orderId: oid,
       order,
+      orderCreateTimeMs: typeof createTime?.toMillis === "function" ? createTime.toMillis() : NaN,
       trigger: SHIPPING_EXPORT_TRIGGER.MERCHANT_RETRY,
       fetchImpl: fetchWithTimeout,
       now,
+      resolution: uncertain ? resolution : null,
+      actorUid: uid,
     });
     return {
       ok: result.ok === true,
@@ -1002,10 +1034,12 @@ export function createShippingExportHandlers(deps) {
         melhorEnvio: data.automation?.shippingAutoExportMelhorEnvio === true,
         superFrete: data.automation?.shippingAutoExportSuperFrete === true,
       },
+      superFreteExportContractVerified: SUPERFRETE_MASTERPALM_EXPORT_CONTRACT_VERIFIED,
       sender: {
         name: str(s.name),
         documentMasked: maskDigits(s.document),
         companyDocumentMasked: maskDigits(s.companyDocument),
+        stateRegister: str(s.stateRegister),
         phone: str(s.phone),
         postalCode: str(s.postalCode),
         address: str(s.address),
@@ -1024,6 +1058,14 @@ export function createShippingExportHandlers(deps) {
     const { lojaId, sender, flags } = request.data ?? {};
     const { uid, lojaId: storeId } = await requireStoreAdmin(lojaId);
     await checkRateLimit("shippingSaveAutomationConfig", getCallableIdentifier(request));
+    if (flags && typeof flags === "object" && flags.superFrete === true
+      && !SUPERFRETE_MASTERPALM_EXPORT_CONTRACT_VERIFIED) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Exportação automática para a SuperFrete ainda em homologação.",
+        { code: SHIPPING_EXPORT_ERROR.PROVIDER_EXPORT_CONTRACT_NOT_VERIFIED },
+      );
+    }
     const secretsRef = lojaRef(db, collectionLojas, storeId).collection("config").doc(FRETES_SECRETS_DOC);
 
     await db.runTransaction(async (tx) => {
@@ -1050,7 +1092,7 @@ export function createShippingExportHandlers(deps) {
       if (flags && typeof flags === "object") {
         const automation = { ...(current.automation ?? {}) };
         if (typeof flags.melhorEnvio === "boolean") automation.shippingAutoExportMelhorEnvio = flags.melhorEnvio;
-        if (typeof flags.superFrete === "boolean") automation.shippingAutoExportSuperFrete = flags.superFrete;
+        if (flags.superFrete === false) automation.shippingAutoExportSuperFrete = false;
         patch.automation = { ...automation, updatedAt: FieldValue.serverTimestamp(), updatedByUid: uid };
       }
       tx.set(secretsRef, patch, { merge: true });

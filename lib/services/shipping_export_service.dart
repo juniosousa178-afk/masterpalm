@@ -5,6 +5,18 @@
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 
+/// Decisão do lojista depois de conferir o carrinho do provedor (resultado incerto).
+enum ShippingExportResolution {
+  /// Conferiu e o envio não está no carrinho → o servidor faz um novo envio.
+  notInCart('not_in_cart'),
+
+  /// O envio já está no carrinho → marca como enviado, sem novo envio.
+  alreadyInCart('already_in_cart');
+
+  const ShippingExportResolution(this.wire);
+  final String wire;
+}
+
 class ShippingExportService {
   ShippingExportService._();
 
@@ -25,22 +37,36 @@ class ShippingExportService {
     }
   }
 
+  static String _no(String? provider) =>
+      provider == 'superfrete' ? 'na ${providerLabel(provider)}' : 'no ${providerLabel(provider)}';
+
+  /// Resultado incerto: nunca há reenvio automático.
+  static String uncertainMessage(String? provider) =>
+      'Não foi possível confirmar se o envio foi criado ${_no(provider)}. '
+      'Verifique o carrinho antes de tentar novamente.';
+
   /// Linhas de status para a seção ENVIO do pedido.
-  static List<String> statusLines(String? status, {String? provider}) {
+  static List<String> statusLines(
+    String? status, {
+    String? provider,
+    bool reconciledManually = false,
+  }) {
     final label = providerLabel(provider);
     final destino = provider == 'superfrete' ? 'à $label' : 'ao $label';
     switch (status) {
       case 'exported':
-        return ['Enviado $destino', 'Aguardando compra da etiqueta'];
+        return [
+          reconciledManually
+              ? 'Envio confirmado pela loja no carrinho ${_no(provider)}'
+              : 'Enviado $destino',
+          'Aguardando compra da etiqueta',
+        ];
       case 'exporting':
         return ['Enviando $destino...'];
       case 'failed':
         return [exportFailedMessage];
       case 'unknown':
-        return [
-          'Não foi possível confirmar se o envio foi criado $destino.',
-          'Confira o painel $destino antes de tentar novamente.',
-        ];
+        return [uncertainMessage(provider)];
       case 'not_required':
         return ['Envio pela transportadora não necessário'];
       default:
@@ -48,10 +74,11 @@ class ShippingExportService {
     }
   }
 
-  static bool canRetry(String? status, {String? provider}) {
-    if (status == 'failed') return true;
-    return status == 'unknown' && provider == 'melhor_envio';
-  }
+  /// Nova tentativa direta só após falha definitiva (nada foi criado no provedor).
+  static bool canRetry(String? status) => status == 'failed';
+
+  /// Resultado incerto: o lojista precisa conferir o carrinho e escolher uma ação.
+  static bool needsResolution(String? status) => status == 'unknown';
 
   static String messageForErrorCode(String? code, {String? provider}) {
     final label = providerLabel(provider);
@@ -60,22 +87,35 @@ class ShippingExportService {
         return 'Conecte a conta $label da loja em Fretes e Cupons para enviar fretes automaticamente.';
       case 'LEGACY_TOKEN_NEEDS_ROTATION':
         return 'Por segurança, cadastre novamente o token $label em Fretes e Cupons.';
-      case 'UNSUPPORTED_BY_CURRENT_API':
-        return 'O envio automático para a $label ainda não está disponível. Crie o envio no painel da $label.';
+      case 'PROVIDER_EXPORT_CONTRACT_NOT_VERIFIED':
+        return 'O envio automático para a $label está em homologação. Crie o envio no painel da $label.';
       case 'SENDER_DATA_REQUIRED':
         return 'Complete os dados do remetente em Fretes e Cupons.';
       case 'SHIPPING_DOCUMENT_DATA_REQUIRED':
-        return 'Informe a chave da nota fiscal ou use declaração de conteúdo nos dados do remetente.';
+        return 'Para nota fiscal, informe a chave da NF no pedido e a inscrição estadual do remetente; ou use declaração de conteúdo.';
       case 'RECIPIENT_DATA_INCOMPLETE':
-        return 'O endereço de entrega do cliente está incompleto.';
-      case 'QUOTE_SNAPSHOT_MISSING':
-        return 'Este pedido não tem os dados da cotação do frete. Crie o envio manualmente no painel da transportadora.';
+        return 'Os dados de entrega do cliente estão incompletos (CPF, número ou bairro).';
+      case 'SHIPPING_QUOTE_MISSING':
+      case 'SHIPPING_QUOTE_NOT_FOUND':
+      case 'SHIPPING_QUOTE_STORE_MISMATCH':
+        return 'Este pedido não tem uma cotação de frete válida. Crie o envio manualmente no painel da $label.';
+      case 'SHIPPING_QUOTE_EXPIRED':
+        return 'A cotação do frete deste pedido expirou. Crie o envio manualmente no painel da $label.';
+      case 'SHIPPING_QUOTE_SERVICE_MISMATCH':
+      case 'SHIPPING_QUOTE_DESTINATION_MISMATCH':
+      case 'SHIPPING_QUOTE_ITEMS_MISMATCH':
+      case 'SHIPPING_QUOTE_PRICE_MISMATCH':
+      case 'SHIPPING_QUOTE_INSURANCE_MISMATCH':
+      case 'SHIPPING_ORDER_TOTAL_INCONSISTENT':
+        return 'O frete do pedido não confere com a cotação. Confira o pedido e crie o envio manualmente no painel da $label.';
       case 'PROVIDER_AUTH_FAILED':
         return 'A $label recusou o acesso. Verifique o token em Fretes e Cupons.';
       case 'PROVIDER_VALIDATION_FAILED':
         return 'A $label recusou os dados do envio. Confira o pedido e o remetente.';
       case 'PROVIDER_RATE_LIMITED':
         return 'Muitas tentativas em pouco tempo. Aguarde alguns minutos.';
+      case 'PROVIDER_UNREACHABLE':
+        return 'Não foi possível conectar à $label. Nada foi enviado; tente novamente.';
       case 'PROVIDER_UNAVAILABLE':
       case 'PROVIDER_RESPONSE_INVALID':
         return 'A $label não respondeu como esperado.';
@@ -87,12 +127,14 @@ class ShippingExportService {
   static Future<Map<String, dynamic>> retryExport({
     required String lojaId,
     required String orderId,
+    ShippingExportResolution? resolution,
   }) async {
     try {
       final callable = _functions.httpsCallable('retryShippingExport');
       final res = await callable.call(<String, dynamic>{
         'lojaId': lojaId,
         'orderId': orderId,
+        if (resolution != null) 'resolution': resolution.wire,
       }).timeout(const Duration(seconds: 60));
       final raw = res.data;
       return raw is Map
@@ -160,6 +202,14 @@ class ShippingExportService {
           'ok': false,
           'message':
               'Preencha nome, CPF ou CNPJ, CEP, endereço, número, bairro, cidade e UF do remetente.',
+        };
+      }
+      if (details is Map &&
+          details['code'] == 'PROVIDER_EXPORT_CONTRACT_NOT_VERIFIED') {
+        return {
+          'ok': false,
+          'message':
+              'O envio automático para a SuperFrete ainda está em homologação.',
         };
       }
       return {'ok': false, 'message': 'Não foi possível salvar a configuração.'};

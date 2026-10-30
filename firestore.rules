@@ -530,7 +530,9 @@ service cloud.firestore {
         && request.resource.data.itens.size() <= 50
         && request.resource.data.total is number
         && request.resource.data.total >= 0
-        && request.resource.data.total <= 999999.99;
+        && request.resource.data.total <= 999999.99
+        // Estado de exportação de envio é do servidor (Functions / ledger `shipping_preorders`).
+        && !request.resource.data.keys().hasAny(['shipping', 'shippingPreOrder']);
     }
 
     /// Atualização mínima pelo catálogo público: marcar pré-pedido anterior como substituído (governança).
@@ -1473,6 +1475,11 @@ service cloud.firestore {
       match /shipping_preorders/{shippingPreOrderId} {
         allow read: if canManageStoreConfig(lojaId);
         allow create, update, delete: if false;
+      }
+
+      // Recibos de cotação de frete — só Functions (Admin SDK) leem/escrevem.
+      match /shipping_quotes/{receiptId} {
+        allow read, write: if false;
       }
 
       // Leitura pública só por ID exato (link do pedido); listar expõe todos os pedidos da loja.

@@ -384,8 +384,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
   String _pagamento = 'PIX';
   int _freteIndex = 0;
 
-  /// Pacote (peso/dimensões) da última cotação via API; vai para `frete.cotacao`.
-  Map<String, dynamic>? _cotacaoPacote;
+  /// Conteúdo do carrinho na última cotação via API (recibo do servidor vale só para ele).
+  String? _cotacaoItensAssinatura;
 
   String _normalizarTextoIdentificacaoFrete(String? raw) {
     if (raw == null) return '';
@@ -2244,6 +2244,24 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
     }
   }
 
+  /// Frete de transportadora cotado para outro conteúdo do carrinho (ou sem recibo):
+  /// recota e pede nova confirmação, em vez de finalizar com valor desatualizado.
+  Future<bool> _cotacaoFreteAtualOuRecalcular() async {
+    if (_freteIndex < 0 || _freteIndex >= _fretesLocal.length) return true;
+    final frete = _fretesLocal[_freteIndex];
+    if (!isShippingQuoteProvider(frete['plataforma'])) return true;
+    final atual = _cotacaoItensAssinatura == shippingQuoteItemsSignature(widget.items) &&
+        sanitizeShippingQuoteId(frete['shipping_quote_id']) != null;
+    if (atual) return true;
+    await _recalcularFreteSelecionado();
+    if (!mounted) return false;
+    setState(() {});
+    widget.showSnack(
+      'O frete foi recalculado para os itens atuais. Confira o valor e finalize novamente.',
+    );
+    return false;
+  }
+
   // -------------------------------------------------------------
 // FRETE DINÂMICO (Melhor Envio / Correios / Frenet via FreteService)
 // -------------------------------------------------------------
@@ -2305,13 +2323,9 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
         altura: altura,
         largura: largura,
         comprimento: comprimento,
+        itensCotacao: buildShippingQuoteItems(widget.items),
       );
-      _cotacaoPacote = buildShippingQuotePackage(
-        pesoGramas: pesoTotal,
-        alturaCm: altura,
-        larguraCm: largura,
-        comprimentoCm: comprimento,
-      );
+      _cotacaoItensAssinatura = shippingQuoteItemsSignature(widget.items);
 
       // ✅ Preservar manuais se API retornar vazio (nunca sobrescrever com lista vazia)
       final manuaisAtuais = _fretesLocal
@@ -2396,6 +2410,8 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
             if (opcao['service_id'] != null) 'service_id': opcao['service_id'],
             if (opcao['servico_id'] != null) 'servico_id': opcao['servico_id'],
             if (opcao['company_id'] != null) 'company_id': opcao['company_id'],
+            if (opcao['shipping_quote_id'] != null)
+              'shipping_quote_id': opcao['shipping_quote_id'],
           };
 
           // ✅ Filtrar fretes zerados de APIs (exceto manuais que podem ser retirada grátis)
@@ -4333,6 +4349,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                     : () => _whatsappCheckoutFlight.run(() async {
                           if (!_validarItensComPreco()) return;
                           if (!_validarCampos()) return;
+                          if (!await _cotacaoFreteAtualOuRecalcular()) return;
                           if (!await _dialogBeneficioCadastroOuSeguir()) return;
                           if (!mounted) return;
 
@@ -4374,7 +4391,6 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                               nome: nomeFretePedido,
                               valorFinal: _totals.valorFreteFinal,
                               freteGratis: _freteGratis,
-                              pacoteCotacao: _cotacaoPacote,
                             );
 
                             await widget.onCheckoutWhatsapp(
@@ -4498,6 +4514,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                       : () async {
                           if (!_validarItensComPreco()) return;
                           if (!_validarCampos()) return;
+                          if (!await _cotacaoFreteAtualOuRecalcular()) return;
                           if (!await _dialogBeneficioCadastroOuSeguir()) return;
                           if (!mounted) return;
                           setState(() {
@@ -4527,7 +4544,6 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                               nome: nomeFretePedidoPix,
                               valorFinal: _totals.valorFreteFinal,
                               freteGratis: _freteGratis,
-                              pacoteCotacao: _cotacaoPacote,
                             );
                             final cupomCod = _cupomCodigoParaPedido() ?? '';
                             final cupomIdDesc = _cupomDescontoIdFirestore();
@@ -4665,6 +4681,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                       : () async {
                           if (!_validarItensComPreco()) return;
                           if (!_validarCampos()) return;
+                          if (!await _cotacaoFreteAtualOuRecalcular()) return;
                           if (!await _dialogBeneficioCadastroOuSeguir()) return;
                           if (!mounted) return;
                           setState(() {
@@ -4699,7 +4716,6 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                               nome: nomeFretePedidoMp,
                               valorFinal: _totals.valorFreteFinal,
                               freteGratis: _freteGratis,
-                              pacoteCotacao: _cotacaoPacote,
                             );
 
                             await widget.onCheckoutMercadoPago(

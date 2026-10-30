@@ -184,6 +184,7 @@ class SuperFreteIntegrationService {
     double comprimento = 30,
     double valorDeclarado = 10,
     String? cepOrigem,
+    List<Map<String, dynamic>>? items,
   }) async {
     try {
       final callable = _functions.httpsCallable('superFreteQuote');
@@ -196,6 +197,7 @@ class SuperFreteIntegrationService {
         'comprimento': comprimento,
         'valorDeclarado': valorDeclarado,
         if (cepOrigem != null && cepOrigem.isNotEmpty) 'cepOrigem': cepOrigem,
+        if (items != null && items.isNotEmpty) 'items': items,
       }).timeout(const Duration(seconds: 25));
 
       final raw = res.data;

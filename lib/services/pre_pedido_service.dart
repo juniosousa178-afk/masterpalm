@@ -367,7 +367,7 @@ class PrePedidoService {
       final total = money.total;
       final freteGratis = entrega['freteGratis'] == true;
       final freteValor = (entrega['valor'] as num?)?.toDouble() ?? 0.0;
-      final cotacaoFrete = sanitizeShippingQuoteSnapshot(entrega['cotacao']);
+      final shippingQuoteId = sanitizeShippingQuoteId(entrega['shippingQuoteId']);
 
       // Criar documento do pré-pedido
       final prePedidoData = {
@@ -401,7 +401,7 @@ class PrePedidoService {
           if (entrega['plataforma'] != null) 'plataforma': entrega['plataforma'],
           if (entrega['service_id'] != null) 'service_id': entrega['service_id'],
           if (entrega['servico_id'] != null) 'servico_id': entrega['servico_id'],
-          if (cotacaoFrete != null) 'cotacao': cotacaoFrete,
+          if (shippingQuoteId != null) 'shippingQuoteId': shippingQuoteId,
         },
         'cupom': cupomCodigo != null
             ? {

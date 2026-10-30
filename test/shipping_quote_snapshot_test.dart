@@ -4,181 +4,103 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:master_palm/services/shipping_quote_snapshot.dart';
 
 void main() {
-  final pacote = buildShippingQuotePackage(
-    pesoGramas: 450,
-    alturaCm: 10,
-    larguraCm: 15,
-    comprimentoCm: 20,
-  );
+  const quoteId = 'abcdef0123456789abcdef0123456789.1';
 
-  group('buildShippingQuoteSnapshot', () {
-    test('Melhor Envio: provider, serviço, transportadora, preço, prazo e pacote', () {
-      final snap = buildShippingQuoteSnapshot(
-        freteSelecionado: {
-          'nome': 'SEDEX',
-          'valor': 23.5,
-          'prazo': '3 dias úteis',
-          'prazo_dias': 3,
-          'empresa': 'Correios',
-          'plataforma': 'melhor_envio',
-          'service_id': 2,
-          'company_id': 1,
-        },
-        pacote: pacote,
-      );
-      expect(snap, isNotNull);
-      expect(snap!['provider'], 'melhor_envio');
-      expect(snap['serviceId'], 2);
-      expect(snap['serviceName'], 'SEDEX');
-      expect(snap['carrierName'], 'Correios');
-      expect(snap['companyId'], 1);
-      expect(snap['quotedPrice'], 23.5);
-      expect(snap['quotedDeadlineDays'], 3);
-      expect(snap['pacote'], {
-        'pesoGramas': 450.0,
-        'alturaCm': 10.0,
-        'larguraCm': 15.0,
-        'comprimentoCm': 20.0,
-      });
+  group('itens da cotação', () {
+    test('um item por linha com productId canônico e quantidade', () {
+      final itens = buildShippingQuoteItems([
+        {'productId': 'p1', 'quantidade': 2, 'peso': 999, 'preco': 1},
+        {'id': 'p2', 'quantidade': 1.0},
+        {'nome': 'sem id'},
+      ]);
+      expect(itens, [
+        {'productId': 'p1', 'quantidade': 2},
+        {'productId': 'p2', 'quantidade': 1},
+      ]);
+      expect(itens.first.containsKey('peso'), isFalse,
+          reason: 'peso/preço não vão para a cotação');
     });
 
-    test('SuperFrete usa servico_id', () {
-      final snap = buildShippingQuoteSnapshot(
-        freteSelecionado: {
-          'nome': 'PAC',
-          'valor': 18.0,
-          'prazo': '7 dias úteis',
-          'empresa': 'Correios',
-          'plataforma': 'superfrete',
-          'servico_id': 1,
-        },
-        pacote: pacote,
-      );
-      expect(snap!['provider'], 'superfrete');
-      expect(snap['serviceId'], 1);
-      expect(snap['quotedDeadlineDays'], 7);
-    });
-
-    test('frete manual / retirada não gera snapshot', () {
-      for (final plataforma in ['manual', null, 'frenet', 'correios']) {
-        expect(
-          buildShippingQuoteSnapshot(
-            freteSelecionado: {
-              'nome': 'Retirada',
-              'valor': 0.0,
-              'tipo': 'retirada',
-              if (plataforma != null) 'plataforma': plataforma,
-            },
-            pacote: pacote,
-          ),
-          isNull,
-        );
-      }
-    });
-
-    test('sem pacote ou sem serviço não gera snapshot', () {
-      final frete = {
-        'nome': 'SEDEX',
-        'valor': 23.5,
-        'plataforma': 'melhor_envio',
-        'service_id': 2,
-      };
-      expect(buildShippingQuoteSnapshot(freteSelecionado: frete, pacote: null),
-          isNull);
+    test('assinatura agrega por produto e muda quando o carrinho muda', () {
+      final a = shippingQuoteItemsSignature([
+        {'productId': 'p2', 'quantidade': 1},
+        {'productId': 'p1', 'quantidade': 1, 'tamanho': 'P'},
+        {'productId': 'p1', 'quantidade': 1, 'tamanho': 'M'},
+      ]);
+      expect(a, 'p1:2|p2:1');
       expect(
-        buildShippingQuoteSnapshot(
-          freteSelecionado: {...frete}..remove('service_id'),
-          pacote: pacote,
-        ),
-        isNull,
+        shippingQuoteItemsSignature([
+          {'productId': 'p1', 'quantidade': 3},
+          {'productId': 'p2', 'quantidade': 1},
+        ]),
+        isNot(a),
       );
     });
   });
 
-  group('sanitizeShippingQuoteSnapshot', () {
-    test('descarta chaves desconhecidas e valores inválidos', () {
-      final clean = sanitizeShippingQuoteSnapshot({
-        'provider': 'melhor_envio',
-        'serviceId': '2',
-        'quotedPrice': 20,
-        'token': 'nao-deve-ficar',
-        'pacote': {
-          'pesoGramas': 300,
-          'alturaCm': 2,
-          'larguraCm': 11,
-          'comprimentoCm': 16,
-          'extra': true,
-        },
-      });
-      expect(clean, isNotNull);
-      expect(clean!.containsKey('token'), isFalse);
-      expect((clean['pacote'] as Map).containsKey('extra'), isFalse);
-      expect(clean['serviceId'], 2);
-    });
-
-    test('rejeita provider desconhecido, preço zero e pacote incompleto', () {
-      final base = {
-        'provider': 'melhor_envio',
-        'serviceId': 2,
-        'quotedPrice': 20,
-        'pacote': {
-          'pesoGramas': 300,
-          'alturaCm': 2,
-          'larguraCm': 11,
-          'comprimentoCm': 16,
-        },
-      };
-      expect(sanitizeShippingQuoteSnapshot({...base, 'provider': 'outro'}),
-          isNull);
-      expect(sanitizeShippingQuoteSnapshot({...base, 'quotedPrice': 0}),
-          isNull);
-      expect(
-        sanitizeShippingQuoteSnapshot({
-          ...base,
-          'pacote': {'pesoGramas': 300},
-        }),
-        isNull,
-      );
-      expect(sanitizeShippingQuoteSnapshot(null), isNull);
+  group('sanitizeShippingQuoteId', () {
+    test('aceita só o formato emitido pelo servidor', () {
+      expect(sanitizeShippingQuoteId(quoteId), quoteId);
+      expect(sanitizeShippingQuoteId(' $quoteId '), quoteId);
+      for (final bad in [
+        null,
+        '',
+        'abc.1',
+        '${quoteId}99',
+        'ABCDEF0123456789ABCDEF0123456789.1',
+        '../x',
+        {'price': 1},
+      ]) {
+        expect(sanitizeShippingQuoteId(bad), isNull, reason: '$bad');
+      }
     });
   });
 
   group('buildCatalogCheckoutEntrega', () {
-    test('mantém campos atuais e inclui cotacao para provedor', () {
+    test('frete de provedor leva só o shippingQuoteId (sem pacote/preço cotado)', () {
       final entrega = buildCatalogCheckoutEntrega(
         freteSelecionado: {
-          'nome': 'PAC',
-          'valor': 18.0,
-          'tipo': 'superfrete',
-          'plataforma': 'superfrete',
-          'servico_id': 1,
-          'empresa': 'Correios',
+          'nome': 'SEDEX',
+          'valor': 15.0,
+          'tipo': 'melhor_envio',
+          'plataforma': 'melhor_envio',
+          'service_id': 4,
+          'shipping_quote_id': quoteId,
         },
-        nome: 'PAC',
-        valorFinal: 18.0,
+        nome: 'SEDEX',
+        valorFinal: 15.0,
         freteGratis: false,
-        pacoteCotacao: pacote,
       );
-      expect(entrega['servico_id'], 1);
-      expect(entrega['plataforma'], 'superfrete');
-      expect(entrega['valor'], 18.0);
-      expect(entrega['cotacao'], isA<Map>());
+      expect(entrega['shippingQuoteId'], quoteId);
+      expect(entrega['service_id'], 4);
+      expect(entrega['plataforma'], 'melhor_envio');
+      expect(entrega.containsKey('cotacao'), isFalse);
     });
 
-    test('retirada não leva cotacao', () {
-      final entrega = buildCatalogCheckoutEntrega(
+    test('frete manual não leva shippingQuoteId; ID forjado é descartado', () {
+      final manual = buildCatalogCheckoutEntrega(
         freteSelecionado: {
           'nome': 'Retirada',
-          'valor': 0.0,
           'tipo': 'retirada',
           'plataforma': 'manual',
+          'shipping_quote_id': quoteId,
         },
         nome: 'Retirada',
         valorFinal: 0,
-        freteGratis: false,
-        pacoteCotacao: pacote,
+        freteGratis: true,
       );
-      expect(entrega.containsKey('cotacao'), isFalse);
+      expect(manual.containsKey('shippingQuoteId'), isFalse);
+      final forjado = buildCatalogCheckoutEntrega(
+        freteSelecionado: {
+          'plataforma': 'superfrete',
+          'servico_id': 1,
+          'shipping_quote_id': 'qualquer',
+        },
+        nome: 'PAC',
+        valorFinal: 1,
+        freteGratis: false,
+      );
+      expect(forjado.containsKey('shippingQuoteId'), isFalse);
     });
   });
 
@@ -197,22 +119,39 @@ void main() {
       }
     });
 
-    test('carrinho usa o helper nos três checkouts e guarda servico_id', () {
+    test('carrinho envia itens à cotação, guarda o ID e recota se o carrinho mudou', () {
       final src = File('lib/screens/public_catalog/widgets/carrinho_sheet_web.dart')
           .readAsStringSync();
+      expect('buildCatalogCheckoutEntrega('.allMatches(src).length, 3);
+      expect(src, contains('itensCotacao: buildShippingQuoteItems(widget.items)'));
+      expect(src, contains("'shipping_quote_id': opcao['shipping_quote_id']"));
+      expect(src, contains("'servico_id': opcao['servico_id']"));
       expect(
-        'buildCatalogCheckoutEntrega('.allMatches(src).length,
+        'if (!await _cotacaoFreteAtualOuRecalcular()) return;'.allMatches(src).length,
         3,
       );
-      expect(src, contains("'servico_id': opcao['servico_id']"));
-      expect(src, contains('_cotacaoPacote = buildShippingQuotePackage('));
+      expect(src.contains('_cotacaoPacote'), isFalse);
     });
 
-    test('pre_pedido_service grava frete.cotacao sanitizado', () {
+    test('FreteService repassa itens e o ID nas duas plataformas', () {
+      final src = File('lib/services/frete_service.dart').readAsStringSync();
+      expect(src, contains("'items': itensCotacao"));
+      expect(src, contains('items: itensCotacao'));
+      expect(
+        "'shipping_quote_id': m['shippingQuoteId'].toString()".allMatches(src).length +
+            "'shipping_quote_id': item['shippingQuoteId'].toString()"
+                .allMatches(src)
+                .length,
+        2,
+      );
+    });
+
+    test('pre_pedido_service grava só frete.shippingQuoteId sanitizado', () {
       final src =
           File('lib/services/pre_pedido_service.dart').readAsStringSync();
-      expect(src, contains("sanitizeShippingQuoteSnapshot(entrega['cotacao'])"));
-      expect(src, contains("'cotacao': cotacaoFrete"));
+      expect(src, contains("sanitizeShippingQuoteId(entrega['shippingQuoteId'])"));
+      expect(src, contains("'shippingQuoteId': shippingQuoteId"));
+      expect(src.contains("'cotacao'"), isFalse);
     });
   });
 }

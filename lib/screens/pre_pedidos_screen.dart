@@ -2319,28 +2319,27 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
     final frete = dados['frete'] is Map
         ? Map<String, dynamic>.from(dados['frete'] as Map)
         : <String, dynamic>{};
-    final cotacao = frete['cotacao'] is Map
-        ? Map<String, dynamic>.from(frete['cotacao'] as Map)
-        : <String, dynamic>{};
 
     final provider =
         (shipping['provider'] ?? frete['plataforma'] ?? '').toString();
     final status = exportState['status']?.toString();
     final errorCode = exportState['lastErrorCode']?.toString();
     final serviceName =
-        (shipping['serviceName'] ?? cotacao['serviceName'] ?? frete['nome'] ?? '')
-            .toString();
-    final carrierName =
-        (shipping['carrierName'] ?? cotacao['carrierName'] ?? '').toString();
+        (shipping['serviceName'] ?? frete['nome'] ?? '').toString();
+    final carrierName = (shipping['carrierName'] ?? '').toString();
     final servico = [carrierName, serviceName]
         .where((s) => s.trim().isNotEmpty)
         .toSet()
         .join(' ');
     final price = shipping['price'] ?? frete['valor'];
-    final deadline = shipping['deadline'] ?? cotacao['quotedDeadlineDays'];
+    final deadline = shipping['deadline'];
     final providerLabel = ShippingExportService.providerLabel(provider);
-    final statusLines =
-        ShippingExportService.statusLines(status, provider: provider);
+    final statusLines = ShippingExportService.statusLines(
+      status,
+      provider: provider,
+      reconciledManually: exportState['reconciledManually'] == true,
+    );
+    final needsResolution = ShippingExportService.needsResolution(status);
     final errorMsg =
         ShippingExportService.messageForErrorCode(errorCode, provider: provider);
     final isError = status == 'failed' || status == 'unknown';
@@ -2396,18 +2395,43 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
                 style: TextStyle(fontSize: 12, color: Colors.orange.shade800),
               ),
             ),
-          if (ShippingExportService.canRetry(status, provider: provider) ||
+          if (ShippingExportService.canRetry(status) ||
+              needsResolution ||
               (status == 'exported' && siteUrl != null)) ...[
             const SizedBox(height: 10),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
-                if (ShippingExportService.canRetry(status, provider: provider))
+                if (ShippingExportService.canRetry(status))
                   OutlinedButton.icon(
                     onPressed: () => _retryShippingExport(dados),
                     icon: const Icon(Icons.refresh, size: 18),
                     label: const Text('Tentar novamente'),
+                  ),
+                if (needsResolution && siteUrl != null)
+                  OutlinedButton.icon(
+                    onPressed: () => _abrirSiteProvedorFrete(siteUrl),
+                    icon: const Icon(Icons.open_in_new, size: 18),
+                    label: const Text('Verificar carrinho'),
+                  ),
+                if (needsResolution)
+                  OutlinedButton.icon(
+                    onPressed: () => _resolverEnvioIncerto(
+                      dados,
+                      ShippingExportResolution.alreadyInCart,
+                    ),
+                    icon: const Icon(Icons.check, size: 18),
+                    label: const Text('Já está no carrinho'),
+                  ),
+                if (needsResolution)
+                  OutlinedButton.icon(
+                    onPressed: () => _resolverEnvioIncerto(
+                      dados,
+                      ShippingExportResolution.notInCart,
+                    ),
+                    icon: const Icon(Icons.send, size: 18),
+                    label: const Text('Não está no carrinho — enviar'),
                   ),
                 if (status == 'exported' && siteUrl != null)
                   OutlinedButton.icon(
@@ -2425,17 +2449,63 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
     );
   }
 
-  Future<void> _retryShippingExport(Map<String, dynamic> dados) async {
+  /// Resultado incerto: o lojista confere o carrinho do provedor e decide.
+  Future<void> _resolverEnvioIncerto(
+    Map<String, dynamic> dados,
+    ShippingExportResolution resolution,
+  ) async {
+    final provider = (dados['shipping'] is Map
+            ? (dados['shipping'] as Map)['provider']
+            : null)
+        ?.toString();
+    final label = ShippingExportService.providerLabel(provider);
+    final enviar = resolution == ShippingExportResolution.notInCart;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(enviar ? 'Enviar novamente?' : 'Marcar como enviado?'),
+        content: Text(
+          enviar
+              ? 'Confirme que você verificou o carrinho do $label e este envio não está lá. '
+                  'Se estiver, ele ficará duplicado.'
+              : 'Confirme que este envio já está no carrinho do $label. '
+                  'Nenhum novo envio será criado.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(enviar ? 'Enviar' : 'Confirmar'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    await _retryShippingExport(dados, resolution: resolution);
+  }
+
+  Future<void> _retryShippingExport(
+    Map<String, dynamic> dados, {
+    ShippingExportResolution? resolution,
+  }) async {
     final pedidoId = dados['id']?.toString() ?? '';
     if (pedidoId.isEmpty) return;
     _showModernSnackBar('Enviando frete...');
     final res = await ShippingExportService.retryExport(
       lojaId: widget.lojaId,
       orderId: pedidoId,
+      resolution: resolution,
     );
     if (!mounted) return;
     if (res['ok'] == true) {
-      _showModernSnackBar('Frete enviado. Aguardando compra da etiqueta.');
+      _showModernSnackBar(
+        resolution == ShippingExportResolution.alreadyInCart
+            ? 'Envio marcado como presente no carrinho.'
+            : 'Frete enviado. Aguardando compra da etiqueta.',
+      );
     } else {
       final code = res['errorCode']?.toString();
       final provider = (dados['shipping'] is Map

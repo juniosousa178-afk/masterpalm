@@ -11,21 +11,25 @@ import {
   SHIPPING_EXPORT_STATUS,
   SHIPPING_EXPORT_ERROR,
   SHIPPING_EXPORT_TRIGGER,
+  SHIPPING_EXPORT_RESOLUTION,
+  SUPERFRETE_MASTERPALM_EXPORT_CONTRACT_VERIFIED,
   shippingExportOperationId,
   shippingExportDocId,
   detectShippingExportTrigger,
   classifyShippingRequirement,
-  readQuoteSnapshot,
   evaluateShippingCutover,
   parseShippingCutoverUtc,
   buildShippingOrder,
   buildMelhorEnvioCartRequest,
   classifyProviderHttpStatus,
+  classifyProviderNetworkError,
   exportShippingOrder,
   handlePrePedidoShippingExportUpdate,
   createShippingExportHandlers,
   sanitizeProductName,
 } from "../src/shippingExport.js";
+import { SHIPPING_QUOTE_ERROR } from "../src/shippingQuoteReceipt.js";
+import { makeDb } from "./shippingMemoryDb.js";
 
 const STORE_A = "loja-a";
 const STORE_B = "loja-b";
@@ -35,54 +39,9 @@ const TOKEN_B = "token_loja_b_abcdefghijklmnopqrstuvwxyz";
 const CUTOVER_MS = Date.parse("2026-10-30T00:00:00Z");
 const CREATED_AFTER = CUTOVER_MS + 60_000;
 const PAYMENT_ID = "123456789";
-
-// ---------------------------------------------------------------------------
-// Firestore em memória
-// ---------------------------------------------------------------------------
-
-const isPlain = (v) => v != null && typeof v === "object" && Object.getPrototypeOf(v) === Object.prototype;
-
-function deepMerge(target, src) {
-  const out = isPlain(target) ? { ...target } : {};
-  for (const [k, v] of Object.entries(src)) {
-    out[k] = isPlain(v) && isPlain(out[k]) ? deepMerge(out[k], v) : v;
-  }
-  return out;
-}
-
-function makeDb(initial = {}) {
-  const docs = new Map(Object.entries(structuredClone(initial)));
-  const writes = [];
-  const reads = [];
-  const docRef = (path) => ({
-    path,
-    collection: (name) => collectionRef(`${path}/${name}`),
-    async get() {
-      reads.push(path);
-      const data = docs.get(path);
-      return { exists: data !== undefined, data: () => data };
-    },
-    async set(data, opts = {}) {
-      writes.push(path);
-      docs.set(path, opts.merge ? deepMerge(docs.get(path), data) : { ...data });
-    },
-  });
-  const collectionRef = (path) => ({ doc: (id) => docRef(`${path}/${id}`) });
-  return {
-    docs,
-    writes,
-    reads,
-    collection: (name) => collectionRef(name),
-    async runTransaction(fn) {
-      const tx = {
-        get: (ref) => ref.get(),
-        set: (ref, data, opts) => ref.set(data, opts),
-        update: (ref, data) => ref.set(data, { merge: true }),
-      };
-      return fn(tx);
-    },
-  };
-}
+const RECEIPT = "a".repeat(32);
+const QUOTE_ID = `${RECEIPT}.0`;
+const ME_PACKAGE = { weight: 0.45, height: 10, width: 20, length: 30 };
 
 // ---------------------------------------------------------------------------
 // Dados
@@ -135,17 +94,28 @@ function order(provider = "melhor_envio", extra = {}) {
       tipo: provider,
       plataforma: provider,
       ...(provider === "superfrete" ? { servico_id: serviceId } : { service_id: serviceId }),
-      cotacao: {
-        provider,
-        serviceId: String(serviceId),
-        serviceName: "SEDEX",
-        carrierName: "Correios",
-        quotedPrice: 15,
-        quotedDeadlineDays: 3,
-        pacote: { pesoGramas: 450, alturaCm: 10, larguraCm: 20, comprimentoCm: 30 },
-      },
+      shippingQuoteId: QUOTE_ID,
     },
     ...extra,
+  };
+}
+
+function receiptDocs({ storeId = STORE_A, provider = "melhor_envio" } = {}) {
+  const serviceId = provider === "superfrete" ? "1" : "4";
+  return {
+    [`lojas/${storeId}/shipping_quotes/${RECEIPT}`]: {
+      storeId,
+      provider,
+      originCep: "01310100",
+      destinationCep: "20040020",
+      items: [{ productId: "p1", quantity: 2 }, { productId: "p2", quantity: 1 }],
+      canonicalPackage: { weightGrams: 450, heightCm: 10, widthCm: 20, lengthCm: 30 },
+      providerPackage: ME_PACKAGE,
+      insuranceValue: 150,
+      options: [{ serviceId, serviceName: "SEDEX", carrierName: "Correios", companyId: "1", price: 15, deadlineDays: 3 }],
+      quotedAtMs: CREATED_AFTER - 60_000,
+      expiresAtMs: CREATED_AFTER + 60 * 60_000,
+    },
   };
 }
 
@@ -159,6 +129,7 @@ function storeDocs({ storeId = STORE_A, token = TOKEN_A, provider = "melhor_envi
       ...(sender ? { sender } : {}),
     },
     [`lojas/${storeId}/config/fretes`]: { cepOrigem: "01310100" },
+    ...receiptDocs({ storeId, provider }),
   };
 }
 
@@ -174,19 +145,23 @@ function response(status, body) {
   return { ok: status >= 200 && status < 300, status, text: async () => (typeof body === "string" ? body : JSON.stringify(body)) };
 }
 
-/** fetch simulado: GET /me/cart devolve `cart`; POST responde com `post` (status/body) ou lança. */
-function makeFetch({ cart = [], cartStatus = 200, post = { status: 201, body: { id: "me-cart-1" } }, throwOnPost = false } = {}) {
+/** fetch simulado: POST responde com `post` (status/body) ou lança `throwOnPost`. */
+function makeFetch({ post = { status: 201, body: { id: "me-cart-1" } }, throwOnPost = null } = {}) {
   const calls = [];
   const impl = async (url, opts = {}) => {
     calls.push({ url, method: opts.method, auth: opts.headers?.Authorization, body: opts.body ? JSON.parse(opts.body) : null });
-    if (opts.method === "GET") return response(cartStatus, { data: cart, last_page: 1 });
-    if (throwOnPost) throw new Error("Request timeout after 15000ms");
+    if (throwOnPost) throw throwOnPost;
     return response(post.status, post.body);
   };
   impl.calls = calls;
   impl.posts = () => calls.filter((c) => c.method === "POST");
   return impl;
 }
+
+const timeoutError = () => new Error("Request timeout after 15000ms");
+const dnsError = () => Object.assign(new TypeError("fetch failed"), { cause: { code: "ENOTFOUND" } });
+
+const newDb = (docs) => makeDb(docs, { createTimeMs: CREATED_AFTER });
 
 async function runPaid({ db, fetchImpl, o = order(), storeId = STORE_A, createTimeMs = CREATED_AFTER, cutoverMs = CUTOVER_MS }) {
   db.docs.set(`lojas/${storeId}/pre_pedidos/${ORDER}`, paidAfter(o));
@@ -207,6 +182,21 @@ const exportDoc = (db, provider = "melhor_envio", storeId = STORE_A) =>
   db.docs.get(`lojas/${storeId}/shipping_preorders/${shippingExportDocId(provider, ORDER)}`);
 const orderDoc = (db, storeId = STORE_A) => db.docs.get(`lojas/${storeId}/pre_pedidos/${ORDER}`);
 
+function handlers(db, { allowed = true, data = {}, fetchImpl = makeFetch() } = {}) {
+  return createShippingExportHandlers({
+    db,
+    collectionLojas: "lojas",
+    canManageStoreConfigServerSide: async () => allowed,
+    checkRateLimit: async () => {},
+    getCallableIdentifier: () => "uid-1",
+    fetchWithTimeout: fetchImpl,
+    request: { auth: { uid: "uid-1", token: {} }, data },
+  });
+}
+
+const retryCallable = (db, fetchImpl, resolution) =>
+  handlers(db, { data: { lojaId: STORE_A, orderId: ORDER, ...(resolution ? { resolution } : {}) }, fetchImpl }).retryShippingExport();
+
 // ---------------------------------------------------------------------------
 // Regras puras
 // ---------------------------------------------------------------------------
@@ -214,7 +204,6 @@ const orderDoc = (db, storeId = STORE_A) => db.docs.get(`lojas/${storeId}/pre_pe
 describe("modelo e gatilho", () => {
   it("operationId determinístico por provedor/loja/pedido", () => {
     assert.equal(shippingExportOperationId("melhor_envio", STORE_A, ORDER), "shipping:melhor_envio:loja-a:pedido-1");
-    assert.equal(shippingExportOperationId("melhor_envio", STORE_A, ORDER), shippingExportOperationId("melhor_envio", STORE_A, ORDER));
     assert.equal(shippingExportOperationId("", STORE_A, ORDER), "");
   });
 
@@ -241,70 +230,103 @@ describe("modelo e gatilho", () => {
     assert.equal(classifyShippingRequirement(order("melhor_envio", { status: "cancelado" })).required, false);
   });
 
-  it("snapshot da cotação é obrigatório e precisa bater com o serviço do pedido", () => {
-    assert.equal(readQuoteSnapshot(order(), "melhor_envio").ok, true);
-    const semSnap = order();
-    delete semSnap.frete.cotacao;
-    assert.equal(readQuoteSnapshot(semSnap, "melhor_envio").code, SHIPPING_EXPORT_ERROR.QUOTE_SNAPSHOT_MISSING);
-    const outroServico = order();
-    outroServico.frete.service_id = 99;
-    assert.equal(readQuoteSnapshot(outroServico, "melhor_envio").code, SHIPPING_EXPORT_ERROR.QUOTE_SNAPSHOT_MISSING);
-    const semPeso = order();
-    semPeso.frete.cotacao.pacote.pesoGramas = 0;
-    assert.equal(readQuoteSnapshot(semPeso, "melhor_envio").ok, false);
-  });
-
-  it("corte: sem configuração ou pedido histórico nunca exporta", () => {
+  it("corte: só UTC explícito; sem configuração ou pedido histórico nunca exporta", () => {
     assert.equal(evaluateShippingCutover({ createTimeMs: CREATED_AFTER, cutoverMs: null }).ok, false);
     assert.equal(evaluateShippingCutover({ createTimeMs: CUTOVER_MS - 1, cutoverMs: CUTOVER_MS }).reason, "historical_order");
     assert.equal(evaluateShippingCutover({ createTimeMs: CREATED_AFTER, cutoverMs: CUTOVER_MS }).ok, true);
     assert.equal(parseShippingCutoverUtc("2026-10-30T00:00:00Z"), CUTOVER_MS);
-    assert.equal(parseShippingCutoverUtc(""), null);
-    assert.equal(parseShippingCutoverUtc("lixo"), null);
+    assert.equal(parseShippingCutoverUtc("2026-10-30T00:00:00.000Z"), CUTOVER_MS);
+    for (const bad of ["", "lixo", "2026-10-30T00:00:00", "2026-10-30T00:00:00-03:00", "2026-10-30", "30/10/2026"]) {
+      assert.equal(parseShippingCutoverUtc(bad), null, bad);
+    }
   });
 
-  it("payload Melhor Envio preserva serviço, pacote, itens e tag; sem e-mail", () => {
-    const built = buildShippingOrder({ order: order(), storeId: STORE_A, orderId: ORDER, provider: "melhor_envio", sender: SENDER });
+  it("corte obrigatório no deploy: defineString sem padrão, com regex UTC; nada de process.env/relógio", () => {
+    const src = readFileSync(new URL("../index.js", import.meta.url), "utf8");
+    const i = src.indexOf("const SHIPPING_AUTO_EXPORT_CUTOVER = defineString(");
+    assert.ok(i > 0);
+    const block = src.slice(i, src.indexOf("});", i) + 3);
+    assert.ok(!/default\s*:/.test(block), "sem default → deploy falha fechado se ausente");
+    assert.match(block, /validationRegex: SHIPPING_CUTOVER_UTC_PATTERN/);
+    assert.ok(!src.includes("process.env[SHIPPING_AUTO_EXPORT_CUTOVER_ENV]"));
+    assert.match(src, /cutoverMs: parseShippingCutoverUtc\(SHIPPING_AUTO_EXPORT_CUTOVER\.value\(\)\)/);
+  });
+
+  it("payload Melhor Envio: contrato do carrinho (strings, volume cotado, documento/bairro, sem e-mail)", () => {
+    const quote = {
+      provider: "melhor_envio", shippingQuoteId: QUOTE_ID, serviceId: "4", serviceName: "SEDEX",
+      carrierName: "Correios", quotedPrice: 15, chargedPrice: 15, deadlineDays: 3,
+      insuranceValue: 150, providerPackage: ME_PACKAGE,
+    };
+    const built = buildShippingOrder({ order: order(), storeId: STORE_A, orderId: ORDER, provider: "melhor_envio", sender: SENDER, quote });
     assert.equal(built.ok, true);
     const body = buildMelhorEnvioCartRequest(built.shippingOrder);
     assert.equal(body.service, 4);
     assert.deepEqual(body.volumes, [{ height: 10, width: 20, length: 30, weight: 0.45 }]);
     assert.deepEqual(body.products, [
-      { name: "Colar Prata", quantity: 2, unitary_value: 50 },
-      { name: "Brinco Folheado", quantity: 1, unitary_value: 50 },
+      { name: "Colar Prata", quantity: "2", unitary_value: "50.00" },
+      { name: "Brinco Folheado", quantity: "1", unitary_value: "50.00" },
     ]);
     assert.equal(body.options.insurance_value, 150);
     assert.equal(body.options.non_commercial, true);
-    assert.deepEqual(body.options.tags, [{ tag: "shipping:melhor_envio:loja-a:pedido-1" }]);
+    assert.equal(body.options.invoice, undefined);
     assert.equal(body.from.company_document, "12345678000190");
-    assert.equal(body.from.document, undefined);
+    assert.equal(body.from.state_register, undefined);
+    assert.equal(body.to.document, "98765432100");
+    assert.equal(body.to.district, "Centro");
     assert.equal(body.to.email, undefined);
     assert.equal(body.to.postal_code, "20040020");
-    assert.equal(built.shippingOrder.quotedPrice, 15);
-    assert.equal(built.shippingOrder.quotedDeadlineDays, 3);
+
+    const nfOk = buildShippingOrder({
+      order: order("melhor_envio", { notaFiscal: { chave: "1".repeat(44) } }),
+      storeId: STORE_A, orderId: ORDER, provider: "melhor_envio",
+      sender: { ...SENDER, shippingDocument: "nota_fiscal", stateRegister: "123456789" }, quote,
+    });
+    const nfBody = buildMelhorEnvioCartRequest(nfOk.shippingOrder);
+    assert.equal(nfBody.options.non_commercial, false);
+    assert.deepEqual(nfBody.options.invoice, { key: "1".repeat(44) });
+    assert.equal(nfBody.from.state_register, "123456789");
   });
 
-  it("remetente incompleto e NF exigida sem chave falham fechado", () => {
-    const semRemetente = buildShippingOrder({ order: order(), storeId: STORE_A, orderId: ORDER, provider: "melhor_envio", sender: { ...SENDER, address: "" } });
-    assert.equal(semRemetente.code, SHIPPING_EXPORT_ERROR.SENDER_DATA_REQUIRED);
-    const nf = buildShippingOrder({ order: order(), storeId: STORE_A, orderId: ORDER, provider: "melhor_envio", sender: { ...SENDER, shippingDocument: "nota_fiscal" } });
-    assert.equal(nf.code, SHIPPING_EXPORT_ERROR.SHIPPING_DOCUMENT_DATA_REQUIRED);
-    const semNumero = order();
-    semNumero.cliente.endereco.numero = "";
-    assert.equal(
-      buildShippingOrder({ order: semNumero, storeId: STORE_A, orderId: ORDER, provider: "melhor_envio", sender: SENDER }).code,
-      SHIPPING_EXPORT_ERROR.RECIPIENT_DATA_INCOMPLETE,
-    );
+  it("dados fiscais/destinatário incompletos falham fechado (nada inventado)", () => {
+    const quote = { provider: "melhor_envio", serviceId: "4", insuranceValue: 150, providerPackage: ME_PACKAGE };
+    const b = (o, sender = SENDER) => buildShippingOrder({ order: o, storeId: STORE_A, orderId: ORDER, provider: "melhor_envio", sender, quote });
+    assert.equal(b(order(), { ...SENDER, address: "" }).code, SHIPPING_EXPORT_ERROR.SENDER_DATA_REQUIRED);
+    const nfSemChave = b(order(), { ...SENDER, shippingDocument: "nota_fiscal", stateRegister: "123" });
+    assert.equal(nfSemChave.code, SHIPPING_EXPORT_ERROR.SHIPPING_DOCUMENT_DATA_REQUIRED);
+    const nfSemIE = b(order("melhor_envio", { notaFiscal: { chave: "1".repeat(44) } }), { ...SENDER, shippingDocument: "nota_fiscal" });
+    assert.equal(nfSemIE.code, SHIPPING_EXPORT_ERROR.SHIPPING_DOCUMENT_DATA_REQUIRED);
+    for (const field of ["numero", "bairro"]) {
+      const o = order();
+      o.cliente.endereco[field] = "";
+      assert.equal(b(o).code, SHIPPING_EXPORT_ERROR.RECIPIENT_DATA_INCOMPLETE, field);
+    }
+    const semCpf = order();
+    semCpf.cliente.cpf = "";
+    assert.equal(b(semCpf).code, SHIPPING_EXPORT_ERROR.RECIPIENT_DATA_INCOMPLETE);
+    assert.equal(b(order(), SENDER).ok, true);
+    assert.equal(buildShippingOrder({ order: order(), storeId: STORE_A, orderId: ORDER, provider: "melhor_envio", sender: SENDER, quote: null }).ok, false);
     assert.equal(sanitizeProductName("  a\u0000b\n c  "), "a b c");
   });
 
-  it("classificação HTTP: 4xx falha, 408/5xx incerto", () => {
+  it("classificação: 4xx falha; 408/5xx/timeout incerto; erro antes de conectar falha", () => {
     assert.equal(classifyProviderHttpStatus(401).code, SHIPPING_EXPORT_ERROR.PROVIDER_AUTH_FAILED);
     assert.equal(classifyProviderHttpStatus(403).outcome, "failed");
     assert.equal(classifyProviderHttpStatus(422).code, SHIPPING_EXPORT_ERROR.PROVIDER_VALIDATION_FAILED);
     assert.equal(classifyProviderHttpStatus(429).code, SHIPPING_EXPORT_ERROR.PROVIDER_RATE_LIMITED);
     assert.equal(classifyProviderHttpStatus(500).outcome, "unknown");
     assert.equal(classifyProviderHttpStatus(408).outcome, "unknown");
+    assert.equal(classifyProviderNetworkError(timeoutError()).outcome, "unknown");
+    assert.equal(classifyProviderNetworkError(new TypeError("fetch failed")).outcome, "unknown");
+    assert.equal(classifyProviderNetworkError(dnsError()).outcome, "failed");
+    assert.equal(classifyProviderNetworkError({ cause: { code: "ECONNRESET" } }).outcome, "unknown");
+  });
+
+  it("sem reconciliação por tag: nenhuma listagem do carrinho é usada", () => {
+    const src = readFileSync(new URL("../src/shippingExport.js", import.meta.url), "utf8");
+    assert.ok(!src.includes("me/cart?page"));
+    assert.ok(!src.includes("findMelhorEnvioCartItemByTag"));
+    assert.ok(!src.includes("cartItemHasTag"));
   });
 });
 
@@ -314,7 +336,7 @@ describe("modelo e gatilho", () => {
 
 describe("Melhor Envio — exportação após pagamento aprovado", () => {
   it("edição sem confirmação (seleção do frete) não chama o provedor", async () => {
-    const db = makeDb({ ...storeDocs(), ...marker() });
+    const db = newDb({ ...storeDocs(), ...marker() });
     const fetchImpl = makeFetch();
     const o = order();
     db.docs.set(`lojas/${STORE_A}/pre_pedidos/${ORDER}`, o);
@@ -328,17 +350,19 @@ describe("Melhor Envio — exportação após pagamento aprovado", () => {
     assert.equal(db.writes.length, 0);
   });
 
-  it("o trigger de criação do pré-pedido não chama provedor", () => {
+  it("gatilho antigo desligado: criação do pré-pedido é no-op e não há outro gatilho de criação", () => {
     const src = readFileSync(new URL("../index.js", import.meta.url), "utf8");
     const i = src.indexOf("export const onPrePedidoShippingPreOrder = onDocumentCreated(");
     assert.ok(i > 0);
     const block = src.slice(i, src.indexOf(");", i) + 2);
     assert.match(block, /async \(\) => \{\}/);
     assert.ok(!src.includes("onPrePedidoShippingPreOrderTrigger"));
+    assert.ok(!src.includes("handlePrePedidoShippingPreOrderCreated"));
+    assert.match(src, /export const onPrePedidoShippingExport = onDocumentUpdatedWithAuthContext\(/);
   });
 
-  it("pagamento aprovado cria um item no carrinho com o token da loja e grava o estado", async () => {
-    const db = makeDb({ ...storeDocs(), ...marker() });
+  it("pagamento aprovado cria um item no carrinho com o token da loja e o pacote cotado", async () => {
+    const db = newDb({ ...storeDocs(), ...marker() });
     const fetchImpl = makeFetch();
     const res = await runPaid({ db, fetchImpl });
     assert.equal(res.ok, true);
@@ -348,33 +372,34 @@ describe("Melhor Envio — exportação após pagamento aprovado", () => {
     assert.match(posts[0].url, /^https:\/\/melhorenvio\.com\.br\/api\/v2\/me\/cart$/);
     assert.equal(posts[0].auth, `Bearer ${TOKEN_A}`);
     assert.equal(posts[0].body.service, 4);
+    assert.deepEqual(posts[0].body.volumes, [ME_PACKAGE]);
+    assert.equal(posts[0].body.options.insurance_value, 150);
     const exp = exportDoc(db);
     assert.equal(exp.status, SHIPPING_EXPORT_STATUS.EXPORTED);
-    assert.equal(exp.providerShipmentId, "me-cart-1");
-    assert.equal(exp.operationId, "shipping:melhor_envio:loja-a:pedido-1");
+    assert.equal(exp.providerShipmentId, "me-cart-1", "ID do provedor persistido no ledger");
+    assert.equal(exp.shippingQuoteId, QUOTE_ID);
     const o = orderDoc(db);
-    assert.equal(o.shipping.export.status, SHIPPING_EXPORT_STATUS.EXPORTED);
     assert.equal(o.shipping.export.providerShipmentId, "me-cart-1");
-    assert.equal(o.shipping.price, 15, "preço cobrado preservado");
+    assert.equal(o.shipping.price, 15);
     assert.equal(o.shipping.serviceName, "SEDEX");
+    assert.equal(o.shipping.carrierName, "Correios");
     assert.equal(o.shipping.deadline, 3);
     assert.equal(o.total, 165, "total intocado");
     assert.equal(o.status, "paid", "status/pagamento intocados");
   });
 
   it("nenhuma escrita fora do pedido e do ledger de envio (estoque/venda/pagamento)", async () => {
-    const db = makeDb({ ...storeDocs(), ...marker() });
+    const db = newDb({ ...storeDocs(), ...marker() });
     await runPaid({ db, fetchImpl: makeFetch() });
     const allowed = new Set([
       `lojas/${STORE_A}/pre_pedidos/${ORDER}`,
       `lojas/${STORE_A}/shipping_preorders/${shippingExportDocId("melhor_envio", ORDER)}`,
     ]);
-    const extra = db.writes.filter((p) => !allowed.has(p));
-    assert.deepEqual(extra, []);
+    assert.deepEqual(db.writes.filter((p) => !allowed.has(p)), []);
   });
 
-  it("webhook duplicado não duplica o envio", async () => {
-    const db = makeDb({ ...storeDocs(), ...marker() });
+  it("webhook repetido não duplica o envio", async () => {
+    const db = newDb({ ...storeDocs(), ...marker() });
     const fetchImpl = makeFetch();
     await runPaid({ db, fetchImpl });
     await runPaid({ db, fetchImpl });
@@ -382,9 +407,22 @@ describe("Melhor Envio — exportação após pagamento aprovado", () => {
     assert.equal(fetchImpl.posts().length, 1);
   });
 
+  it("gatilhos concorrentes: um único POST", async () => {
+    const db = newDb({ ...storeDocs(), ...marker() });
+    const fetchImpl = makeFetch();
+    db.docs.set(`lojas/${STORE_A}/pre_pedidos/${ORDER}`, paidAfter(order()));
+    const fire = () => handlePrePedidoShippingExportUpdate({
+      db, collectionLojas: "lojas", storeId: STORE_A, orderId: ORDER,
+      before: order(), after: paidAfter(order()), createTimeMs: CREATED_AFTER, cutoverMs: CUTOVER_MS, fetchImpl,
+    });
+    const results = await Promise.all([fire(), fire(), fire(), retryCallable(db, fetchImpl).catch((e) => e)]);
+    assert.equal(fetchImpl.posts().length, 1);
+    assert.equal(results.filter((r) => r?.status === SHIPPING_EXPORT_STATUS.EXPORTED && r.ok && !r.idempotent).length, 1);
+  });
+
   it("sem marcador do webhook (ou de outra loja/pedido) não exporta", async () => {
     for (const m of [{}, marker({ storeId: STORE_B }), marker({ orderId: "outro" }), marker({ status: "sale_blocked" })]) {
-      const db = makeDb({ ...storeDocs(), ...m });
+      const db = newDb({ ...storeDocs(), ...m });
       const fetchImpl = makeFetch();
       const res = await runPaid({ db, fetchImpl });
       assert.equal(res.reason, "payment_marker_not_verified");
@@ -393,20 +431,33 @@ describe("Melhor Envio — exportação após pagamento aprovado", () => {
   });
 
   it("feature flag desligada, corte ausente e pedido histórico não exportam", async () => {
-    const off = makeDb({ ...storeDocs({ flag: false }), ...marker() });
+    const off = newDb({ ...storeDocs({ flag: false }), ...marker() });
     const f1 = makeFetch();
     assert.equal((await runPaid({ db: off, fetchImpl: f1 })).reason, "feature_disabled");
-    const noCut = makeDb({ ...storeDocs(), ...marker() });
+    const noCut = newDb({ ...storeDocs(), ...marker() });
     const f2 = makeFetch();
     assert.equal((await runPaid({ db: noCut, fetchImpl: f2, cutoverMs: null })).reason, "cutover_not_configured");
-    const hist = makeDb({ ...storeDocs(), ...marker() });
+    const hist = newDb({ ...storeDocs(), ...marker() });
     const f3 = makeFetch();
     assert.equal((await runPaid({ db: hist, fetchImpl: f3, createTimeMs: CUTOVER_MS - 1 })).reason, "historical_order");
     assert.equal(f1.calls.length + f2.calls.length + f3.calls.length, 0);
   });
 
+  it("pedido do fluxo antigo (ledger legado ou shippingPreOrder) nunca exporta de novo", async () => {
+    const db = newDb({
+      ...storeDocs(),
+      ...marker(),
+      [`lojas/${STORE_A}/shipping_preorders/melhor_envio_${ORDER}`]: { status: "created", providerCartId: "antigo" },
+    });
+    const fetchImpl = makeFetch();
+    assert.equal((await runPaid({ db, fetchImpl })).reason, "legacy_preorder_exists");
+    const db2 = newDb({ ...storeDocs(), ...marker() });
+    assert.equal((await runPaid({ db: db2, fetchImpl, o: order("melhor_envio", { shippingPreOrder: { status: "created" } }) })).reason, "legacy_preorder_exists");
+    assert.equal(fetchImpl.calls.length, 0);
+  });
+
   it("retirada e cancelado não exportam", async () => {
-    const db = makeDb({ ...storeDocs(), ...marker() });
+    const db = newDb({ ...storeDocs(), ...marker() });
     const fetchImpl = makeFetch();
     const retirada = order("melhor_envio");
     retirada.frete = { nome: "Retirada", valor: 0, tipo: "retirada", plataforma: "manual" };
@@ -420,29 +471,47 @@ describe("Melhor Envio — exportação após pagamento aprovado", () => {
     assert.equal(fetchImpl.calls.length, 0);
   });
 
-  it("confirmação manual do lojista exporta (sem marcador de pagamento)", async () => {
-    const db = makeDb(storeDocs());
-    const fetchImpl = makeFetch();
+  it("confirmação do lojista exporta; escrita não autenticada não dispara", async () => {
     const o = order("melhor_envio", { pagamento: "dinheiro", statusPagamento: "aprovado" });
     const after = { ...o, status: "confirmado", vendaId: "venda-1" };
-    db.docs.set(`lojas/${STORE_A}/pre_pedidos/${ORDER}`, after);
-    const res = await handlePrePedidoShippingExportUpdate({
+    const run = (db, fetchImpl, authType) => handlePrePedidoShippingExportUpdate({
       db, collectionLojas: "lojas", storeId: STORE_A, orderId: ORDER,
-      before: o, after, createTimeMs: CREATED_AFTER, cutoverMs: CUTOVER_MS, fetchImpl,
+      before: o, after, createTimeMs: CREATED_AFTER, cutoverMs: CUTOVER_MS, fetchImpl, authType,
     });
-    assert.equal(res.status, SHIPPING_EXPORT_STATUS.EXPORTED);
-    assert.equal(fetchImpl.posts().length, 1);
+    const anon = newDb(storeDocs());
+    anon.docs.set(`lojas/${STORE_A}/pre_pedidos/${ORDER}`, after);
+    const f1 = makeFetch();
+    assert.equal((await run(anon, f1, "unauthenticated")).reason, "merchant_confirmation_unauthenticated");
+    assert.equal(f1.calls.length, 0);
+
+    const db = newDb(storeDocs());
+    db.docs.set(`lojas/${STORE_A}/pre_pedidos/${ORDER}`, after);
+    const f2 = makeFetch();
+    assert.equal((await run(db, f2, "unknown")).status, SHIPPING_EXPORT_STATUS.EXPORTED);
+    assert.equal(f2.posts().length, 1);
+  });
+
+  it("rules: cliente não confirma pedido nem grava estado de envio", () => {
+    const rules = readFileSync(new URL("../../firestore.rules", import.meta.url), "utf8");
+    const i = rules.indexOf("match /pre_pedidos/{pedidoId}");
+    const block = rules.slice(i, rules.indexOf("}", rules.indexOf("allow delete", i)));
+    assert.match(block, /allow update: if \(isStoreAdmin\(lojaId\)\s*\|\| \(resource\.data\.lojaId == lojaId\s*&& isValidPrePedidoGovernancaSubstituicao\(\)\)\)/);
+    const gov = rules.slice(rules.indexOf("function isValidPrePedidoGovernancaSubstituicao"));
+    assert.match(gov, /hasOnly\(\['governancaStatus', 'substituidoPor', 'substituidoEm', 'dataAtualizacao'\]\)/);
+    const create = rules.slice(rules.indexOf("function isValidPrePedidoCreate"), rules.indexOf("function isValidPrePedidoGovernancaSubstituicao"));
+    assert.match(create, /!request\.resource\.data\.keys\(\)\.hasAny\(\['shipping', 'shippingPreOrder'\]\)/);
+    assert.match(rules, /match \/shipping_preorders\/\{shippingPreOrderId\} \{[^}]*allow create, update, delete: if false;/);
   });
 
   it("tenant A usa só o token de A; loja sem conta não usa token de outra", async () => {
-    const db = makeDb({ ...storeDocs(), ...storeDocs({ storeId: STORE_B, token: TOKEN_B }), ...marker() });
+    const db = newDb({ ...storeDocs(), ...storeDocs({ storeId: STORE_B, token: TOKEN_B }), ...marker() });
     const fetchImpl = makeFetch();
     await runPaid({ db, fetchImpl });
     assert.ok(fetchImpl.calls.length > 0);
     assert.ok(fetchImpl.calls.every((c) => c.auth === `Bearer ${TOKEN_A}`));
     assert.ok(!db.reads.some((p) => p.startsWith(`lojas/${STORE_B}/`)));
 
-    const dbNoAccount = makeDb({ ...storeDocs({ token: null }), ...storeDocs({ storeId: STORE_B, token: TOKEN_B }), ...marker() });
+    const dbNoAccount = newDb({ ...storeDocs({ token: null }), ...storeDocs({ storeId: STORE_B, token: TOKEN_B }), ...marker() });
     const f2 = makeFetch();
     const res = await runPaid({ db: dbNoAccount, fetchImpl: f2 });
     assert.equal(res.lastErrorCode, SHIPPING_EXPORT_ERROR.PROVIDER_ACCOUNT_NOT_CONNECTED);
@@ -450,14 +519,55 @@ describe("Melhor Envio — exportação após pagamento aprovado", () => {
     assert.equal(f2.calls.length, 0);
   });
 
-  it("remetente não cadastrado ou snapshot ausente falham sem chamar o provedor", async () => {
-    const db = makeDb({ ...storeDocs({ sender: null }), ...marker() });
+  const tampered = [
+    ["preço adulterado", (o) => ({ ...o, frete: { ...o.frete, valor: 1 }, total: 151 }), SHIPPING_QUOTE_ERROR.PRICE_MISMATCH],
+    ["serviço trocado", (o) => ({ ...o, frete: { ...o.frete, service_id: 1 } }), SHIPPING_QUOTE_ERROR.SERVICE_MISMATCH],
+    ["outro CEP", (o) => ({ ...o, cliente: { ...o.cliente, endereco: { ...o.cliente.endereco, cep: "01001000" } } }), SHIPPING_QUOTE_ERROR.DESTINATION_MISMATCH],
+    ["itens/peso alterados", (o) => ({ ...o, itens: [{ productId: "p1", nome: "X", quantidade: 9, precoUnitario: 1 }] }), SHIPPING_QUOTE_ERROR.ITEMS_MISMATCH],
+    ["sem recibo", (o) => ({ ...o, frete: { ...o.frete, shippingQuoteId: undefined } }), SHIPPING_QUOTE_ERROR.MISSING],
+  ];
+  for (const [name, mutate, code] of tampered) {
+    it(`frete adulterado (${name}) falha sem chamar o provedor`, async () => {
+      const db = newDb({ ...storeDocs(), ...marker() });
+      const fetchImpl = makeFetch();
+      const res = await runPaid({ db, fetchImpl, o: mutate(order()) });
+      assert.equal(res.status, SHIPPING_EXPORT_STATUS.FAILED);
+      assert.equal(res.lastErrorCode, code);
+      assert.equal(fetchImpl.calls.length, 0);
+    });
+  }
+
+  it("recibo de outra loja ou expirado falha sem chamar o provedor", async () => {
+    const other = newDb({ ...storeDocs(), ...marker() });
+    other.docs.delete(`lojas/${STORE_A}/shipping_quotes/${RECEIPT}`);
+    Object.entries(receiptDocs({ storeId: STORE_B })).forEach(([k, v]) => other.docs.set(k, v));
+    const f1 = makeFetch();
+    assert.equal((await runPaid({ db: other, fetchImpl: f1 })).lastErrorCode, SHIPPING_QUOTE_ERROR.NOT_FOUND);
+    const expired = newDb({ ...storeDocs(), ...marker() });
+    const f2 = makeFetch();
+    const res = await runPaid({ db: expired, fetchImpl: f2, createTimeMs: CREATED_AFTER + 61 * 60_000 });
+    assert.equal(res.lastErrorCode, SHIPPING_QUOTE_ERROR.EXPIRED);
+    assert.equal(f1.calls.length + f2.calls.length, 0);
+  });
+
+  it("estado/ID de envio forjado pelo cliente no pedido é ignorado", async () => {
+    const db = newDb({ ...storeDocs(), ...marker() });
+    const fetchImpl = makeFetch();
+    const forged = order("melhor_envio", {
+      shipping: { export: { status: "exported", providerShipmentId: "forjado", operationId: "x" }, price: 0 },
+    });
+    const res = await runPaid({ db, fetchImpl, o: forged });
+    assert.equal(res.status, SHIPPING_EXPORT_STATUS.EXPORTED);
+    assert.equal(fetchImpl.posts().length, 1);
+    assert.equal(exportDoc(db).providerShipmentId, "me-cart-1");
+    assert.equal(orderDoc(db).shipping.export.providerShipmentId, "me-cart-1");
+    assert.equal(orderDoc(db).shipping.price, 15, "preço do resumo vem do recibo");
+  });
+
+  it("remetente não cadastrado falha sem chamar o provedor", async () => {
+    const db = newDb({ ...storeDocs({ sender: null }), ...marker() });
     const fetchImpl = makeFetch();
     assert.equal((await runPaid({ db, fetchImpl })).lastErrorCode, SHIPPING_EXPORT_ERROR.SENDER_DATA_REQUIRED);
-    const db2 = makeDb({ ...storeDocs(), ...marker() });
-    const semSnap = order();
-    delete semSnap.frete.cotacao;
-    assert.equal((await runPaid({ db: db2, fetchImpl, o: semSnap })).lastErrorCode, SHIPPING_EXPORT_ERROR.QUOTE_SNAPSHOT_MISSING);
     assert.equal(fetchImpl.calls.length, 0);
   });
 
@@ -470,135 +580,153 @@ describe("Melhor Envio — exportação após pagamento aprovado", () => {
     [503, SHIPPING_EXPORT_ERROR.PROVIDER_UNAVAILABLE, SHIPPING_EXPORT_STATUS.UNKNOWN],
   ]) {
     it(`POST ${status} → ${final} (${code}) sem expor resposta`, async () => {
-      const db = makeDb({ ...storeDocs(), ...marker() });
+      const db = newDb({ ...storeDocs(), ...marker() });
       const fetchImpl = makeFetch({ post: { status, body: { message: "segredo do provedor", token: "x" } } });
       const res = await runPaid({ db, fetchImpl });
       assert.equal(res.status, final);
       assert.equal(res.lastErrorCode, code);
-      const exp = exportDoc(db);
-      assert.ok(!JSON.stringify(exp).includes("segredo do provedor"));
+      assert.ok(!JSON.stringify(exportDoc(db)).includes("segredo do provedor"));
       assert.ok(!JSON.stringify(orderDoc(db).shipping).includes("segredo do provedor"));
     });
   }
 
-  it("timeout e 200 sem id ficam incertos (unknown), não falha", async () => {
-    const db = makeDb({ ...storeDocs(), ...marker() });
-    const res = await runPaid({ db, fetchImpl: makeFetch({ throwOnPost: true }) });
-    assert.equal(res.status, SHIPPING_EXPORT_STATUS.UNKNOWN);
-    const db2 = makeDb({ ...storeDocs(), ...marker() });
-    const res2 = await runPaid({ db: db2, fetchImpl: makeFetch({ post: { status: 200, body: "<html>" } }) });
-    assert.equal(res2.status, SHIPPING_EXPORT_STATUS.UNKNOWN);
-  });
-
-  it("provedor fora do ar na reconciliação inicial não bloqueia a primeira tentativa", async () => {
-    const db = makeDb({ ...storeDocs(), ...marker() });
-    const fetchImpl = makeFetch({ cartStatus: 503 });
-    const res = await runPaid({ db, fetchImpl });
-    assert.equal(res.status, SHIPPING_EXPORT_STATUS.EXPORTED);
-    assert.equal(fetchImpl.posts().length, 1);
-  });
-
-  it("item já presente no carrinho (tag) é reconhecido sem novo POST", async () => {
-    const db = makeDb({ ...storeDocs(), ...marker() });
-    const fetchImpl = makeFetch({ cart: [{ id: "me-existente", tags: [{ tag: "shipping:melhor_envio:loja-a:pedido-1" }] }] });
-    const res = await runPaid({ db, fetchImpl });
-    assert.equal(res.status, SHIPPING_EXPORT_STATUS.EXPORTED);
-    assert.equal(res.providerShipmentId, "me-existente");
-    assert.equal(fetchImpl.posts().length, 0);
+  it("timeout e 2xx sem id ficam incertos (unknown); falha de DNS é falha definitiva", async () => {
+    const db = newDb({ ...storeDocs(), ...marker() });
+    assert.equal((await runPaid({ db, fetchImpl: makeFetch({ throwOnPost: timeoutError() }) })).status, SHIPPING_EXPORT_STATUS.UNKNOWN);
+    const db2 = newDb({ ...storeDocs(), ...marker() });
+    assert.equal((await runPaid({ db: db2, fetchImpl: makeFetch({ post: { status: 200, body: "<html>" } }) })).status, SHIPPING_EXPORT_STATUS.UNKNOWN);
+    const db3 = newDb({ ...storeDocs(), ...marker() });
+    const res = await runPaid({ db: db3, fetchImpl: makeFetch({ throwOnPost: dnsError() }) });
+    assert.equal(res.status, SHIPPING_EXPORT_STATUS.FAILED);
+    assert.equal(res.lastErrorCode, SHIPPING_EXPORT_ERROR.PROVIDER_UNREACHABLE);
   });
 });
 
-describe("retry e idempotência", () => {
-  async function seedUnknown() {
-    const db = makeDb({ ...storeDocs(), ...marker() });
-    await runPaid({ db, fetchImpl: makeFetch({ throwOnPost: true }) });
+describe("resultado incerto, retry e idempotência", () => {
+  async function seedUnknown(extraDocs = {}) {
+    const db = newDb({ ...storeDocs(), ...marker(), ...extraDocs });
+    await runPaid({ db, fetchImpl: makeFetch({ throwOnPost: timeoutError() }) });
     assert.equal(exportDoc(db).status, SHIPPING_EXPORT_STATUS.UNKNOWN);
     return db;
   }
-  const retry = (db, fetchImpl) => exportShippingOrder({
-    db, collectionLojas: "lojas", storeId: STORE_A, orderId: ORDER, order: orderDoc(db),
-    trigger: SHIPPING_EXPORT_TRIGGER.MERCHANT_RETRY, fetchImpl,
-  });
 
-  it("após incerto, retry consulta o carrinho e reaproveita o envio existente", async () => {
-    const db = await seedUnknown();
-    const fetchImpl = makeFetch({ cart: [{ id: "me-criado-no-timeout", tags: [{ tag: "shipping:melhor_envio:loja-a:pedido-1" }] }] });
-    const res = await retry(db, fetchImpl);
-    assert.equal(res.status, SHIPPING_EXPORT_STATUS.EXPORTED);
-    assert.equal(res.providerShipmentId, "me-criado-no-timeout");
-    assert.equal(fetchImpl.posts().length, 0);
-    assert.equal(exportDoc(db).operationId, "shipping:melhor_envio:loja-a:pedido-1");
-  });
-
-  it("após incerto, carrinho sem a tag → um único POST com a mesma operationId", async () => {
+  it("após timeout, nenhum gatilho automático faz novo POST", async () => {
     const db = await seedUnknown();
     const fetchImpl = makeFetch();
-    const res = await retry(db, fetchImpl);
+    await runPaid({ db, fetchImpl });
+    const auto = await exportShippingOrder({
+      db, collectionLojas: "lojas", storeId: STORE_A, orderId: ORDER, order: orderDoc(db),
+      orderCreateTimeMs: CREATED_AFTER, trigger: SHIPPING_EXPORT_TRIGGER.MERCHANT_CONFIRMED, fetchImpl,
+    });
+    assert.equal(auto.reason, "already_attempted");
+    assert.equal(fetchImpl.calls.length, 0);
+  });
+
+  it("retry do lojista sem decisão explícita é recusado (sem POST)", async () => {
+    const db = await seedUnknown();
+    const fetchImpl = makeFetch();
+    await assert.rejects(retryCallable(db, fetchImpl), (e) => e.code === "failed-precondition"
+      && e.details?.code === "SHIPPING_EXPORT_RESOLUTION_REQUIRED");
+    const direct = await exportShippingOrder({
+      db, collectionLojas: "lojas", storeId: STORE_A, orderId: ORDER, order: orderDoc(db),
+      orderCreateTimeMs: CREATED_AFTER, trigger: SHIPPING_EXPORT_TRIGGER.MERCHANT_RETRY, fetchImpl,
+    });
+    assert.equal(direct.reason, "uncertain_requires_merchant_resolution");
+    assert.equal(fetchImpl.calls.length, 0);
+    await assert.rejects(retryCallable(db, fetchImpl, "qualquer"), (e) => e.code === "invalid-argument");
+  });
+
+  it("lojista confirma que já está no carrinho → exportado manualmente, sem POST", async () => {
+    const db = await seedUnknown();
+    const fetchImpl = makeFetch();
+    const res = await retryCallable(db, fetchImpl, SHIPPING_EXPORT_RESOLUTION.ALREADY_IN_CART);
+    assert.equal(res.status, SHIPPING_EXPORT_STATUS.EXPORTED);
+    assert.equal(fetchImpl.calls.length, 0);
+    const exp = exportDoc(db);
+    assert.equal(exp.reconciledManually, true);
+    assert.equal(exp.providerShipmentId, null);
+    assert.equal(exp.resolvedByUid, "uid-1");
+  });
+
+  it("lojista confirma que não está no carrinho → exatamente um POST", async () => {
+    const db = await seedUnknown();
+    const fetchImpl = makeFetch();
+    const res = await retryCallable(db, fetchImpl, SHIPPING_EXPORT_RESOLUTION.NOT_IN_CART);
     assert.equal(res.status, SHIPPING_EXPORT_STATUS.EXPORTED);
     assert.equal(fetchImpl.posts().length, 1);
-    assert.deepEqual(fetchImpl.posts()[0].body.options.tags, [{ tag: "shipping:melhor_envio:loja-a:pedido-1" }]);
-  });
-
-  it("após incerto, consulta indisponível mantém unknown e não faz POST", async () => {
-    const db = await seedUnknown();
-    const fetchImpl = makeFetch({ cartStatus: 500 });
-    const res = await retry(db, fetchImpl);
-    assert.equal(res.status, SHIPPING_EXPORT_STATUS.UNKNOWN);
-    assert.equal(fetchImpl.posts().length, 0);
-  });
-
-  it("gatilho automático repetido após falha não tenta de novo; retry do lojista sim", async () => {
-    const db = makeDb({ ...storeDocs(), ...marker() });
-    await runPaid({ db, fetchImpl: makeFetch({ post: { status: 422, body: {} } }) });
-    const auto = makeFetch();
-    const again = await exportShippingOrder({
-      db, collectionLojas: "lojas", storeId: STORE_A, orderId: ORDER, order: orderDoc(db),
-      trigger: SHIPPING_EXPORT_TRIGGER.PAYMENT_APPROVED, fetchImpl: auto,
-    });
-    assert.equal(again.reason, "already_attempted");
-    assert.equal(auto.calls.length, 0);
-    const manual = makeFetch();
-    const res = await retry(db, manual);
-    assert.equal(res.status, SHIPPING_EXPORT_STATUS.EXPORTED);
-    assert.equal(manual.posts().length, 1);
     assert.equal(exportDoc(db).attempts, 2);
+    assert.equal(exportDoc(db).providerShipmentId, "me-cart-1");
+  });
+
+  it("exportação travada (lease vencido) é tratada como incerta", async () => {
+    const db = newDb({ ...storeDocs(), ...marker() });
+    db.docs.set(`lojas/${STORE_A}/pre_pedidos/${ORDER}`, paidAfter(order()));
+    db.docs.set(`lojas/${STORE_A}/shipping_preorders/${shippingExportDocId("melhor_envio", ORDER)}`, {
+      status: SHIPPING_EXPORT_STATUS.EXPORTING,
+      leaseUntil: Timestamp.fromMillis(Date.now() - 1000),
+    });
+    const fetchImpl = makeFetch();
+    await assert.rejects(retryCallable(db, fetchImpl), (e) => e.details?.code === "SHIPPING_EXPORT_RESOLUTION_REQUIRED");
+    assert.equal(fetchImpl.calls.length, 0);
   });
 
   it("exportação em andamento (lease ativo) não cria outra", async () => {
-    const db = makeDb({ ...storeDocs(), ...marker() });
+    const db = newDb({ ...storeDocs(), ...marker() });
     db.docs.set(`lojas/${STORE_A}/pre_pedidos/${ORDER}`, paidAfter(order()));
     db.docs.set(`lojas/${STORE_A}/shipping_preorders/${shippingExportDocId("melhor_envio", ORDER)}`, {
       status: SHIPPING_EXPORT_STATUS.EXPORTING,
       leaseUntil: Timestamp.fromMillis(Date.now() + 60_000),
     });
     const fetchImpl = makeFetch();
-    const res = await retry(db, fetchImpl);
+    await assert.rejects(retryCallable(db, fetchImpl), (e) => e.code === "failed-precondition");
+    const res = await exportShippingOrder({
+      db, collectionLojas: "lojas", storeId: STORE_A, orderId: ORDER, order: orderDoc(db),
+      orderCreateTimeMs: CREATED_AFTER, trigger: SHIPPING_EXPORT_TRIGGER.MERCHANT_RETRY, fetchImpl,
+    });
     assert.equal(res.reason, "export_in_progress");
     assert.equal(fetchImpl.calls.length, 0);
   });
 
-  it("já exportado → retorna o existente", async () => {
-    const db = makeDb({ ...storeDocs(), ...marker() });
+  it("falha definitiva: gatilho automático não repete; retry do lojista sim", async () => {
+    const db = newDb({ ...storeDocs(), ...marker() });
+    await runPaid({ db, fetchImpl: makeFetch({ post: { status: 422, body: {} } }) });
+    const auto = makeFetch();
+    await runPaid({ db, fetchImpl: auto });
+    assert.equal(auto.calls.length, 0);
+    const manual = makeFetch();
+    const res = await retryCallable(db, manual);
+    assert.equal(res.status, SHIPPING_EXPORT_STATUS.EXPORTED);
+    assert.equal(manual.posts().length, 1);
+    assert.equal(exportDoc(db).attempts, 2);
+  });
+
+  it("já exportado → retry recusado e nenhuma chamada", async () => {
+    const db = newDb({ ...storeDocs(), ...marker() });
     await runPaid({ db, fetchImpl: makeFetch() });
     const fetchImpl = makeFetch();
-    const res = await retry(db, fetchImpl);
+    await assert.rejects(retryCallable(db, fetchImpl), (e) => e.code === "failed-precondition");
+    const res = await exportShippingOrder({
+      db, collectionLojas: "lojas", storeId: STORE_A, orderId: ORDER, order: orderDoc(db),
+      orderCreateTimeMs: CREATED_AFTER, trigger: SHIPPING_EXPORT_TRIGGER.MERCHANT_RETRY, fetchImpl,
+    });
     assert.equal(res.idempotent, true);
     assert.equal(fetchImpl.calls.length, 0);
   });
 });
 
 describe("SuperFrete", () => {
-  it("produção: sem reconciliação disponível → UNSUPPORTED_BY_CURRENT_API, sem chamada", async () => {
-    const db = makeDb({ ...storeDocs({ provider: "superfrete", token: TOKEN_A, sandbox: false }), ...marker() });
+  it("contrato de exportação não verificado: produção falha fechado, sem chamada", async () => {
+    assert.equal(SUPERFRETE_MASTERPALM_EXPORT_CONTRACT_VERIFIED, false);
+    const db = newDb({ ...storeDocs({ provider: "superfrete", token: TOKEN_A, sandbox: false }), ...marker() });
     const fetchImpl = makeFetch();
     const res = await runPaid({ db, fetchImpl, o: order("superfrete") });
     assert.equal(res.status, SHIPPING_EXPORT_STATUS.FAILED);
-    assert.equal(res.lastErrorCode, SHIPPING_EXPORT_ERROR.UNSUPPORTED_BY_CURRENT_API);
+    assert.equal(res.lastErrorCode, SHIPPING_EXPORT_ERROR.PROVIDER_EXPORT_CONTRACT_NOT_VERIFIED);
     assert.equal(fetchImpl.calls.length, 0);
   });
 
-  it("sandbox: POST /api/v0/cart com servico_id preservado", async () => {
-    const db = makeDb({ ...storeDocs({ provider: "superfrete", token: TOKEN_A, sandbox: true }), ...marker() });
+  it("sandbox: POST /api/v0/cart com servico_id e pacote cotados", async () => {
+    const db = newDb({ ...storeDocs({ provider: "superfrete", token: TOKEN_A, sandbox: true }), ...marker() });
     const fetchImpl = makeFetch({ post: { status: 200, body: { id: "sf-1" } } });
     const res = await runPaid({ db, fetchImpl, o: order("superfrete") });
     assert.equal(res.status, SHIPPING_EXPORT_STATUS.EXPORTED);
@@ -606,20 +734,30 @@ describe("SuperFrete", () => {
     assert.equal(posts.length, 1);
     assert.match(posts[0].url, /^https:\/\/sandbox\.superfrete\.com\/api\/v0\/cart$/);
     assert.equal(posts[0].body.service, 1);
+    assert.deepEqual(posts[0].body.volume, { height: 10, width: 20, length: 30, weight: 0.45 });
     assert.equal(posts[0].body.tag, "shipping:superfrete:loja-a:pedido-1");
   });
 
-  it("sandbox: resposta incerta fica unknown e retry não faz novo POST", async () => {
-    const db = makeDb({ ...storeDocs({ provider: "superfrete", token: TOKEN_A, sandbox: true }), ...marker() });
+  it("sandbox: resultado incerto exige decisão do lojista (sem POST automático)", async () => {
+    const db = newDb({ ...storeDocs({ provider: "superfrete", token: TOKEN_A, sandbox: true }), ...marker() });
     await runPaid({ db, fetchImpl: makeFetch({ post: { status: 502, body: "<html>" } }), o: order("superfrete") });
     assert.equal(exportDoc(db, "superfrete").status, SHIPPING_EXPORT_STATUS.UNKNOWN);
     const fetchImpl = makeFetch();
-    const res = await exportShippingOrder({
-      db, collectionLojas: "lojas", storeId: STORE_A, orderId: ORDER, order: orderDoc(db),
-      trigger: SHIPPING_EXPORT_TRIGGER.MERCHANT_RETRY, fetchImpl,
-    });
-    assert.equal(res.reason, "unknown_requires_manual_review");
+    await assert.rejects(retryCallable(db, fetchImpl), (e) => e.details?.code === "SHIPPING_EXPORT_RESOLUTION_REQUIRED");
     assert.equal(fetchImpl.calls.length, 0);
+  });
+
+  it("flag SuperFrete não pode ser ligada; desligar é permitido", async () => {
+    const db = newDb();
+    await assert.rejects(
+      handlers(db, { data: { lojaId: STORE_A, flags: { superFrete: true } } }).shippingSaveAutomationConfig(),
+      (e) => e.code === "failed-precondition" && e.details?.code === SHIPPING_EXPORT_ERROR.PROVIDER_EXPORT_CONTRACT_NOT_VERIFIED,
+    );
+    assert.equal(db.writes.length, 0);
+    await handlers(db, { data: { lojaId: STORE_A, flags: { superFrete: false, melhorEnvio: false } } }).shippingSaveAutomationConfig();
+    const saved = db.docs.get(`lojas/${STORE_A}/config/fretes_secrets`);
+    assert.equal(saved.automation.shippingAutoExportSuperFrete, false);
+    assert.equal(saved.automation.shippingAutoExportMelhorEnvio, false);
   });
 });
 
@@ -629,9 +767,9 @@ describe("logs sem PII", () => {
     const orig = console.log;
     console.log = (...a) => lines.push(a.join(" "));
     try {
-      const db = makeDb({ ...storeDocs(), ...marker() });
+      const db = newDb({ ...storeDocs(), ...marker() });
       await runPaid({ db, fetchImpl: makeFetch() });
-      const db2 = makeDb({ ...storeDocs(), ...marker() });
+      const db2 = newDb({ ...storeDocs(), ...marker() });
       await runPaid({ db: db2, fetchImpl: makeFetch({ post: { status: 422, body: {} } }) });
     } finally {
       console.log = orig;
@@ -645,20 +783,8 @@ describe("logs sem PII", () => {
 });
 
 describe("callables do lojista", () => {
-  function handlers(db, { allowed = true, data = {}, fetchImpl = makeFetch() } = {}) {
-    return createShippingExportHandlers({
-      db,
-      collectionLojas: "lojas",
-      canManageStoreConfigServerSide: async () => allowed,
-      checkRateLimit: async () => {},
-      getCallableIdentifier: () => "uid-1",
-      fetchWithTimeout: fetchImpl,
-      request: { auth: { uid: "uid-1", token: {} }, data },
-    });
-  }
-
   it("salvar configuração exige admin da loja", async () => {
-    const db = makeDb();
+    const db = newDb();
     await assert.rejects(
       handlers(db, { allowed: false, data: { lojaId: STORE_A, flags: { melhorEnvio: true } } }).shippingSaveAutomationConfig(),
       (e) => e.code === "permission-denied",
@@ -666,52 +792,69 @@ describe("callables do lojista", () => {
     assert.equal(db.writes.length, 0);
   });
 
-  it("remetente incompleto é rejeitado; documento mascarado não sobrescreve", async () => {
-    const db = makeDb();
+  it("retry exige admin da loja (cliente não dispara exportação)", async () => {
+    const db = await (async () => {
+      const d = newDb({ ...storeDocs(), ...marker() });
+      await runPaid({ db: d, fetchImpl: makeFetch({ post: { status: 422, body: {} } }) });
+      return d;
+    })();
+    const fetchImpl = makeFetch();
+    await assert.rejects(
+      handlers(db, { allowed: false, data: { lojaId: STORE_A, orderId: ORDER }, fetchImpl }).retryShippingExport(),
+      (e) => e.code === "permission-denied",
+    );
+    assert.equal(fetchImpl.calls.length, 0);
+  });
+
+  it("remetente incompleto é rejeitado; documento mascarado não sobrescreve; IE salva", async () => {
+    const db = newDb();
     await assert.rejects(
       handlers(db, { data: { lojaId: STORE_A, sender: { ...SENDER, city: "" } } }).shippingSaveAutomationConfig(),
       (e) => e.code === "invalid-argument",
     );
-    await handlers(db, { data: { lojaId: STORE_A, sender: SENDER, flags: { melhorEnvio: true } } }).shippingSaveAutomationConfig();
+    await handlers(db, { data: { lojaId: STORE_A, sender: { ...SENDER, stateRegister: "isento" }, flags: { melhorEnvio: true } } }).shippingSaveAutomationConfig();
     await handlers(db, { data: { lojaId: STORE_A, sender: { ...SENDER, companyDocument: "••••0190" } } }).shippingSaveAutomationConfig();
     const saved = db.docs.get(`lojas/${STORE_A}/config/fretes_secrets`);
     assert.equal(saved.sender.companyDocument, "12345678000190");
+    assert.equal(saved.sender.stateRegister, "ISENTO");
     assert.equal(saved.automation.shippingAutoExportMelhorEnvio, true);
     const cfg = await handlers(db, { data: { lojaId: STORE_A } }).shippingGetAutomationConfig();
     assert.equal(cfg.flags.melhorEnvio, true);
     assert.equal(cfg.flags.superFrete, false);
+    assert.equal(cfg.superFreteExportContractVerified, false);
     assert.equal(cfg.sender.companyDocumentMasked, "••••0190");
     assert.equal(cfg.senderComplete, true);
     assert.ok(!JSON.stringify(cfg).includes("12345678000190"));
   });
 
   it("retry só para falha/incerto e pedido confirmado", async () => {
-    const db = makeDb({ ...storeDocs(), ...marker() });
+    const db = newDb({ ...storeDocs(), ...marker() });
     db.docs.set(`lojas/${STORE_A}/pre_pedidos/${ORDER}`, order());
-    await assert.rejects(
-      handlers(db, { data: { lojaId: STORE_A, orderId: ORDER } }).retryShippingExport(),
-      (e) => e.code === "failed-precondition",
-    );
+    await assert.rejects(retryCallable(db, makeFetch()), (e) => e.code === "failed-precondition");
     await runPaid({ db, fetchImpl: makeFetch({ post: { status: 429, body: {} } }) });
     const fetchImpl = makeFetch();
-    const res = await handlers(db, { data: { lojaId: STORE_A, orderId: ORDER }, fetchImpl }).retryShippingExport();
+    const res = await retryCallable(db, fetchImpl);
     assert.equal(res.ok, true);
     assert.equal(res.status, SHIPPING_EXPORT_STATUS.EXPORTED);
     assert.equal(fetchImpl.posts().length, 1);
   });
 
   it("retry ignora shipping.export forjado no pedido (estado vem do ledger)", async () => {
-    const db = makeDb({ ...storeDocs(), ...marker() });
+    const db = newDb({ ...storeDocs(), ...marker() });
     db.docs.set(`lojas/${STORE_A}/pre_pedidos/${ORDER}`, order("melhor_envio", {
       status: "paid",
       paymentId: "pay-1",
       shipping: { export: { status: SHIPPING_EXPORT_STATUS.FAILED } },
     }));
     const fetchImpl = makeFetch();
-    await assert.rejects(
-      handlers(db, { data: { lojaId: STORE_A, orderId: ORDER }, fetchImpl }).retryShippingExport(),
-      (e) => e.code === "failed-precondition",
-    );
+    await assert.rejects(retryCallable(db, fetchImpl), (e) => e.code === "failed-precondition");
+    for (const forged of [SHIPPING_EXPORT_STATUS.UNKNOWN, SHIPPING_EXPORT_STATUS.EXPORTING]) {
+      db.docs.set(`lojas/${STORE_A}/pre_pedidos/${ORDER}`, { ...orderDoc(db), shipping: { export: { status: forged } } });
+      await assert.rejects(
+        retryCallable(db, fetchImpl, SHIPPING_EXPORT_RESOLUTION.NOT_IN_CART),
+        (e) => e.code === "failed-precondition",
+      );
+    }
     assert.equal(fetchImpl.posts().length, 0);
   });
 });

@@ -85,6 +85,7 @@ export async function resolveCatalogOrderForMp(db, lojaId, orderId) {
       return {
         orderRef: ref,
         order: snap.data() || {},
+        createTimeMs: typeof snap.createTime?.toMillis === "function" ? snap.createTime.toMillis() : null,
         isPrePedido: isPre,
         isPedidoPendente: isPend,
         collection: sub,

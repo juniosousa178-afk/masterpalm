@@ -94,6 +94,9 @@ class FreteService {
     double altura = 10,
     double largura = 20,
     double comprimento = 30,
+    /// Itens do carrinho (`[{productId, quantidade}]`): o servidor calcula o pacote
+    /// e devolve `shipping_quote_id` por opção (Melhor Envio / SuperFrete).
+    List<Map<String, dynamic>>? itensCotacao,
   }) async {
     try {
       // 1. Buscar configuração de frete da loja
@@ -120,6 +123,7 @@ class FreteService {
             altura: altura,
             largura: largura,
             comprimento: comprimento,
+            itensCotacao: itensCotacao,
           );
 
           // Adicionar identificador da plataforma
@@ -210,6 +214,7 @@ class FreteService {
             comprimento: comprimento < 1 ? 16 : comprimento,
             valorDeclarado: valorDeclarado > 0 ? valorDeclarado : 10.0,
             cepOrigem: cepOrigem,
+            items: itensCotacao,
           );
 
           if (resultado['sucesso'] == true) {
@@ -223,6 +228,8 @@ class FreteService {
                 'empresa': (m['empresa'] ?? 'SuperFrete').toString(),
                 'plataforma': 'superfrete',
                 'servico_id': m['servico_id'],
+                if (m['shippingQuoteId'] != null)
+                  'shipping_quote_id': m['shippingQuoteId'].toString(),
               };
             }).toList();
 
@@ -496,6 +503,8 @@ class FreteService {
         if (companyId != null) 'company_id': companyId,
         'tipo': nome.toLowerCase().replaceAll(' ', '_'),
         if (serviceId != null) 'service_id': serviceId,
+        if (item['shippingQuoteId'] != null)
+          'shipping_quote_id': item['shippingQuoteId'].toString(),
       });
     }
 
@@ -514,6 +523,7 @@ class FreteService {
     required double altura,
     required double largura,
     required double comprimento,
+    List<Map<String, dynamic>>? itensCotacao,
   }) async {
     try {
       if (!_isMelhorEnvioConfigured(config)) {
@@ -547,6 +557,8 @@ class FreteService {
           'comprimento': comprimentoFinal.toInt(),
           'valorProdutos': valorDeclarado > 0 ? valorDeclarado : 10.0,
           'servico': '1,2,3,4,17',
+          if (itensCotacao != null && itensCotacao.isNotEmpty)
+            'items': itensCotacao,
         });
         final data = result.data as Map?;
         final servicos = data?['servicos'];

@@ -1,131 +1,59 @@
-/// Snapshot da cotação de frete escolhida no checkout do catálogo.
+/// Referência da cotação de frete escolhida no checkout do catálogo.
 ///
-/// Gravado no pedido em `frete.cotacao` e lido pelo backend
-/// (`functions/src/shippingExport.js` → `readQuoteSnapshot`) para exportar o
-/// envio ao provedor depois do pagamento aprovado / confirmação do lojista.
+/// A cotação (Melhor Envio / SuperFrete) é feita no servidor a partir dos itens
+/// do carrinho; cada opção volta com um `shippingQuoteId` opaco. O pedido grava
+/// só esse ID em `frete.shippingQuoteId`: preço, prazo, serviço e pacote usados
+/// no pagamento e na exportação vêm do recibo do servidor
+/// (`functions/src/shippingQuoteReceipt.js`), nunca do navegador.
 /// Escolher uma opção de frete nunca chama o provedor.
 library;
 
+import 'catalog_cart_item_snapshot.dart';
+
 const Set<String> kShippingQuoteProviders = {'melhor_envio', 'superfrete'};
 
-/// Pacote usado na cotação (mesmos valores enviados a `FreteService.calcularFrete`).
-Map<String, dynamic> buildShippingQuotePackage({
-  required num pesoGramas,
-  required num alturaCm,
-  required num larguraCm,
-  required num comprimentoCm,
-}) {
-  return {
-    'pesoGramas': pesoGramas,
-    'alturaCm': alturaCm,
-    'larguraCm': larguraCm,
-    'comprimentoCm': comprimentoCm,
-  };
+final RegExp _quoteIdPattern = RegExp(r'^[a-f0-9]{32}\.\d{1,2}$');
+
+int _quantidade(dynamic raw) {
+  if (raw is int) return raw;
+  if (raw is num) return raw.toInt();
+  return int.tryParse('$raw') ?? 1;
 }
 
-int? _asPositiveInt(dynamic raw) {
-  if (raw is num) {
-    final v = raw.toInt();
-    return v > 0 ? v : null;
+/// Itens enviados à cotação (`[{productId, quantidade}]`), um por linha do carrinho.
+List<Map<String, dynamic>> buildShippingQuoteItems(
+  List<Map<String, dynamic>> cartItems,
+) {
+  return [
+    for (final item in cartItems)
+      if (catalogCartLineCanonicalProductId(item).isNotEmpty)
+        {
+          'productId': catalogCartLineCanonicalProductId(item),
+          'quantidade': _quantidade(item['quantidade'] ?? item['qty']),
+        },
+  ];
+}
+
+/// Assinatura estável do conteúdo do carrinho (produto × quantidade agregada).
+String shippingQuoteItemsSignature(List<Map<String, dynamic>> cartItems) {
+  final agg = <String, int>{};
+  for (final it in buildShippingQuoteItems(cartItems)) {
+    final id = it['productId'] as String;
+    agg[id] = (agg[id] ?? 0) + (it['quantidade'] as int);
   }
-  if (raw is String) {
-    final match = RegExp(r'\d+').firstMatch(raw);
-    if (match == null) return null;
-    final v = int.tryParse(match.group(0)!);
-    return v != null && v > 0 ? v : null;
-  }
-  return null;
+  final keys = agg.keys.toList()..sort();
+  return keys.map((k) => '$k:${agg[k]}').join('|');
 }
 
-double? _asPositiveDouble(dynamic raw) {
-  double? v;
-  if (raw is num) v = raw.toDouble();
-  if (raw is String) v = double.tryParse(raw.replaceAll(',', '.'));
-  if (v == null || !v.isFinite || v <= 0) return null;
-  return v;
-}
-
-String? _asText(dynamic raw, {int maxLength = 80}) {
+/// ID emitido pelo servidor; qualquer outro formato é descartado.
+String? sanitizeShippingQuoteId(dynamic raw) {
   if (raw == null) return null;
   final s = raw.toString().trim();
-  if (s.isEmpty) return null;
-  return s.length > maxLength ? s.substring(0, maxLength) : s;
+  return _quoteIdPattern.hasMatch(s) ? s : null;
 }
 
-Map<String, dynamic>? _sanitizePackage(dynamic raw) {
-  if (raw is! Map) return null;
-  final peso = _asPositiveDouble(raw['pesoGramas']);
-  final altura = _asPositiveDouble(raw['alturaCm']);
-  final largura = _asPositiveDouble(raw['larguraCm']);
-  final comprimento = _asPositiveDouble(raw['comprimentoCm']);
-  if (peso == null || altura == null || largura == null || comprimento == null) {
-    return null;
-  }
-  return buildShippingQuotePackage(
-    pesoGramas: peso,
-    alturaCm: altura,
-    larguraCm: largura,
-    comprimentoCm: comprimento,
-  );
-}
-
-/// Monta o snapshot a partir da opção de frete selecionada no carrinho.
-/// Retorna `null` para fretes manuais/retirada ou quando falta pacote/serviço.
-Map<String, dynamic>? buildShippingQuoteSnapshot({
-  required Map<String, dynamic> freteSelecionado,
-  required Map<String, dynamic>? pacote,
-}) {
-  final provider = _asText(freteSelecionado['plataforma']);
-  if (provider == null || !kShippingQuoteProviders.contains(provider)) {
-    return null;
-  }
-  return sanitizeShippingQuoteSnapshot({
-    'provider': provider,
-    'serviceId': provider == 'superfrete'
-        ? (freteSelecionado['servico_id'] ?? freteSelecionado['service_id'])
-        : (freteSelecionado['service_id'] ?? freteSelecionado['servico_id']),
-    'serviceName': freteSelecionado['nome'] ?? freteSelecionado['label'],
-    'carrierName': freteSelecionado['empresa'],
-    'companyId': freteSelecionado['company_id'],
-    'quoteId': freteSelecionado['quote_id'],
-    'quotedPrice': freteSelecionado['valor'],
-    'quotedDeadlineDays':
-        freteSelecionado['prazo_dias'] ?? freteSelecionado['prazo'],
-    'pacote': pacote,
-  });
-}
-
-/// Normaliza um snapshot vindo do cliente antes de gravar no pedido.
-/// Só mantém chaves conhecidas; descarta o snapshot inteiro se incompleto.
-Map<String, dynamic>? sanitizeShippingQuoteSnapshot(dynamic raw) {
-  if (raw is! Map) return null;
-  final provider = _asText(raw['provider']);
-  if (provider == null || !kShippingQuoteProviders.contains(provider)) {
-    return null;
-  }
-  final serviceId = _asPositiveInt(raw['serviceId']);
-  final quotedPrice = _asPositiveDouble(raw['quotedPrice']);
-  final pacote = _sanitizePackage(raw['pacote']);
-  if (serviceId == null || quotedPrice == null || pacote == null) return null;
-
-  final serviceName = _asText(raw['serviceName']);
-  final carrierName = _asText(raw['carrierName']);
-  final companyId = _asPositiveInt(raw['companyId']);
-  final quoteId = _asText(raw['quoteId']);
-  final deadline = _asPositiveInt(raw['quotedDeadlineDays']);
-
-  return {
-    'provider': provider,
-    'serviceId': serviceId,
-    if (serviceName != null) 'serviceName': serviceName,
-    if (carrierName != null) 'carrierName': carrierName,
-    if (companyId != null) 'companyId': companyId,
-    if (quoteId != null) 'quoteId': quoteId,
-    'quotedPrice': quotedPrice,
-    if (deadline != null) 'quotedDeadlineDays': deadline,
-    'pacote': pacote,
-  };
-}
+bool isShippingQuoteProvider(dynamic plataforma) =>
+    kShippingQuoteProviders.contains((plataforma ?? '').toString());
 
 /// Mapa `entrega` enviado pelos três fluxos de checkout do carrinho.
 Map<String, dynamic> buildCatalogCheckoutEntrega({
@@ -133,12 +61,10 @@ Map<String, dynamic> buildCatalogCheckoutEntrega({
   required String nome,
   required double valorFinal,
   required bool freteGratis,
-  required Map<String, dynamic>? pacoteCotacao,
 }) {
-  final cotacao = buildShippingQuoteSnapshot(
-    freteSelecionado: freteSelecionado,
-    pacote: pacoteCotacao,
-  );
+  final quoteId = isShippingQuoteProvider(freteSelecionado['plataforma'])
+      ? sanitizeShippingQuoteId(freteSelecionado['shipping_quote_id'])
+      : null;
   return {
     'nome': nome,
     'valor': valorFinal,
@@ -150,6 +76,6 @@ Map<String, dynamic> buildCatalogCheckoutEntrega({
       'service_id': freteSelecionado['service_id'],
     if (freteSelecionado['servico_id'] != null)
       'servico_id': freteSelecionado['servico_id'],
-    if (cotacao != null) 'cotacao': cotacao,
+    if (quoteId != null) 'shippingQuoteId': quoteId,
   };
 }

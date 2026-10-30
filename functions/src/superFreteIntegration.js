@@ -4,6 +4,12 @@
 
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { HttpsError } from "firebase-functions/v2/https";
+import {
+  normalizeQuoteItems,
+  computeCanonicalPackage,
+  parseSuperFreteQuoteOptions,
+  issueShippingQuoteReceipt,
+} from "./shippingQuoteReceipt.js";
 
 export const SUPERFRETE_USER_AGENT = "MasterPalm (contato@mastepalm.com.br)";
 export const SUPERFRETE_PLATFORM_NAME = "MasterPalm";
@@ -716,6 +722,36 @@ export function createSuperFreteHandlers(deps) {
     }
 
     const pkg = data.package && typeof data.package === "object" ? data.package : {};
+    const valorDeclarado =
+      data.valorDeclarado ?? data.insuranceValue ?? pkg.valorDeclarado ?? 10;
+
+    // Com `items`, pacote calculado no servidor a partir dos produtos da loja + recibo da cotação.
+    let quoted = null;
+    if (data.items != null) {
+      const normalized = normalizeQuoteItems(data.items);
+      if (!normalized.ok) {
+        throw new HttpsError("invalid-argument", "Itens do carrinho inválidos para cotação.", {
+          code: normalized.code,
+        });
+      }
+      const canonical = await computeCanonicalPackage({
+        db, collectionLojas, storeId: lojaId, items: normalized.items,
+      });
+      if (!canonical.ok) return { sucesso: false, opcoes: [], erro: canonical.code };
+      const c = canonical.package;
+      quoted = {
+        items: normalized.items,
+        canonicalPackage: c,
+        originCep: canonical.originCep || cepOrigem,
+        quoteInput: {
+          pesoGrams: c.weightGrams,
+          altura: c.heightCm < 1 ? 2 : c.heightCm,
+          largura: c.widthCm < 1 ? 11 : c.widthCm,
+          comprimento: c.lengthCm < 1 ? 16 : c.lengthCm,
+        },
+      };
+    }
+
     const peso =
       data.peso ??
       pkg.weightGrams ??
@@ -724,14 +760,15 @@ export function createSuperFreteHandlers(deps) {
       300;
 
     const payload = buildQuotePayload({
-      cepOrigem,
+      cepOrigem: quoted ? quoted.originCep : cepOrigem,
       cepDestino,
-      pesoGrams: peso,
-      altura: data.altura ?? pkg.altura ?? 10,
-      largura: data.largura ?? pkg.largura ?? 20,
-      comprimento: data.comprimento ?? pkg.comprimento ?? 30,
-      valorDeclarado:
-        data.valorDeclarado ?? data.insuranceValue ?? pkg.valorDeclarado ?? 10,
+      ...(quoted ? quoted.quoteInput : {
+        pesoGrams: peso,
+        altura: data.altura ?? pkg.altura ?? 10,
+        largura: data.largura ?? pkg.largura ?? 20,
+        comprimento: data.comprimento ?? pkg.comprimento ?? 30,
+      }),
+      valorDeclarado,
     });
 
     logSuperFrete("QUOTE", `INICIO lojaId=${lojaId}`);
@@ -743,8 +780,25 @@ export function createSuperFreteHandlers(deps) {
       lojaId,
     );
     const opcoes = mapQuoteResponse(raw);
+    if (!quoted) return { sucesso: true, opcoes };
 
-    return { sucesso: true, opcoes };
+    const { quoteIds } = await issueShippingQuoteReceipt({
+      db,
+      collectionLojas,
+      storeId: lojaId,
+      provider: "superfrete",
+      originCep: quoted.originCep,
+      destinationCep: cepDestino,
+      canonicalPackage: quoted.canonicalPackage,
+      providerPackage: payload.package,
+      insuranceValue: payload.options.insurance_value,
+      items: quoted.items,
+      options: parseSuperFreteQuoteOptions(opcoes),
+    });
+    return {
+      sucesso: true,
+      opcoes: opcoes.map((o, i) => (quoteIds.has(i) ? { ...o, shippingQuoteId: quoteIds.get(i) } : o)),
+    };
   }
 
   /** Wrapper legado — rejeita token no payload. */

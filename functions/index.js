@@ -6,9 +6,14 @@
 */
 
 import { onRequest, onCall, HttpsError } from "firebase-functions/v2/https";
-import { onDocumentCreated, onDocumentUpdated, onDocumentWritten } from "firebase-functions/v2/firestore";
+import {
+  onDocumentCreated,
+  onDocumentUpdated,
+  onDocumentUpdatedWithAuthContext,
+  onDocumentWritten,
+} from "firebase-functions/v2/firestore";
 import { setGlobalOptions } from "firebase-functions/v2";
-import { defineSecret } from "firebase-functions/params";
+import { defineSecret, defineString } from "firebase-functions/params";
 import crypto from "node:crypto";
 import {executeConsignmentCommand} from "./src/consignmentCommand.js";
 import {handleProjectionRetryEvent} from "./src/consignmentCatalogProjection.js";
@@ -80,7 +85,30 @@ import {
   handlePrePedidoShippingExportUpdate,
   parseShippingCutoverUtc,
   SHIPPING_AUTO_EXPORT_CUTOVER_ENV,
+  SHIPPING_CUTOVER_UTC_PATTERN,
 } from "./src/shippingExport.js";
+import {
+  normalizeQuoteItems,
+  computeCanonicalPackage,
+  melhorEnvioQuotePackage,
+  parseMelhorEnvioQuoteOptions,
+  issueShippingQuoteReceipt,
+  validateOrderShippingForPayment,
+} from "./src/shippingQuoteReceipt.js";
+
+/**
+ * Corte UTC explícito da exportação automática. Sem valor padrão: o deploy falha se não for
+ * informado (fail closed); nunca derivado do relógio local.
+ */
+const SHIPPING_AUTO_EXPORT_CUTOVER = defineString(SHIPPING_AUTO_EXPORT_CUTOVER_ENV, {
+  description: "Corte UTC da exportação automática de envio (ex.: 2026-11-02T03:00:00Z).",
+  input: {
+    text: {
+      validationRegex: SHIPPING_CUTOVER_UTC_PATTERN,
+      validationErrorMessage: "Use UTC ISO-8601 com sufixo Z (ex.: 2026-11-02T03:00:00Z).",
+    },
+  },
+});
 import { isRootAccountEmail, isPlatformAdminToken } from "./src/rootAccounts.js";
 import {
   MpOAuthError,
@@ -881,6 +909,7 @@ export const calcularMelhorEnvio = onCall(
       comprimento,
       servico,
       valorProdutos,
+      items: rawQuoteItems,
     } = request.data || {};
 
     if (tokenPayload) {
@@ -891,7 +920,8 @@ export const calcularMelhorEnvio = onCall(
     }
 
     const storeId = String(lojaId ?? "").trim();
-    if (!storeId || !origem || !destino || !peso) {
+    const withReceipt = rawQuoteItems != null;
+    if (!storeId || !origem || !destino || (!peso && !withReceipt)) {
       throw new HttpsError(
         "invalid-argument",
         "Parâmetros insuficientes para calcular frete pelo Melhor Envio."
@@ -920,10 +950,32 @@ export const calcularMelhorEnvio = onCall(
     const vProd = Number(valorProdutos);
     const insuranceValue = Number.isFinite(vProd) && vProd > 0 ? vProd : 10;
 
+    // Com `items`, o pacote vem dos produtos da loja (peso/dimensões do navegador são ignorados)
+    // e cada opção recebe `shippingQuoteId` do recibo gravado no servidor.
+    let quoted = null;
+    if (withReceipt) {
+      const normalized = normalizeQuoteItems(rawQuoteItems);
+      if (!normalized.ok) {
+        throw new HttpsError("invalid-argument", "Itens do carrinho inválidos para cotação.", {
+          code: normalized.code,
+        });
+      }
+      const pkg = await computeCanonicalPackage({
+        db, collectionLojas: COLLECTION_LOJAS, storeId, items: normalized.items,
+      });
+      if (!pkg.ok) return { servicos: [], erro: pkg.code };
+      quoted = {
+        items: normalized.items,
+        canonicalPackage: pkg.package,
+        providerPackage: melhorEnvioQuotePackage(pkg.package),
+        originCep: pkg.originCep ?? String(origem).replace(/\D/g, ""),
+      };
+    }
+
     const payload = {
-      from: { postal_code: String(origem) },
+      from: { postal_code: quoted ? quoted.originCep : String(origem) },
       to: { postal_code: String(destino) },
-      package: {
+      package: quoted ? quoted.providerPackage : {
         weight: Number(peso),
         height: Number(altura),
         width: Number(largura),
@@ -966,7 +1018,26 @@ export const calcularMelhorEnvio = onCall(
 
     const data = JSON.parse(txt);
     const servicos = Array.isArray(data) ? data : [];
-    return { servicos };
+    if (!quoted) return { servicos };
+
+    const { quoteIds } = await issueShippingQuoteReceipt({
+      db,
+      collectionLojas: COLLECTION_LOJAS,
+      storeId,
+      provider: "melhor_envio",
+      originCep: quoted.originCep,
+      destinationCep: String(destino),
+      canonicalPackage: quoted.canonicalPackage,
+      providerPackage: quoted.providerPackage,
+      insuranceValue,
+      items: quoted.items,
+      options: parseMelhorEnvioQuoteOptions(servicos),
+    });
+    return {
+      servicos: servicos.map((s, i) => (quoteIds.has(i) && s && typeof s === "object"
+        ? { ...s, shippingQuoteId: quoteIds.get(i) }
+        : s)),
+    };
   } catch (err) {
     console.error("[calcularMelhorEnvio] error:", err);
     if (err instanceof HttpsError) throw err;
@@ -1744,6 +1815,29 @@ export const mpCatalogPayment = onRequest(
           externalReference: String(orderId),
         });
         return res.status(400).json({ error: "Total do pedido inválido no servidor." });
+      }
+      const shippingCheck = await validateOrderShippingForPayment({
+        db,
+        collectionLojas: COLLECTION_LOJAS,
+        storeId: String(lojaId),
+        order: resolvedOrder.order,
+        orderCreateTimeMs: resolvedOrder.createTimeMs,
+      });
+      if (!shippingCheck.ok) {
+        emitCatalogPaymentLog({
+          event: "mpCatalogPayment_validation_failed",
+          severity: "warn",
+          outcome: "validation_fail",
+          reason: "shipping_quote_invalid",
+          errorCode: shippingCheck.code,
+          lojaId: String(lojaId),
+          orderId: String(orderId),
+          externalReference: String(orderId),
+        });
+        return res.status(400).json({
+          error: "O frete deste pedido precisa ser recalculado. Volte ao carrinho e finalize novamente.",
+          code: shippingCheck.code,
+        });
       }
       const clientValor = body.valor != null ? Number(body.valor) : null;
       if (
@@ -4103,7 +4197,7 @@ export const onPrePedidoShippingPreOrder = onDocumentCreated(
   async () => {},
 );
 
-export const onPrePedidoShippingExport = onDocumentUpdated(
+export const onPrePedidoShippingExport = onDocumentUpdatedWithAuthContext(
   {
     document: `${COLLECTION_LOJAS}/{lojaId}/pre_pedidos/{pedidoId}`,
     timeoutSeconds: 120,
@@ -4128,7 +4222,8 @@ export const onPrePedidoShippingExport = onDocumentUpdated(
         before: before?.exists ? before.data() ?? {} : {},
         after: after.data() ?? {},
         createTimeMs,
-        cutoverMs: parseShippingCutoverUtc(process.env[SHIPPING_AUTO_EXPORT_CUTOVER_ENV]),
+        cutoverMs: parseShippingCutoverUtc(SHIPPING_AUTO_EXPORT_CUTOVER.value()),
+        authType: event.authType ?? null,
         fetchImpl: fetchWithTimeout,
       });
     } catch (err) {

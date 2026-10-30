@@ -31,6 +31,7 @@ class _ShippingAutomationCardState extends State<ShippingAutomationCard> {
   final _nameCtrl = TextEditingController();
   final _documentCtrl = TextEditingController();
   final _companyDocumentCtrl = TextEditingController();
+  final _stateRegisterCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
   final _postalCodeCtrl = TextEditingController();
   final _addressCtrl = TextEditingController();
@@ -52,6 +53,7 @@ class _ShippingAutomationCardState extends State<ShippingAutomationCard> {
       _nameCtrl,
       _documentCtrl,
       _companyDocumentCtrl,
+      _stateRegisterCtrl,
       _phoneCtrl,
       _postalCodeCtrl,
       _addressCtrl,
@@ -86,6 +88,7 @@ class _ShippingAutomationCardState extends State<ShippingAutomationCard> {
               ? 'nota_fiscal'
               : 'declaracao_conteudo';
       _nameCtrl.text = (sender['name'] ?? '').toString();
+      _stateRegisterCtrl.text = (sender['stateRegister'] ?? '').toString();
       _phoneCtrl.text = (sender['phone'] ?? '').toString();
       _postalCodeCtrl.text = (sender['postalCode'] ?? '').toString();
       _addressCtrl.text = (sender['address'] ?? '').toString();
@@ -104,6 +107,7 @@ class _ShippingAutomationCardState extends State<ShippingAutomationCard> {
       'name': _nameCtrl.text.trim(),
       if (document.isNotEmpty) 'document': document,
       if (companyDocument.isNotEmpty) 'companyDocument': companyDocument,
+      'stateRegister': _stateRegisterCtrl.text.trim(),
       'phone': _phoneCtrl.text.trim(),
       'postalCode': _postalCodeCtrl.text.trim(),
       'address': _addressCtrl.text.trim(),
@@ -129,7 +133,10 @@ class _ShippingAutomationCardState extends State<ShippingAutomationCard> {
     final res = await ShippingExportService.saveAutomationConfig(
       lojaId: widget.lojaId,
       sender: hasSenderInput ? _senderPayload() : null,
-      flags: {'melhorEnvio': _autoMelhorEnvio, 'superFrete': _autoSuperFrete},
+      flags: {
+        'melhorEnvio': _autoMelhorEnvio,
+        if (!_autoSuperFrete) 'superFrete': false,
+      },
     );
     if (!mounted) return;
     setState(() => _saving = false);
@@ -216,10 +223,13 @@ class _ShippingAutomationCardState extends State<ShippingAutomationCard> {
                     contentPadding: EdgeInsets.zero,
                     title: const Text('Enviar automaticamente à SuperFrete'),
                     subtitle: const Text(
-                      'Disponível apenas em modo de testes (sandbox) da SuperFrete.',
+                      'Em homologação — ainda não disponível.',
                     ),
                     value: _autoSuperFrete,
-                    onChanged: (v) => setState(() => _autoSuperFrete = v),
+                    // Só permite desligar; ligar é recusado pelo servidor.
+                    onChanged: _autoSuperFrete
+                        ? (v) => setState(() => _autoSuperFrete = v)
+                        : null,
                   ),
                   const Divider(height: 24),
                   Row(
@@ -287,11 +297,16 @@ class _ShippingAutomationCardState extends State<ShippingAutomationCard> {
                       setState(() => _shippingDocument = v);
                     },
                   ),
+                  if (_shippingDocument == 'nota_fiscal') ...[
+                    const SizedBox(height: 10),
+                    _field(_stateRegisterCtrl, 'Inscrição estadual'),
+                  ],
                   if (_shippingDocument == 'nota_fiscal')
                     Padding(
                       padding: const EdgeInsets.only(top: 6),
                       child: Text(
-                        'Com nota fiscal, o pedido só é enviado quando tiver a chave da nota.',
+                        'Com nota fiscal, o pedido só é enviado quando tiver a chave da nota '
+                        'e a inscrição estadual do remetente.',
                         style: TextStyle(
                             fontSize: 12, color: Colors.orange.shade800),
                       ),
