@@ -24,6 +24,7 @@ import '../services/superfrete_integration_service.dart';
 import '../services/melhor_envio_integration_service.dart';
 import '../models/cupom.dart';
 import '../widgets/app_help_icon_button.dart';
+import '../widgets/shipping_automation_card.dart';
 
 class FretesCuponsScreen extends StatefulWidget {
   final String? slug;
@@ -1200,6 +1201,12 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
       padding: const EdgeInsets.all(16),
       children: [
         _buildCardProvedor(),
+        if (_slug != null &&
+            (_freteProvider == 'melhor_envio' ||
+                _freteProvider == 'superfrete')) ...[
+          const SizedBox(height: 16),
+          ShippingAutomationCard(lojaId: _slug!),
+        ],
         const SizedBox(height: 16),
         _buildCardFretesManuais(),
         const SizedBox(height: 16),

@@ -17,6 +17,7 @@ import '../models/venda.dart';
 import '../models/venda_item.dart';
 import '../services/pre_pedido_confirmacao_eligibility.dart';
 import '../services/pre_pedido_service.dart';
+import '../services/shipping_export_service.dart';
 import '../services/shipping_preorder_service.dart';
 import '../services/catalog_cart_item_snapshot.dart';
 import '../services/catalogo_pedido_historico_service.dart';
@@ -1822,7 +1823,10 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
 
                       if (_temShippingPreOrder(dados)) ...[
                         const SizedBox(height: 16),
-                        _buildShippingPreOrderSection(dados),
+                        dados['shippingPreOrder'] is Map &&
+                                dados['shipping'] is! Map
+                            ? _buildShippingPreOrderSection(dados)
+                            : _buildShippingExportSection(dados),
                       ],
 
                       const SizedBox(height: 24),
@@ -2298,6 +2302,166 @@ class _PrePedidosScreenState extends State<PrePedidosScreen>
         ],
       ),
     );
+  }
+
+  static const Map<String, String> _shippingProviderSiteUrls = {
+    'melhor_envio': 'https://melhorenvio.com.br/',
+    'superfrete': 'https://superfrete.com/',
+  };
+
+  Widget _buildShippingExportSection(Map<String, dynamic> dados) {
+    final shipping = dados['shipping'] is Map
+        ? Map<String, dynamic>.from(dados['shipping'] as Map)
+        : <String, dynamic>{};
+    final exportState = shipping['export'] is Map
+        ? Map<String, dynamic>.from(shipping['export'] as Map)
+        : <String, dynamic>{};
+    final frete = dados['frete'] is Map
+        ? Map<String, dynamic>.from(dados['frete'] as Map)
+        : <String, dynamic>{};
+    final cotacao = frete['cotacao'] is Map
+        ? Map<String, dynamic>.from(frete['cotacao'] as Map)
+        : <String, dynamic>{};
+
+    final provider =
+        (shipping['provider'] ?? frete['plataforma'] ?? '').toString();
+    final status = exportState['status']?.toString();
+    final errorCode = exportState['lastErrorCode']?.toString();
+    final serviceName =
+        (shipping['serviceName'] ?? cotacao['serviceName'] ?? frete['nome'] ?? '')
+            .toString();
+    final carrierName =
+        (shipping['carrierName'] ?? cotacao['carrierName'] ?? '').toString();
+    final servico = [carrierName, serviceName]
+        .where((s) => s.trim().isNotEmpty)
+        .toSet()
+        .join(' ');
+    final price = shipping['price'] ?? frete['valor'];
+    final deadline = shipping['deadline'] ?? cotacao['quotedDeadlineDays'];
+    final providerLabel = ShippingExportService.providerLabel(provider);
+    final statusLines =
+        ShippingExportService.statusLines(status, provider: provider);
+    final errorMsg =
+        ShippingExportService.messageForErrorCode(errorCode, provider: provider);
+    final isError = status == 'failed' || status == 'unknown';
+    final siteUrl = _shippingProviderSiteUrls[provider];
+    final muted = TextStyle(fontSize: 12, color: Colors.grey.shade700);
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: _surfaceColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'ENVIO',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.5,
+              color: Colors.grey.shade800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(providerLabel,
+              style: const TextStyle(fontWeight: FontWeight.w600)),
+          if (servico.isNotEmpty) Text(servico),
+          if (price is num) ...[
+            const SizedBox(height: 6),
+            Text('Frete pago pelo cliente:', style: muted),
+            Text('R\$ ${price.toStringAsFixed(2).replaceAll('.', ',')}'),
+          ],
+          if (deadline is num && deadline > 0) ...[
+            const SizedBox(height: 6),
+            Text('Prazo informado:', style: muted),
+            Text('${deadline.toInt()} dias úteis'),
+          ],
+          const SizedBox(height: 6),
+          Text('Status:', style: muted),
+          for (final line in statusLines)
+            Text(
+              line,
+              style: isError
+                  ? TextStyle(color: Colors.orange.shade800)
+                  : null,
+            ),
+          if (isError && errorMsg.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                errorMsg,
+                style: TextStyle(fontSize: 12, color: Colors.orange.shade800),
+              ),
+            ),
+          if (ShippingExportService.canRetry(status, provider: provider) ||
+              (status == 'exported' && siteUrl != null)) ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                if (ShippingExportService.canRetry(status, provider: provider))
+                  OutlinedButton.icon(
+                    onPressed: () => _retryShippingExport(dados),
+                    icon: const Icon(Icons.refresh, size: 18),
+                    label: const Text('Tentar novamente'),
+                  ),
+                if (status == 'exported' && siteUrl != null)
+                  OutlinedButton.icon(
+                    onPressed: () => _abrirSiteProvedorFrete(siteUrl),
+                    icon: const Icon(Icons.open_in_new, size: 18),
+                    label: Text(provider == 'superfrete'
+                        ? 'Abrir na SuperFrete'
+                        : 'Abrir no Melhor Envio'),
+                  ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _retryShippingExport(Map<String, dynamic> dados) async {
+    final pedidoId = dados['id']?.toString() ?? '';
+    if (pedidoId.isEmpty) return;
+    _showModernSnackBar('Enviando frete...');
+    final res = await ShippingExportService.retryExport(
+      lojaId: widget.lojaId,
+      orderId: pedidoId,
+    );
+    if (!mounted) return;
+    if (res['ok'] == true) {
+      _showModernSnackBar('Frete enviado. Aguardando compra da etiqueta.');
+    } else {
+      final code = res['errorCode']?.toString();
+      final provider = (dados['shipping'] is Map
+              ? (dados['shipping'] as Map)['provider']
+              : null)
+          ?.toString();
+      final detail =
+          ShippingExportService.messageForErrorCode(code, provider: provider);
+      _showModernSnackBar(
+        detail.isNotEmpty
+            ? detail
+            : (res['message'] ?? ShippingExportService.exportFailedMessage)
+                .toString(),
+        isWarning: true,
+      );
+    }
+    setState(() {});
+  }
+
+  Future<void> _abrirSiteProvedorFrete(String url) async {
+    try {
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } catch (e) {
+      logW('Abrir site do provedor de frete falhou (type=${e.runtimeType})');
+      _showModernSnackBar('Não foi possível abrir o site.', isError: true);
+    }
   }
 
   Future<void> _retryShippingPreOrder(Map<String, dynamic> dados) async {

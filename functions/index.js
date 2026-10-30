@@ -6,7 +6,7 @@
 */
 
 import { onRequest, onCall, HttpsError } from "firebase-functions/v2/https";
-import { onDocumentCreated, onDocumentWritten } from "firebase-functions/v2/firestore";
+import { onDocumentCreated, onDocumentUpdated, onDocumentWritten } from "firebase-functions/v2/firestore";
 import { setGlobalOptions } from "firebase-functions/v2";
 import { defineSecret } from "firebase-functions/params";
 import crypto from "node:crypto";
@@ -74,10 +74,13 @@ import {
 import { stripPaymentsSecretsForPublic } from "./src/paymentsPublicStrip.js";
 import { createSuperFreteHandlers } from "./src/superFreteIntegration.js";
 import { createMelhorEnvioHandlers, readMelhorEnvioSecrets } from "./src/melhorEnvioIntegration.js";
+import { createShippingPreOrderHandlers } from "./src/shippingPreOrder.js";
 import {
-  createShippingPreOrderHandlers,
-  onPrePedidoShippingPreOrderTrigger,
-} from "./src/shippingPreOrder.js";
+  createShippingExportHandlers,
+  handlePrePedidoShippingExportUpdate,
+  parseShippingCutoverUtc,
+  SHIPPING_AUTO_EXPORT_CUTOVER_ENV,
+} from "./src/shippingExport.js";
 import { isRootAccountEmail, isPlatformAdminToken } from "./src/rootAccounts.js";
 import {
   MpOAuthError,
@@ -1289,6 +1292,44 @@ export const retryShippingPreOrder = onCall(
 export const confirmSuperFreteCartCreated = onCall(
   { timeoutSeconds: 30, memory: "256MiB" },
   bindShippingPreOrderHandler("confirmSuperFreteCartCreated"),
+);
+
+function bindShippingExportHandler(handlerName) {
+  return async (request) => {
+    try {
+      const handlers = createShippingExportHandlers({
+        db,
+        collectionLojas: COLLECTION_LOJAS,
+        canManageStoreConfigServerSide,
+        checkRateLimit,
+        getCallableIdentifier,
+        fetchWithTimeout,
+        request,
+      });
+      return await handlers[handlerName]();
+    } catch (err) {
+      if (err instanceof HttpsError) throw err;
+      console.error(`[ShippingExport/${handlerName}] unhandled`, err?.name);
+      throw new HttpsError("internal", "Não foi possível processar o envio.", {
+        code: "EXPORT_FAILED",
+      });
+    }
+  };
+}
+
+export const retryShippingExport = onCall(
+  { timeoutSeconds: 60, memory: "256MiB" },
+  bindShippingExportHandler("retryShippingExport"),
+);
+
+export const shippingGetAutomationConfig = onCall(
+  { timeoutSeconds: 15, memory: "256MiB" },
+  bindShippingExportHandler("shippingGetAutomationConfig"),
+);
+
+export const shippingSaveAutomationConfig = onCall(
+  { timeoutSeconds: 20, memory: "256MiB" },
+  bindShippingExportHandler("shippingSaveAutomationConfig"),
 );
 
 // ============================== MERCADO PAGO — PEDIDOS ======================
@@ -4047,34 +4088,51 @@ export const onPrePedidoCreated = onDocumentCreated(
 );
 
 // ======================================================================
-// PRÉ-PEDIDO DE ENVIO — carrinho SuperFrete / Melhor Envio (idempotente)
+// ENVIO — exportação para Melhor Envio / SuperFrete só após pedido confirmado
 // ======================================================================
+/**
+ * Criação do pré-pedido = cliente ainda não pagou/confirmou: nenhuma chamada ao provedor.
+ * Mantido exportado (no-op) para que o deploy substitua a revisão que criava carrinho na criação.
+ */
 export const onPrePedidoShippingPreOrder = onDocumentCreated(
   {
     document: `${COLLECTION_LOJAS}/{lojaId}/pre_pedidos/{pedidoId}`,
+    timeoutSeconds: 10,
+    memory: "256MiB",
+  },
+  async () => {},
+);
+
+export const onPrePedidoShippingExport = onDocumentUpdated(
+  {
+    document: `${COLLECTION_LOJAS}/{lojaId}/pre_pedidos/{pedidoId}`,
     timeoutSeconds: 120,
-    memory: "512MiB",
+    memory: "256MiB",
   },
   async (event) => {
     const lojaId = event?.params?.lojaId;
     const pedidoId = event?.params?.pedidoId;
-    const snap = event.data;
-    if (!snap?.exists || !lojaId || !pedidoId) return;
+    const before = event.data?.before;
+    const after = event.data?.after;
+    if (!lojaId || !pedidoId || !after?.exists) return;
+    const createTime = after.createTime;
+    const createTimeMs = createTime && typeof createTime.toMillis === "function"
+      ? createTime.toMillis()
+      : NaN;
     try {
-      await onPrePedidoShippingPreOrderTrigger({
+      await handlePrePedidoShippingExportUpdate({
         db,
         collectionLojas: COLLECTION_LOJAS,
-        lojaId,
+        storeId: lojaId,
         orderId: pedidoId,
-        orderData: snap.data() ?? {},
+        before: before?.exists ? before.data() ?? {} : {},
+        after: after.data() ?? {},
+        createTimeMs,
+        cutoverMs: parseShippingCutoverUtc(process.env[SHIPPING_AUTO_EXPORT_CUTOVER_ENV]),
         fetchImpl: fetchWithTimeout,
       });
     } catch (err) {
-      console.error(
-        "[onPrePedidoShippingPreOrder] Erro:",
-        err?.name,
-        err?.message,
-      );
+      console.error("[onPrePedidoShippingExport] Erro:", err?.name);
     }
   },
 );

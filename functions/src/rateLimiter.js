@@ -37,6 +37,9 @@ export const RATE_LIMITS = {
   melhorEnvioGetConfigStatus: { maxPerMin: 40, windowMs: 60_000 },
   retryShippingPreOrder: { maxPerMin: 10, windowMs: 60_000 },
   confirmSuperFreteCartCreated: { maxPerMin: 10, windowMs: 60_000 },
+  retryShippingExport: { maxPerMin: 10, windowMs: 60_000 },
+  shippingGetAutomationConfig: { maxPerMin: 40, windowMs: 60_000 },
+  shippingSaveAutomationConfig: { maxPerMin: 15, windowMs: 60_000 },
   testarMelhorEnvioToken: { maxPerMin: 20, windowMs: 60_000 },
 
   // Pagamento: criar preferência é raro por sessão

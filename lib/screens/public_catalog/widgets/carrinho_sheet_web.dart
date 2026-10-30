@@ -32,6 +32,7 @@ import '../../../services/cliente_auth_service.dart';
 import '../../../services/cupom_desconto_service.dart';
 import '../../../services/cupons_service.dart';
 import '../../../services/frete_service.dart';
+import '../../../services/shipping_quote_snapshot.dart';
 import '../../../widgets/selecionar_cupom_modal.dart'
     show mostrarModalSelecionarCupom;
 import '../../../widgets/roleta_web_widget_v3.dart';
@@ -382,6 +383,9 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
 
   String _pagamento = 'PIX';
   int _freteIndex = 0;
+
+  /// Pacote (peso/dimensões) da última cotação via API; vai para `frete.cotacao`.
+  Map<String, dynamic>? _cotacaoPacote;
 
   String _normalizarTextoIdentificacaoFrete(String? raw) {
     if (raw == null) return '';
@@ -2302,6 +2306,12 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
         largura: largura,
         comprimento: comprimento,
       );
+      _cotacaoPacote = buildShippingQuotePackage(
+        pesoGramas: pesoTotal,
+        alturaCm: altura,
+        larguraCm: largura,
+        comprimentoCm: comprimento,
+      );
 
       // ✅ Preservar manuais se API retornar vazio (nunca sobrescrever com lista vazia)
       final manuaisAtuais = _fretesLocal
@@ -2382,7 +2392,10 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
             'empresa': empresa,
             'plataforma': plataforma,
             'freteGratis': false,
+            if (prazo is num && prazo > 0) 'prazo_dias': prazo.toInt(),
             if (opcao['service_id'] != null) 'service_id': opcao['service_id'],
+            if (opcao['servico_id'] != null) 'servico_id': opcao['servico_id'],
+            if (opcao['company_id'] != null) 'company_id': opcao['company_id'],
           };
 
           // ✅ Filtrar fretes zerados de APIs (exceto manuais que podem ser retirada grátis)
@@ -4356,18 +4369,13 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                                         freteSelecionado['label'] ??
                                         'Entrega')
                                     .toString();
-                            final entrega = {
-                              'nome': nomeFretePedido,
-                              'valor': _totals.valorFreteFinal,
-                              'freteGratis': _freteGratis,
-                              'tipo': freteSelecionado['tipo'] ?? 'padrao',
-                              if (freteSelecionado['plataforma'] != null)
-                                'plataforma': freteSelecionado['plataforma'],
-                              if (freteSelecionado['service_id'] != null)
-                                'service_id': freteSelecionado['service_id'],
-                              if (freteSelecionado['servico_id'] != null)
-                                'servico_id': freteSelecionado['servico_id'],
-                            };
+                            final entrega = buildCatalogCheckoutEntrega(
+                              freteSelecionado: freteSelecionado,
+                              nome: nomeFretePedido,
+                              valorFinal: _totals.valorFreteFinal,
+                              freteGratis: _freteGratis,
+                              pacoteCotacao: _cotacaoPacote,
+                            );
 
                             await widget.onCheckoutWhatsapp(
                               customer: customer,
@@ -4514,18 +4522,13 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                                         freteSelecionado['label'] ??
                                         'Entrega')
                                     .toString();
-                            final entrega = {
-                              'nome': nomeFretePedidoPix,
-                              'valor': _totals.valorFreteFinal,
-                              'freteGratis': _freteGratis,
-                              'tipo': freteSelecionado['tipo'] ?? 'padrao',
-                              if (freteSelecionado['plataforma'] != null)
-                                'plataforma': freteSelecionado['plataforma'],
-                              if (freteSelecionado['service_id'] != null)
-                                'service_id': freteSelecionado['service_id'],
-                              if (freteSelecionado['servico_id'] != null)
-                                'servico_id': freteSelecionado['servico_id'],
-                            };
+                            final entrega = buildCatalogCheckoutEntrega(
+                              freteSelecionado: freteSelecionado,
+                              nome: nomeFretePedidoPix,
+                              valorFinal: _totals.valorFreteFinal,
+                              freteGratis: _freteGratis,
+                              pacoteCotacao: _cotacaoPacote,
+                            );
                             final cupomCod = _cupomCodigoParaPedido() ?? '';
                             final cupomIdDesc = _cupomDescontoIdFirestore();
                             final cupomIdFrete = _cupomFreteIdFirestore();
@@ -4691,18 +4694,13 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
                                         freteSelecionado['label'] ??
                                         'Entrega')
                                     .toString();
-                            final entrega = {
-                              'nome': nomeFretePedidoMp,
-                              'valor': _totals.valorFreteFinal,
-                              'freteGratis': _freteGratis,
-                              'tipo': freteSelecionado['tipo'] ?? 'padrao',
-                              if (freteSelecionado['plataforma'] != null)
-                                'plataforma': freteSelecionado['plataforma'],
-                              if (freteSelecionado['service_id'] != null)
-                                'service_id': freteSelecionado['service_id'],
-                              if (freteSelecionado['servico_id'] != null)
-                                'servico_id': freteSelecionado['servico_id'],
-                            };
+                            final entrega = buildCatalogCheckoutEntrega(
+                              freteSelecionado: freteSelecionado,
+                              nome: nomeFretePedidoMp,
+                              valorFinal: _totals.valorFreteFinal,
+                              freteGratis: _freteGratis,
+                              pacoteCotacao: _cotacaoPacote,
+                            );
 
                             await widget.onCheckoutMercadoPago(
                               customer: customer,

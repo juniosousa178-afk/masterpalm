@@ -22,6 +22,7 @@ import 'cupons_service.dart';
 import 'cliente_auth_service.dart';
 import 'cliente_auth_helpers.dart';
 import 'pre_pedido_helpers.dart';
+import 'shipping_quote_snapshot.dart';
 import 'catalog_pre_pedido_compute.dart';
 import 'catalog_cart_item_snapshot.dart';
 import '../core/hive_box_names.dart';
@@ -366,6 +367,7 @@ class PrePedidoService {
       final total = money.total;
       final freteGratis = entrega['freteGratis'] == true;
       final freteValor = (entrega['valor'] as num?)?.toDouble() ?? 0.0;
+      final cotacaoFrete = sanitizeShippingQuoteSnapshot(entrega['cotacao']);
 
       // Criar documento do pré-pedido
       final prePedidoData = {
@@ -399,6 +401,7 @@ class PrePedidoService {
           if (entrega['plataforma'] != null) 'plataforma': entrega['plataforma'],
           if (entrega['service_id'] != null) 'service_id': entrega['service_id'],
           if (entrega['servico_id'] != null) 'servico_id': entrega['servico_id'],
+          if (cotacaoFrete != null) 'cotacao': cotacaoFrete,
         },
         'cupom': cupomCodigo != null
             ? {
@@ -610,12 +613,13 @@ class PrePedidoService {
         total: total,
       );
 
-      // Pré-pedido de envio (carrinho SuperFrete/Melhor Envio): Cloud Function
-      // onPrePedidoShippingPreOrder — idempotente, somente no backend.
+      // Envio no provedor (carrinho Melhor Envio/SuperFrete): só no backend, após
+      // pagamento aprovado ou confirmação do lojista (onPrePedidoShippingExport).
+      // onPrePedidoShippingPreOrder (criação) não exporta mais nada.
       final plataformaFrete = (entrega['plataforma'] ?? '').toString().trim();
       if (plataformaFrete.isNotEmpty && plataformaFrete != 'manual') {
         logD(
-            '📦 [PRÉ-PEDIDO] Envio externo enfileirado no servidor ($plataformaFrete)');
+            '📦 [PRÉ-PEDIDO] Envio externo será exportado pelo servidor após confirmação ($plataformaFrete)');
       }
 
       // E-mail ao cliente e ao vendedor: Cloud Function onPrePedidoCreated (SMTP no
