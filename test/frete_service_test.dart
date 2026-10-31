@@ -16,7 +16,7 @@ void main() {
 
     test('2. cotação SuperFrete não envia token no bloco de cotação', () {
       final quoteBlock = source.split('SuperFreteIntegrationService.quote')[1]
-          .split('manualFretes')[0];
+          .split('_cotarFrenet')[0];
       expect(quoteBlock.contains("'token'"), isFalse);
       expect(quoteBlock.contains('superfrete_token'), isFalse);
     });
@@ -33,7 +33,7 @@ void main() {
 
     test('5. API indisponível não quebra fretes manuais (fluxo híbrido)', () {
       expect(source, contains('manualFretes'));
-      expect(source, contains('todasOpcoes'));
+      expect(source, contains('_comPlataformaManual(_calcularManual(config))'));
     });
   });
 }

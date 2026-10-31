@@ -79,6 +79,7 @@ import {
 import { stripPaymentsSecretsForPublic } from "./src/paymentsPublicStrip.js";
 import { createSuperFreteHandlers } from "./src/superFreteIntegration.js";
 import { createMelhorEnvioHandlers, readMelhorEnvioSecrets } from "./src/melhorEnvioIntegration.js";
+import { loadStoreForPublicQuote } from "./src/storeQuotePublication.js";
 import { createShippingPreOrderHandlers } from "./src/shippingPreOrder.js";
 import {
   createShippingExportHandlers,
@@ -933,14 +934,7 @@ export const calcularMelhorEnvio = onCall(
       );
     }
 
-    const lojaSnap = await db.collection(COLLECTION_LOJAS).doc(storeId).get();
-    if (!lojaSnap.exists) {
-      throw new HttpsError("not-found", "Loja não encontrada.");
-    }
-    const published = lojaSnap.data()?.published;
-    if (published !== true) {
-      throw new HttpsError("failed-precondition", "Loja não publicada.");
-    }
+    await loadStoreForPublicQuote({ db, collectionLojas: COLLECTION_LOJAS, storeId });
 
     const secrets = await readMelhorEnvioSecrets(db, COLLECTION_LOJAS, storeId);
     if (!secrets?.token) {

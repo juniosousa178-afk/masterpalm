@@ -22,6 +22,7 @@ import '../models/cliente.dart';
 import '../services/indicacao_config_service.dart';
 import '../services/superfrete_integration_service.dart';
 import '../services/melhor_envio_integration_service.dart';
+import '../services/shipping_provider_selection.dart';
 import '../models/cupom.dart';
 import '../widgets/app_help_icon_button.dart';
 import '../widgets/shipping_automation_card.dart';
@@ -1019,20 +1020,15 @@ class _FretesCuponsScreenState extends State<FretesCuponsScreen>
           'frenet': {
             'token': _frenetTokenCtrl.text.trim(),
           },
-          'integrations': {
-            'superfrete': {
-              'configured': _superFreteStatus.configured ||
-                  novoTokenSuperFrete.isNotEmpty,
-              'enabled': true,
-              'sandbox': _superFreteSandbox,
-            },
-            'melhor_envio': {
-              'configured': _melhorEnvioStatus.configured ||
-                  novoTokenMelhorEnvio.isNotEmpty,
-              'enabled': true,
-              'sandbox': _melhorEnvioSandbox,
-            },
-          },
+          'integrations': ShippingProviderSelection.integrationsForSave(
+            provider: _freteProvider,
+            melhorEnvioConfigured: _melhorEnvioStatus.configured ||
+                novoTokenMelhorEnvio.isNotEmpty,
+            melhorEnvioSandbox: _melhorEnvioSandbox,
+            superFreteConfigured: _superFreteStatus.configured ||
+                novoTokenSuperFrete.isNotEmpty,
+            superFreteSandbox: _superFreteSandbox,
+          ),
           'freteMelhorEnvioModoExibicao': _freteMelhorEnvioModoExibicao,
           'updatedAt': FieldValue.serverTimestamp(),
         };

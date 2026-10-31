@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
+import 'shipping_provider_selection.dart';
 import 'superfrete_service.dart';
 import 'superfrete_integration_service.dart';
 import 'via_cep_service.dart';
@@ -20,27 +21,11 @@ class FreteService {
   /// User-Agent obrigatório pela documentação Melhor Envio
   static const String _melhorEnvioUserAgent = 'MasterPalm (contato@mastepalm.com.br)';
 
-  static bool _isSuperFreteConfigured(Map<String, dynamic> config) {
-    final integrations = config['integrations'];
-    if (integrations is Map) {
-      final sf = integrations['superfrete'];
-      if (sf is Map && sf['configured'] == true && sf['enabled'] != false) {
-        return true;
-      }
-    }
-    return false;
-  }
+  static bool _isSuperFreteConfigured(Map<String, dynamic> config) =>
+      ShippingProviderSelection.isSuperFreteConfigured(config);
 
-  static bool _isMelhorEnvioConfigured(Map<String, dynamic> config) {
-    final integrations = config['integrations'];
-    if (integrations is Map) {
-      final me = integrations['melhor_envio'];
-      if (me is Map && me['configured'] == true && me['enabled'] != false) {
-        return true;
-      }
-    }
-    return false;
-  }
+  static bool _isMelhorEnvioConfigured(Map<String, dynamic> config) =>
+      ShippingProviderSelection.isMelhorEnvioConfigured(config);
 
   static void _stripMelhorEnvioSecretsFromConfig(Map<String, dynamic> config) {
     if (config['melhorEnvio'] is Map) {
@@ -57,36 +42,16 @@ class FreteService {
     config.remove('superfrete_token');
     config.remove('superfreteToken');
   }
+  /// Mensagem segura quando o provedor selecionado não devolve cotação.
+  static const String mensagemFalhaProvedor =
+      'Não foi possível calcular o frete agora. Tente novamente em instantes ou escolha uma opção de entrega manual.';
+
+  /// Calcula o frete com o provedor selecionado pela loja (`config/fretes.provider`).
   ///
-  /// Parâmetros:
-  /// - [lojaId]: ID da loja
-  /// - [cep]: CEP de destino (somente números)
-  /// - [peso]: Peso total em gramas
-  /// - [valorDeclarado]: Valor total dos produtos em reais
-  /// - [altura]: Altura total em cm (padrão: 10)
-  /// - [largura]: Largura total em cm (padrão: 20)
-  /// - [comprimento]: Comprimento total em cm (padrão: 30)
-  ///
-  /// Retorna: List<Map> com TODAS as opções de frete de TODAS as plataformas:
-  /// ```dart
-  /// [
-  ///   {
-  ///     'nome': 'PAC',
-  ///     'valor': 25.50,
-  ///     'prazo': 10,
-  ///     'empresa': 'Correios',
-  ///     'plataforma': 'melhor_envio'
-  ///   },
-  ///   {
-  ///     'nome': 'SEDEX',
-  ///     'valor': 35.00,
-  ///     'prazo': 3,
-  ///     'empresa': 'Correios',
-  ///     'plataforma': 'frenet'
-  ///   }
-  /// ]
-  /// ```
-  static Future<List<Map<String, dynamic>>> calcularFrete({
+  /// Só o provedor selecionado é consultado (sem agregar nem trocar de provedor).
+  /// Se ele falhar, [FreteCalculoResultado.erroProvedor] traz [mensagemFalhaProvedor]
+  /// e só os fretes manuais da loja (`plataforma: manual`) são devolvidos.
+  static Future<FreteCalculoResultado> calcularFrete({
     required String lojaId,
     required String cep,
     required double peso,
@@ -99,201 +64,189 @@ class FreteService {
     List<Map<String, dynamic>>? itensCotacao,
   }) async {
     try {
-      // 1. Buscar configuração de frete da loja
       final config = await _buscarConfigFrete(lojaId);
-
-      debugPrint('🚚 [FRETE] Calculando frete para CEP: $cep');
-      debugPrint('📦 [FRETE] Consultando TODAS as plataformas cadastradas...');
-
-      // Lista para armazenar todas as opções de todas as plataformas
-      List<Map<String, dynamic>> todasOpcoes = [];
-
-      // 2. Verificar quais plataformas estão configuradas e consultar TODAS
-
-      // MELHOR ENVIO (token somente no backend — integrations.melhor_envio.configured)
-      if (_isMelhorEnvioConfigured(config)) {
-        debugPrint('🔄 [FRETE] Consultando Melhor Envio...');
-        try {
-          final opcoesMelhorEnvio = await _calcularMelhorEnvio(
-            config: config,
-            lojaId: lojaId,
-            cep: cep,
-            peso: peso,
-            valorDeclarado: valorDeclarado,
-            altura: altura,
-            largura: largura,
-            comprimento: comprimento,
-            itensCotacao: itensCotacao,
-          );
-
-          // Adicionar identificador da plataforma
-          for (var opcao in opcoesMelhorEnvio) {
-            opcao['plataforma'] = 'melhor_envio';
-          }
-
-          todasOpcoes.addAll(opcoesMelhorEnvio);
-          debugPrint('✅ [FRETE] Melhor Envio: ${opcoesMelhorEnvio.length} opções');
-          debugPrint('🔍 [DEBUG] Primeira opção após add plataforma: ${opcoesMelhorEnvio.isNotEmpty ? opcoesMelhorEnvio[0] : "vazio"}');
-        } catch (e) {
-          debugPrint('⚠️  [FRETE] Erro ao consultar Melhor Envio (type=${e.runtimeType})');
-        }
-      }
-
-      // FRENET
-      final tokenFrenet = (config['frenet']?['token'] ?? '').toString();
-      if (tokenFrenet.isNotEmpty) {
-        debugPrint('🔄 [FRETE] Consultando Frenet...');
-        try {
-          final opcoesFrenet = await _calcularFrenet(
-            config: config,
-            cep: cep,
-            peso: peso,
-            valorDeclarado: valorDeclarado,
-            altura: altura,
-            largura: largura,
-            comprimento: comprimento,
-          );
-
-          // Adicionar identificador da plataforma
-          for (var opcao in opcoesFrenet) {
-            opcao['plataforma'] = 'frenet';
-          }
-
-          todasOpcoes.addAll(opcoesFrenet);
-          debugPrint('✅ [FRETE] Frenet: ${opcoesFrenet.length} opções');
-        } catch (e) {
-          debugPrint('⚠️  [FRETE] Erro ao consultar Frenet (type=${e.runtimeType})');
-        }
-      }
-
-      // CORREIOS
-      final usuarioCorreios = (config['correios']?['usuario'] ?? '').toString();
-      final senhaCorreios = (config['correios']?['senha'] ?? '').toString();
-      if (usuarioCorreios.isNotEmpty && senhaCorreios.isNotEmpty) {
-        debugPrint('🔄 [FRETE] Consultando Correios...');
-        try {
-          final opcoesCorreios = await _calcularCorreios(
-            config: config,
-            cep: cep,
-            peso: peso,
-            valorDeclarado: valorDeclarado,
-            altura: altura,
-            largura: largura,
-            comprimento: comprimento,
-          );
-
-          // Adicionar identificador da plataforma
-          for (var opcao in opcoesCorreios) {
-            opcao['plataforma'] = 'correios';
-          }
-
-          todasOpcoes.addAll(opcoesCorreios);
-          debugPrint('✅ [FRETE] Correios: ${opcoesCorreios.length} opções');
-        } catch (e) {
-          debugPrint('⚠️  [FRETE] Erro ao consultar Correios (type=${e.runtimeType})');
-        }
-      }
-
-      // SUPERFRETE (token somente no backend — integrations.superfrete.configured)
-      if (_isSuperFreteConfigured(config)) {
-        debugPrint('🔄 [FRETE] SuperFrete: cotação via Cloud Function');
-        try {
-          final cepOrigem =
-              (config['cepOrigem'] ?? '01310100').toString().replaceAll(RegExp(r'\D'), '');
-          final cepDestino = cep.replaceAll(RegExp(r'\D'), '');
-          final pesoFinal = peso < 300 ? 300.0 : peso;
-          final docId =
-              (config['_resolvedLojaDocId'] ?? lojaId).toString().trim();
-
-          final resultado = await SuperFreteIntegrationService.quote(
-            lojaId: docId,
-            destinationCep: cepDestino,
-            pesoGrams: pesoFinal,
-            altura: altura < 1 ? 2 : altura,
-            largura: largura < 1 ? 11 : largura,
-            comprimento: comprimento < 1 ? 16 : comprimento,
-            valorDeclarado: valorDeclarado > 0 ? valorDeclarado : 10.0,
-            cepOrigem: cepOrigem,
-            items: itensCotacao,
-          );
-
-          if (resultado['sucesso'] == true) {
-            final opcoesRaw = resultado['opcoes'] as List? ?? [];
-            final opcoesSuperFrete = opcoesRaw.map<Map<String, dynamic>>((o) {
-              final m = o is Map ? Map<String, dynamic>.from(o) : <String, dynamic>{};
-              return {
-                'nome': (m['nome'] ?? 'SuperFrete').toString(),
-                'valor': (m['preco'] as num?)?.toDouble() ?? 0.0,
-                'prazo': (m['prazo'] as num?)?.toInt() ?? 0,
-                'empresa': (m['empresa'] ?? 'SuperFrete').toString(),
-                'plataforma': 'superfrete',
-                'servico_id': m['servico_id'],
-                if (m['shippingQuoteId'] != null)
-                  'shipping_quote_id': m['shippingQuoteId'].toString(),
-              };
-            }).toList();
-
-            todasOpcoes.addAll(opcoesSuperFrete);
-            debugPrint('✅ [FRETE] SuperFrete: ${opcoesSuperFrete.length} opções');
-          } else {
-            debugPrint('⚠️  [FRETE] SuperFrete: ${resultado['erro']}');
-          }
-        } catch (e) {
-          debugPrint('⚠️  [FRETE] Erro ao consultar SuperFrete (type=${e.runtimeType})');
-        }
-      }
-
-      // FRETES MANUAIS (sempre incluir se existirem)
-      final manualFretes = config['manualFretes'] as List? ?? [];
-      if (manualFretes.isNotEmpty) {
-        debugPrint('🔄 [FRETE] Adicionando fretes manuais...');
-        final opcoesManual = _calcularManual(config);
-
-        // Adicionar identificador da plataforma
-        for (var opcao in opcoesManual) {
-          opcao['plataforma'] = 'manual';
-        }
-
-        todasOpcoes.addAll(opcoesManual);
-        debugPrint('✅ [FRETE] Manual: ${opcoesManual.length} opções');
-      }
-
-      // 3. Se nenhuma plataforma retornou opções, usar fallback
-      if (todasOpcoes.isEmpty) {
-        debugPrint('⚠️  [FRETE] Nenhuma opção de frete disponível, usando padrão');
-        final opcoesPadrao = _fretePadrao();
-        for (var opcao in opcoesPadrao) {
-          opcao['plataforma'] = 'manual';
-        }
-        todasOpcoes = opcoesPadrao;
-      }
-
-      // 4. Debug antes de ordenar
-      debugPrint('🔍 [DEBUG] Antes de ordenar - ${todasOpcoes.length} opções:');
-      for (int i = 0; i < (todasOpcoes.length > 5 ? 5 : todasOpcoes.length); i++) {
-        debugPrint('   [$i] ${todasOpcoes[i]['nome']} - valor: ${todasOpcoes[i]['valor']} (${todasOpcoes[i]['valor'].runtimeType})');
-      }
-
-      // Ordenar por valor (mais barato primeiro)
-      todasOpcoes.sort((a, b) {
-        final valorA = (a['valor'] as num?)?.toDouble() ?? 999999;
-        final valorB = (b['valor'] as num?)?.toDouble() ?? 999999;
-        return valorA.compareTo(valorB);
-      });
-
-      debugPrint('🎉 [FRETE] TOTAL: ${todasOpcoes.length} opções de frete disponíveis');
-      debugPrint('   Melhor opção: ${todasOpcoes.first['nome']} - R\$ ${todasOpcoes.first['valor']}');
-
-      return todasOpcoes;
+      return await calcularComConfig(
+        config: config,
+        lojaId: lojaId,
+        cep: cep,
+        peso: peso,
+        valorDeclarado: valorDeclarado,
+        altura: altura,
+        largura: largura,
+        comprimento: comprimento,
+        itensCotacao: itensCotacao,
+      );
     } catch (e) {
       debugPrint('❌ [FRETE] Erro ao calcular frete (type=${e.runtimeType})');
-      // Fallback: retorna fretes padrão
-      return _fretePadrao().map((opcao) {
-        opcao['plataforma'] = 'manual';
-        return opcao;
-      }).toList();
+      return FreteCalculoResultado(
+        provider: ShippingProviderSelection.manual,
+        opcoes: _comPlataformaManual(_fretePadrao()),
+        erroProvedor: mensagemFalhaProvedor,
+      );
     }
   }
+
+  @visibleForTesting
+  static Future<FreteCalculoResultado> calcularComConfig({
+    required Map<String, dynamic> config,
+    required String lojaId,
+    required String cep,
+    required double peso,
+    required double valorDeclarado,
+    double altura = 10,
+    double largura = 20,
+    double comprimento = 30,
+    List<Map<String, dynamic>>? itensCotacao,
+    FreteCotadores cotadores = FreteCotadores.padrao,
+  }) async {
+    final provider = ShippingProviderSelection.resolve(config);
+    final pedido = FreteCotacaoPedido(
+      config: config,
+      lojaId: lojaId,
+      cep: cep,
+      peso: peso,
+      valorDeclarado: valorDeclarado,
+      altura: altura,
+      largura: largura,
+      comprimento: comprimento,
+      itensCotacao: itensCotacao,
+    );
+    debugPrint('🚚 [FRETE] Provedor selecionado: $provider');
+
+    final opcoes = <Map<String, dynamic>>[];
+    String? erroProvedor;
+    final cotador = cotadores.para(provider);
+    if (cotador != null) {
+      if (!_provedorConfigurado(provider, config)) {
+        debugPrint('⚠️  [FRETE] $provider selecionado sem integração ativa; só fretes manuais');
+      } else {
+        try {
+          final validas = (await cotador(pedido))
+              .where((o) => ((o['valor'] as num?)?.toDouble() ?? 0) > 0)
+              .toList();
+          if (validas.isEmpty) {
+            erroProvedor = mensagemFalhaProvedor;
+          } else {
+            for (final o in validas) {
+              o['plataforma'] = provider;
+            }
+            opcoes.addAll(validas);
+          }
+        } catch (e) {
+          debugPrint('⚠️  [FRETE] Falha na cotação $provider (type=${e.runtimeType})');
+          erroProvedor = mensagemFalhaProvedor;
+        }
+      }
+    }
+
+    final manualFretes = config['manualFretes'] as List? ?? [];
+    if (manualFretes.isNotEmpty) {
+      opcoes.addAll(_comPlataformaManual(_calcularManual(config)));
+    }
+    if (opcoes.isEmpty) {
+      opcoes.addAll(_comPlataformaManual(_fretePadrao()));
+    }
+
+    opcoes.sort((a, b) {
+      final valorA = (a['valor'] as num?)?.toDouble() ?? 999999;
+      final valorB = (b['valor'] as num?)?.toDouble() ?? 999999;
+      return valorA.compareTo(valorB);
+    });
+    debugPrint('🎉 [FRETE] $provider: ${opcoes.length} opções, falha=${erroProvedor != null}');
+    return FreteCalculoResultado(provider: provider, opcoes: opcoes, erroProvedor: erroProvedor);
+  }
+
+  static bool _provedorConfigurado(String provider, Map<String, dynamic> config) {
+    switch (provider) {
+      case ShippingProviderSelection.melhorEnvio:
+        return _isMelhorEnvioConfigured(config);
+      case ShippingProviderSelection.superFrete:
+        return _isSuperFreteConfigured(config);
+      case ShippingProviderSelection.frenet:
+        return (config['frenet']?['token'] ?? '').toString().isNotEmpty;
+      case ShippingProviderSelection.correios:
+        return (config['correios']?['usuario'] ?? '').toString().isNotEmpty &&
+            (config['correios']?['senha'] ?? '').toString().isNotEmpty;
+      default:
+        return false;
+    }
+  }
+
+  static List<Map<String, dynamic>> _comPlataformaManual(List<Map<String, dynamic>> opcoes) {
+    for (final o in opcoes) {
+      o['plataforma'] = 'manual';
+    }
+    return opcoes;
+  }
+
+  static Future<List<Map<String, dynamic>>> _cotarMelhorEnvio(FreteCotacaoPedido p) =>
+      _calcularMelhorEnvio(
+        config: p.config,
+        lojaId: p.lojaId,
+        cep: p.cep,
+        peso: p.peso,
+        valorDeclarado: p.valorDeclarado,
+        altura: p.altura,
+        largura: p.largura,
+        comprimento: p.comprimento,
+        itensCotacao: p.itensCotacao,
+      );
+
+  static Future<List<Map<String, dynamic>>> _cotarSuperFrete(FreteCotacaoPedido p) async {
+    final cepOrigem =
+        (p.config['cepOrigem'] ?? '01310100').toString().replaceAll(RegExp(r'\D'), '');
+    final docId = (p.config['_resolvedLojaDocId'] ?? p.lojaId).toString().trim();
+    final resultado = await SuperFreteIntegrationService.quote(
+      lojaId: docId,
+      destinationCep: p.cep.replaceAll(RegExp(r'\D'), ''),
+      pesoGrams: p.peso < 300 ? 300.0 : p.peso,
+      altura: p.altura < 1 ? 2 : p.altura,
+      largura: p.largura < 1 ? 11 : p.largura,
+      comprimento: p.comprimento < 1 ? 16 : p.comprimento,
+      valorDeclarado: p.valorDeclarado > 0 ? p.valorDeclarado : 10.0,
+      cepOrigem: cepOrigem,
+      items: p.itensCotacao,
+    );
+    if (resultado['sucesso'] != true) {
+      throw StateError('SuperFrete sem cotação');
+    }
+    final opcoesRaw = resultado['opcoes'] as List? ?? [];
+    return opcoesRaw.map<Map<String, dynamic>>((o) {
+      final m = o is Map ? Map<String, dynamic>.from(o) : <String, dynamic>{};
+      return {
+        'nome': (m['nome'] ?? 'SuperFrete').toString(),
+        'valor': (m['preco'] as num?)?.toDouble() ?? 0.0,
+        'prazo': (m['prazo'] as num?)?.toInt() ?? 0,
+        'empresa': (m['empresa'] ?? 'SuperFrete').toString(),
+        'plataforma': 'superfrete',
+        'servico_id': m['servico_id'],
+        if (m['shippingQuoteId'] != null)
+          'shipping_quote_id': m['shippingQuoteId'].toString(),
+      };
+    }).toList();
+  }
+
+  static Future<List<Map<String, dynamic>>> _cotarFrenet(FreteCotacaoPedido p) =>
+      _calcularFrenet(
+        config: p.config,
+        cep: p.cep,
+        peso: p.peso,
+        valorDeclarado: p.valorDeclarado,
+        altura: p.altura,
+        largura: p.largura,
+        comprimento: p.comprimento,
+      );
+
+  static Future<List<Map<String, dynamic>>> _cotarCorreios(FreteCotacaoPedido p) =>
+      _calcularCorreios(
+        config: p.config,
+        cep: p.cep,
+        peso: p.peso,
+        valorDeclarado: p.valorDeclarado,
+        altura: p.altura,
+        largura: p.largura,
+        comprimento: p.comprimento,
+      );
 
   /// Busca configuração de frete do Firestore.
   /// Lê config/fretes, config/config (frete_config) e draft_config/config como fallbacks.
@@ -328,6 +281,11 @@ class FreteService {
       void applyTokensFrom(Map<String, dynamic> data) {
         final fc = data['frete_config'] as Map<String, dynamic>?;
         if (fc != null) {
+          final prov = (fc['provider'] ?? '').toString().trim();
+          if (prov.isNotEmpty && (config['provider'] ?? '').toString().trim().isEmpty) {
+            config = Map<String, dynamic>.from(config);
+            config['provider'] = prov;
+          }
           final cepO = (fc['cep_origem'] ?? fc['cepOrigem'] ?? '').toString().trim();
           if (cepO.isNotEmpty && (config['cepOrigem'] ?? '').toString().trim().isEmpty) {
             config = Map<String, dynamic>.from(config);
@@ -512,8 +470,8 @@ class FreteService {
     return opcoes;
   }
 
-  /// Melhor Envio API
-  /// Na web (navegador) usa Cloud Function para evitar CORS.
+  /// Melhor Envio via Cloud Function (token só no backend). Erros propagam para
+  /// [calcularComConfig] — nunca viram frete manual com rótulo do provedor.
   static Future<List<Map<String, dynamic>>> _calcularMelhorEnvio({
     required Map<String, dynamic> config,
     required String lojaId,
@@ -525,60 +483,45 @@ class FreteService {
     required double comprimento,
     List<Map<String, dynamic>>? itensCotacao,
   }) async {
-    try {
-      if (!_isMelhorEnvioConfigured(config)) {
-        debugPrint('⚠️  [FRETE] Melhor Envio não configurado');
-        return _calcularManual(config);
-      }
+    final resolvedLojaId =
+        (config['_resolvedLojaDocId'] ?? lojaId).toString().trim();
+    final cepOrigem = (config['cepOrigem'] ?? '01310100').toString().replaceAll(RegExp(r'\D'), '');
+    final cepDestino = cep.replaceAll(RegExp(r'\D'), '');
 
-      final resolvedLojaId =
-          (config['_resolvedLojaDocId'] ?? lojaId).toString().trim();
-      final cepOrigem = (config['cepOrigem'] ?? '01310100').toString().replaceAll(RegExp(r'\D'), '');
-      final cepDestino = cep.replaceAll(RegExp(r'\D'), '');
+    final alturaFinal = altura < 1 ? 2 : altura;
+    final larguraFinal = largura < 1 ? 11 : largura;
+    final comprimentoFinal = comprimento < 1 ? 16 : comprimento;
+    final pesoFinal = peso < 300 ? 300 : peso;
+    final pesoKg = pesoFinal / 1000;
 
-      final alturaFinal = altura < 1 ? 2 : altura;
-      final larguraFinal = largura < 1 ? 11 : largura;
-      final comprimentoFinal = comprimento < 1 ? 16 : comprimento;
-      final pesoFinal = peso < 300 ? 300 : peso;
-      final pesoKg = pesoFinal / 1000;
+    debugPrint('📏 [MELHOR_ENVIO] Dimensões: ${alturaFinal}x${larguraFinal}x${comprimentoFinal}cm, Peso: ${pesoFinal}g');
 
-      debugPrint('📏 [MELHOR_ENVIO] Dimensões: ${alturaFinal}x${larguraFinal}x${comprimentoFinal}cm, Peso: ${pesoFinal}g');
-
-      try {
-        final functions = FirebaseFunctions.instanceFor(region: 'southamerica-east1');
-        final callable = functions.httpsCallable('calcularMelhorEnvio');
-        final result = await callable.call({
-          'lojaId': resolvedLojaId,
-          'origem': cepOrigem,
-          'destino': cepDestino,
-          'peso': pesoKg,
-          'altura': alturaFinal.toInt(),
-          'largura': larguraFinal.toInt(),
-          'comprimento': comprimentoFinal.toInt(),
-          'valorProdutos': valorDeclarado > 0 ? valorDeclarado : 10.0,
-          'servico': '1,2,3,4,17',
-          if (itensCotacao != null && itensCotacao.isNotEmpty)
-            'items': itensCotacao,
-        });
-        final data = result.data as Map?;
-        final servicos = data?['servicos'];
-        final list = servicos is List ? servicos : <dynamic>[];
-        return _parsearOpcoesMelhorEnvio(list, config);
-      } catch (e) {
-        debugPrint('⚠️ [MELHOR_ENVIO] Cloud Function erro (type=${e.runtimeType})');
-        return _calcularManual(config);
-      }
-    } catch (e) {
-      debugPrint('❌ [FRETE] Erro Melhor Envio (type=${e.runtimeType})');
-      return _calcularManual(config);
-    }
+    final functions = FirebaseFunctions.instanceFor(region: 'southamerica-east1');
+    final callable = functions.httpsCallable('calcularMelhorEnvio');
+    final result = await callable.call({
+      'lojaId': resolvedLojaId,
+      'origem': cepOrigem,
+      'destino': cepDestino,
+      'peso': pesoKg,
+      'altura': alturaFinal.toInt(),
+      'largura': larguraFinal.toInt(),
+      'comprimento': comprimentoFinal.toInt(),
+      'valorProdutos': valorDeclarado > 0 ? valorDeclarado : 10.0,
+      'servico': '1,2,3,4,17',
+      if (itensCotacao != null && itensCotacao.isNotEmpty)
+        'items': itensCotacao,
+    });
+    final data = result.data as Map?;
+    final servicos = data?['servicos'];
+    final list = servicos is List ? servicos : <dynamic>[];
+    return _parsearOpcoesMelhorEnvio(list, config);
   }
 
   static List<Map<String, dynamic>> _parsearOpcoesFrenet(
     List<dynamic> shipping,
     Map<String, dynamic> config,
   ) {
-    if (shipping.isEmpty) return _calcularManual(config);
+    if (shipping.isEmpty) return [];
 
     return shipping
         .map<Map<String, dynamic>?>((item) {
@@ -619,7 +562,7 @@ class FreteService {
       final token = (config['frenet']?['token'] ?? '').toString();
       if (token.isEmpty) {
         debugPrint('⚠️  [FRETE] Token Frenet não configurado');
-        return _calcularManual(config);
+        return [];
       }
 
       final cepOrigem = (config['cepOrigem'] ?? '01310100').toString();
@@ -652,7 +595,7 @@ class FreteService {
           return _parsearOpcoesFrenet(shipping, config);
         } catch (e) {
           debugPrint('⚠️ [FRENET] Cloud Function erro (web) (type=${e.runtimeType})');
-          return _calcularManual(config);
+          return [];
         }
       }
 
@@ -692,12 +635,12 @@ class FreteService {
         return _parsearOpcoesFrenet(shipping, config);
       } else {
         debugPrint('❌ [FRETE] Frenet erro ${response.statusCode}: ${response.body}');
-        return _calcularManual(config);
+        return [];
       }
     } catch (e, stackTrace) {
       debugPrint('❌ [FRETE] Erro Frenet (type=${e.runtimeType})');
       debugPrint('   StackTrace: $stackTrace');
-      return _calcularManual(config);
+      return [];
     }
   }
 
@@ -717,7 +660,7 @@ class FreteService {
 
       if (usuario.isEmpty || senha.isEmpty) {
         debugPrint('⚠️  [FRETE] Credenciais Correios não configuradas');
-        return _calcularManual(config);
+        return [];
       }
 
       // Correios Web Service (exemplo simplificado)
@@ -748,7 +691,7 @@ class FreteService {
       ];
     } catch (e) {
       debugPrint('❌ [FRETE] Erro Correios (type=${e.runtimeType})');
-      return _calcularManual(config);
+      return [];
     }
   }
 
@@ -1174,6 +1117,83 @@ class FreteService {
     } catch (e) {
       debugPrint('❌ [MELHOR ENVIO] Erro ao buscar carrinho (type=${e.runtimeType})');
       return [];
+    }
+  }
+}
+
+/// Resultado do cálculo de frete com o provedor selecionado.
+class FreteCalculoResultado {
+  const FreteCalculoResultado({
+    required this.provider,
+    required this.opcoes,
+    this.erroProvedor,
+  });
+
+  final String provider;
+  final List<Map<String, dynamic>> opcoes;
+
+  /// Mensagem segura para o cliente quando o provedor selecionado falhou.
+  final String? erroProvedor;
+}
+
+class FreteCotacaoPedido {
+  const FreteCotacaoPedido({
+    required this.config,
+    required this.lojaId,
+    required this.cep,
+    required this.peso,
+    required this.valorDeclarado,
+    required this.altura,
+    required this.largura,
+    required this.comprimento,
+    this.itensCotacao,
+  });
+
+  final Map<String, dynamic> config;
+  final String lojaId;
+  final String cep;
+  final double peso;
+  final double valorDeclarado;
+  final double altura;
+  final double largura;
+  final double comprimento;
+  final List<Map<String, dynamic>>? itensCotacao;
+}
+
+typedef FreteCotador = Future<List<Map<String, dynamic>>> Function(FreteCotacaoPedido pedido);
+
+class FreteCotadores {
+  const FreteCotadores({
+    required this.melhorEnvio,
+    required this.superFrete,
+    required this.frenet,
+    required this.correios,
+  });
+
+  static const FreteCotadores padrao = FreteCotadores(
+    melhorEnvio: FreteService._cotarMelhorEnvio,
+    superFrete: FreteService._cotarSuperFrete,
+    frenet: FreteService._cotarFrenet,
+    correios: FreteService._cotarCorreios,
+  );
+
+  final FreteCotador melhorEnvio;
+  final FreteCotador superFrete;
+  final FreteCotador frenet;
+  final FreteCotador correios;
+
+  FreteCotador? para(String provider) {
+    switch (provider) {
+      case ShippingProviderSelection.melhorEnvio:
+        return melhorEnvio;
+      case ShippingProviderSelection.superFrete:
+        return superFrete;
+      case ShippingProviderSelection.frenet:
+        return frenet;
+      case ShippingProviderSelection.correios:
+        return correios;
+      default:
+        return null;
     }
   }
 }

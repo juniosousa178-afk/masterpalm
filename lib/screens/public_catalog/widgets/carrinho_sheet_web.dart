@@ -2315,7 +2315,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
           '📦 [CATALOGO] Dimensões: ${altura}cm (A) x ${largura}cm (L) x ${comprimento}cm (C)');
 
       // ✅ Chamar FreteService.calcularFrete()
-      final opcoesFretes = await FreteService.calcularFrete(
+      final resultadoFrete = await FreteService.calcularFrete(
         lojaId: widget.lojaId,
         cep: cepDestino,
         peso: pesoTotal,
@@ -2325,6 +2325,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
         comprimento: comprimento,
         itensCotacao: buildShippingQuoteItems(widget.items),
       );
+      final opcoesFretes = resultadoFrete.opcoes;
       _cotacaoItensAssinatura = shippingQuoteItemsSignature(widget.items);
 
       // ✅ Preservar manuais se API retornar vazio (nunca sobrescrever com lista vazia)
@@ -2472,7 +2473,7 @@ class _CarrinhoSheetWebState extends State<CarrinhoSheetWeb> {
 
       if (!mounted) return;
       setState(() {
-        _avisoCheckoutFrete = null;
+        _avisoCheckoutFrete = resultadoFrete.erroProvedor;
       });
     } catch (e, st) {
       logE('❌ [CATALOGO] Erro ao calcular frete (type=${e.runtimeType})',

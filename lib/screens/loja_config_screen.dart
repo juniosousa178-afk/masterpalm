@@ -29,6 +29,7 @@ import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import '../services/catalogo_sync_service.dart';
 import '../services/catalog_publish_service.dart';
 import '../services/catalog_cache_service.dart';
+import '../services/shipping_provider_selection.dart';
 import '../services/catalogo_config_service.dart';
 import '../services/limits_guard.dart';
 import '../services/sync_firestore_script.dart';
@@ -3976,18 +3977,23 @@ class _LojaConfigScreenState extends State<LojaConfigScreen>
               double.tryParse((fc['peso_embalagem'] ?? '50').toString()) ??
                   50.0;
           final superConfigured = fc['superfrete_configured'] == true;
+          final provider = (fc['provider'] ?? 'manual').toString();
           final fretesDoc = <String, dynamic>{
-            'provider': (fc['provider'] ?? 'manual').toString(),
+            'provider': provider,
             'cepOrigem': cepO,
             'pesoEmbalagem': pesoEmb,
             'melhorEnvio': {
               'token': (fc['melhor_envio_token'] ?? '').toString().trim()
             },
+            // `configured` do Melhor Envio vem do fluxo seguro (merge preserva).
             'integrations': {
               'superfrete': {
                 'configured': superConfigured,
-                'enabled': true,
+                'enabled': provider == ShippingProviderSelection.superFrete,
                 'sandbox': fc['superfrete_sandbox'] == true,
+              },
+              'melhor_envio': {
+                'enabled': provider == ShippingProviderSelection.melhorEnvio,
               },
             },
             'correios': {

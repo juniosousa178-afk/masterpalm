@@ -136,7 +136,7 @@ void main() {
     test('FreteService repassa itens e o ID nas duas plataformas', () {
       final src = File('lib/services/frete_service.dart').readAsStringSync();
       expect(src, contains("'items': itensCotacao"));
-      expect(src, contains('items: itensCotacao'));
+      expect(src, contains(RegExp(r'items: (p\.)?itensCotacao')));
       expect(
         "'shipping_quote_id': m['shippingQuoteId'].toString()".allMatches(src).length +
             "'shipping_quote_id': item['shippingQuoteId'].toString()"
